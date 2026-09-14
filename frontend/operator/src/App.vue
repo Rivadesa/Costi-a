@@ -9,7 +9,10 @@ import { clearSession, hasPermission, isAuthenticated, session } from './state/s
 const router = useRouter();
 let pingTimer = null;
 const userName = computed(() => session.user?.display_name || 'Usuario');
-const showCheckout = computed(() => session.apiBase !== DEMO_API_BASE && hasPermission('payment.record'));
+const showService = computed(() => ['main', 'service'].includes(session.terminalMode));
+const showKds = computed(() => ['main', 'kds'].includes(session.terminalMode));
+const showCheckout = computed(() => session.terminalMode === 'main' && session.apiBase !== DEMO_API_BASE && hasPermission('payment.record'));
+const terminalLabel = computed(() => ({ main: 'Equipo principal', service: 'Sala / maître', kds: 'Cocina / KDS' }[session.terminalMode] || 'Terminal'));
 
 async function ping() {
   try { await api.meta(); } catch { /* badge reflects offline state */ }
@@ -38,15 +41,15 @@ onBeforeUnmount(() => {
   <RouterView v-if="!isAuthenticated" />
   <div v-else class="shell">
     <aside class="sidebar">
-      <div><div class="brand">Hospitality OS</div><div class="brand-subtitle">Operación local</div></div>
+      <div><div class="brand">Hospitality OS</div><div class="brand-subtitle">{{ terminalLabel }}</div></div>
       <nav>
-        <RouterLink to="/service">Control de servicio</RouterLink>
-        <RouterLink to="/kds">Cocina / KDS</RouterLink>
+        <RouterLink v-if="showService" to="/service">Control de servicio</RouterLink>
+        <RouterLink v-if="showKds" to="/kds">Cocina / KDS</RouterLink>
         <RouterLink v-if="showCheckout" to="/checkout">Cuenta / Caja</RouterLink>
       </nav>
       <div class="sidebar-bottom">
         <ConnectionBadge />
-        <div class="user-block"><strong>{{ userName }}</strong><button class="link-button" @click="logout">Cerrar sesión</button></div>
+        <div class="user-block"><strong>{{ userName }}</strong><span class="muted">{{ terminalLabel }}</span><button class="link-button" @click="logout">Cerrar sesión</button></div>
       </div>
     </aside>
     <main class="workspace"><RouterView /></main>
