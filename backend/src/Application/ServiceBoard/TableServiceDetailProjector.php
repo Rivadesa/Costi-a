@@ -22,7 +22,6 @@ final class TableServiceDetailProjector
             'menu' => $menu === null ? null : [
                 'id' => $menu->id,
                 'name' => $menu->name,
-                'unit_price_cents' => $menu->priceCents,
             ],
             'guests' => array_map(static fn ($guest): array => [
                 'id' => $guest->id,
@@ -60,23 +59,6 @@ final class TableServiceDetailProjector
                     'modification_reason' => $item->modificationReason,
                 ], $course->items()),
             ], $service->courses()),
-            'consumptions' => array_map(static fn ($consumption): array => [
-                'id' => $consumption->id,
-                'name' => $consumption->name,
-                'quantity' => $consumption->quantity,
-                'unit_price_cents' => $consumption->unitPriceCents,
-                'cancelled' => $consumption->isCancelled(),
-                'cancel_reason' => $consumption->cancelReason,
-            ], $service->consumptions()),
-            'payments' => array_map(static fn ($payment): array => [
-                'id' => $payment->id,
-                'method' => $payment->method,
-                'amount_cents' => $payment->amountCents,
-                'recorded_at' => $payment->recordedAt->format(DATE_ATOM),
-            ], $service->payments()),
-            'subtotal_cents' => $service->subtotalCents(),
-            'paid_cents' => $service->paidCents(),
-            'balance_cents' => max(0, $service->subtotalCents() - $service->paidCents()),
         ];
     }
 }
