@@ -6,6 +6,7 @@ const label = computed(() => ({
   online: 'Servidor local conectado',
   offline: 'Servidor local sin conexión',
   checking: 'Comprobando servidor…',
+  demo: 'Modo demo local',
 }[session.connection] || 'Estado desconocido'));
 </script>
 
