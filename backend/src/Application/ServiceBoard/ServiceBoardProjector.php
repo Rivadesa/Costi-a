@@ -47,8 +47,6 @@ final class ServiceBoardProjector
                 'served_at' => $course->servedAt?->format(DATE_ATOM),
             ] : null,
             'critical_restrictions' => $critical,
-            'subtotal_cents' => $service->subtotalCents(),
-            'paid_cents' => $service->paidCents(),
         ];
     }
 }
