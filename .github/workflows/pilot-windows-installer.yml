@@ -1,0 +1,49 @@
+name: Pilot Windows installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'frontend/operator/**'
+      - '.github/workflows/pilot-windows-installer.yml'
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend/operator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/operator/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Windows MSI and NSIS installers
+        run: npm run tauri -- build --bundles msi,nsis
+
+      - name: Collect installer artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path pilot-artifacts | Out-Null
+          Get-ChildItem -Path src-tauri\target\release\bundle -Recurse -Include *.msi,*.exe | Copy-Item -Destination pilot-artifacts
+          $files = Get-ChildItem pilot-artifacts
+          if ($files.Count -lt 1) { throw 'No Windows installer was generated.' }
+          $files | ForEach-Object { Write-Host "Generated: $($_.Name)" }
+
+      - name: Upload Windows pilot installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-os-windows-pilot
+          path: frontend/operator/pilot-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
