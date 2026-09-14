@@ -8,6 +8,8 @@ import { clearSession, isAuthenticated, session } from './state/session.js';
 const router = useRouter();
 let pingTimer = null;
 const userName = computed(() => session.user?.display_name || 'Usuario');
+const appVersion = __APP_VERSION__;
+const buildSha = (__BUILD_SHA__ || 'dev').slice(0, 7);
 
 async function ping() {
   try { await api.meta(); } catch { /* badge reflects offline state */ }
@@ -36,7 +38,11 @@ onBeforeUnmount(() => {
   <RouterView v-if="!isAuthenticated" />
   <div v-else class="shell">
     <aside class="sidebar">
-      <div><div class="brand">Hospitality OS</div><div class="brand-subtitle">Operación local</div></div>
+      <div>
+        <div class="brand">Hospitality OS</div>
+        <div class="brand-subtitle">Operación local</div>
+        <div class="brand-subtitle">v{{ appVersion }} · {{ buildSha }}</div>
+      </div>
       <nav>
         <RouterLink to="/service">Control de servicio</RouterLink>
         <RouterLink to="/kds">Cocina / KDS</RouterLink>
