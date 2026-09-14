@@ -13,6 +13,8 @@ const actionBusy = ref(false);
 const actionError = ref('');
 const consumption = ref({ name: '', quantity: 1, unit_price: '' });
 const payment = ref({ method: 'card', amount: '' });
+const restrictionGuest = ref(null);
+const restriction = ref({ label: '', type: 'allergy', severity: 'important', notes: '' });
 
 const table = computed(() => config.value.tables.find(t => t.id === service.value?.table_id));
 const activeCourse = computed(() => service.value?.courses?.find(c => ['fired','preparing','ready'].includes(c.status)) || service.value?.courses?.filter(c => ['served','skipped'].includes(c.status)).at(-1) || null);
@@ -41,6 +43,23 @@ async function createMissingGuests() {
   await act(async () => { for (let i = 0; i < missing; i += 1) await api.addGuest(service.value.id); });
 }
 
+function openRestriction(guest) {
+  restrictionGuest.value = guest;
+  restriction.value = { label: '', type: 'allergy', severity: 'important', notes: '' };
+}
+
+async function addRestriction() {
+  const guestId = restrictionGuest.value?.id;
+  if (!guestId) return;
+  await act(() => api.addRestriction(service.value.id, guestId, {
+    label: restriction.value.label,
+    type: restriction.value.type,
+    severity: restriction.value.severity,
+    notes: restriction.value.notes || null,
+  }));
+  restrictionGuest.value = null;
+}
+
 async function addConsumption() {
   const cents = Math.round(Number(consumption.value.unit_price.replace(',', '.')) * 100);
   await act(() => api.addConsumption(service.value.id, { name: consumption.value.name, quantity: Number(consumption.value.quantity), unit_price_cents: cents }));
@@ -50,6 +69,11 @@ async function addConsumption() {
 async function addPayment() {
   const cents = Math.round(Number(payment.value.amount.replace(',', '.')) * 100);
   await act(() => api.addPayment(service.value.id, { method: payment.value.method, amount_cents: cents }));
+}
+
+function assignMenu(event) {
+  const menuId = event.target.value;
+  if (menuId) act(() => api.assignMenu(service.value.id, menuId));
 }
 
 function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
@@ -81,7 +105,12 @@ function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
         <section class="panel">
           <div class="panel-heading"><div><p class="eyebrow">Comensales</p><h2>Restricciones y adaptaciones</h2></div><button v-if="!allGuestsCreated && hasPermission('service.edit')" class="button secondary" @click="createMissingGuests">Crear posiciones PAX</button></div>
           <div class="guest-grid">
-            <div v-for="guest in service.guests" :key="guest.id" class="guest-card"><strong>PAX {{ guest.position }}<span v-if="guest.name"> · {{ guest.name }}</span></strong><div v-if="guest.restrictions.length === 0" class="muted">Sin restricciones</div><div v-for="restriction in guest.restrictions" :key="restriction.id" class="restriction" :data-severity="restriction.severity"><strong>⚠ {{ restriction.label }}</strong><span>{{ restriction.type }} · {{ restriction.severity }}</span></div></div>
+            <div v-for="guest in service.guests" :key="guest.id" class="guest-card">
+              <strong>PAX {{ guest.position }}<span v-if="guest.name"> · {{ guest.name }}</span></strong>
+              <div v-if="guest.restrictions.length === 0" class="muted">Sin restricciones</div>
+              <div v-for="item in guest.restrictions" :key="item.id" class="restriction" :data-severity="item.severity"><strong>⚠ {{ item.label }}</strong><span>{{ item.type }} · {{ item.severity }}</span></div>
+              <button v-if="hasPermission('service.edit')" class="button secondary guest-action" @click="openRestriction(guest)">+ Restricción</button>
+            </div>
           </div>
         </section>
       </main>
@@ -90,7 +119,7 @@ function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
         <section class="panel compact">
           <p class="eyebrow">Menú</p>
           <template v-if="service.menu"><h3>{{ service.menu.name }}</h3><p>{{ money(service.menu.unit_price_cents) }} / persona</p></template>
-          <label v-else-if="hasPermission('service.edit')">Asignar menú<select @change="act(() => api.assignMenu(service.id, $event.target.value))"><option value="">Seleccionar…</option><option v-for="menu in config.menus" :key="menu.id" :value="menu.id">{{ menu.name }}</option></select></label>
+          <label v-else-if="hasPermission('service.edit')">Asignar menú<select @change="assignMenu"><option value="">Seleccionar…</option><option v-for="menu in config.menus" :key="menu.id" :value="menu.id">{{ menu.name }}</option></select></label>
         </section>
 
         <section class="panel compact">
@@ -105,6 +134,18 @@ function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
         </section>
         <button v-if="service.status === 'paid' && hasPermission('service.close')" class="button primary large" @click="act(() => api.closeService(service.id))">Cerrar servicio</button>
       </aside>
+    </div>
+
+    <div v-if="restrictionGuest" class="modal-backdrop" @click.self="restrictionGuest = null">
+      <form class="modal-card stack" @submit.prevent="addRestriction">
+        <div><p class="eyebrow">PAX {{ restrictionGuest.position }}</p><h2>Alergia, intolerancia o preferencia</h2></div>
+        <label>Descripción<input v-model.trim="restriction.label" placeholder="Ej. Marisco" required autofocus /></label>
+        <label>Tipo<select v-model="restriction.type"><option value="allergy">Alergia</option><option value="intolerance">Intolerancia</option><option value="preference">Preferencia / restricción</option></select></label>
+        <label>Nivel de atención<select v-model="restriction.severity"><option value="informative">Informativa</option><option value="important">Importante</option><option value="critical">CRÍTICA</option></select></label>
+        <label>Observaciones<textarea v-model.trim="restriction.notes" rows="3" placeholder="Detalle útil para sala o cocina"></textarea></label>
+        <p v-if="restriction.severity === 'critical'" class="critical-alert"><strong>⚠ Restricción crítica</strong><span>Se mostrará de forma destacada en sala y en las elaboraciones de este comensal.</span></p>
+        <div class="modal-actions"><button type="button" class="button secondary" @click="restrictionGuest = null">Cancelar</button><button class="button primary" :disabled="actionBusy">Guardar restricción</button></div>
+      </form>
     </div>
   </section>
   <section v-else class="page"><div class="empty-state">Cargando servicio…</div></section>
