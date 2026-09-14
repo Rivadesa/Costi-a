@@ -1,96 +1,39 @@
-# Local real-backend test stack
+# Servidor local real de pruebas
 
-This stack is the fastest route from the standalone Tauri demo to a **real Laravel + PostgreSQL + Redis backend** on one development PC.
+Laravel + PostgreSQL + Redis, persistente. **Solo pruebas en un PC; no producción ni datos de clientes.** Requiere Docker con Compose y puerto local 8000 libre. El cliente sigue siendo la aplicación Windows; Docker aloja su servidor, no reemplaza la aplicación de escritorio.
 
-It is for internal testing/pilot preparation. It is **not** the final production deployment model.
+## Primera instalación
 
-## Requirements
+Desde la raíz del repositorio:
 
-- Docker Desktop with Docker Compose.
-- Ports `8000` free on the host.
-- Hospitality OS Windows client built from `develop`.
-
-## Start
-
-From the repository root:
-
-```bash
-docker compose -f deploy/local-test/docker-compose.yml up --build -d
+```sh
+docker compose -f deploy/local-test/docker-compose.yml build backend
+docker compose -f deploy/local-test/docker-compose.yml up -d postgres redis
+docker compose -f deploy/local-test/docker-compose.yml run --rm backend init
+docker compose -f deploy/local-test/docker-compose.yml up -d backend
 ```
 
-The first build installs PHP 8.4 dependencies, creates the PostgreSQL schema, applies migrations and loads the Retiro Demo seed.
+`init` crea el esquema e inicializa un entorno vacío. Repetirlo sobre la demo existente no repone usuarios, contraseñas, precios o configuración. No sirve para reparar ni reiniciar datos.
 
-API:
+## Uso normal
 
-```text
-http://127.0.0.1:8000/api/v1
-```
-
-Smoke check:
-
-```text
-http://127.0.0.1:8000/api/v1/meta
-```
-
-## Seeded context
-
-- Tenant: `01DEMO00000000000000000000`
-- Company: `01DEMO00000000000000000001`
-- Location: `01DEMO00000000000000000002`
-- User: `demo@hospitality.local`
-- Password: `demo1234`
-
-The seed includes:
-
-- 8 restaurant tables;
-- kitchen stations;
-- one tasting menu;
-- restaurant sale categories;
-- waters;
-- wines by the glass;
-- wines by the bottle;
-- other drinks/extras;
-- default `Tarifa Restaurante` price list.
-
-## Connect the Windows client
-
-On the login screen open **Configuración del terminal** and choose:
-
-- **Equipo principal** to access service control, KDS and `Cuenta / Caja`;
-- **Sala / maître** for operational table tracking only;
-- **Cocina / KDS** for kitchen only.
-
-Set:
-
-```text
-Servidor API: http://127.0.0.1:8000/api/v1
-Empresa: 01DEMO00000000000000000001
-Local: 01DEMO00000000000000000002
-```
-
-Then sign in with the seeded credentials.
-
-## Important financial boundary
-
-`Control de servicio` and KDS deliberately do **not** expose prices, provisional account or payments.
-
-`Cuenta / Caja` is available only on the main-terminal UI and remains protected by server permissions. Consumptions are selected from the active restaurant catalog. The server resolves the active price list and snapshots name/price at the time the item is added.
-
-## Stop
-
-```bash
+```sh
 docker compose -f deploy/local-test/docker-compose.yml down
+docker compose -f deploy/local-test/docker-compose.yml up -d
 ```
 
-To also destroy the local test database and Redis data:
+No usar `down -v`: elimina la base de datos de esta instalación. El arranque normal no ejecuta migraciones ni semillas. Para actualizar esquema, detener backend, hacer backup y ejecutar explícitamente `run --rm backend migrate` antes de arrancar la nueva versión.
 
-```bash
-docker compose -f deploy/local-test/docker-compose.yml down -v
-```
+## Conectar el cliente
 
-## Current limitations
+En Configuración del terminal, seleccionar **Equipo principal**, API `http://127.0.0.1:8000/api/v1`. Usar el formulario normal de acceso: `demo@hospitality.local` / `demo1234`. No pulsar “modo demo”: ese modo almacena otra simulación independiente dentro del cliente.
 
-- Uses Laravel's development HTTP server; production local-server packaging will use a supervised service/reverse proxy.
-- Queue execution is `sync` in this test stack; Redis is present for cache and future queue/realtime work.
-- Cloud replication is not enabled yet.
-- Fiscal/VERI*FACTU is not implemented in V1A.
+El servidor fija tenant/empresa/local de Retiro Demo. Incluye 8 mesas, estaciones, menú de 7 pases, aguas, copas, botellas, cafés y tarifa Restaurante.
+
+Con un cliente que incluya el corte de catálogo: Configuración → Catálogo del restaurante permite gestionar artículos. Cuenta/Caja los consulta desde `/checkout/catalog`; seguimiento y KDS no reciben precios.
+
+## Límites
+
+Puerto publicado solo en 127.0.0.1, credenciales conocidas y servidor HTTP de desarrollo. No exponer a otras redes. Perfiles de pantalla no son autorización de dispositivo; RBAC de servidor sí valida permisos del usuario. Cloud, fiscalidad, backups automáticos, instalador del servidor y prueba física LAN pendientes.
+
+Detalles y criterios: `docs/LOCAL_STACK_READINESS.md`, `docs/CATALOG_ADMINISTRATION.md` y `docs/STATUS.md`.

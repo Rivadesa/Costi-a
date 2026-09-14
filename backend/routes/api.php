@@ -23,6 +23,13 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware('hospitality.auth')->group(function (): void {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
+        Route::get('/checkout/catalog', [\App\Http\Controllers\Api\V1\CatalogController::class, 'checkout'])
+            ->middleware('hospitality.permission:payment.record');
+        Route::get('/admin/catalog', [\App\Http\Controllers\Api\V1\CatalogController::class, 'index'])
+            ->middleware('hospitality.permission:catalog.manage');
+        Route::post('/admin/catalog/products', [\App\Http\Controllers\Api\V1\CatalogController::class, 'save'])
+            ->middleware('hospitality.permission:catalog.manage');
+
         Route::get('/configuration', [ConfigurationController::class, 'show']);
 
         Route::get('/service-board', [OperationalController::class, 'board'])

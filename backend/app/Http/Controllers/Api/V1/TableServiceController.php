@@ -23,23 +23,6 @@ final class TableServiceController
     ) {
     }
 
-    public function open(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'table_id' => ['required', 'string', 'max:26'],
-            'pax' => ['required', 'integer', 'min:1', 'max:100'],
-        ]);
-
-        $result = $this->setup->open(
-            $this->contexts->fromRequest($request),
-            $this->contexts->idempotencyKey($request),
-            $data['table_id'],
-            (int) $data['pax'],
-        );
-
-        return response()->json($result, 201);
-    }
-
     public function show(Request $request, string $serviceId): JsonResponse
     {
         return response()->json(
@@ -50,7 +33,7 @@ final class TableServiceController
     public function assignMenu(Request $request, string $serviceId): JsonResponse
     {
         $data = $request->validate(['menu_id' => ['required', 'string', 'max:26']]);
-        return response()->json($this->setup->assignMenu(
+        return $this->operationalJson($this->setup->assignMenu(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -61,7 +44,7 @@ final class TableServiceController
     public function addGuest(Request $request, string $serviceId): JsonResponse
     {
         $data = $request->validate(['name' => ['nullable', 'string', 'max:160']]);
-        return response()->json($this->commands->addGuest(
+        return $this->operationalJson($this->commands->addGuest(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -78,7 +61,7 @@ final class TableServiceController
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        return response()->json($this->commands->addRestriction(
+        return $this->operationalJson($this->commands->addRestriction(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -92,7 +75,7 @@ final class TableServiceController
 
     public function start(Request $request, string $serviceId): JsonResponse
     {
-        return response()->json($this->commands->start(
+        return $this->operationalJson($this->commands->start(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -101,7 +84,7 @@ final class TableServiceController
 
     public function fireNextCourse(Request $request, string $serviceId): JsonResponse
     {
-        return response()->json($this->commands->fireNextCourse(
+        return $this->operationalJson($this->commands->fireNextCourse(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -110,7 +93,7 @@ final class TableServiceController
 
     public function startPreparation(Request $request, string $serviceId, string $courseId, string $itemId): JsonResponse
     {
-        return response()->json($this->commands->startPreparation(
+        return $this->operationalJson($this->commands->startPreparation(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -121,7 +104,7 @@ final class TableServiceController
 
     public function readyPreparation(Request $request, string $serviceId, string $courseId, string $itemId): JsonResponse
     {
-        return response()->json($this->commands->markPreparationReady(
+        return $this->operationalJson($this->commands->markPreparationReady(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -132,7 +115,7 @@ final class TableServiceController
 
     public function validateCourseReady(Request $request, string $serviceId, string $courseId): JsonResponse
     {
-        return response()->json($this->commands->validateCourseReady(
+        return $this->operationalJson($this->commands->validateCourseReady(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -142,7 +125,7 @@ final class TableServiceController
 
     public function serveCourse(Request $request, string $serviceId, string $courseId): JsonResponse
     {
-        return response()->json($this->commands->serveCourse(
+        return $this->operationalJson($this->commands->serveCourse(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -153,7 +136,7 @@ final class TableServiceController
     public function skipCourse(Request $request, string $serviceId, string $courseId): JsonResponse
     {
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
-        return response()->json($this->commands->skipCourse(
+        return $this->operationalJson($this->commands->skipCourse(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -169,7 +152,7 @@ final class TableServiceController
             'station_id' => ['required', 'string', 'max:26'],
             'reason' => ['required', 'string', 'max:1000'],
         ]);
-        return response()->json($this->commands->substitutePreparation(
+        return $this->operationalJson($this->commands->substitutePreparation(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -184,7 +167,7 @@ final class TableServiceController
     public function pause(Request $request, string $serviceId): JsonResponse
     {
         $data = $request->validate(['reason' => ['nullable', 'string', 'max:1000']]);
-        return response()->json($this->commands->pause(
+        return $this->operationalJson($this->commands->pause(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
@@ -194,63 +177,19 @@ final class TableServiceController
 
     public function resume(Request $request, string $serviceId): JsonResponse
     {
-        return response()->json($this->commands->resume(
+        return $this->operationalJson($this->commands->resume(
             $this->contexts->fromRequest($request),
             $serviceId,
             $this->contexts->idempotencyKey($request),
         ));
     }
 
-    public function addConsumption(Request $request, string $serviceId): JsonResponse
+    /** Economic fields are never returned by service-control commands, including old idempotent results. */
+    private function operationalJson(array $payload): JsonResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:180'],
-            'quantity' => ['required', 'integer', 'min:1', 'max:999'],
-            'unit_price_cents' => ['required', 'integer', 'min:0'],
-        ]);
-        return response()->json($this->commands->addConsumption(
-            $this->contexts->fromRequest($request),
-            $serviceId,
-            $this->contexts->idempotencyKey($request),
-            $data['name'],
-            (int) $data['quantity'],
-            (int) $data['unit_price_cents'],
-        ));
+        unset($payload['subtotal_cents'], $payload['paid_cents'], $payload['balance_cents'],
+            $payload['menu_price_cents'], $payload['unit_price_cents'], $payload['payments']);
+        return response()->json($payload);
     }
 
-    public function cancelConsumption(Request $request, string $serviceId, string $consumptionId): JsonResponse
-    {
-        $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
-        return response()->json($this->commands->cancelConsumption(
-            $this->contexts->fromRequest($request),
-            $serviceId,
-            $this->contexts->idempotencyKey($request),
-            $consumptionId,
-            $data['reason'],
-        ));
-    }
-
-    public function recordPayment(Request $request, string $serviceId): JsonResponse
-    {
-        $data = $request->validate([
-            'method' => ['required', 'string', 'max:40'],
-            'amount_cents' => ['required', 'integer', 'min:1'],
-        ]);
-        return response()->json($this->commands->recordPayment(
-            $this->contexts->fromRequest($request),
-            $serviceId,
-            $this->contexts->idempotencyKey($request),
-            $data['method'],
-            (int) $data['amount_cents'],
-        ));
-    }
-
-    public function close(Request $request, string $serviceId): JsonResponse
-    {
-        return response()->json($this->commands->close(
-            $this->contexts->fromRequest($request),
-            $serviceId,
-            $this->contexts->idempotencyKey($request),
-        ));
-    }
 }

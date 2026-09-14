@@ -55,8 +55,12 @@ final class CatalogConsumptionService
                     throw new \DomainException('V1A provisional accounts currently support EUR only.');
                 }
 
+                $units = ['glass' => 'Copa', 'bottle' => 'Botella', 'portion' => 'Ración', 'service' => 'Servicio'];
+                $label = implode(' · ', array_filter([(string) $item['name'],
+                    $units[$item['sale_unit'] ?? 'unit'] ?? null, $item['format_label'] ?? null],
+                    static fn ($part): bool => $part !== null && trim($part) !== ''));
                 $consumption = $service->addConsumption(
-                    (string) $item['name'],
+                    $label,
                     $quantity,
                     (int) $item['price_cents'],
                 );

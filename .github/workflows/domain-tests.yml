@@ -4,14 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [develop, main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/domain-tests.yml'
+    paths: ['backend/**', '.github/workflows/domain-tests.yml']
   pull_request:
     branches: [develop, main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/domain-tests.yml'
+    paths: ['backend/**', '.github/workflows/domain-tests.yml']
 
 jobs:
   php-backend:
@@ -30,7 +26,6 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
-
     env:
       APP_ENV: testing
       APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
@@ -44,15 +39,12 @@ jobs:
       DB_PASSWORD: hospitality
       CACHE_STORE: array
       QUEUE_CONNECTION: sync
-
     defaults:
       run:
         working-directory: backend
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -60,42 +52,30 @@ jobs:
           coverage: none
           extensions: pdo_pgsql
           tools: composer:v2
-
       - name: PHP syntax check
-        run: find app src tests database routes config bootstrap -name '*.php' -print0 | xargs -0 -n1 php -l
-
+        run: find app src tests database routes config bootstrap public -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Dependency-free domain smoke tests
         run: php tests/run.php
-
       - name: Dependency-free projection tests
         run: php tests/projections.php
-
       - name: Dependency-free application tests
         run: php tests/application.php
-
       - name: Validate composer.json
         run: composer validate --strict
-
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
-
       - name: Verify Laravel boot and protected routes
         run: |
           php artisan --version
           php artisan route:list --path=api/v1
-
       - name: Run migrations
         run: php artisan migrate:fresh --force
-
       - name: Run PHPUnit including local auth API tests
         run: composer test
-
       - name: Run PostgreSQL service integration flow
         run: php tests/integration.php
-
       - name: Run PostgreSQL concurrency and rollback checks
         run: php tests/reliability.php
-
       - name: Validate Retiro demo seed
         run: |
           php artisan migrate:fresh --force

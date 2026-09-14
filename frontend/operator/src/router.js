@@ -3,6 +3,7 @@ import LoginView from './views/LoginView.vue';
 import ServiceBoard from './views/ServiceBoard.vue';
 import ServiceDetail from './views/ServiceDetail.vue';
 import KdsView from './views/KdsView.vue';
+import CatalogView from './views/CatalogView.vue';
 import CheckoutView from './views/CheckoutView.vue';
 import { DEMO_API_BASE } from './api/demo.js';
 import { hasPermission, isAuthenticated, session } from './state/session.js';
@@ -19,6 +20,7 @@ const router = createRouter({
     { path: '/service', component: ServiceBoard, meta: { terminals: ['main', 'service'] } },
     { path: '/service/:id', component: ServiceDetail, meta: { terminals: ['main', 'service'] } },
     { path: '/kds', component: KdsView, meta: { terminals: ['main', 'kds'] } },
+    { path: '/catalog', component: CatalogView, meta: { permission: 'catalog.manage', realServer: true, terminals: ['main'] } },
     { path: '/checkout', component: CheckoutView, meta: { permission: 'payment.record', realServer: true, terminals: ['main'] } },
     { path: '/:pathMatch(.*)*', redirect: '/service' },
   ],
