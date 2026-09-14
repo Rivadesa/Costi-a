@@ -14,6 +14,9 @@ Artisan::command('hospitality:provision {--profile=retiro-pilot} {--password=} {
     $password = (string) $this->option('password');
 
     if ($password === '') {
+        $password = (string) env('HOSPITALITY_PROVISION_PASSWORD', '');
+    }
+    if ($password === '') {
         $password = (string) ($this->secret('Pilot password (12+ characters)') ?? '');
     }
 
