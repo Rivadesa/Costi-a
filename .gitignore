@@ -1,0 +1,9 @@
+.DS_Store
+.env
+vendor/
+node_modules/
+storage/*.key
+frontend/**/dist/
+frontend/**/src-tauri/target/
+backend/.phpunit.cache/
+*.log
