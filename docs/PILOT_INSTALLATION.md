@@ -28,6 +28,7 @@ The `retiro-pilot` provisioning profile deliberately contains placeholder config
 
 For the current pilot:
 
+- Windows/Windows Server or another supported local-server OS;
 - PHP 8.4;
 - Composer 2;
 - PostgreSQL 17 (PostgreSQL 16+ should be compatible but CI validates 17);
@@ -46,9 +47,34 @@ CREATE DATABASE hospitality OWNER hospitality;
 
 Do not reuse the example password text.
 
-## 5. Configure Laravel
+## 5. Recommended Windows bootstrap
 
-From `backend/`:
+From a PowerShell terminal at the repository root, run:
+
+```powershell
+.\scripts\bootstrap-pilot-server.ps1 -AppUrl http://SERVER_LAN_IP:8000
+```
+
+The script:
+
+1. checks that PHP and Composer exist;
+2. asks for the PostgreSQL password without echoing it;
+3. asks for the pilot application password without echoing it;
+4. creates/updates `backend/.env` locally;
+5. installs Composer dependencies;
+6. generates the Laravel key;
+7. applies migrations;
+8. provisions the idempotent `retiro-pilot` profile;
+9. writes the generated tenant/company/location IDs to the local `.env`;
+10. prints the API URL and pilot accounts.
+
+The script does **not** create the PostgreSQL server/user/database itself. That remains an explicit infrastructure step so that database credentials and storage policy are controlled by the installer/operator.
+
+Never commit the generated `backend/.env`.
+
+## 6. Manual Laravel configuration
+
+If the bootstrap script is not used, from `backend/`:
 
 ```bash
 cp .env.example .env
@@ -56,7 +82,7 @@ composer install
 php artisan key:generate
 ```
 
-Set at least these values in `.env`:
+Set at least:
 
 ```dotenv
 APP_ENV=local
@@ -75,12 +101,14 @@ Then run:
 
 ```bash
 php artisan migrate --force
-php artisan hospitality:provision --profile=retiro-pilot --password="A-UNIQUE-PILOT-PASSWORD"
+php artisan hospitality:provision --profile=retiro-pilot
 ```
+
+If `--password` is omitted, the command asks for it through a hidden prompt. For automation only, `HOSPITALITY_PROVISION_PASSWORD` can be supplied as a process environment variable. Do not put that value in source control.
 
 The password must be at least 12 characters. The command is idempotent: running it again updates the same pilot profile instead of duplicating tables/roles/menu/users.
 
-The command prints `tenant_id`, `company_id` and `location_id`. Copy those values into `.env`:
+Copy the printed `tenant_id`, `company_id` and `location_id` into `.env`:
 
 ```dotenv
 HOSPITALITY_TENANT_ID=<tenant_id>
@@ -90,9 +118,9 @@ HOSPITALITY_LOCATION_ID=<location_id>
 
 Restart Laravel after changing `.env`.
 
-## 6. Pilot users
+## 7. Pilot users
 
-Provisioning creates these local accounts, all using the password passed to the command:
+Provisioning creates these local accounts, all using the password supplied during provisioning:
 
 | User | Role |
 | --- | --- |
@@ -104,11 +132,12 @@ Provisioning creates these local accounts, all using the password passed to the 
 
 These are pilot accounts only. Before production they must be replaced by named users and a production credential policy.
 
-## 7. Start the local API for an internal test
+## 8. Start the local API for an internal test
 
 For a controlled pilot/test LAN:
 
 ```bash
+cd backend
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
@@ -120,7 +149,24 @@ http://SERVER_LAN_IP:8000/api/v1/meta
 
 A production service manager/reverse proxy is intentionally deferred until target server hardware is selected. `artisan serve` is acceptable for developer/internal pilot testing, not the final restaurant deployment.
 
-## 8. Build/download the Windows desktop client
+## 9. Automated LAN smoke test
+
+From a Windows client or the server itself:
+
+```powershell
+.\scripts\test-pilot-api.ps1 -ApiBase http://SERVER_LAN_IP:8000/api/v1
+```
+
+The script asks for the pilot account password, then checks:
+
+- `/api/v1/meta`;
+- local authentication;
+- the authenticated operational configuration;
+- presence of tables, menus and kitchen stations.
+
+It never stores the entered password.
+
+## 10. Build/download the Windows desktop client
 
 GitHub Actions workflow: **Pilot Windows installer**.
 
@@ -139,7 +185,7 @@ Artifacts are retained for 14 days.
 
 For internal builds, open the workflow run in GitHub Actions and download the artifact ZIP. Do not distribute these unsigned pilot installers publicly.
 
-## 9. First desktop launch
+## 11. First desktop launch
 
 Install Hospitality OS on the Windows terminal and open it.
 
@@ -151,7 +197,7 @@ http://SERVER_LAN_IP:8000/api/v1
 
 Login with one of the pilot accounts. The application fetches human-readable tables, menus and kitchen stations from the local API; operators do not need to enter ULIDs.
 
-## 10. First acceptance test
+## 12. First acceptance test
 
 Perform this sequence with at least two client devices/screens:
 
@@ -168,7 +214,7 @@ Perform this sequence with at least two client devices/screens:
 11. Register payment and close the service.
 12. Confirm the service timeline/audit remains coherent.
 
-## 11. WAN-outage test
+## 13. WAN-outage test
 
 After a successful LAN test:
 
@@ -179,7 +225,7 @@ After a successful LAN test:
 
 This proves the local-primary architecture. It does not yet prove local-server hardware failover.
 
-## 12. Current limitations before live restaurant use
+## 14. Current limitations before live restaurant use
 
 The pilot installer/build does **not** mean the system is production-ready. Still required before live replacement of Verial include, among others:
 
@@ -192,10 +238,11 @@ The pilot installer/build does **not** mean the system is production-ready. Stil
 - fiscal V1B / VERI*FACTU;
 - operational training and controlled shadow service.
 
-## 13. Security notes
+## 15. Security notes
 
 - Never commit `.env`, passwords or DB credentials.
 - Pilot passwords must not be reused outside this installation.
+- Prefer the hidden prompt or process environment variable over `--password=...`, because command-line arguments can be retained in shell history/process listings.
 - The generated Windows pilot installer is currently unsigned; Windows may show a publisher warning.
 - Server port 8000 should only be reachable from the restaurant LAN during pilot testing.
 - Do not expose the Laravel pilot API directly to the public Internet.
