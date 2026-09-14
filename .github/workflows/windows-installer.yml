@@ -33,6 +33,9 @@ jobs:
       - name: Check demo adapter syntax
         run: node --check src/api/demo.js
 
+      - name: Run demo workflow smoke test
+        run: node scripts/demo-smoke.mjs
+
       - name: Build Vue operator
         run: npm run build
 
