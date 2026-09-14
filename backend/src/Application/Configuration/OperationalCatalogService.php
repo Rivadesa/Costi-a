@@ -20,6 +20,8 @@ final class OperationalCatalogService
             'tables' => $this->catalog->tables($context->tenantId, $context->companyId, $context->locationId),
             'menus' => $this->catalog->menus($context->tenantId, $context->companyId, $context->locationId),
             'stations' => $this->catalog->stations($context->tenantId, $context->companyId, $context->locationId),
+            'sale_categories' => $this->catalog->saleCategories($context->tenantId, $context->companyId, $context->locationId),
+            'sale_items' => $this->catalog->saleItems($context->tenantId, $context->companyId, $context->locationId),
         ];
     }
 }
