@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: Hospitality OS V1A Local API
-  version: 0.5.0
+  version: 0.6.0
   description: >-
     Local-primary API consumed by the Tauri desktop operator, waiter clients and KDS.
     Authentication is local and does not require Internet. Authenticated context determines
     tenant/company/location; clients must not be trusted to select an unauthorized scope.
-    All operational mutations use Idempotency-Key so retries are safe.
+    All operational mutations use Idempotency-Key so retries are safe. Service-control
+    projections are intentionally non-financial; provisional account and payment data are
+    exposed only through /checkout endpoints intended for the authorized main terminal.
 servers:
   - url: http://hospitality.local/api/v1
 security:
@@ -58,13 +60,16 @@ paths:
   /configuration:
     get:
       summary: Human-readable operational catalog for the authorized location
-      description: Returns active dining tables, menu templates and kitchen stations for UI use.
+      description: >-
+        Returns active dining tables, menu templates, kitchen stations, sale categories and
+        sale items resolved against the default price list for the current company/location.
       responses:
-        '200': { description: Tables, menus and stations }
+        '200': { description: Tables, menus, stations and operational sale catalog }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /service-board:
     get:
       summary: Global active-service projection for chef/maître
+      description: Does not contain provisional-account totals, payments or other financial data.
       responses:
         '200': { description: Active service overview }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -106,11 +111,14 @@ paths:
         '422': { $ref: '#/components/responses/InvalidArgument' }
   /services/{serviceId}:
     get:
-      summary: Complete service projection for operator/comandero
+      summary: Operational service projection for operator/comandero
+      description: >-
+        Returns table, PAX, menu identity, passes, preparations and restrictions. It intentionally
+        excludes menu price, consumptions, provisional totals, payments and balance.
       parameters:
         - $ref: '#/components/parameters/serviceId'
       responses:
-        '200': { description: Service detail }
+        '200': { description: Non-financial service detail }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -274,9 +282,26 @@ paths:
       responses:
         '200': { description: Course skipped }
         '409': { $ref: '#/components/responses/Conflict' }
-  /services/{serviceId}/consumptions:
+  /checkout/services/{serviceId}:
+    get:
+      summary: Financial/provisional-account projection for the main terminal
+      description: >-
+        Returns menu-price snapshot, catalog-linked consumptions, payments, subtotal, paid amount
+        and remaining balance. This endpoint is not used by waiter or KDS service tracking.
+      parameters:
+        - $ref: '#/components/parameters/serviceId'
+      responses:
+        '200': { description: Provisional account detail }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /checkout/services/{serviceId}/consumptions:
     post:
-      summary: Add drink or extra to the provisional account
+      summary: Add a catalog item to the provisional account
+      description: >-
+        The server resolves the active product and price list for the authorized company/location.
+        Clients do not submit arbitrary names or prices. The resulting consumption snapshots name
+        and unit price and stores product_id plus price_list_id for traceability.
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
@@ -286,15 +311,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, quantity, unit_price_cents]
+              required: [product_id, quantity]
               properties:
-                name: { type: string, maxLength: 180 }
+                product_id: { type: string, maxLength: 26 }
                 quantity: { type: integer, minimum: 1, maximum: 999 }
-                unit_price_cents: { type: integer, minimum: 0 }
       responses:
-        '200': { description: Consumption added }
+        '200': { description: Catalog consumption added and price snapshotted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
-  /services/{serviceId}/consumptions/{consumptionId}/cancel:
+        '422': { $ref: '#/components/responses/InvalidArgument' }
+  /checkout/services/{serviceId}/consumptions/{consumptionId}/cancel:
     post:
       summary: Cancel a consumption without destructive deletion
       parameters:
@@ -313,7 +340,7 @@ paths:
       responses:
         '200': { description: Consumption cancelled }
         '409': { $ref: '#/components/responses/Conflict' }
-  /services/{serviceId}/payments:
+  /checkout/services/{serviceId}/payments:
     post:
       summary: Record operational payment; this is not a fiscal document
       parameters:
@@ -332,7 +359,7 @@ paths:
       responses:
         '200': { description: Payment recorded }
         '409': { $ref: '#/components/responses/Conflict' }
-  /services/{serviceId}/close:
+  /checkout/services/{serviceId}/close:
     post:
       summary: Close a fully paid service with no active kitchen course
       parameters:
