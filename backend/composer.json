@@ -1,0 +1,13 @@
+{
+  "name": "xeitoso/hospitality-os-domain",
+  "description": "Framework-independent domain kernel for Hospitality OS V1A",
+  "type": "library",
+  "require": {
+    "php": ">=8.4"
+  },
+  "autoload": {
+    "psr-4": {
+      "Hospitality\\": "src/"
+    }
+  }
+}
