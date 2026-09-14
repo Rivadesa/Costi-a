@@ -38,6 +38,9 @@ jobs:
       - name: Dependency-free projection tests
         run: php tests/projections.php
 
+      - name: Dependency-free application tests
+        run: php tests/application.php
+
       - name: Validate composer.json
         run: composer validate --strict
 
