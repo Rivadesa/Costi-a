@@ -31,6 +31,9 @@ function Quote-DotEnv([string]$Value) {
     if ($Value.Contains("`r") -or $Value.Contains("`n")) {
         throw 'Environment values may not contain line breaks.'
     }
+
+    # Dotenv double-quoted values use backslash escapes. In PowerShell single-quoted
+    # string literals, '\' is one literal backslash and '\\' is two.
     $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
     return '"' + $escaped + '"'
 }
@@ -80,12 +83,12 @@ function Resolve-BuildSha([string]$Root) {
 }
 
 Assert-Command 'php'
-Assert-Command 'composer'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backend = Join-Path $repoRoot 'backend'
 $envExample = Join-Path $backend '.env.example'
 $envFile = Join-Path $backend '.env'
+$vendorAutoload = Join-Path $backend 'vendor\autoload.php'
 $buildSha = Resolve-BuildSha $repoRoot
 
 if (-not (Test-Path -LiteralPath $backend)) {
@@ -135,9 +138,14 @@ Set-DotEnvValue $envFile 'HOSPITALITY_BUILD_SHA' (Quote-DotEnv $buildSha)
 
 Push-Location $backend
 try {
-    Write-Host 'Installing PHP dependencies...'
-    & composer install --no-interaction --prefer-dist
-    if ($LASTEXITCODE -ne 0) { throw 'composer install failed.' }
+    if (-not (Test-Path -LiteralPath $vendorAutoload)) {
+        Assert-Command 'composer'
+        Write-Host 'PHP vendor dependencies are not packaged; installing with Composer...'
+        & composer install --no-interaction --prefer-dist
+        if ($LASTEXITCODE -ne 0) { throw 'composer install failed.' }
+    } else {
+        Write-Host 'Using packaged PHP vendor dependencies.'
+    }
 
     Write-Host 'Generating Laravel application key...'
     & php artisan key:generate --force
