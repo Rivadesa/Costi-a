@@ -3,7 +3,7 @@ name: Backend V1A tests
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [develop, main]
     paths:
       - 'backend/**'
       - '.github/workflows/domain-tests.yml'
@@ -62,7 +62,7 @@ jobs:
           tools: composer:v2
 
       - name: PHP syntax check
-        run: find app src tests database/migrations routes config bootstrap -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find app src tests database routes config bootstrap -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: Dependency-free domain smoke tests
         run: php tests/run.php
@@ -95,3 +95,8 @@ jobs:
 
       - name: Run PostgreSQL concurrency and rollback checks
         run: php tests/reliability.php
+
+      - name: Validate Retiro demo seed
+        run: |
+          php artisan migrate:fresh --force
+          php artisan db:seed --force
