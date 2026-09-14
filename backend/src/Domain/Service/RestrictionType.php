@@ -6,7 +6,7 @@ namespace Hospitality\Domain\Service;
 
 enum RestrictionType: string
 {
-    case Allergy = 'ALLERGY';
-    case Intolerance = 'INTOLERANCE';
-    case Preference = 'PREFERENCE';
+    case Allergy = 'allergy';
+    case Intolerance = 'intolerance';
+    case Preference = 'preference';
 }
