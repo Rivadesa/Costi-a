@@ -41,11 +41,11 @@ services:
     environment:
       APP_NAME: Hospitality OS
       APP_ENV: local
-      APP_DEBUG: "true"
+      APP_DEBUG: "false"
+      # Development-only fixtures, never production secrets.
       APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       APP_PORT: "8000"
       LOG_CHANNEL: stderr
-
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -53,21 +53,19 @@ services:
       DB_USERNAME: hospitality
       DB_PASSWORD: hospitality
       DB_SSLMODE: disable
-
       CACHE_STORE: redis
       QUEUE_CONNECTION: sync
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-
       HOSPITALITY_TENANT_ID: 01DEMO00000000000000000000
       HOSPITALITY_COMPANY_ID: 01DEMO00000000000000000001
       HOSPITALITY_LOCATION_ID: 01DEMO00000000000000000002
       HOSPITALITY_TOKEN_TTL_HOURS: "24"
-      HOSPITALITY_SEED_DEMO: "true"
       HOSPITALITY_CORS_ORIGINS: http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost
     ports:
-      - "8000:8000"
+      # Loopback by default: the test credentials must not be exposed to the LAN.
+      - "127.0.0.1:8000:8000"
 
 volumes:
   hospitality_pgdata:
