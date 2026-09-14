@@ -8,7 +8,7 @@ on:
       - 'frontend/operator/**'
       - '.github/workflows/operator-tests.yml'
   push:
-    branches: [main]
+    branches: [develop, main]
     paths:
       - 'frontend/operator/**'
       - '.github/workflows/operator-tests.yml'
@@ -26,6 +26,8 @@ jobs:
           node-version: '24'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Check demo adapter syntax
+        run: node --check src/api/demo.js
       - name: Build Vue operator
         run: npm run build
 
