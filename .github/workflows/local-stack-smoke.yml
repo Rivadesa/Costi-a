@@ -4,123 +4,61 @@ on:
   workflow_dispatch:
   push:
     branches: [develop, main]
-    paths:
-      - 'backend/**'
-      - 'deploy/local-test/**'
-      - '.github/workflows/local-stack-smoke.yml'
+    paths: ['backend/**', 'deploy/local-test/**', '.github/workflows/local-stack-smoke.yml']
   pull_request:
     branches: [develop, main]
-    paths:
-      - 'backend/**'
-      - 'deploy/local-test/**'
-      - '.github/workflows/local-stack-smoke.yml'
+    paths: ['backend/**', 'deploy/local-test/**', '.github/workflows/local-stack-smoke.yml']
+
+permissions:
+  contents: read
 
 jobs:
+  source-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked source for reproducible collaborator handoff
+        run: git archive --format=zip --output=local-test-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-local-source
+          path: local-test-source.zip
+          retention-days: 7
+
   docker-real-backend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Build local test stack
         run: docker compose -f deploy/local-test/docker-compose.yml build backend
-
-      - name: Start PostgreSQL Redis and Laravel
-        run: docker compose -f deploy/local-test/docker-compose.yml up -d
-
-      - name: Wait for API
-        shell: bash
+      - name: Initialize explicit test installation
         run: |
-          set -euo pipefail
-          for i in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:8000/api/v1/meta > /tmp/meta.json; then
-              cat /tmp/meta.json
-              exit 0
-            fi
-            sleep 2
-          done
-          docker compose -f deploy/local-test/docker-compose.yml logs
-          exit 1
-
-      - name: Login and validate real catalog/checkout boundary
-        shell: bash
+          docker compose -f deploy/local-test/docker-compose.yml up -d postgres redis
+          docker compose -f deploy/local-test/docker-compose.yml run --rm backend init
+          docker compose -f deploy/local-test/docker-compose.yml up -d backend
+      - name: Exercise real HTTP account and service boundary
+        run: python3 deploy/local-test/smoke.py create
+      - name: Modify configuration before restart
+        run: >-
+          docker compose -f deploy/local-test/docker-compose.yml exec -T postgres
+          psql -U hospitality -d hospitality -v ON_ERROR_STOP=1
+          -c "UPDATE dining_tables SET name='Mesa persistente' WHERE id='01DEMO00000000000000000010';"
+      - name: Repeated initialization must be a no-op
+        run: docker compose -f deploy/local-test/docker-compose.yml run --rm backend init
+      - name: Recreate containers without deleting persistent volumes
         run: |
-          set -euo pipefail
-
-          TOKEN=$(curl --fail --silent \
-            -H 'Content-Type: application/json' \
-            -d '{"email":"demo@hospitality.local","password":"demo1234"}' \
-            http://127.0.0.1:8000/api/v1/auth/login \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
-
-          curl --fail --silent \
-            -H "Authorization: Bearer $TOKEN" \
-            http://127.0.0.1:8000/api/v1/configuration > /tmp/config.json
-
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/config.json'))['data']
-          assert len(data['tables']) == 8
-          assert data['sale_categories']
-          assert data['sale_items']
-          assert any(item['name'] == 'Agua mineral' for item in data['sale_items'])
-          print('catalog ok')
-          PY
-
-          SERVICE_ID=$(curl --fail --silent \
-            -H "Authorization: Bearer $TOKEN" \
-            -H 'Content-Type: application/json' \
-            -H 'Idempotency-Key: docker-open-001' \
-            -d '{"table_id":"01DEMO00000000000000000010","pax":2,"menu_id":"01DEMO00000000000000000030"}' \
-            http://127.0.0.1:8000/api/v1/services \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["service_id"])')
-
-          curl --fail --silent \
-            -H "Authorization: Bearer $TOKEN" \
-            http://127.0.0.1:8000/api/v1/services/$SERVICE_ID > /tmp/service.json
-
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/service.json'))
-          forbidden={'consumptions','payments','subtotal_cents','paid_cents','balance_cents'}
-          assert not forbidden.intersection(data), data.keys()
-          assert 'unit_price_cents' not in (data.get('menu') or {})
-          print('service boundary ok')
-          PY
-
-          curl --fail --silent \
-            -H "Authorization: Bearer $TOKEN" \
-            -H 'Content-Type: application/json' \
-            -H 'Idempotency-Key: docker-item-001' \
-            -d '{"product_id":"01DEMO00000000000000000071","quantity":2}' \
-            http://127.0.0.1:8000/api/v1/checkout/services/$SERVICE_ID/consumptions > /tmp/added.json
-
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/added.json'))
-          assert data['unit_price_cents'] == 400
-          assert data['subtotal_cents'] == 30800
-          print('checkout mutation ok')
-          PY
-
-          curl --fail --silent \
-            -H "Authorization: Bearer $TOKEN" \
-            http://127.0.0.1:8000/api/v1/checkout/services/$SERVICE_ID > /tmp/checkout.json
-
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/checkout.json'))
-          assert data['subtotal_cents'] == 30800
-          assert data['consumptions'][0]['product_id'] == '01DEMO00000000000000000071'
-          print('real local stack flow passed')
-          PY
-
+          docker compose -f deploy/local-test/docker-compose.yml down
+          docker compose -f deploy/local-test/docker-compose.yml up -d
+      - name: Verify persisted service, account, configuration and safe retry
+        run: python3 deploy/local-test/smoke.py verify
       - name: Show logs on failure
         if: failure()
-        run: docker compose -f deploy/local-test/docker-compose.yml logs --no-color
-
-      - name: Stop stack
+        run: docker compose -f deploy/local-test/docker-compose.yml logs --no-color --tail=100
+      - name: Stop isolated CI test stack
         if: always()
         run: docker compose -f deploy/local-test/docker-compose.yml down -v
