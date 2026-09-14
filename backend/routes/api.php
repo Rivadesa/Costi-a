@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/meta', static fn (): array => [
         'application' => 'Costi-a / Hospitality OS',
+        'version' => (string) config('hospitality.version', '0.1.0'),
+        'build_sha' => (string) config('hospitality.build_sha', 'dev'),
         'api_version' => 'v1',
         'phase' => 'V1A',
         'authority' => 'local-primary',
