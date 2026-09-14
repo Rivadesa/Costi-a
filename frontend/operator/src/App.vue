@@ -2,12 +2,14 @@
 import { computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import ConnectionBadge from './components/ConnectionBadge.vue';
+import { DEMO_API_BASE } from './api/demo.js';
 import { api } from './api/client.js';
-import { clearSession, isAuthenticated, session } from './state/session.js';
+import { clearSession, hasPermission, isAuthenticated, session } from './state/session.js';
 
 const router = useRouter();
 let pingTimer = null;
 const userName = computed(() => session.user?.display_name || 'Usuario');
+const showCheckout = computed(() => session.apiBase !== DEMO_API_BASE && hasPermission('payment.record'));
 
 async function ping() {
   try { await api.meta(); } catch { /* badge reflects offline state */ }
@@ -40,6 +42,7 @@ onBeforeUnmount(() => {
       <nav>
         <RouterLink to="/service">Control de servicio</RouterLink>
         <RouterLink to="/kds">Cocina / KDS</RouterLink>
+        <RouterLink v-if="showCheckout" to="/checkout">Cuenta / Caja</RouterLink>
       </nav>
       <div class="sidebar-bottom">
         <ConnectionBadge />
