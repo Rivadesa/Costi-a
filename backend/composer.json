@@ -1,17 +1,27 @@
 {
-  "name": "xeitoso/hospitality-os-domain",
-  "description": "Framework-independent domain kernel for Hospitality OS V1A",
-  "type": "library",
+  "$schema": "https://getcomposer.org/schema.json",
+  "name": "xeitoso/hospitality-os",
+  "description": "Local-primary backend for Costi-a / Hospitality OS",
+  "type": "project",
   "license": "proprietary",
   "require": {
-    "php": ">=8.4"
+    "php": "^8.4",
+    "laravel/framework": "^13.17",
+    "laravel/tinker": "^3.0"
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.5"
+    "fakerphp/faker": "^1.24",
+    "laravel/pint": "^1.27",
+    "mockery/mockery": "^1.6",
+    "nunomaduro/collision": "^8.6",
+    "phpunit/phpunit": "^12.5.12"
   },
   "autoload": {
     "psr-4": {
-      "Hospitality\\": "src/"
+      "App\\": "app/",
+      "Hospitality\\": "src/",
+      "Database\\Factories\\": "database/factories/",
+      "Database\\Seeders\\": "database/seeders/"
     }
   },
   "autoload-dev": {
@@ -20,6 +30,34 @@
     }
   },
   "scripts": {
-    "test": "phpunit"
-  }
+    "post-autoload-dump": [
+      "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+      "@php artisan package:discover --ansi"
+    ],
+    "test": [
+      "@php artisan config:clear --ansi @no_additional_args",
+      "@php artisan test"
+    ],
+    "test:smoke": [
+      "@php tests/run.php",
+      "@php tests/projections.php",
+      "@php tests/application.php"
+    ]
+  },
+  "extra": {
+    "laravel": {
+      "dont-discover": []
+    }
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "preferred-install": "dist",
+    "sort-packages": true,
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "php-http/discovery": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }
