@@ -9,20 +9,34 @@ Artisan::command('hospitality:about', function (): void {
     $this->info('Hospitality OS / Costi-a V1A local-primary backend');
 })->purpose('Show Hospitality OS backend identity');
 
-Artisan::command('hospitality:provision {--profile=retiro-pilot} {--password=}', function (PilotProvisioner $provisioner): int {
+Artisan::command('hospitality:provision {--profile=retiro-pilot} {--password=} {--json}', function (PilotProvisioner $provisioner): int {
     $profile = (string) $this->option('profile');
     $password = (string) $this->option('password');
 
     if ($password === '') {
-        $this->error('A pilot password is required. Use --password=<12+ characters>.');
-        return 1;
+        $password = (string) ($this->secret('Pilot password (12+ characters)') ?? '');
     }
 
     try {
         $result = $provisioner->provision($profile, $password);
     } catch (Throwable $exception) {
-        $this->error($exception->getMessage());
+        if ((bool) $this->option('json')) {
+            $this->line(json_encode([
+                'ok' => false,
+                'error' => $exception->getMessage(),
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        } else {
+            $this->error($exception->getMessage());
+        }
         return 1;
+    }
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode([
+            'ok' => true,
+            ...$result,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return 0;
     }
 
     $this->info('Pilot profile provisioned successfully.');
