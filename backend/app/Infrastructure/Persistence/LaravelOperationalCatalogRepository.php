@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence;
 
 use Hospitality\Application\Contracts\OperationalCatalogRepository;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 final class LaravelOperationalCatalogRepository implements OperationalCatalogRepository
@@ -68,5 +69,130 @@ final class LaravelOperationalCatalogRepository implements OperationalCatalogRep
                 'id' => (string) $row->id,
                 'name' => (string) $row->name,
             ])->all();
+    }
+
+    public function saleCategories(string $tenantId, string $companyId, string $locationId): array
+    {
+        $priceList = $this->defaultPriceList($tenantId, $companyId, $locationId);
+        if ($priceList === null) {
+            return [];
+        }
+
+        return DB::table('product_categories as c')
+            ->join('products as p', 'p.product_category_id', '=', 'c.id')
+            ->join('product_prices as pp', 'pp.product_id', '=', 'p.id')
+            ->where('c.tenant_id', $tenantId)
+            ->where('c.active', true)
+            ->where('p.tenant_id', $tenantId)
+            ->where('p.active', true)
+            ->where('pp.price_list_id', (string) $priceList->id)
+            ->where('pp.active', true)
+            ->distinct()
+            ->orderBy('c.sequence')
+            ->orderBy('c.name')
+            ->get(['c.id', 'c.code', 'c.name', 'c.sequence'])
+            ->map(static fn ($row): array => [
+                'id' => (string) $row->id,
+                'code' => (string) $row->code,
+                'name' => (string) $row->name,
+                'sequence' => (int) $row->sequence,
+            ])->all();
+    }
+
+    public function saleItems(string $tenantId, string $companyId, string $locationId): array
+    {
+        $priceList = $this->defaultPriceList($tenantId, $companyId, $locationId);
+        if ($priceList === null) {
+            return [];
+        }
+
+        return $this->saleItemsQuery($tenantId, (string) $priceList->id)
+            ->orderByRaw('COALESCE(c.sequence, 999999)')
+            ->orderBy('p.sequence')
+            ->orderBy('p.name')
+            ->get($this->saleItemColumns())
+            ->map(fn ($row): array => $this->mapSaleItem($row, $priceList))
+            ->all();
+    }
+
+    public function saleItem(string $tenantId, string $companyId, string $locationId, string $productId): ?array
+    {
+        $priceList = $this->defaultPriceList($tenantId, $companyId, $locationId);
+        if ($priceList === null) {
+            return null;
+        }
+
+        $row = $this->saleItemsQuery($tenantId, (string) $priceList->id)
+            ->where('p.id', $productId)
+            ->first($this->saleItemColumns());
+
+        return $row === null ? null : $this->mapSaleItem($row, $priceList);
+    }
+
+    private function defaultPriceList(string $tenantId, string $companyId, string $locationId): ?object
+    {
+        return DB::table('price_lists')
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('active', true)
+            ->where('is_default', true)
+            ->where(static function ($query) use ($locationId): void {
+                $query->where('location_id', $locationId)->orWhereNull('location_id');
+            })
+            ->orderByRaw('CASE WHEN location_id = ? THEN 0 ELSE 1 END', [$locationId])
+            ->orderBy('id')
+            ->first(['id', 'name', 'code', 'location_id']);
+    }
+
+    private function saleItemsQuery(string $tenantId, string $priceListId): Builder
+    {
+        return DB::table('products as p')
+            ->leftJoin('product_categories as c', 'c.id', '=', 'p.product_category_id')
+            ->join('product_prices as pp', 'pp.product_id', '=', 'p.id')
+            ->where('p.tenant_id', $tenantId)
+            ->where('p.active', true)
+            ->where('pp.price_list_id', $priceListId)
+            ->where('pp.active', true)
+            ->where(static function ($query): void {
+                $query->whereNull('p.product_category_id')->orWhere('c.active', true);
+            });
+    }
+
+    /** @return list<string> */
+    private function saleItemColumns(): array
+    {
+        return [
+            'p.id',
+            'p.product_category_id as category_id',
+            'c.name as category_name',
+            'p.code',
+            'p.sku',
+            'p.name',
+            'p.product_type',
+            'p.sale_unit',
+            'p.format_label',
+            'pp.price_cents',
+            'pp.currency',
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function mapSaleItem(object $row, object $priceList): array
+    {
+        return [
+            'id' => (string) $row->id,
+            'category_id' => $row->category_id === null ? null : (string) $row->category_id,
+            'category_name' => $row->category_name === null ? null : (string) $row->category_name,
+            'code' => (string) $row->code,
+            'sku' => $row->sku === null ? null : (string) $row->sku,
+            'name' => (string) $row->name,
+            'product_type' => (string) $row->product_type,
+            'sale_unit' => (string) $row->sale_unit,
+            'format_label' => $row->format_label === null ? null : (string) $row->format_label,
+            'price_cents' => (int) $row->price_cents,
+            'currency' => (string) $row->currency,
+            'price_list_id' => (string) $priceList->id,
+            'price_list_name' => (string) $priceList->name,
+        ];
     }
 }
