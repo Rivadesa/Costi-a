@@ -1,0 +1,74 @@
+name: hospitality-os-local-test
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hospitality
+      POSTGRES_USER: hospitality
+      POSTGRES_PASSWORD: hospitality
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospitality -d hospitality"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - hospitality_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - hospitality_redisdata:/data
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/local-test/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_NAME: Hospitality OS
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_PORT: "8000"
+      LOG_CHANNEL: stderr
+
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: hospitality
+      DB_USERNAME: hospitality
+      DB_PASSWORD: hospitality
+      DB_SSLMODE: disable
+
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: sync
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+      HOSPITALITY_TENANT_ID: 01DEMO00000000000000000000
+      HOSPITALITY_COMPANY_ID: 01DEMO00000000000000000001
+      HOSPITALITY_LOCATION_ID: 01DEMO00000000000000000002
+      HOSPITALITY_TOKEN_TTL_HOURS: "24"
+      HOSPITALITY_SEED_DEMO: "true"
+      HOSPITALITY_CORS_ORIGINS: http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost
+    ports:
+      - "8000:8000"
+
+volumes:
+  hospitality_pgdata:
+  hospitality_redisdata:
