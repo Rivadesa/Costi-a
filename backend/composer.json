@@ -2,6 +2,7 @@
   "name": "xeitoso/hospitality-os-domain",
   "description": "Framework-independent domain kernel for Hospitality OS V1A",
   "type": "library",
+  "license": "proprietary",
   "require": {
     "php": ">=8.4"
   },
