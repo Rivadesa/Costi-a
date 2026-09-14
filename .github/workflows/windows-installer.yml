@@ -1,0 +1,56 @@
+name: Windows desktop installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'frontend/operator/**'
+      - '.github/workflows/windows-installer.yml'
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend/operator
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Check demo adapter syntax
+        run: node --check src/api/demo.js
+
+      - name: Build Vue operator
+        run: npm run build
+
+      - name: Build Tauri NSIS installer
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-os-windows-installer
+          path: frontend/operator/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload portable executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-os-windows-portable
+          path: frontend/operator/src-tauri/target/release/hospitality-os.exe
+          if-no-files-found: warn
+          retention-days: 14
