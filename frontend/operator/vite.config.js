@@ -1,8 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const buildSha = process.env.GITHUB_SHA || process.env.HOSPITALITY_BUILD_SHA || 'dev';
+
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version),
+    __BUILD_SHA__: JSON.stringify(buildSha),
+  },
   clearScreen: false,
   server: {
     port: 1420,
