@@ -1,6 +1,6 @@
 [package]
 name = "hospitality-os"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hospitality OS desktop operator"
 authors = ["Xeitoso"]
 edition = "2021"

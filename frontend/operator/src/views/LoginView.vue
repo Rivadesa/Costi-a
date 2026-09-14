@@ -1,6 +1,8 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import BuildStamp from '../components/BuildStamp.vue';
+import { localTestSettings, normalizeRealApiBase } from '../utils/connectionSettings.js';
 import { api, ApiError } from '../api/client.js';
 import { DEMO_API_BASE, resetDemo } from '../api/demo.js';
 import { saveDeviceSettings, session } from '../state/session.js';
@@ -25,8 +27,9 @@ function destinationForTerminal() {
 async function submit() {
   busy.value = true;
   error.value = '';
-  saveDeviceSettings({ apiBase: apiBase.value, companyId: companyId.value, locationId: locationId.value, terminalMode: terminalMode.value });
   try {
+    const base = normalizeRealApiBase(apiBase.value);
+    saveDeviceSettings({ apiBase: base, companyId: companyId.value, locationId: locationId.value, terminalMode: terminalMode.value });
     await api.login({ email: email.value, password: password.value });
     await router.replace(destinationForTerminal());
   } catch (err) {
@@ -39,6 +42,17 @@ async function submit() {
   } finally {
     busy.value = false;
   }
+}
+
+function useLocalTestServer() {
+  const settings = localTestSettings();
+  apiBase.value = settings.apiBase;
+  companyId.value = settings.companyId;
+  locationId.value = settings.locationId;
+  terminalMode.value = settings.terminalMode;
+  showAdvanced.value = true;
+  error.value = '';
+  // Persist only when the user explicitly submits the login form.
 }
 
 async function enterDemo() {
@@ -66,6 +80,7 @@ async function enterDemo() {
     <section class="login-card">
       <div class="brand-mark">H</div>
       <p class="eyebrow">Hospitality OS</p>
+      <BuildStamp />
       <h1>Acceso al servicio</h1>
       <p class="muted">Conexión directa con el servidor local del establecimiento.</p>
 
@@ -75,6 +90,11 @@ async function enterDemo() {
         <p v-if="error" class="error-box">{{ error }}</p>
         <button class="button primary large" :disabled="busy || demoBusy">{{ busy ? 'Entrando…' : 'Entrar' }}</button>
       </form>
+
+      <div class="demo-entry">
+        <button class="button secondary large" type="button" :disabled="busy || demoBusy" @click="useLocalTestServer">Conectar al servidor local de pruebas</button>
+        <small class="hint">Selecciona el equipo principal y limpia la configuración de la demo. El servidor debe estar arrancado; esta acción no instala ni borra datos.</small>
+      </div>
 
       <div class="demo-entry">
         <span class="muted">¿Quieres probar la aplicación sin servidor?</span>

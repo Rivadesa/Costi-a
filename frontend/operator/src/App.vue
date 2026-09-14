@@ -2,6 +2,7 @@
 import { computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import ConnectionBadge from './components/ConnectionBadge.vue';
+import BuildStamp from './components/BuildStamp.vue';
 import { DEMO_API_BASE } from './api/demo.js';
 import { api } from './api/client.js';
 import { clearSession, hasPermission, isAuthenticated, session } from './state/session.js';
@@ -47,6 +48,7 @@ onBeforeUnmount(() => {
         <RouterLink v-if="showCheckout" to="/checkout">Cuenta / Caja</RouterLink>
       </nav>
       <div class="sidebar-bottom">
+        <BuildStamp />
         <ConnectionBadge />
         <div class="user-block"><strong>{{ userName }}</strong><span class="muted">{{ terminalLabel }}</span><button class="link-button" @click="logout">Cerrar sesión</button></div>
       </div>

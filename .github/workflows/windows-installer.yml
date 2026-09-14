@@ -6,15 +6,25 @@ on:
     branches: [develop]
     paths: ['frontend/operator/**', '.github/workflows/windows-installer.yml']
 
+permissions:
+  contents: read
+
+env:
+  VITE_BUILD_SHA: ${{ github.sha }}
+
 jobs:
   windows-installer:
     runs-on: windows-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend/operator
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Validate Windows server launcher
+        working-directory: .
+        run: python deploy/local-test/tests/test_launcher.py
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -29,10 +39,31 @@ jobs:
         run: node scripts/demo-smoke.mjs
       - name: Test exact catalog money parsing
         run: node tests/money.test.mjs
+      - name: Verify release and real connection settings
+        run: node --test tests/release.test.mjs
       - name: Build Vue operator
         run: npm run build
       - name: Build Tauri NSIS installer
         run: npm run tauri build -- --bundles nsis
+      - name: Record exact build provenance and checksums
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $files = @(Get-Item src-tauri/target/release/hospitality-os.exe) + @(Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe)
+          $manifest = [ordered]@{
+            version = $version
+            commit = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            test_only = $true
+            files = @($files | ForEach-Object { @{ name = $_.Name; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content build-manifest.json -Encoding utf8
+      - name: Upload build manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-build-manifest
+          path: frontend/operator/build-manifest.json
+          retention-days: 14
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
