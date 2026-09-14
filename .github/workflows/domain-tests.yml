@@ -29,11 +29,20 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: PHP syntax check
+        run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Dependency-free domain smoke tests
+        run: php tests/run.php
+
+      - name: Dependency-free projection tests
+        run: php tests/projections.php
+
       - name: Validate composer.json
         run: composer validate --strict
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run domain tests
+      - name: Run PHPUnit
         run: composer test
