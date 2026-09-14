@@ -1,23 +1,51 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
 import ConnectionBadge from './components/ConnectionBadge.vue';
+import { api } from './api/client.js';
+import { clearSession, isAuthenticated, session } from './state/session.js';
 
-const connected = ref(true);
+const router = useRouter();
+let pingTimer = null;
+const userName = computed(() => session.user?.display_name || 'Usuario');
+
+async function ping() {
+  try { await api.meta(); } catch { /* badge reflects offline state */ }
+}
+
+async function logout() {
+  try { await api.logout(); } catch { /* local session still ends */ }
+  clearSession();
+  await router.replace('/login');
+}
+
+function authLost() { router.replace('/login'); }
+
+onMounted(() => {
+  ping();
+  pingTimer = window.setInterval(ping, 5000);
+  window.addEventListener('hospitality:auth-lost', authLost);
+});
+onBeforeUnmount(() => {
+  if (pingTimer) window.clearInterval(pingTimer);
+  window.removeEventListener('hospitality:auth-lost', authLost);
+});
 </script>
 
 <template>
-  <div class="shell">
+  <RouterView v-if="!isAuthenticated" />
+  <div v-else class="shell">
     <aside class="sidebar">
-      <div class="brand">Hospitality OS</div>
+      <div><div class="brand">Hospitality OS</div><div class="brand-subtitle">Operación local</div></div>
       <nav>
-        <RouterLink to="/service">Servicio</RouterLink>
-        <RouterLink to="/tables">Mesas</RouterLink>
-        <RouterLink to="/kds">KDS</RouterLink>
+        <RouterLink to="/service">Control de servicio</RouterLink>
+        <RouterLink to="/kds">Cocina / KDS</RouterLink>
       </nav>
-      <ConnectionBadge :connected="connected" />
+      <div class="sidebar-bottom">
+        <ConnectionBadge />
+        <div class="user-block"><strong>{{ userName }}</strong><button class="link-button" @click="logout">Cerrar sesión</button></div>
+      </div>
     </aside>
-    <main class="workspace">
-      <RouterView />
-    </main>
+    <main class="workspace"><RouterView /></main>
   </div>
 </template>
