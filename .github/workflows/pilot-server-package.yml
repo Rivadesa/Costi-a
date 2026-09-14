@@ -1,0 +1,69 @@
+name: Pilot local server package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - 'docs/PILOT_INSTALLATION.md'
+      - '.github/workflows/pilot-server-package.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - '.github/workflows/pilot-server-package.yml'
+
+jobs:
+  server-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: pdo_pgsql
+          tools: composer:v2
+
+      - name: Install production PHP dependencies
+        working-directory: backend
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Assemble server package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package/hospitality-server package/scripts package/docs
+          rsync -a \
+            --exclude='.env' \
+            --exclude='tests/' \
+            --exclude='phpunit.xml' \
+            backend/ package/hospitality-server/
+          cp scripts/bootstrap-pilot-server.ps1 package/scripts/
+          cp scripts/test-pilot-api.ps1 package/scripts/
+          cp docs/PILOT_INSTALLATION.md package/docs/
+          cat > package/BUILD.txt <<EOF
+          Hospitality OS local server pilot
+          Commit: ${GITHUB_SHA}
+          Workflow run: ${GITHUB_RUN_ID}
+          WARNING: internal pilot package; not production deployment.
+          EOF
+
+      - name: Archive server package
+        shell: bash
+        run: |
+          cd package
+          zip -r ../hospitality-os-server-pilot.zip .
+
+      - name: Upload server pilot package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-os-server-pilot
+          path: hospitality-os-server-pilot.zip
+          if-no-files-found: error
+          retention-days: 14
