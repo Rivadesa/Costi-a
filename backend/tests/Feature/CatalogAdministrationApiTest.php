@@ -61,6 +61,10 @@ final class CatalogAdministrationApiTest extends TestCase
             ->postJson('/api/v1/admin/catalog/products', $input)->assertOk()->json('data');
         $replayed = $this->withToken($token)->withHeader('Idempotency-Key', $key)
             ->postJson('/api/v1/admin/catalog/products', $input)->assertOk()->json('data');
+        // JSON object property order can change after PostgreSQL JSONB storage.
+        // Normalize this flat object's keys; retain strict value/type equality.
+        ksort($created, SORT_STRING);
+        ksort($replayed, SORT_STRING);
         self::assertSame($created, $replayed);
         self::assertSame(1, DB::table('products')->where('id', $created['id'])->count());
         self::assertSame(1, DB::table('audit_log')->where('entity_id', $created['id'])->count());
