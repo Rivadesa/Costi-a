@@ -1,11 +1,8 @@
+export const DEMO_API_BASE = 'demo://local';
 const DEMO_KEY = 'hospitality.demo.state.v1';
 
 const nowMinus = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 const id = (prefix) => `${prefix}-${crypto.randomUUID()}`;
-
-const menuTemplates = {
-  'menu-ret',: null
-};
 
 const menus = [
   { id: 'menu-experience', name: 'Menú Experiencia', price_cents: 15000 },
@@ -241,8 +238,8 @@ export async function demoRequest(path, { method = 'GET', body } = {}) {
   const parts = parsePath(path);
 
   if (path === '/meta') return { app: 'Hospitality OS', mode: 'demo', version: '0.1.0' };
-  if (path === '/auth/login' && method === 'POST') return { access_token: 'demo-token', user: { id: 'demo-user', name: 'Usuario Demo', email: 'demo@hospitality.local', permissions: ['*'] } };
-  if (path === '/auth/me') return { user: { id: 'demo-user', name: 'Usuario Demo', email: 'demo@hospitality.local', permissions: ['*'] } };
+  if (path === '/auth/login' && method === 'POST') return { access_token: 'demo-token', user: { id: 'demo-user', display_name: 'Usuario Demo', name: 'Usuario Demo', email: 'demo@hospitality.local', permissions: ['*'] } };
+  if (path === '/auth/me') return { user: { id: 'demo-user', display_name: 'Usuario Demo', name: 'Usuario Demo', email: 'demo@hospitality.local', permissions: ['*'] } };
   if (path === '/auth/logout' && method === 'POST') return { ok: true };
   if (path === '/configuration') return { data: clone(configuration) };
   if (path === '/service-board') return board();
@@ -289,18 +286,27 @@ export async function demoRequest(path, { method = 'GET', body } = {}) {
     const course = service.courses.find((candidate) => candidate.status === 'pending');
     if (!course) throw new Error('No quedan pases pendientes.');
     if (service.courses.some((candidate) => ['fired', 'preparing', 'ready'].includes(candidate.status))) throw new Error('Hay un pase todavía activo.');
-    course.status = 'fired'; course.fired_at = new Date().toISOString(); course.items.forEach((item) => { item.status = 'fired'; }); persist(); return clone(course);
+    course.status = 'fired';
+    course.fired_at = new Date().toISOString();
+    course.items.forEach((item) => { item.status = 'fired'; });
+    persist();
+    return clone(course);
   }
   if (parts[2] === 'courses' && parts[4] === 'ready' && method === 'POST') {
     const course = service.courses.find((candidate) => candidate.id === parts[3]);
     if (!course) throw new Error('Pase no encontrado.');
     if (course.items.some((item) => !['ready', 'cancelled'].includes(item.status))) throw new Error('Todavía hay elaboraciones pendientes.');
-    course.status = 'ready'; persist(); return clone(course);
+    course.status = 'ready';
+    persist();
+    return clone(course);
   }
   if (parts[2] === 'courses' && parts[4] === 'serve' && method === 'POST') {
     const course = service.courses.find((candidate) => candidate.id === parts[3]);
     if (!course || course.status !== 'ready') throw new Error('El pase todavía no está listo.');
-    course.status = 'served'; course.served_at = new Date().toISOString(); persist(); return clone(course);
+    course.status = 'served';
+    course.served_at = new Date().toISOString();
+    persist();
+    return clone(course);
   }
   if (parts[2] === 'courses' && parts[4] === 'items' && ['start', 'ready'].includes(parts[6]) && method === 'POST') {
     const course = service.courses.find((candidate) => candidate.id === parts[3]);
@@ -308,19 +314,27 @@ export async function demoRequest(path, { method = 'GET', body } = {}) {
     if (!course || !item) throw new Error('Elaboración no encontrada.');
     item.status = parts[6] === 'start' ? 'preparing' : 'ready';
     if (course.status === 'fired') course.status = 'preparing';
-    persist(); return clone(item);
+    persist();
+    return clone(item);
   }
   if (parts[2] === 'consumptions' && method === 'POST') {
     const item = { id: id('consumption'), name: body.name, quantity: Number(body.quantity), unit_price_cents: Number(body.unit_price_cents), cancelled: false };
-    service.consumptions.push(item); persist(); return clone(item);
+    service.consumptions.push(item);
+    persist();
+    return clone(item);
   }
   if (parts[2] === 'payments' && method === 'POST') {
     const payment = { id: id('payment'), method: body.method, amount_cents: Number(body.amount_cents), recorded_at: new Date().toISOString() };
     service.payments.push(payment);
     if (totals(service).balance <= 0) service.status = 'paid';
-    persist(); return clone(payment);
+    persist();
+    return clone(payment);
   }
-  if (parts[2] === 'close' && method === 'POST') { service.status = 'closed'; persist(); return decorated(service); }
+  if (parts[2] === 'close' && method === 'POST') {
+    service.status = 'closed';
+    persist();
+    return decorated(service);
+  }
 
   throw new Error(`Ruta demo no soportada: ${method} ${path}`);
 }
