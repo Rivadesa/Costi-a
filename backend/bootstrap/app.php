@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\AuthenticateLocalApi;
+use App\Http\Middleware\RequirePermission;
+use Hospitality\Application\Auth\AuthenticationFailed;
+use Hospitality\Application\Auth\AuthorizationDenied;
 use Hospitality\Application\Shared\ConcurrencyConflict;
 use Hospitality\Application\Shared\IdempotencyConflict;
 use Illuminate\Foundation\Application;
@@ -18,12 +22,37 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Local authentication + role authorization is introduced under Issue #5.
+        $middleware->alias([
+            'hospitality.auth' => AuthenticateLocalApi::class,
+            'hospitality.permission' => RequirePermission::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->render(function (AuthenticationFailed $exception, Request $request): ?Response {
+            if (!$request->is('api/*')) {
+                return null;
+            }
+            return response()->json([
+                'error' => 'authentication_failed',
+                'message' => $exception->getMessage(),
+                'retryable' => false,
+            ], 401);
+        });
+
+        $exceptions->render(function (AuthorizationDenied $exception, Request $request): ?Response {
+            if (!$request->is('api/*')) {
+                return null;
+            }
+            return response()->json([
+                'error' => 'authorization_denied',
+                'message' => $exception->getMessage(),
+                'retryable' => false,
+            ], 403);
+        });
 
         $exceptions->render(function (ConcurrencyConflict $exception, Request $request): ?Response {
             if (!$request->is('api/*')) {
