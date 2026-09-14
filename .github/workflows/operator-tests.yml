@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [develop, main]
-    paths: ['frontend/operator/**', '.github/workflows/operator-tests.yml']
+    paths: ['frontend/operator/**', '.github/workflows/operator-tests.yml', 'deploy/local-test/**']
   push:
     branches: [develop, main]
-    paths: ['frontend/operator/**', '.github/workflows/operator-tests.yml']
+    paths: ['frontend/operator/**', '.github/workflows/operator-tests.yml', 'deploy/local-test/**']
 
 jobs:
   web-build:
@@ -28,6 +28,8 @@ jobs:
         run: node scripts/demo-smoke.mjs
       - name: Test exact catalog money parsing
         run: node tests/money.test.mjs
+      - name: Verify release and real connection settings
+        run: node --test tests/release.test.mjs
       - name: Build Vue operator
         run: npm run build
 
@@ -52,3 +54,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Validate Tauri Rust application
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+  windows-launcher:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test non-destructive server launcher control flow
+        run: python deploy/local-test/tests/test_launcher.py

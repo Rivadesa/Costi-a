@@ -1,213 +1,64 @@
-# Estado de desarrollo
+# Estado verificable del desarrollo
 
-Última actualización: 2026-09-14.
+Actualizado: 2026-09-14. Leer junto a `AGENTS.md`. Este documento sustituye al estado antiguo de PR #7; distingue código, pruebas automáticas y validación física.
 
-## Ramas
+## Integración confirmada
 
-- `main`: reservado para cortes estables.
-- `develop`: integración activa.
-- `feat/v1a-persistence`: bloque Laravel/PostgreSQL/API validado en PR #7, pendiente de integración en `develop`.
+`main` sigue reservada para versiones estables. `develop` integra el trabajo de pruebas, no una versión de producción.
 
-## Estado de CI
+- PR #14 integrada: punto de entrada HTTP de Laravel, inicialización explícita y reinicio sin resembrar datos.
+- PR #15 integrada en `4e771ad07a69c9bf742d4673ac87440b84c93b17`: administración del catálogo real y aislamiento económico de servicio/KDS.
+- Head de PR #15 validado: `1f1100a197dad16cd81d7a79b9f710c40e79b330`.
 
-PR #7 (`feat/v1a-persistence` → `develop`) validado correctamente con GitHub Actions y PostgreSQL 17.
+Evidencia de PR #15 (todas completadas con éxito):
 
-La ejecución verde comprueba, en este orden:
+| Comprobación | GitHub Actions |
+| --- | --- |
+| Backend, Laravel, PostgreSQL, autenticación e integración | https://github.com/Rivadesa/Costi-a/actions/runs/34863998883 |
+| HTTP real, catálogo, reinicio, persistencia y reintento | https://github.com/Rivadesa/Costi-a/actions/runs/34863998796 |
+| Vue, tests del cliente y comprobación Rust/Tauri | https://github.com/Rivadesa/Costi-a/actions/runs/34863998774 |
 
-1. sintaxis PHP de `app/`, `src/`, tests, migraciones, rutas, config y bootstrap;
-2. smoke tests de dominio sin Composer;
-3. tests de proyecciones KDS/service-board;
-4. tests de capa Application (idempotencia/outbox);
-5. `composer validate --strict`;
-6. instalación completa de Laravel 13;
-7. arranque de `artisan` y carga de rutas API;
-8. `migrate:fresh` contra PostgreSQL real;
-9. PHPUnit;
-10. flujo de integración completo de un servicio hostelero contra PostgreSQL.
+El fallo inicial de PR #15 comparaba el orden de claves de una respuesta JSONB, no solo su contenido. La corrección ordena las claves del objeto plano antes de comparar tipos y valores estrictamente. Se mantienen las verificaciones de no duplicar artículo, auditoría y outbox.
 
-## Implementado y validado
+## Código disponible
 
-### Dominio V1A
+| Área | Implementación actual | Límite importante |
+| --- | --- | --- |
+| Backend | Laravel 13, migraciones PostgreSQL, configuración, autenticación local y permisos por ámbito | No es fiscalidad ni ERP completo |
+| Servicio | Mesa, comensales, restricciones, snapshot de menú, pases y preparaciones por estación | No todas las excepciones de dominio tienen interfaz/API |
+| Fiabilidad | Transacciones, bloqueo optimista, idempotencia, auditoría y outbox persistentes | Publicador realtime/cloud y cola durable de dispositivo pendientes |
+| Cliente | Vue/Tauri conectado a API real, control de servicio y KDS | Actualización por polling, no WebSockets finalizados |
+| Cuenta/Caja | Superficie separada en equipo principal; consumiciones desde catálogo | Pago es registro operativo de pruebas, no factura ni datáfono |
+| Catálogo | Alta/edición de presentación vendible, código, categoría existente, formato, precio EUR y disponibilidad en tarifa | No PIM, stock, gestión de categorías ni editor de nuevas tarifas |
+| Separación económica | Servicio/KDS y configuración operativa sin precios; `/checkout/...` separado y protegido | Perfil de terminal es UX, no identidad física fiable de dispositivo |
+| Despliegue de ensayo | Docker: Laravel/PostgreSQL/Redis; puerto del host limitado a 127.0.0.1 | Solo ensayo en un PC, sin datos reales y sin exposición LAN |
 
-Kernel PHP independiente de Laravel:
+Los artículos capturan nombre, presentación/formato, precio y referencias de catálogo al incorporarse a una cuenta. Editar después la tarifa no revaloriza ese consumo.
 
-- `TableService` como agregado principal;
-- `tenant_id`, `company_id` y `location_id` explícitos;
-- `TableService::open()` para creación;
-- `TableService::reconstitute()` sin eventos falsos;
-- comensales por posición;
-- alergias, intolerancias y preferencias estructuradas;
-- menú configurable y snapshot de ejecución;
-- pases secuenciales;
-- preparaciones por estación;
-- preparación por comensal o cantidad fija;
-- pase listo únicamente con preparaciones obligatorias resueltas;
-- salto de pase con motivo;
-- pase extra;
-- sustitución de preparación en dominio (todavía no expuesta por API hasta completar guard de estación);
-- pausa/reanudación;
-- consumos adicionales;
-- anulación no destructiva de consumos;
-- pagos operativos;
-- cierre/cancelación;
-- eventos de dominio.
+## Corte cliente 0.1.1 — comprobar su PR y manifiesto
 
-### Capa Application
+Cambios del corte: versión visible; selector explícito del servidor real de pruebas que limpia el ámbito de la demo; validación de dirección de API; instalador en español/inglés para el usuario actual; lanzador Windows del servidor con acciones separadas `init/start/stop/status`; manifiesto con versión, commit y SHA-256 de los ejecutables.
 
-Implementados contratos y servicios framework-light:
+Los tests Node de versión/conexión y dinero pueden ejecutarse sin instalar dependencias. Los tests del lanzador usan CMD real en CI Windows con sustitutos inocuos de Docker/curl: **no prueban Docker Desktop instalado en el PC del usuario**. La compilación de Vue/Tauri y el empaquetado deben verificarse en la ejecución correspondiente antes de distribuir sus binarios.
 
-- `TableServiceRepository`;
-- `MenuTemplateRepository`;
-- `DiningTableRepository`;
-- `KitchenStationRepository`;
-- `ActiveTableServiceRepository`;
-- `TransactionManager`;
-- `IdempotencyStore`;
-- `OutboxStore`;
-- `ServiceMutationExecutor`;
-- `TableServiceSetupService`;
-- `TableServiceCommandService`;
-- `TableServiceQueryService`;
-- `OperationalReadService`.
+El manifiesto de cada build es la referencia exacta de versión/commit. No identificar un binario solo por el nombre del ZIP. La comprobación local o un CI anterior no certifica un commit posterior.
 
-Las mutaciones de servicio siguen el patrón:
+## Prueba siguiente
 
-`idempotency check → load aggregate → domain rule → optimistic save → outbox → remember result → commit`.
+Seguir `docs/LOCAL_TEST_0.1.1.md`. Objetivo: cliente Windows + servidor real, artículo nuevo en catálogo, selección desde Cuenta/Caja, cuenta conservada al reiniciar y control de servicio sin información económica.
 
-### Laravel 13
+Se puede ensayar con varias sesiones de cliente en el mismo PC. La prueba física con varios dispositivos en LAN sigue pendiente; no abrir el puerto de la configuración de ensayo para simular que ya existe despliegue seguro.
 
-El backend ya es una aplicación Laravel arrancable, no solo un scaffold:
+## Bloqueos antes de piloto operativo
 
-- `artisan` funcional en CI;
-- bootstrap y providers;
-- configuración PostgreSQL;
-- configuración mínima de cache/queue/logging;
-- `.env.example` local-primary;
-- rutas API V1;
-- respuestas JSON deterministas para conflictos de dominio, idempotencia y concurrencia.
+1. Vinculación segura de dispositivos y permisos: una preferencia `main` no autoriza físicamente al equipo principal.
+2. Separar el estado operativo del servicio del pago dentro del dominio; la separación de API/UI ya existe, pero el agregado aún contiene acoplamientos de cierre/pago.
+3. Cola cliente durable, reintentos tras cerrar la aplicación y mensajes inequívocos de orden pendiente/confirmada.
+4. Realtime con recuperación mediante lectura autoritativa; medir latencia y concurrencia con dispositivos físicos.
+5. Administración editable de mesas, estaciones y menús; hoy se consulta configuración persistida y existen fixtures iniciales.
+6. Servidor de producción, credenciales únicas, TLS local, red, backups/restauración, observabilidad y actualización/rollback.
+7. Firma de distribución Windows y prueba del instalador/actualización en equipos reales.
 
-### PostgreSQL
+## Fuera de este corte
 
-Migraciones reales, verificadas con `migrate:fresh`:
-
-- tenants;
-- empresas;
-- localizaciones;
-- usuarios/roles base;
-- salas/mesas;
-- estaciones de cocina;
-- plantillas de menú/pases/preparaciones;
-- servicios de mesa;
-- snapshot de menú;
-- comensales/restricciones;
-- pases/items de cocina;
-- consumos;
-- pagos;
-- idempotency keys;
-- transactional outbox;
-- audit log.
-
-`backend/database/v1a-schema.sql` sigue siendo el modelo de referencia; las migraciones son ya la implementación ejecutable.
-
-### Persistencia y concurrencia
-
-- repositorio PostgreSQL real de `TableService`;
-- rehidratación completa del agregado;
-- upsert de snapshots/ejecución;
-- aislamiento tenant/company/location en lecturas;
-- validación de mesa por scope al abrir servicio;
-- validación de menú por scope;
-- validación de estación KDS por scope;
-- bloqueo optimista mediante `table_services.version`;
-- conflicto explícito en lugar de `last write wins`;
-- Transactional Outbox en la misma transacción que la operación;
-- idempotencia persistida en PostgreSQL.
-
-### API V1A implementada
-
-Lecturas:
-
-- `GET /api/v1/meta`
-- `GET /api/v1/service-board`
-- `GET /api/v1/kds/stations/{stationId}`
-- `GET /api/v1/services/{serviceId}`
-
-Mutaciones principales:
-
-- abrir servicio;
-- asignar menú;
-- añadir comensal;
-- añadir restricción;
-- iniciar/pausar/reanudar servicio;
-- disparar siguiente pase;
-- iniciar/terminar preparación;
-- validar pase listo;
-- marcar pase servido;
-- saltar pase;
-- añadir/anular consumo;
-- registrar pago;
-- cerrar servicio.
-
-Todas las mutaciones HTTP deben usar `Idempotency-Key`.
-
-Contexto provisional de desarrollo: `X-Tenant-Id`, `X-Company-Id`, `X-Location-Id`, `X-User-Id`, `X-Device-Id`, con fallback a variables de entorno para primera instalación. Esto **no sustituye autenticación**; Issue #5 debe vincular contexto a identidad/roles de servidor.
-
-### Proyecciones
-
-- detalle completo de servicio para comandero;
-- service-board global;
-- cola KDS por estación;
-- restricciones críticas trasladadas al item del PAX afectado.
-
-### Test de integración real
-
-`backend/tests/integration.php` valida contra PostgreSQL:
-
-`abrir mesa → asignar menú → añadir PAX → alergia crítica → iniciar → enviar pase → preparar en varias estaciones → KDS → validar listo → servir → bebida → reintento idempotente → cuenta → pago → cierre`.
-
-También verifica:
-
-- que la alergia crítica llega al item correcto de KDS;
-- que el retry no duplica consumo;
-- que se persiste una sola idempotency key;
-- que el outbox recibe eventos;
-- que la versión optimista avanza;
-- que el servicio cerrado desaparece del service-board activo.
-
-## Frontend
-
-Existe scaffold Vue 3 + Vite + Tauri 2, pero todavía no está conectado a esta API real.
-
-No existe aún `.exe` de producción.
-
-## Issues
-
-- #1 — Domain kernel + reconstitution: funcionalmente completado; cerrar tras integrar PR #7.
-- #2 — PostgreSQL persistence/migrations/outbox: muy avanzado; falta prueba explícita de concurrencia/rollback y worker de publicación.
-- #3 — Local API/projections: muy avanzado; falta test HTTP y realtime.
-- #4 — Desktop/waiter/KDS realtime UX: siguiente gran bloque.
-- #5 — Authentication/roles: pendiente antes de piloto real.
-
-## Pendiente inmediato
-
-1. integrar PR #7 en `develop`;
-2. añadir prueba PostgreSQL explícita de conflicto concurrente y rollback;
-3. actualizar OpenAPI con endpoints reales y códigos de error;
-4. implementar autenticación/roles locales mínimos;
-5. conectar Vue/Tauri a `service-board`, detalle de mesa y KDS;
-6. añadir WebSockets/realtime con refetch fallback;
-7. prueba LAN PC + tablet + KDS sin Internet exterior;
-8. empaquetado Tauri Windows para primer piloto.
-
-## Fuera de V1A actual
-
-- fiscalidad/VERI*FACTU propia;
-- PIM/inventario/bodega;
-- multiempresa operacional de stock;
-- WooCommerce/bonos;
-- compras/escandallos;
-- reservas propias;
-- hotel/PMS;
-- cloud replica productiva.
-
-No describir esas áreas como terminadas hasta que existan código, tests y despliegue verificable.
+VERI*FACTU/SIF, facturas, bonos, stock/bodega/PIM avanzado, WooCommerce, reservas propias, intercompany, hotel y réplica cloud productiva. No se ha retirado Verial de producción.
