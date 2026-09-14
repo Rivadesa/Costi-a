@@ -1,0 +1,59 @@
+name: Generate pilot lockfiles
+
+on:
+  push:
+    branches: [feat/v1a-local-server-package]
+    paths:
+      - '.github/workflows/generate-pilot-lockfiles.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lockfiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/v1a-local-server-package
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: pdo_pgsql
+          tools: composer:v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate Composer lockfile
+        working-directory: backend
+        run: composer update --no-interaction --prefer-dist
+
+      - name: Generate npm lockfile
+        working-directory: frontend/operator
+        run: npm install --package-lock-only --no-audit --no-fund
+
+      - name: Generate Cargo lockfile
+        working-directory: frontend/operator/src-tauri
+        run: cargo generate-lockfile
+
+      - name: Commit lockfiles to feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Hospitality OS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add backend/composer.lock frontend/operator/package-lock.json frontend/operator/src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo 'Lockfiles already up to date.'
+            exit 0
+          fi
+          git commit -m 'build: pin pilot dependency lockfiles'
+          git push origin HEAD:feat/v1a-local-server-package
