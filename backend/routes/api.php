@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ConfigurationController;
 use App\Http\Controllers\Api\V1\OperationalController;
+use App\Http\Controllers\Api\V1\PreparedTableServiceController;
 use App\Http\Controllers\Api\V1\TableServiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -28,7 +29,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/kds/stations/{stationId}', [OperationalController::class, 'kds'])
             ->middleware('hospitality.permission:kitchen.view');
 
-        Route::post('/services', [TableServiceController::class, 'open'])
+        Route::post('/services', [PreparedTableServiceController::class, 'open'])
             ->middleware('hospitality.permission:service.open');
         Route::get('/services/{serviceId}', [TableServiceController::class, 'show'])
             ->middleware('hospitality.permission:service.view');
