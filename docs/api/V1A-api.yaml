@@ -1,49 +1,92 @@
 openapi: 3.1.0
 info:
   title: Hospitality OS V1A Local API
-  version: 0.3.0
+  version: 0.5.0
   description: >-
-    Local-primary API consumed by Tauri desktop, waiter clients and KDS.
-    All mutation endpoints require Idempotency-Key. Tenant/company/location headers
-    are temporary V1A context inputs until local authentication/role scoping is completed.
+    Local-primary API consumed by the Tauri desktop operator, waiter clients and KDS.
+    Authentication is local and does not require Internet. Authenticated context determines
+    tenant/company/location; clients must not be trusted to select an unauthorized scope.
+    All operational mutations use Idempotency-Key so retries are safe.
 servers:
   - url: http://hospitality.local/api/v1
-parameters: {}
+security:
+  - bearerAuth: []
 paths:
   /meta:
     get:
+      security: []
       summary: Backend identity and phase
       responses:
         '200': { description: OK }
+  /auth/login:
+    post:
+      security: []
+      summary: Create a local authenticated session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                device_name: { type: [string, 'null'] }
+                company_id:
+                  type: [string, 'null']
+                  description: Optional only when the local server is not fixed to one company.
+                location_id:
+                  type: [string, 'null']
+                  description: Optional only when the local server is not fixed to one location.
+      responses:
+        '200': { description: Access token and authenticated principal }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidArgument' }
+  /auth/me:
+    get:
+      summary: Current local principal, scope and permissions
+      responses:
+        '200': { description: Authenticated principal }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      summary: Revoke current local token
+      responses:
+        '200': { description: Session revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /configuration:
+    get:
+      summary: Human-readable operational catalog for the authorized location
+      description: Returns active dining tables, menu templates and kitchen stations for UI use.
+      responses:
+        '200': { description: Tables, menus and stations }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /service-board:
     get:
       summary: Global active-service projection for chef/maître
-      parameters:
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Active service overview }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /kds/stations/{stationId}:
     get:
       summary: Active KDS queue for one kitchen station
       parameters:
         - $ref: '#/components/parameters/stationId'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Station queue }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /services:
     post:
-      summary: Open a table service
+      summary: Atomically open a prepared table service
+      description: >-
+        Creates the service, snapshots the optional menu and creates every PAX position in one
+        PostgreSQL transaction. A network interruption cannot leave the initial service half configured.
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -54,30 +97,29 @@ paths:
               properties:
                 table_id: { type: string, maxLength: 26 }
                 pax: { type: integer, minimum: 1, maximum: 100 }
+                menu_id: { type: [string, 'null'], maxLength: 26 }
       responses:
-        '201': { description: Service opened }
+        '201': { description: Prepared service opened }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/InvalidArgument' }
   /services/{serviceId}:
     get:
-      summary: Complete service projection for comandero/operator
+      summary: Complete service projection for operator/comandero
       parameters:
         - $ref: '#/components/parameters/serviceId'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Service detail }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/menu:
     post:
-      summary: Assign configured menu template and snapshot its execution
+      summary: Assign a configured menu to an existing service
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -92,13 +134,10 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/guests:
     post:
-      summary: Add a guest/PAX position
+      summary: Add a guest/PAX position to a legacy or incomplete service
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         content:
           application/json:
@@ -116,9 +155,6 @@ paths:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/guestId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -140,11 +176,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
-        '200': { description: Started }
+        '200': { description: Service started }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/pause:
     post:
@@ -152,9 +185,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         content:
           application/json:
@@ -171,9 +201,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Resumed }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -183,9 +210,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course fired }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -197,9 +221,6 @@ paths:
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/itemId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Preparation started }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -211,9 +232,6 @@ paths:
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/itemId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Preparation ready }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -224,9 +242,6 @@ paths:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course ready }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -237,22 +252,16 @@ paths:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course served }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/courses/{courseId}/skip:
     post:
-      summary: Skip one course with mandatory reason
+      summary: Skip one course with a mandatory reason
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -267,13 +276,10 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/consumptions:
     post:
-      summary: Add drink/extra to the provisional account
+      summary: Add drink or extra to the provisional account
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -290,14 +296,11 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/consumptions/{consumptionId}/cancel:
     post:
-      summary: Cancel a consumption without deleting audit history
+      summary: Cancel a consumption without destructive deletion
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/consumptionId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -312,13 +315,10 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/payments:
     post:
-      summary: Record operational payment (not a fiscal document)
+      summary: Record operational payment; this is not a fiscal document
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -338,32 +338,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
-        - $ref: '#/components/parameters/tenantId'
-        - $ref: '#/components/parameters/companyId'
-        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Service closed }
         '409': { $ref: '#/components/responses/Conflict' }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-local-token
   parameters:
-    tenantId:
-      in: header
-      name: X-Tenant-Id
-      required: false
-      description: Required unless fixed by HOSPITALITY_TENANT_ID on the local server. Temporary until Issue #5 authentication.
-      schema: { type: string }
-    companyId:
-      in: header
-      name: X-Company-Id
-      required: false
-      description: Required unless fixed by HOSPITALITY_COMPANY_ID on the local server.
-      schema: { type: string }
-    locationId:
-      in: header
-      name: X-Location-Id
-      required: false
-      description: Required unless fixed by HOSPITALITY_LOCATION_ID on the local server.
-      schema: { type: string }
     idempotencyKey:
       in: header
       name: Idempotency-Key
@@ -400,6 +384,10 @@ components:
       required: true
       schema: { type: string }
   responses:
+    Unauthorized:
+      description: Missing, invalid, expired or revoked local session
+    Forbidden:
+      description: Authenticated user lacks permission for this operation or scope
     Conflict:
       description: Domain, idempotency or optimistic-concurrency conflict
       content:
@@ -407,7 +395,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     InvalidArgument:
-      description: Invalid command argument/context
+      description: Request validation or invalid argument error
       content:
         application/json:
           schema:
@@ -415,10 +403,8 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [error, message, retryable]
       properties:
-        error:
-          type: string
-          enum: [domain_conflict, idempotency_conflict, concurrency_conflict, invalid_argument]
+        error: { type: string }
         message: { type: string }
         retryable: { type: boolean }
+        errors: { type: object, additionalProperties: true }
