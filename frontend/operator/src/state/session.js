@@ -35,6 +35,7 @@ export const session = reactive({
   restored: false,
   connection: 'checking',
   lastConnectedAt: null,
+  serverMeta: null,
 });
 
 export const isAuthenticated = computed(() => Boolean(session.token && session.user));
@@ -62,6 +63,7 @@ export function saveDeviceSettings({ apiBase, companyId = '', locationId = '' })
   session.apiBase = apiBase.replace(/\/$/, '');
   session.companyId = companyId.trim();
   session.locationId = locationId.trim();
+  session.serverMeta = null;
   localStorage.setItem(API_KEY, session.apiBase);
   localStorage.setItem(COMPANY_KEY, session.companyId);
   localStorage.setItem(LOCATION_KEY, session.locationId);
