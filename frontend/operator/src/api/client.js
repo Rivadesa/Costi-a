@@ -1,3 +1,4 @@
+import { DEMO_API_BASE, demoRequest } from './demo.js';
 import { clearSession, saveSession, session } from '../state/session.js';
 
 export class ApiError extends Error {
@@ -24,6 +25,20 @@ function makeHeaders({ auth = true, mutation = false, headers = {} } = {}) {
 }
 
 async function request(path, { method = 'GET', body, auth = true, mutation = false, headers } = {}) {
+  if (session.apiBase === DEMO_API_BASE) {
+    try {
+      const payload = await demoRequest(path, { method, body, auth, mutation, headers });
+      session.connection = 'demo';
+      session.lastConnectedAt = new Date();
+      return payload;
+    } catch (error) {
+      throw new ApiError(error.message || 'Error en el modo demo.', {
+        code: 'demo_error',
+        details: error,
+      });
+    }
+  }
+
   let response;
   try {
     response = await fetch(`${session.apiBase}${path}`, {
