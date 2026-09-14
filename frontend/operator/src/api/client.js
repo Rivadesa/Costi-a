@@ -66,7 +66,11 @@ async function request(path, { method = 'GET', body, auth = true, mutation = fal
 }
 
 export const api = {
-  meta: () => request('/meta', { auth: false }),
+  meta: async () => {
+    const result = await request('/meta', { auth: false });
+    session.serverMeta = result;
+    return result;
+  },
   login: async ({ email, password }) => {
     const body = { email, password, device_name: session.deviceId };
     if (session.companyId) body.company_id = session.companyId;
@@ -99,6 +103,12 @@ export const api = {
 };
 
 export async function restoreSession() {
+  try {
+    await api.meta();
+  } catch {
+    // The connection badge keeps the operator informed. Authentication restore can still be attempted later.
+  }
+
   if (!session.token) {
     session.restored = true;
     return;
