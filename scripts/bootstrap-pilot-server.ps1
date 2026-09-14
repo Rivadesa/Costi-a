@@ -32,6 +32,9 @@ function Quote-DotEnv([string]$Value) {
         throw 'Environment values may not contain line breaks.'
     }
     $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
+    # PowerShell does not treat backslash as an escape character in single-quoted
+    # literals. The expressions above therefore represent one backslash -> two
+    # backslashes, and quote -> backslash+quote in the resulting dotenv value.
     return '"' + $escaped + '"'
 }
 
