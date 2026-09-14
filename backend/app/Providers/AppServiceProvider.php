@@ -6,12 +6,14 @@ namespace App\Providers;
 
 use App\Infrastructure\Persistence\LaravelDiningTableRepository;
 use App\Infrastructure\Persistence\LaravelIdempotencyStore;
+use App\Infrastructure\Persistence\LaravelKitchenStationRepository;
 use App\Infrastructure\Persistence\LaravelMenuTemplateRepository;
 use App\Infrastructure\Persistence\LaravelOutboxStore;
 use App\Infrastructure\Persistence\LaravelTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelTransactionManager;
 use Hospitality\Application\Contracts\DiningTableRepository;
 use Hospitality\Application\Contracts\IdempotencyStore;
+use Hospitality\Application\Contracts\KitchenStationRepository;
 use Hospitality\Application\Contracts\MenuTemplateRepository;
 use Hospitality\Application\Contracts\OutboxStore;
 use Hospitality\Application\Contracts\TableServiceRepository;
@@ -25,6 +27,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(TableServiceRepository::class, LaravelTableServiceRepository::class);
         $this->app->scoped(MenuTemplateRepository::class, LaravelMenuTemplateRepository::class);
         $this->app->scoped(DiningTableRepository::class, LaravelDiningTableRepository::class);
+        $this->app->scoped(KitchenStationRepository::class, LaravelKitchenStationRepository::class);
         $this->app->scoped(TransactionManager::class, LaravelTransactionManager::class);
         $this->app->scoped(IdempotencyStore::class, LaravelIdempotencyStore::class);
         $this->app->scoped(OutboxStore::class, LaravelOutboxStore::class);
