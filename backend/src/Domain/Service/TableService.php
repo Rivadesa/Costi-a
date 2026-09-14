@@ -22,10 +22,11 @@ final class TableService
     /** @var list<DomainEvent> */
     private array $events = [];
 
-    public function __construct(
+    private function __construct(
         public readonly string $id,
         public readonly string $tenantId,
         public readonly string $companyId,
+        public readonly string $locationId,
         public string $tableId,
         public int $pax,
         public readonly \DateTimeImmutable $openedAt,
@@ -33,7 +34,63 @@ final class TableService
         if ($pax < 1) {
             throw new \InvalidArgumentException('pax must be >= 1');
         }
-        $this->record('service.created', ['table_id' => $tableId, 'pax' => $pax]);
+    }
+
+    public static function open(
+        string $id,
+        string $tenantId,
+        string $companyId,
+        string $locationId,
+        string $tableId,
+        int $pax,
+        \DateTimeImmutable $openedAt,
+    ): self {
+        $service = new self($id, $tenantId, $companyId, $locationId, $tableId, $pax, $openedAt);
+        $service->record('service.created', ['table_id' => $tableId, 'pax' => $pax]);
+        return $service;
+    }
+
+    /**
+     * Rebuild an existing aggregate from persistence without emitting new domain events.
+     *
+     * @param list<Guest> $guests
+     * @param list<ServiceCourse> $courses
+     * @param list<Consumption> $consumptions
+     * @param list<Payment> $payments
+     */
+    public static function reconstitute(
+        string $id,
+        string $tenantId,
+        string $companyId,
+        string $locationId,
+        string $tableId,
+        int $pax,
+        \DateTimeImmutable $openedAt,
+        ServiceStatus $status,
+        ?MenuTemplate $menu,
+        array $guests,
+        array $courses,
+        array $consumptions,
+        array $payments,
+    ): self {
+        $service = new self($id, $tenantId, $companyId, $locationId, $tableId, $pax, $openedAt);
+        $service->status = $status;
+        $service->menu = $menu;
+
+        foreach ($guests as $guest) {
+            $service->guests[$guest->id] = $guest;
+        }
+        foreach ($courses as $course) {
+            $service->courses[$course->id] = $course;
+        }
+        foreach ($consumptions as $consumption) {
+            $service->consumptions[$consumption->id] = $consumption;
+        }
+        foreach ($payments as $payment) {
+            $service->payments[$payment->id] = $payment;
+        }
+
+        return $service;
     }
 
     public function assignMenu(MenuTemplate $menu): void
@@ -147,6 +204,19 @@ final class TableService
         $this->record('course.skipped', ['course_id' => $courseId, 'reason' => $reason]);
     }
 
+    public function substituteCourseItem(string $courseId, string $itemId, string $name, string $stationId, string $reason): void
+    {
+        $course = $this->course($courseId);
+        $item = $course->substituteItem($itemId, $name, $stationId, $reason);
+        $this->record('course_item.substituted', [
+            'course_id' => $courseId,
+            'item_id' => $itemId,
+            'name' => $item->name,
+            'station_id' => $item->stationId,
+            'reason' => $reason,
+        ]);
+    }
+
     /** @param list<PreparationTemplate> $preparations */
     public function addExtraCourse(string $name, array $preparations = []): ServiceCourse
     {
@@ -215,6 +285,9 @@ final class TableService
         if ($amountCents <= 0) {
             throw new \InvalidArgumentException('Payment amount must be positive.');
         }
+        if (in_array($this->status, [ServiceStatus::Closed, ServiceStatus::Cancelled], true)) {
+            throw new \DomainException('Cannot record payment on a closed/cancelled service.');
+        }
         $payment = new Payment(Ulid::generate(), $method, $amountCents, new \DateTimeImmutable());
         $this->payments[$payment->id] = $payment;
         $this->record('payment.recorded', ['payment_id' => $payment->id, 'method' => $method, 'amount_cents' => $amountCents]);
@@ -245,6 +318,9 @@ final class TableService
 
     public function cancel(string $reason): void
     {
+        if (trim($reason) === '') {
+            throw new \InvalidArgumentException('Cancellation reason cannot be empty.');
+        }
         if ($this->status === ServiceStatus::Closed) {
             throw new \DomainException('Closed services cannot be operationally cancelled.');
         }
@@ -289,15 +365,36 @@ final class TableService
     }
 
     /** @return list<Guest> */
-    public function guests(): array { return array_values($this->guests); }
+    public function guests(): array
+    {
+        return array_values($this->guests);
+    }
+
     /** @return list<ServiceCourse> */
-    public function courses(): array { return $this->orderedCourses(); }
+    public function courses(): array
+    {
+        return $this->orderedCourses();
+    }
+
     /** @return list<Consumption> */
-    public function consumptions(): array { return array_values($this->consumptions); }
+    public function consumptions(): array
+    {
+        return array_values($this->consumptions);
+    }
+
     /** @return list<Payment> */
-    public function payments(): array { return array_values($this->payments); }
+    public function payments(): array
+    {
+        return array_values($this->payments);
+    }
+
     /** @return list<DomainEvent> */
-    public function pullEvents(): array { $events = $this->events; $this->events = []; return $events; }
+    public function pullEvents(): array
+    {
+        $events = $this->events;
+        $this->events = [];
+        return $events;
+    }
 
     private function course(string $courseId): ServiceCourse
     {
@@ -315,7 +412,9 @@ final class TableService
     private function hasActiveCourse(): bool
     {
         foreach ($this->courses as $course) {
-            if (in_array($course->status, [CourseStatus::Fired, CourseStatus::Preparing, CourseStatus::Ready], true)) return true;
+            if (in_array($course->status, [CourseStatus::Fired, CourseStatus::Preparing, CourseStatus::Ready], true)) {
+                return true;
+            }
         }
         return false;
     }
@@ -330,6 +429,7 @@ final class TableService
         }
     }
 
+    /** @param array<string, mixed> $payload */
     private function record(string $type, array $payload = []): void
     {
         $this->events[] = DomainEvent::record($type, 'table_service', $this->id, $payload);
