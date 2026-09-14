@@ -40,7 +40,12 @@ final class ServiceMutationExecutor
             throw new \InvalidArgumentException('Idempotency key is required.');
         }
 
-        $requestHash = RequestHasher::hash($requestPayload);
+        $requestHash = RequestHasher::hash([
+            'company_id' => $context->companyId,
+            'location_id' => $context->locationId,
+            'service_id' => $serviceId,
+            'payload' => $requestPayload,
+        ]);
 
         return $this->transactions->run(function () use (
             $context,
@@ -53,7 +58,7 @@ final class ServiceMutationExecutor
             $existing = $this->idempotency->find($context->tenantId, $idempotencyKey);
             if ($existing !== null) {
                 if ($existing->commandName !== $commandName || $existing->requestHash !== $requestHash) {
-                    throw new IdempotencyConflict('Idempotency key was already used for a different command or payload.');
+                    throw new IdempotencyConflict('Idempotency key was already used for a different command, service or payload.');
                 }
 
                 return $existing->result;
