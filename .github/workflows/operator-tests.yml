@@ -1,0 +1,59 @@
+name: Operator desktop tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'frontend/operator/**'
+      - '.github/workflows/operator-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/operator/**'
+      - '.github/workflows/operator-tests.yml'
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/operator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build Vue operator
+        run: npm run build
+
+  tauri-check:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend/operator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Tauri Rust application
+        run: cargo check --manifest-path src-tauri/Cargo.toml
