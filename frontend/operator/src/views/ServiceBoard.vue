@@ -43,12 +43,13 @@ async function openService() {
   actionBusy.value = true;
   actionError.value = '';
   try {
-    const opened = await api.openService({ table_id: form.value.table_id, pax: Number(form.value.pax) });
-    const id = opened.service_id;
-    if (form.value.menu_id) await api.assignMenu(id, form.value.menu_id);
-    for (let i = 0; i < Number(form.value.pax); i += 1) await api.addGuest(id);
+    const opened = await api.openService({
+      table_id: form.value.table_id,
+      pax: Number(form.value.pax),
+      menu_id: form.value.menu_id || null,
+    });
     showOpen.value = false;
-    await router.push(`/service/${id}`);
+    await router.push(`/service/${opened.service_id}`);
   } catch (err) {
     actionError.value = err.message;
     await refresh();
@@ -94,6 +95,7 @@ async function openService() {
         <label>Mesa<select v-model="form.table_id" required><option value="" disabled>Seleccionar…</option><option v-for="table in availableTables" :key="table.id" :value="table.id">{{ table.name }} · {{ table.capacity }} pax</option></select></label>
         <label>Comensales<input v-model.number="form.pax" type="number" min="1" max="100" required /></label>
         <label>Menú<select v-model="form.menu_id"><option value="">Asignar después</option><option v-for="menu in config.menus" :key="menu.id" :value="menu.id">{{ menu.name }} · {{ (menu.price_cents / 100).toFixed(2) }} €</option></select></label>
+        <p class="hint">Las posiciones PAX y, si se selecciona, el menú se crean en la misma operación para evitar aperturas incompletas.</p>
         <p v-if="actionError" class="error-box">{{ actionError }}</p>
         <div class="modal-actions"><button type="button" class="button secondary" @click="showOpen = false">Cancelar</button><button class="button primary" :disabled="actionBusy">{{ actionBusy ? 'Abriendo…' : 'Abrir mesa' }}</button></div>
       </form>
