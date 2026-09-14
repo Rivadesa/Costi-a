@@ -10,14 +10,18 @@ final readonly class PreparationTemplate
         public string $id,
         public string $name,
         public string $stationId,
-        public bool $required = true,
-        public bool $perGuest = false,
+        public PreparationQuantityMode $quantityMode = PreparationQuantityMode::PerGuest,
+        public int $fixedQuantity = 1,
+        public bool $mandatory = true,
     ) {
         if (trim($name) === '') {
             throw new \InvalidArgumentException('Preparation name cannot be empty.');
         }
         if (trim($stationId) === '') {
             throw new \InvalidArgumentException('Preparation stationId cannot be empty.');
+        }
+        if ($fixedQuantity < 1) {
+            throw new \InvalidArgumentException('fixedQuantity must be >= 1');
         }
     }
 }
