@@ -10,7 +10,7 @@ This repository is maintained by humans and AI assistants. Treat repository docu
 4. `docs/PRODUCT_SCOPE.md`
 5. `docs/ARCHITECTURE.md`
 6. `docs/DOMAIN_MODEL.md`
-7. relevant ADRs
+7. relevant ADRs, especially `ADR-007-service-control-vs-checkout.md` for any UI/account work
 
 ## Current product priority
 
@@ -38,14 +38,36 @@ Unless superseded by ADR:
 - a course cannot be ready while required preparations are not ready;
 - account, payment and fiscal document are distinct concepts;
 - audited cancellations are not silent hard deletes;
-- retried commands must be idempotent where network uncertainty exists.
+- retried commands must be idempotent where network uncertainty exists;
+- catalog prices are snapshotted into service consumptions and historical accounts are not rewritten by later tariff changes.
+
+## Financial/UI boundary — do not violate
+
+`Control de servicio`, waiter/comandero views and KDS are **operational-only**. They must not expose:
+- provisional account;
+- menu prices;
+- consumption prices;
+- subtotal/balance;
+- payments or payment actions.
+
+Financial data belongs to the main-terminal `Cuenta / Caja` context and `/checkout/...` API projection. See ADR-007.
+
+Do not "simplify" by reusing a financial service projection in waiter/KDS UI. The separation exists in API projections as well as UI on purpose.
+
+Terminal profiles are local UX restrictions:
+- `main`: operation + KDS + Cuenta/Caja when authorized;
+- `service`: sala/maître operational tracking only;
+- `kds`: kitchen only.
+
+Server permissions remain the security boundary; terminal profile alone is not authorization.
 
 ## UX rules
 
 - frequent live-service action should be one tap when possible;
 - allergy alerts cannot rely on color only;
 - do not require manual EATING/FINISHED taps solely for metrics;
-- exceptional actions are secondary; routine actions are prominent.
+- exceptional actions are secondary; routine actions are prominent;
+- keep financial workflow out of table pacing screens even on the main PC; it has its own `Cuenta / Caja` surface.
 
 ## Before coding
 
@@ -54,7 +76,8 @@ Check:
 - existing issue/acceptance criteria;
 - domain invariant impact;
 - schema/API impact;
-- offline/retry/idempotency impact.
+- offline/retry/idempotency impact;
+- whether the change belongs to service-control, KDS or checkout context.
 
 ## When making architecture changes
 
@@ -77,6 +100,8 @@ Do not:
 - write directly to DB from client;
 - couple core IDs to external provider IDs;
 - hide critical allergy data behind notes;
+- expose financial data in service-board/comandero/KDS projections;
+- allow clients to submit arbitrary product prices for normal restaurant consumptions;
 - introduce microservices/CRDTs because they seem architecturally sophisticated.
 
 Prefer the simplest architecture that protects the documented business invariants.
