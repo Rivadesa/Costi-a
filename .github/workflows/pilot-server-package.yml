@@ -38,12 +38,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p package/hospitality-server package/scripts package/docs
+          mkdir -p package/backend package/scripts package/docs
           rsync -a \
             --exclude='.env' \
             --exclude='tests/' \
             --exclude='phpunit.xml' \
-            backend/ package/hospitality-server/
+            backend/ package/backend/
           cp scripts/bootstrap-pilot-server.ps1 package/scripts/
           cp scripts/test-pilot-api.ps1 package/scripts/
           cp docs/PILOT_INSTALLATION.md package/docs/
