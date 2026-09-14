@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Infrastructure\Auth\LaravelLocalAuthGateway;
 use App\Infrastructure\Persistence\LaravelActiveTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelDiningTableRepository;
 use App\Infrastructure\Persistence\LaravelIdempotencyStore;
@@ -16,6 +17,7 @@ use Hospitality\Application\Contracts\ActiveTableServiceRepository;
 use Hospitality\Application\Contracts\DiningTableRepository;
 use Hospitality\Application\Contracts\IdempotencyStore;
 use Hospitality\Application\Contracts\KitchenStationRepository;
+use Hospitality\Application\Contracts\LocalAuthGateway;
 use Hospitality\Application\Contracts\MenuTemplateRepository;
 use Hospitality\Application\Contracts\OutboxStore;
 use Hospitality\Application\Contracts\TableServiceRepository;
@@ -34,6 +36,7 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->scoped(TransactionManager::class, LaravelTransactionManager::class);
         $this->app->scoped(IdempotencyStore::class, LaravelIdempotencyStore::class);
         $this->app->scoped(OutboxStore::class, LaravelOutboxStore::class);
+        $this->app->scoped(LocalAuthGateway::class, LaravelLocalAuthGateway::class);
     }
 
     public function boot(): void

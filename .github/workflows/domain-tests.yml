@@ -79,7 +79,7 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Verify Laravel boot
+      - name: Verify Laravel boot and protected routes
         run: |
           php artisan --version
           php artisan route:list --path=api/v1
@@ -87,8 +87,11 @@ jobs:
       - name: Run migrations
         run: php artisan migrate:fresh --force
 
-      - name: Run PHPUnit
+      - name: Run PHPUnit including local auth API tests
         run: composer test
 
       - name: Run PostgreSQL service integration flow
         run: php tests/integration.php
+
+      - name: Run PostgreSQL concurrency and rollback checks
+        run: php tests/reliability.php
