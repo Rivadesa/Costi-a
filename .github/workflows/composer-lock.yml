@@ -1,0 +1,41 @@
+name: Generate Composer lock
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'backend/composer.json'
+      - '.github/workflows/composer-lock.yml'
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Resolve dependencies and create lock
+        run: composer update --no-interaction --prefer-dist --no-install
+
+      - name: Validate locked dependencies
+        run: composer validate --strict
+
+      - name: Upload composer.lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospitality-composer-lock
+          path: backend/composer.lock
+          if-no-files-found: error
+          retention-days: 7
