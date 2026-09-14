@@ -2,148 +2,212 @@
 
 Última actualización: 2026-09-14.
 
-## Rama activa
+## Ramas
 
-- `develop`: desarrollo e integración activa.
-- `main`: reservado para cortes estables; todavía no representa V1A terminada.
+- `main`: reservado para cortes estables.
+- `develop`: integración activa.
+- `feat/v1a-persistence`: bloque Laravel/PostgreSQL/API validado en PR #7, pendiente de integración en `develop`.
 
-## Implementado en `develop`
+## Estado de CI
 
-### Documentación / fuente de verdad
+PR #7 (`feat/v1a-persistence` → `develop`) validado correctamente con GitHub Actions y PostgreSQL 17.
 
-Existe documentación autosuficiente para incorporar otras IAs/desarrolladores sin depender del chat original:
+La ejecución verde comprueba, en este orden:
 
-- `README.md`
-- `AGENTS.md`
-- `CONTRIBUTING.md`
-- `docs/AI_CONTEXT.md`
-- `docs/PRODUCT_SCOPE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DOMAIN_MODEL.md`
-- `docs/WORKFLOWS.md`
-- `docs/UX_PRINCIPLES.md`
-- `docs/API_CONVENTIONS.md`
-- `docs/DATA_AND_SYNC.md`
-- `docs/DEVELOPMENT.md`
-- `docs/TESTING.md`
-- `docs/SECURITY.md`
-- `docs/DEPLOYMENT.md`
-- `docs/GLOSSARY.md`
-- `docs/DECISION_LOG.md`
-- `docs/BACKLOG.md`
-- `docs/HANDOFF_CHECKLIST.md`
-- ADR-001 ... ADR-006.
+1. sintaxis PHP de `app/`, `src/`, tests, migraciones, rutas, config y bootstrap;
+2. smoke tests de dominio sin Composer;
+3. tests de proyecciones KDS/service-board;
+4. tests de capa Application (idempotencia/outbox);
+5. `composer validate --strict`;
+6. instalación completa de Laravel 13;
+7. arranque de `artisan` y carga de rutas API;
+8. `migrate:fresh` contra PostgreSQL real;
+9. PHPUnit;
+10. flujo de integración completo de un servicio hostelero contra PostgreSQL.
+
+## Implementado y validado
 
 ### Dominio V1A
 
-Implementado como kernel PHP desacoplado de Laravel:
+Kernel PHP independiente de Laravel:
 
-- `TableService` como agregado principal.
-- contexto tenant/company/location explícito.
-- creación mediante `TableService::open()`.
-- rehidratación mediante `TableService::reconstitute()` sin generar eventos falsos.
-- menú como plantilla y ejecución/snapshot por servicio.
-- comensales por posición.
-- alergias/intolerancias/preferencias estructuradas.
-- pases secuenciales.
-- preparaciones independientes por estación.
-- preparación por comensal o cantidad fija.
-- validación de pase únicamente con todas las preparaciones obligatorias listas/canceladas de forma válida.
-- sustitución de una preparación sin modificar la plantilla maestra.
-- salto de pase con motivo.
-- pase extra sin modificar plantilla.
-- pausa/reanudación del ritmo.
-- cambio de mesa.
-- consumos adicionales.
-- anulación no destructiva de consumos.
-- pago operativo.
-- cierre/cancelación de servicio.
+- `TableService` como agregado principal;
+- `tenant_id`, `company_id` y `location_id` explícitos;
+- `TableService::open()` para creación;
+- `TableService::reconstitute()` sin eventos falsos;
+- comensales por posición;
+- alergias, intolerancias y preferencias estructuradas;
+- menú configurable y snapshot de ejecución;
+- pases secuenciales;
+- preparaciones por estación;
+- preparación por comensal o cantidad fija;
+- pase listo únicamente con preparaciones obligatorias resueltas;
+- salto de pase con motivo;
+- pase extra;
+- sustitución de preparación en dominio (todavía no expuesta por API hasta completar guard de estación);
+- pausa/reanudación;
+- consumos adicionales;
+- anulación no destructiva de consumos;
+- pagos operativos;
+- cierre/cancelación;
 - eventos de dominio.
 
-### Primitivas compartidas
+### Capa Application
 
-- ULID.
-- DomainEvent.
-- enums persistibles para estados/tipos/severidades.
+Implementados contratos y servicios framework-light:
 
-### Proyecciones de aplicación
+- `TableServiceRepository`;
+- `MenuTemplateRepository`;
+- `DiningTableRepository`;
+- `KitchenStationRepository`;
+- `ActiveTableServiceRepository`;
+- `TransactionManager`;
+- `IdempotencyStore`;
+- `OutboxStore`;
+- `ServiceMutationExecutor`;
+- `TableServiceSetupService`;
+- `TableServiceCommandService`;
+- `TableServiceQueryService`;
+- `OperationalReadService`.
 
-- cola KDS por estación (`KdsProjector`).
-- restricciones críticas trasladadas al item del comensal afectado.
-- vista global de servicio (`ServiceBoardProjector`).
+Las mutaciones de servicio siguen el patrón:
 
-### Persistencia diseñada
+`idempotency check → load aggregate → domain rule → optimistic save → outbox → remember result → commit`.
 
-- `backend/database/v1a-schema.sql` como esquema PostgreSQL de referencia.
-- tenant/company/location/usuarios/roles/salas/mesas/estaciones.
-- menu templates y snapshots de servicio.
-- guests/restrictions/courses/course-items.
-- consumptions/payments.
-- idempotency keys.
-- transactional outbox.
+### Laravel 13
+
+El backend ya es una aplicación Laravel arrancable, no solo un scaffold:
+
+- `artisan` funcional en CI;
+- bootstrap y providers;
+- configuración PostgreSQL;
+- configuración mínima de cache/queue/logging;
+- `.env.example` local-primary;
+- rutas API V1;
+- respuestas JSON deterministas para conflictos de dominio, idempotencia y concurrencia.
+
+### PostgreSQL
+
+Migraciones reales, verificadas con `migrate:fresh`:
+
+- tenants;
+- empresas;
+- localizaciones;
+- usuarios/roles base;
+- salas/mesas;
+- estaciones de cocina;
+- plantillas de menú/pases/preparaciones;
+- servicios de mesa;
+- snapshot de menú;
+- comensales/restricciones;
+- pases/items de cocina;
+- consumos;
+- pagos;
+- idempotency keys;
+- transactional outbox;
 - audit log.
-- separación explícita entre operación y futura fiscalidad.
 
-El SQL es **modelo de referencia**; todavía debe convertirse en migraciones Laravel reales.
+`backend/database/v1a-schema.sql` sigue siendo el modelo de referencia; las migraciones son ya la implementación ejecutable.
 
-### API
+### Persistencia y concurrencia
 
-- `docs/api/V1A-api.yaml` define el contrato OpenAPI inicial.
-- comandos explícitos para transiciones de servicio/pase/preparación.
-- `Idempotency-Key` requerido en mutaciones reintentables.
-- proyecciones KDS y service-board definidas.
+- repositorio PostgreSQL real de `TableService`;
+- rehidratación completa del agregado;
+- upsert de snapshots/ejecución;
+- aislamiento tenant/company/location en lecturas;
+- validación de mesa por scope al abrir servicio;
+- validación de menú por scope;
+- validación de estación KDS por scope;
+- bloqueo optimista mediante `table_services.version`;
+- conflicto explícito en lugar de `last write wins`;
+- Transactional Outbox en la misma transacción que la operación;
+- idempotencia persistida en PostgreSQL.
 
-### Tests
+### API V1A implementada
 
-- PHPUnit configurado en `backend/`.
-- tests de invariantes principales de `TableService`.
-- smoke runner sin Composer (`backend/tests/run.php`).
-- test de proyecciones sin Composer (`backend/tests/projections.php`).
-- GitHub Actions configurado para lint + smoke + Composer + PHPUnit.
+Lecturas:
 
-CI detectó inicialmente que faltaba declarar la licencia del paquete; corregido a `proprietary`. Se está validando la siguiente ejecución antes de considerar CI verde.
+- `GET /api/v1/meta`
+- `GET /api/v1/service-board`
+- `GET /api/v1/kds/stations/{stationId}`
+- `GET /api/v1/services/{serviceId}`
 
-### Frontend
+Mutaciones principales:
 
-- scaffold Vue 3 + Vite existente.
-- scaffold Tauri 2 para aplicación de escritorio Windows.
-- rutas/superficies iniciales de operador preparadas.
+- abrir servicio;
+- asignar menú;
+- añadir comensal;
+- añadir restricción;
+- iniciar/pausar/reanudar servicio;
+- disparar siguiente pase;
+- iniciar/terminar preparación;
+- validar pase listo;
+- marcar pase servido;
+- saltar pase;
+- añadir/anular consumo;
+- registrar pago;
+- cerrar servicio.
 
-Aún **no** existe una aplicación de escritorio de producción compilada ni conectada a un backend Laravel real.
+Todas las mutaciones HTTP deben usar `Idempotency-Key`.
 
-## Issues de ejecución
+Contexto provisional de desarrollo: `X-Tenant-Id`, `X-Company-Id`, `X-Location-Id`, `X-User-Id`, `X-Device-Id`, con fallback a variables de entorno para primera instalación. Esto **no sustituye autenticación**; Issue #5 debe vincular contexto a identidad/roles de servidor.
 
-- #1 — Complete domain kernel and reconstitution path.
-- #2 — PostgreSQL persistence, migrations and transactional outbox.
-- #3 — Local API commands and operational projections.
-- #4 — Operator desktop, waiter and KDS realtime UX.
-- #5 — Local authentication, roles and permissions.
+### Proyecciones
 
-## Pendiente inmediato — orden recomendado
+- detalle completo de servicio para comandero;
+- service-board global;
+- cola KDS por estación;
+- restricciones críticas trasladadas al item del PAX afectado.
 
-1. Terminar Issue #1 y dejar CI de dominio verde.
-2. Crear capa `Application` framework-light: repository/transaction/idempotency/outbox + command handlers.
-3. Materializar aplicación Laravel real alrededor del kernel.
-4. Convertir `v1a-schema.sql` en migraciones Laravel y repositorio PostgreSQL/Eloquent/DBAL.
-5. Implementar transacción + idempotencia + outbox y sus tests de integración.
-6. Implementar endpoints OpenAPI locales.
-7. Añadir autenticación/roles mínimos.
-8. Conectar Vue/Tauri al API real.
-9. Implementar realtime LAN + refresh fallback.
-10. Primera prueba en LAN con PC + tablet + KDS y corte de Internet exterior.
+### Test de integración real
 
-## No implementado todavía
+`backend/tests/integration.php` valida contra PostgreSQL:
 
-- Laravel completo ejecutable.
-- migraciones Laravel reales.
-- repositorio PostgreSQL real.
-- Redis/outbox worker real.
-- WebSockets reales.
-- autenticación real.
-- `.exe` de producción.
-- fiscalidad/VERI*FACTU.
-- inventario/PIM/multiempresa operacional.
-- WooCommerce/bonos.
-- reservas propias.
+`abrir mesa → asignar menú → añadir PAX → alergia crítica → iniciar → enviar pase → preparar en varias estaciones → KDS → validar listo → servir → bebida → reintento idempotente → cuenta → pago → cierre`.
 
-No describir estas áreas como terminadas hasta que existan código, tests y/o despliegue verificable.
+También verifica:
+
+- que la alergia crítica llega al item correcto de KDS;
+- que el retry no duplica consumo;
+- que se persiste una sola idempotency key;
+- que el outbox recibe eventos;
+- que la versión optimista avanza;
+- que el servicio cerrado desaparece del service-board activo.
+
+## Frontend
+
+Existe scaffold Vue 3 + Vite + Tauri 2, pero todavía no está conectado a esta API real.
+
+No existe aún `.exe` de producción.
+
+## Issues
+
+- #1 — Domain kernel + reconstitution: funcionalmente completado; cerrar tras integrar PR #7.
+- #2 — PostgreSQL persistence/migrations/outbox: muy avanzado; falta prueba explícita de concurrencia/rollback y worker de publicación.
+- #3 — Local API/projections: muy avanzado; falta test HTTP y realtime.
+- #4 — Desktop/waiter/KDS realtime UX: siguiente gran bloque.
+- #5 — Authentication/roles: pendiente antes de piloto real.
+
+## Pendiente inmediato
+
+1. integrar PR #7 en `develop`;
+2. añadir prueba PostgreSQL explícita de conflicto concurrente y rollback;
+3. actualizar OpenAPI con endpoints reales y códigos de error;
+4. implementar autenticación/roles locales mínimos;
+5. conectar Vue/Tauri a `service-board`, detalle de mesa y KDS;
+6. añadir WebSockets/realtime con refetch fallback;
+7. prueba LAN PC + tablet + KDS sin Internet exterior;
+8. empaquetado Tauri Windows para primer piloto.
+
+## Fuera de V1A actual
+
+- fiscalidad/VERI*FACTU propia;
+- PIM/inventario/bodega;
+- multiempresa operacional de stock;
+- WooCommerce/bonos;
+- compras/escandallos;
+- reservas propias;
+- hotel/PMS;
+- cloud replica productiva.
+
+No describir esas áreas como terminadas hasta que existan código, tests y despliegue verificable.
