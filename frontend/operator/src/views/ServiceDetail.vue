@@ -11,8 +11,6 @@ const service = ref(null);
 const config = ref({ tables: [], menus: [], stations: [] });
 const actionBusy = ref(false);
 const actionError = ref('');
-const consumption = ref({ name: '', quantity: 1, unit_price: '' });
-const payment = ref({ method: 'card', amount: '' });
 const restrictionGuest = ref(null);
 const restriction = ref({ label: '', type: 'allergy', severity: 'important', notes: '' });
 
@@ -25,7 +23,6 @@ async function load() {
   const [detail, configuration] = await Promise.all([api.service(route.params.id), api.configuration()]);
   service.value = detail;
   config.value = configuration.data;
-  if (!payment.value.amount && detail.balance_cents > 0) payment.value.amount = (detail.balance_cents / 100).toFixed(2);
 }
 
 const { refresh, error } = usePolling(load, 2500);
@@ -60,23 +57,10 @@ async function addRestriction() {
   restrictionGuest.value = null;
 }
 
-async function addConsumption() {
-  const cents = Math.round(Number(consumption.value.unit_price.replace(',', '.')) * 100);
-  await act(() => api.addConsumption(service.value.id, { name: consumption.value.name, quantity: Number(consumption.value.quantity), unit_price_cents: cents }));
-  consumption.value = { name: '', quantity: 1, unit_price: '' };
-}
-
-async function addPayment() {
-  const cents = Math.round(Number(payment.value.amount.replace(',', '.')) * 100);
-  await act(() => api.addPayment(service.value.id, { method: payment.value.method, amount_cents: cents }));
-}
-
 function assignMenu(event) {
   const menuId = event.target.value;
   if (menuId) act(() => api.assignMenu(service.value.id, menuId));
 }
-
-function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
 </script>
 
 <template>
@@ -117,22 +101,18 @@ function money(cents) { return `${(Number(cents || 0) / 100).toFixed(2)} €`; }
 
       <aside class="stack">
         <section class="panel compact">
-          <p class="eyebrow">Menú</p>
-          <template v-if="service.menu"><h3>{{ service.menu.name }}</h3><p>{{ money(service.menu.unit_price_cents) }} / persona</p></template>
+          <p class="eyebrow">Menú operativo</p>
+          <template v-if="service.menu"><h3>{{ service.menu.name }}</h3><p class="muted">El importe se gestiona únicamente desde Cuenta / Caja en el equipo principal.</p></template>
           <label v-else-if="hasPermission('service.edit')">Asignar menú<select @change="assignMenu"><option value="">Seleccionar…</option><option v-for="menu in config.menus" :key="menu.id" :value="menu.id">{{ menu.name }}</option></select></label>
         </section>
 
         <section class="panel compact">
-          <p class="eyebrow">Cuenta provisional</p><div class="account-total">{{ money(service.subtotal_cents) }}</div>
-          <div v-for="item in service.consumptions.filter(c => !c.cancelled)" :key="item.id" class="account-row"><span>{{ item.quantity }} × {{ item.name }}</span><strong>{{ money(item.quantity * item.unit_price_cents) }}</strong></div>
-          <form v-if="hasPermission('consumption.add')" class="mini-form" @submit.prevent="addConsumption"><input v-model.trim="consumption.name" placeholder="Bebida / extra" required /><input v-model="consumption.quantity" type="number" min="1" required /><input v-model="consumption.unit_price" inputmode="decimal" placeholder="€" required /><button class="button secondary">Añadir</button></form>
+          <p class="eyebrow">Seguimiento</p>
+          <h3>Información operativa</h3>
+          <p>{{ service.pax }} comensales</p>
+          <p>{{ service.courses.length }} pases</p>
+          <p class="muted">Esta pantalla no muestra cuenta provisional, importes ni cobros.</p>
         </section>
-
-        <section v-if="hasPermission('payment.record') && service.balance_cents > 0" class="panel compact">
-          <p class="eyebrow">Cobro pendiente</p><div class="account-total">{{ money(service.balance_cents) }}</div>
-          <form class="mini-form vertical" @submit.prevent="addPayment"><select v-model="payment.method"><option value="card">Tarjeta</option><option value="cash">Efectivo</option><option value="other">Otro</option></select><input v-model="payment.amount" inputmode="decimal" required /><button class="button primary">Registrar cobro</button></form>
-        </section>
-        <button v-if="service.status === 'paid' && hasPermission('service.close')" class="button primary large" @click="act(() => api.closeService(service.id))">Cerrar servicio</button>
       </aside>
     </div>
 
