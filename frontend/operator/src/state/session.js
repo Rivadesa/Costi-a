@@ -7,6 +7,9 @@ const API_KEY = 'hospitality.device.api';
 const COMPANY_KEY = 'hospitality.device.company';
 const LOCATION_KEY = 'hospitality.device.location';
 const DEVICE_KEY = 'hospitality.device.id';
+const TERMINAL_KEY = 'hospitality.device.terminal-mode';
+
+const TERMINAL_MODES = new Set(['main', 'service', 'kds']);
 
 function deviceId() {
   let value = localStorage.getItem(DEVICE_KEY);
@@ -15,6 +18,11 @@ function deviceId() {
     localStorage.setItem(DEVICE_KEY, value);
   }
   return value;
+}
+
+function terminalMode() {
+  const value = localStorage.getItem(TERMINAL_KEY) || 'main';
+  return TERMINAL_MODES.has(value) ? value : 'main';
 }
 
 function readUser() {
@@ -31,6 +39,7 @@ export const session = reactive({
   apiBase: localStorage.getItem(API_KEY) || DEFAULT_API,
   companyId: localStorage.getItem(COMPANY_KEY) || '',
   locationId: localStorage.getItem(LOCATION_KEY) || '',
+  terminalMode: terminalMode(),
   deviceId: deviceId(),
   restored: false,
   connection: 'checking',
@@ -38,6 +47,7 @@ export const session = reactive({
 });
 
 export const isAuthenticated = computed(() => Boolean(session.token && session.user));
+export const isMainTerminal = computed(() => session.terminalMode === 'main');
 
 export function hasPermission(permission) {
   const permissions = session.user?.permissions || [];
@@ -58,11 +68,13 @@ export function clearSession() {
   sessionStorage.removeItem(USER_KEY);
 }
 
-export function saveDeviceSettings({ apiBase, companyId = '', locationId = '' }) {
+export function saveDeviceSettings({ apiBase, companyId = '', locationId = '', terminalMode: nextTerminalMode = session.terminalMode }) {
   session.apiBase = apiBase.replace(/\/$/, '');
   session.companyId = companyId.trim();
   session.locationId = locationId.trim();
+  session.terminalMode = TERMINAL_MODES.has(nextTerminalMode) ? nextTerminalMode : 'main';
   localStorage.setItem(API_KEY, session.apiBase);
   localStorage.setItem(COMPANY_KEY, session.companyId);
   localStorage.setItem(LOCATION_KEY, session.locationId);
+  localStorage.setItem(TERMINAL_KEY, session.terminalMode);
 }
