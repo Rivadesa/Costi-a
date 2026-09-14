@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Infrastructure\Auth\LaravelLocalAuthGateway;
+use App\Infrastructure\Persistence\CatalogAwareTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelActiveTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelDiningTableRepository;
 use App\Infrastructure\Persistence\LaravelIdempotencyStore;
@@ -30,7 +31,8 @@ final class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->scoped(TableServiceRepository::class, LaravelTableServiceRepository::class);
+        $this->app->scoped(LaravelTableServiceRepository::class);
+        $this->app->scoped(TableServiceRepository::class, CatalogAwareTableServiceRepository::class);
         $this->app->scoped(ActiveTableServiceRepository::class, LaravelActiveTableServiceRepository::class);
         $this->app->scoped(MenuTemplateRepository::class, LaravelMenuTemplateRepository::class);
         $this->app->scoped(DiningTableRepository::class, LaravelDiningTableRepository::class);
