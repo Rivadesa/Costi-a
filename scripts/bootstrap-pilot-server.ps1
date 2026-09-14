@@ -32,10 +32,10 @@ function Quote-DotEnv([string]$Value) {
         throw 'Environment values may not contain line breaks.'
     }
 
-    # Dotenv double-quoted values use backslash escapes. In PowerShell single-quoted
-    # string literals, '\' is one literal backslash and '\\' is two.
-    $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
-    return '"' + $escaped + '"'
+    $backslash = [string][char]92
+    $quote = [string][char]34
+    $escaped = $Value.Replace($backslash, $backslash + $backslash).Replace($quote, $backslash + $quote)
+    return $quote + $escaped + $quote
 }
 
 function Set-DotEnvValue([string]$Path, [string]$Key, [string]$Value) {
