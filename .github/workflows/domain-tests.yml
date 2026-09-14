@@ -1,8 +1,9 @@
 name: Domain tests
 
 on:
+  workflow_dispatch:
   push:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - 'backend/**'
       - '.github/workflows/domain-tests.yml'
@@ -10,6 +11,7 @@ on:
     branches: [develop, main]
     paths:
       - 'backend/**'
+      - '.github/workflows/domain-tests.yml'
 
 jobs:
   php-domain:
