@@ -6,11 +6,12 @@ namespace Hospitality\Domain\Service;
 
 enum ServiceStatus: string
 {
-    case Open = 'OPEN';
-    case InService = 'IN_SERVICE';
-    case Paused = 'PAUSED';
-    case PendingPayment = 'PAYMENT_PENDING';
-    case Paid = 'PAID';
-    case Closed = 'CLOSED';
-    case Cancelled = 'CANCELLED';
+    case Prepared = 'prepared';
+    case Open = 'open';
+    case InService = 'in_service';
+    case Paused = 'paused';
+    case PendingPayment = 'pending_payment';
+    case Paid = 'paid';
+    case Closed = 'closed';
+    case Cancelled = 'cancelled';
 }
