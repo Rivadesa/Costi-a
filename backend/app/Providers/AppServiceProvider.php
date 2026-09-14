@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Infrastructure\Persistence\LaravelActiveTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelDiningTableRepository;
 use App\Infrastructure\Persistence\LaravelIdempotencyStore;
 use App\Infrastructure\Persistence\LaravelKitchenStationRepository;
@@ -11,6 +12,7 @@ use App\Infrastructure\Persistence\LaravelMenuTemplateRepository;
 use App\Infrastructure\Persistence\LaravelOutboxStore;
 use App\Infrastructure\Persistence\LaravelTableServiceRepository;
 use App\Infrastructure\Persistence\LaravelTransactionManager;
+use Hospitality\Application\Contracts\ActiveTableServiceRepository;
 use Hospitality\Application\Contracts\DiningTableRepository;
 use Hospitality\Application\Contracts\IdempotencyStore;
 use Hospitality\Application\Contracts\KitchenStationRepository;
@@ -25,6 +27,7 @@ final class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TableServiceRepository::class, LaravelTableServiceRepository::class);
+        $this->app->scoped(ActiveTableServiceRepository::class, LaravelActiveTableServiceRepository::class);
         $this->app->scoped(MenuTemplateRepository::class, LaravelMenuTemplateRepository::class);
         $this->app->scoped(DiningTableRepository::class, LaravelDiningTableRepository::class);
         $this->app->scoped(KitchenStationRepository::class, LaravelKitchenStationRepository::class);
