@@ -18,3 +18,21 @@ textarea:focus {
   width: 100%;
   margin-top: 2px;
 }
+
+.demo-entry {
+  display: grid;
+  gap: 8px;
+  margin: 22px 0 8px;
+  padding: 16px;
+  border: 1px dashed #98a2b3;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.demo-entry small {
+  line-height: 1.4;
+}
+
+.connection[data-state='demo'] .connection-dot {
+  background: #f59e0b;
+}
