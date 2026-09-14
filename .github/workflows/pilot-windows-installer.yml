@@ -20,13 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/operator/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Build Windows MSI and NSIS installers
         run: npm run tauri -- build --bundles msi,nsis
