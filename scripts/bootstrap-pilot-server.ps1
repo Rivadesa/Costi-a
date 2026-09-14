@@ -32,9 +32,6 @@ function Quote-DotEnv([string]$Value) {
         throw 'Environment values may not contain line breaks.'
     }
     $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
-    # PowerShell does not treat backslash as an escape character in single-quoted
-    # literals. The expressions above therefore represent one backslash -> two
-    # backslashes, and quote -> backslash+quote in the resulting dotenv value.
     return '"' + $escaped + '"'
 }
 
@@ -58,6 +55,30 @@ function Set-DotEnvValue([string]$Path, [string]$Key, [string]$Value) {
     Set-Content -LiteralPath $Path -Value $lines -Encoding UTF8
 }
 
+function Resolve-BuildSha([string]$Root) {
+    $buildFile = Join-Path $Root 'BUILD.txt'
+    if (Test-Path -LiteralPath $buildFile) {
+        foreach ($line in Get-Content -LiteralPath $buildFile) {
+            if ($line -match '^Commit:\s+([0-9a-fA-F]{7,40})$') {
+                return $Matches[1].ToLowerInvariant()
+            }
+        }
+    }
+
+    if (Get-Command 'git' -ErrorAction SilentlyContinue) {
+        try {
+            $sha = (& git -C $Root rev-parse HEAD 2>$null).Trim()
+            if ($LASTEXITCODE -eq 0 -and $sha -match '^[0-9a-fA-F]{7,40}$') {
+                return $sha.ToLowerInvariant()
+            }
+        } catch {
+            # Build metadata is diagnostic only; installation must not fail because git is unavailable.
+        }
+    }
+
+    return 'dev'
+}
+
 Assert-Command 'php'
 Assert-Command 'composer'
 
@@ -65,6 +86,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backend = Join-Path $repoRoot 'backend'
 $envExample = Join-Path $backend '.env.example'
 $envFile = Join-Path $backend '.env'
+$buildSha = Resolve-BuildSha $repoRoot
 
 if (-not (Test-Path -LiteralPath $backend)) {
     throw "Backend directory not found: $backend"
@@ -75,6 +97,7 @@ if (-not (Test-Path -LiteralPath $envExample)) {
 
 Write-Host 'Hospitality OS V1A pilot server bootstrap' -ForegroundColor Cyan
 Write-Host 'This script configures a PILOT installation; it is not a production installer.' -ForegroundColor Yellow
+Write-Host "Server build: $buildSha"
 Write-Host ''
 
 $dbPasswordSecure = Read-Host 'PostgreSQL password for the hospitality user' -AsSecureString
@@ -107,6 +130,8 @@ Set-DotEnvValue $envFile 'DB_PORT' ([string]$DbPort)
 Set-DotEnvValue $envFile 'DB_DATABASE' (Quote-DotEnv $DbName)
 Set-DotEnvValue $envFile 'DB_USERNAME' (Quote-DotEnv $DbUser)
 Set-DotEnvValue $envFile 'DB_PASSWORD' (Quote-DotEnv $dbPassword)
+Set-DotEnvValue $envFile 'HOSPITALITY_VERSION' '0.1.0'
+Set-DotEnvValue $envFile 'HOSPITALITY_BUILD_SHA' (Quote-DotEnv $buildSha)
 
 Push-Location $backend
 try {
@@ -149,6 +174,7 @@ try {
     Write-Host ''
     Write-Host 'Pilot server bootstrap completed.' -ForegroundColor Green
     Write-Host "API base for clients: $($AppUrl.TrimEnd('/'))/api/v1"
+    Write-Host "Server build: $buildSha"
     Write-Host 'Pilot users:'
     $provision.users.PSObject.Properties | ForEach-Object {
         Write-Host ("  {0,-30} {1}" -f $_.Name, $_.Value)
