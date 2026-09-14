@@ -11,18 +11,24 @@ const password = ref('');
 const apiBase = ref(session.apiBase);
 const companyId = ref(session.companyId);
 const locationId = ref(session.locationId);
+const terminalMode = ref(session.terminalMode);
 const showAdvanced = ref(false);
 const busy = ref(false);
 const demoBusy = ref(false);
 const error = ref('');
 
+function destinationForTerminal() {
+  if (terminalMode.value === 'kds') return '/kds';
+  return '/service';
+}
+
 async function submit() {
   busy.value = true;
   error.value = '';
-  saveDeviceSettings({ apiBase: apiBase.value, companyId: companyId.value, locationId: locationId.value });
+  saveDeviceSettings({ apiBase: apiBase.value, companyId: companyId.value, locationId: locationId.value, terminalMode: terminalMode.value });
   try {
     await api.login({ email: email.value, password: password.value });
-    await router.replace('/service');
+    await router.replace(destinationForTerminal());
   } catch (err) {
     if (err instanceof ApiError && err.code === 'authentication_failed' && /company_id|location_id/i.test(err.message)) {
       showAdvanced.value = true;
@@ -40,7 +46,8 @@ async function enterDemo() {
   error.value = '';
   try {
     resetDemo();
-    saveDeviceSettings({ apiBase: DEMO_API_BASE, companyId: 'demo-company', locationId: 'demo-location' });
+    terminalMode.value = 'service';
+    saveDeviceSettings({ apiBase: DEMO_API_BASE, companyId: 'demo-company', locationId: 'demo-location', terminalMode: 'service' });
     apiBase.value = DEMO_API_BASE;
     companyId.value = 'demo-company';
     locationId.value = 'demo-location';
@@ -72,11 +79,18 @@ async function enterDemo() {
       <div class="demo-entry">
         <span class="muted">¿Quieres probar la aplicación sin servidor?</span>
         <button class="button secondary large" type="button" :disabled="busy || demoBusy" @click="enterDemo">{{ demoBusy ? 'Preparando demo…' : 'Entrar en modo demo' }}</button>
-        <small class="hint">Carga 8 mesas, dos menús, varias partidas de cocina y tres servicios en curso. Los cambios se guardan solo en este equipo.</small>
+        <small class="hint">Carga 8 mesas, dos menús, varias partidas de cocina y tres servicios en curso. El demo usa perfil de sala y no incluye Cuenta / Caja.</small>
       </div>
 
       <button class="link-button" type="button" @click="showAdvanced = !showAdvanced">Configuración del terminal</button>
       <div v-if="showAdvanced" class="advanced-panel stack">
+        <label>Tipo de terminal
+          <select v-model="terminalMode">
+            <option value="main">Equipo principal · operación + Cuenta / Caja</option>
+            <option value="service">Sala / maître · seguimiento de servicio</option>
+            <option value="kds">Cocina / KDS</option>
+          </select>
+        </label>
         <label>Servidor API<input v-model.trim="apiBase" placeholder="http://hospitality.local/api/v1" /></label>
         <p class="hint">Empresa y local solo son necesarios durante desarrollo o si el servidor no tiene un ámbito fijo.</p>
         <label>Empresa (ID técnico)<input v-model.trim="companyId" /></label>
