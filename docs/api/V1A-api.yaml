@@ -1,22 +1,49 @@
 openapi: 3.1.0
 info:
   title: Hospitality OS V1A Local API
-  version: 0.2.0
+  version: 0.3.0
   description: >-
-    Local-primary API consumed by Tauri desktop, waiter PWA and KDS.
-    Mutation endpoints that may be retried accept Idempotency-Key.
+    Local-primary API consumed by Tauri desktop, waiter clients and KDS.
+    All mutation endpoints require Idempotency-Key. Tenant/company/location headers
+    are temporary V1A context inputs until local authentication/role scoping is completed.
 servers:
   - url: http://hospitality.local/api/v1
+parameters: {}
 paths:
-  /services:
+  /meta:
     get:
-      summary: List active services for current authorized location
+      summary: Backend identity and phase
       responses:
         '200': { description: OK }
+  /service-board:
+    get:
+      summary: Global active-service projection for chef/maître
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      responses:
+        '200': { description: Active service overview }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /kds/stations/{stationId}:
+    get:
+      summary: Active KDS queue for one kitchen station
+      parameters:
+        - $ref: '#/components/parameters/stationId'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      responses:
+        '200': { description: Station queue }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services:
     post:
       summary: Open a table service
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -25,52 +52,73 @@ paths:
               type: object
               required: [table_id, pax]
               properties:
-                table_id: { type: string }
-                pax: { type: integer, minimum: 1 }
-                menu_id: { type: [string, 'null'] }
+                table_id: { type: string, maxLength: 26 }
+                pax: { type: integer, minimum: 1, maximum: 100 }
       responses:
-        '201': { description: Service created }
+        '201': { description: Service opened }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidArgument' }
   /services/{serviceId}:
     get:
-      summary: Get complete service projection
+      summary: Complete service projection for comandero/operator
       parameters:
         - $ref: '#/components/parameters/serviceId'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
-        '200': { description: OK }
-        '404': { description: Not found }
-  /services/{serviceId}/start:
+        '200': { description: Service detail }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{serviceId}/menu:
     post:
-      summary: Start service
+      summary: Assign configured menu template and snapshot its execution
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menu_id]
+              properties:
+                menu_id: { type: string, maxLength: 26 }
       responses:
-        '200': { description: Started }
+        '200': { description: Menu assigned }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/guests:
     post:
-      summary: Add a guest position
+      summary: Add a guest/PAX position
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                name: { type: [string, 'null'] }
+                name: { type: [string, 'null'], maxLength: 160 }
       responses:
-        '201': { description: Guest created }
+        '200': { description: Guest added }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/guests/{guestId}/restrictions:
     post:
-      summary: Add structured allergy, intolerance or preference
+      summary: Add structured allergy, intolerance or preference to one PAX
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/guestId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -79,18 +127,65 @@ paths:
               type: object
               required: [label, type, severity]
               properties:
-                label: { type: string }
+                label: { type: string, maxLength: 160 }
                 type: { enum: [allergy, intolerance, preference] }
                 severity: { enum: [informative, important, critical] }
-                notes: { type: [string, 'null'] }
+                notes: { type: [string, 'null'], maxLength: 2000 }
       responses:
-        '201': { description: Restriction created }
-  /services/{serviceId}/courses/next/fire:
+        '200': { description: Restriction added }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{serviceId}/start:
+    post:
+      summary: Start service after menu assignment
+      parameters:
+        - $ref: '#/components/parameters/serviceId'
+        - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      responses:
+        '200': { description: Started }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{serviceId}/pause:
+    post:
+      summary: Pause table pacing
+      parameters:
+        - $ref: '#/components/parameters/serviceId'
+        - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '200': { description: Paused }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{serviceId}/resume:
+    post:
+      summary: Resume table pacing
+      parameters:
+        - $ref: '#/components/parameters/serviceId'
+        - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
+      responses:
+        '200': { description: Resumed }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{serviceId}/courses/fire-next:
     post:
       summary: Fire the next pending course
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course fired }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -102,6 +197,9 @@ paths:
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/itemId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Preparation started }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -113,38 +211,22 @@ paths:
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/itemId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Preparation ready }
         '409': { $ref: '#/components/responses/Conflict' }
-  /services/{serviceId}/courses/{courseId}/items/{itemId}/substitute:
-    post:
-      summary: Substitute one preparation in this service only
-      parameters:
-        - $ref: '#/components/parameters/serviceId'
-        - $ref: '#/components/parameters/courseId'
-        - $ref: '#/components/parameters/itemId'
-        - $ref: '#/components/parameters/idempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, station_id, reason]
-              properties:
-                name: { type: string }
-                station_id: { type: string }
-                reason: { type: string }
-      responses:
-        '200': { description: Preparation substituted }
-        '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/courses/{courseId}/ready:
     post:
-      summary: Chef/pass validates complete course ready
+      summary: Chef/pass validates the complete course ready
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course ready }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -155,16 +237,22 @@ paths:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
         '200': { description: Course served }
         '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/courses/{courseId}/skip:
     post:
-      summary: Skip course for this service with reason
+      summary: Skip one course with mandatory reason
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/courseId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -173,31 +261,19 @@ paths:
               type: object
               required: [reason]
               properties:
-                reason: { type: string }
+                reason: { type: string, maxLength: 1000 }
       responses:
         '200': { description: Course skipped }
-  /services/{serviceId}/pause:
-    post:
-      summary: Pause table pacing
-      parameters:
-        - $ref: '#/components/parameters/serviceId'
-        - $ref: '#/components/parameters/idempotencyKey'
-      responses:
-        '200': { description: Paused }
-  /services/{serviceId}/resume:
-    post:
-      summary: Resume table pacing
-      parameters:
-        - $ref: '#/components/parameters/serviceId'
-        - $ref: '#/components/parameters/idempotencyKey'
-      responses:
-        '200': { description: Resumed }
+        '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/consumptions:
     post:
-      summary: Add drink or extra to provisional account
+      summary: Add drink/extra to the provisional account
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -206,21 +282,22 @@ paths:
               type: object
               required: [name, quantity, unit_price_cents]
               properties:
-                name: { type: string }
-                quantity: { type: integer, minimum: 1 }
+                name: { type: string, maxLength: 180 }
+                quantity: { type: integer, minimum: 1, maximum: 999 }
                 unit_price_cents: { type: integer, minimum: 0 }
       responses:
-        '201': { description: Consumption added }
+        '200': { description: Consumption added }
+        '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/consumptions/{consumptionId}/cancel:
     post:
-      summary: Cancel a consumption without destructive deletion
+      summary: Cancel a consumption without deleting audit history
       parameters:
         - $ref: '#/components/parameters/serviceId'
-        - in: path
-          name: consumptionId
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/consumptionId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -229,15 +306,19 @@ paths:
               type: object
               required: [reason]
               properties:
-                reason: { type: string }
+                reason: { type: string, maxLength: 1000 }
       responses:
         '200': { description: Consumption cancelled }
+        '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/payments:
     post:
       summary: Record operational payment (not a fiscal document)
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       requestBody:
         required: true
         content:
@@ -246,36 +327,48 @@ paths:
               type: object
               required: [method, amount_cents]
               properties:
-                method: { type: string }
+                method: { type: string, maxLength: 40 }
                 amount_cents: { type: integer, minimum: 1 }
       responses:
-        '201': { description: Payment recorded }
+        '200': { description: Payment recorded }
+        '409': { $ref: '#/components/responses/Conflict' }
   /services/{serviceId}/close:
     post:
-      summary: Close paid service with no active kitchen course
+      summary: Close a fully paid service with no active kitchen course
       parameters:
         - $ref: '#/components/parameters/serviceId'
         - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/companyId'
+        - $ref: '#/components/parameters/locationId'
       responses:
-        '200': { description: Closed }
+        '200': { description: Service closed }
         '409': { $ref: '#/components/responses/Conflict' }
-  /kds/stations/{stationId}/queue:
-    get:
-      summary: Get active preparation queue for one station
-      parameters:
-        - in: path
-          name: stationId
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: KDS queue }
-  /service-board:
-    get:
-      summary: Global service board for chef/maître
-      responses:
-        '200': { description: Current service overview }
 components:
   parameters:
+    tenantId:
+      in: header
+      name: X-Tenant-Id
+      required: false
+      description: Required unless fixed by HOSPITALITY_TENANT_ID on the local server. Temporary until Issue #5 authentication.
+      schema: { type: string }
+    companyId:
+      in: header
+      name: X-Company-Id
+      required: false
+      description: Required unless fixed by HOSPITALITY_COMPANY_ID on the local server.
+      schema: { type: string }
+    locationId:
+      in: header
+      name: X-Location-Id
+      required: false
+      description: Required unless fixed by HOSPITALITY_LOCATION_ID on the local server.
+      schema: { type: string }
+    idempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 120 }
     serviceId:
       in: path
       name: serviceId
@@ -296,14 +389,25 @@ components:
       name: itemId
       required: true
       schema: { type: string }
-    idempotencyKey:
-      in: header
-      name: Idempotency-Key
+    stationId:
+      in: path
+      name: stationId
       required: true
-      schema: { type: string, minLength: 8, maxLength: 120 }
+      schema: { type: string }
+    consumptionId:
+      in: path
+      name: consumptionId
+      required: true
+      schema: { type: string }
   responses:
     Conflict:
-      description: Domain state conflict
+      description: Domain, idempotency or optimistic-concurrency conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InvalidArgument:
+      description: Invalid command argument/context
       content:
         application/json:
           schema:
@@ -311,12 +415,10 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [error]
+      required: [error, message, retryable]
       properties:
         error:
-          type: object
-          required: [code, message]
-          properties:
-            code: { type: string }
-            message: { type: string }
-            details: { type: object, additionalProperties: true }
+          type: string
+          enum: [domain_conflict, idempotency_conflict, concurrency_conflict, invalid_argument]
+        message: { type: string }
+        retryable: { type: boolean }
