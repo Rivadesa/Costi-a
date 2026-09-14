@@ -1,4 +1,5 @@
 """Integration test against the packaged HTTP server, not Laravel's in-process test kernel."""
+import http.client
 import json
 import sys
 import time
@@ -30,7 +31,7 @@ def wait_ready():
         try:
             request('/meta')
             return
-        except (urllib.error.URLError, TimeoutError):
+        except (OSError, http.client.HTTPException):
             time.sleep(2)
     raise RuntimeError('Packaged HTTP API did not become ready')
 
@@ -51,7 +52,6 @@ def main(mode):
     elif mode == 'verify':
         service_id = json.loads(STATE.read_text(encoding='utf-8'))['service_id']
         assert next(t for t in config['tables'] if t['id'] == TABLE)['name'] == 'Mesa persistente'
-        # The original successful result must survive container replacement too.
         request(f'/checkout/services/{service_id}/consumptions', token,
                 {'product_id': PRODUCT, 'quantity': 2}, 'restart-consumption-001')
     else:
