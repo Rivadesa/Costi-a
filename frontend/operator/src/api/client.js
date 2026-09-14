@@ -108,9 +108,20 @@ export const api = {
   serveCourse: (serviceId, courseId) => request(`/services/${serviceId}/courses/${courseId}/serve`, { method: 'POST', mutation: true }),
   startItem: (serviceId, courseId, itemId) => request(`/services/${serviceId}/courses/${courseId}/items/${itemId}/start`, { method: 'POST', mutation: true }),
   readyItem: (serviceId, courseId, itemId) => request(`/services/${serviceId}/courses/${courseId}/items/${itemId}/ready`, { method: 'POST', mutation: true }),
-  addConsumption: (serviceId, body) => request(`/services/${serviceId}/consumptions`, { method: 'POST', body, mutation: true }),
-  addPayment: (serviceId, body) => request(`/services/${serviceId}/payments`, { method: 'POST', body, mutation: true }),
-  closeService: (serviceId) => request(`/services/${serviceId}/close`, { method: 'POST', mutation: true }),
+
+  checkoutService: (serviceId) => request(`/checkout/services/${encodeURIComponent(serviceId)}`),
+  checkoutAddConsumption: (serviceId, productId, quantity = 1) => request(`/checkout/services/${serviceId}/consumptions`, {
+    method: 'POST',
+    body: { product_id: productId, quantity: Number(quantity) },
+    mutation: true,
+  }),
+  checkoutCancelConsumption: (serviceId, consumptionId, reason) => request(`/checkout/services/${serviceId}/consumptions/${consumptionId}/cancel`, {
+    method: 'POST',
+    body: { reason },
+    mutation: true,
+  }),
+  checkoutAddPayment: (serviceId, body) => request(`/checkout/services/${serviceId}/payments`, { method: 'POST', body, mutation: true }),
+  checkoutClose: (serviceId) => request(`/checkout/services/${serviceId}/close`, { method: 'POST', mutation: true }),
 };
 
 export async function restoreSession() {
