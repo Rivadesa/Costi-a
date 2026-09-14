@@ -6,7 +6,9 @@ namespace Hospitality\Domain\Service;
 
 enum CourseItemStatus: string
 {
-    case Pending = 'PENDING';
-    case Started = 'STARTED';
-    case Ready = 'READY';
+    case Pending = 'pending';
+    case Fired = 'fired';
+    case Preparing = 'preparing';
+    case Ready = 'ready';
+    case Cancelled = 'cancelled';
 }
