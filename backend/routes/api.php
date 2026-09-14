@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CheckoutController;
 use App\Http\Controllers\Api\V1\ConfigurationController;
 use App\Http\Controllers\Api\V1\OperationalController;
 use App\Http\Controllers\Api\V1\PreparedTableServiceController;
@@ -59,13 +60,17 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/services/{serviceId}/courses/{courseId}/items/{itemId}/ready', [TableServiceController::class, 'readyPreparation'])
             ->middleware('hospitality.permission:kitchen.update');
 
-        Route::post('/services/{serviceId}/consumptions', [TableServiceController::class, 'addConsumption'])
-            ->middleware('hospitality.permission:consumption.add');
-        Route::post('/services/{serviceId}/consumptions/{consumptionId}/cancel', [TableServiceController::class, 'cancelConsumption'])
-            ->middleware('hospitality.permission:consumption.cancel');
-        Route::post('/services/{serviceId}/payments', [TableServiceController::class, 'recordPayment'])
-            ->middleware('hospitality.permission:payment.record');
-        Route::post('/services/{serviceId}/close', [TableServiceController::class, 'close'])
-            ->middleware('hospitality.permission:service.close');
+        Route::prefix('/checkout/services/{serviceId}')->group(function (): void {
+            Route::get('/', [CheckoutController::class, 'show'])
+                ->middleware('hospitality.permission:payment.record');
+            Route::post('/consumptions', [CheckoutController::class, 'addConsumption'])
+                ->middleware('hospitality.permission:consumption.add');
+            Route::post('/consumptions/{consumptionId}/cancel', [CheckoutController::class, 'cancelConsumption'])
+                ->middleware('hospitality.permission:consumption.cancel');
+            Route::post('/payments', [CheckoutController::class, 'recordPayment'])
+                ->middleware('hospitality.permission:payment.record');
+            Route::post('/close', [CheckoutController::class, 'close'])
+                ->middleware('hospitality.permission:service.close');
+        });
     });
 });
