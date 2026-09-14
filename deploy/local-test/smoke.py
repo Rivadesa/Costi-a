@@ -41,7 +41,9 @@ def main(mode):
     token = request('/auth/login', data={'email': 'demo@hospitality.local', 'password': 'demo1234'})['access_token']
     config = request('/configuration', token)['data']
     assert len(config['tables']) == 8
-    assert config['sale_items']
+    assert 'sale_items' not in config
+    assert all('price_cents' not in menu for menu in config['menus'])
+    assert request('/checkout/catalog', token)['data']['sale_items']
     if mode == 'create':
         service_id = request('/services', token, {'table_id': TABLE, 'pax': 2, 'menu_id': MENU}, 'restart-open-001')['service_id']
         result = request(f'/checkout/services/{service_id}/consumptions', token,
@@ -49,11 +51,18 @@ def main(mode):
         assert result['unit_price_cents'] == 400
         assert result['subtotal_cents'] == 30800
         STATE.write_text(json.dumps({'service_id': service_id}), encoding='utf-8')
+        item = next(p for p in request('/admin/catalog', token)['data']['products'] if p['id'] == PRODUCT)
+        item['price_cents'] = 555
+        request('/admin/catalog/products', token, item, 'restart-price-001')
     elif mode == 'verify':
         service_id = json.loads(STATE.read_text(encoding='utf-8'))['service_id']
         assert next(t for t in config['tables'] if t['id'] == TABLE)['name'] == 'Mesa persistente'
         request(f'/checkout/services/{service_id}/consumptions', token,
                 {'product_id': PRODUCT, 'quantity': 2}, 'restart-consumption-001')
+        item = next(p for p in request('/admin/catalog', token)['data']['products'] if p['id'] == PRODUCT)
+        assert item['price_cents'] == 555
+        sale = next(p for p in request('/checkout/catalog', token)['data']['sale_items'] if p['id'] == PRODUCT)
+        assert sale['price_cents'] == 555
     else:
         raise ValueError('Expected create or verify')
 
@@ -65,7 +74,8 @@ def main(mode):
     assert len(account['consumptions']) == 1
     assert account['consumptions'][0]['product_id'] == PRODUCT
     assert account['consumptions'][0]['quantity'] == 2
-    print(f'Packaged HTTP / persistence / financial boundary: {mode} passed')
+    assert account['consumptions'][0]['unit_price_cents'] == 400
+    print(f'Packaged HTTP / catalog / persistence / financial boundary: {mode} passed')
 
 
 if __name__ == '__main__':

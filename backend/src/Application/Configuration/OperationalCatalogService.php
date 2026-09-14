@@ -18,10 +18,10 @@ final class OperationalCatalogService
     {
         return [
             'tables' => $this->catalog->tables($context->tenantId, $context->companyId, $context->locationId),
-            'menus' => $this->catalog->menus($context->tenantId, $context->companyId, $context->locationId),
+            'menus' => array_map(static fn (array $menu): array => [
+                'id' => $menu['id'], 'name' => $menu['name'], 'course_count' => $menu['course_count'],
+            ], $this->catalog->menus($context->tenantId, $context->companyId, $context->locationId)),
             'stations' => $this->catalog->stations($context->tenantId, $context->companyId, $context->locationId),
-            'sale_categories' => $this->catalog->saleCategories($context->tenantId, $context->companyId, $context->locationId),
-            'sale_items' => $this->catalog->saleItems($context->tenantId, $context->companyId, $context->locationId),
         ];
     }
 }

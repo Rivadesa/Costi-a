@@ -32,37 +32,26 @@ async function request(path, { method = 'GET', body, auth = true, mutation = fal
       session.lastConnectedAt = new Date();
       return payload;
     } catch (error) {
-      throw new ApiError(error.message || 'Error en el modo demo.', {
-        code: 'demo_error',
-        details: error,
-      });
+      throw new ApiError(error.message || 'Error en el modo demo.', { code: 'demo_error', details: error });
     }
   }
-
   let response;
   try {
     response = await fetch(`${session.apiBase}${path}`, {
-      method,
-      headers: makeHeaders({ auth, mutation, headers }),
+      method, headers: makeHeaders({ auth, mutation, headers }),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     session.connection = 'online';
     session.lastConnectedAt = new Date();
   } catch (error) {
     session.connection = 'offline';
-    throw new ApiError('No se puede conectar con el servidor local.', {
-      code: 'network_error',
-      retryable: true,
-      details: error,
-    });
+    throw new ApiError('No se puede conectar con el servidor local.', { code: 'network_error', retryable: true, details: error });
   }
-
   const text = await response.text();
   let payload = null;
   if (text) {
     try { payload = JSON.parse(text); } catch { payload = { message: text }; }
   }
-
   if (!response.ok) {
     if (response.status === 401 && auth) {
       clearSession();
@@ -71,10 +60,7 @@ async function request(path, { method = 'GET', body, auth = true, mutation = fal
     const code = payload?.error || (response.status === 422 ? 'validation_error' : 'request_failed');
     const validation = payload?.errors ? Object.values(payload.errors).flat().join(' ') : null;
     throw new ApiError(validation || payload?.message || `Error HTTP ${response.status}`, {
-      status: response.status,
-      code,
-      retryable: Boolean(payload?.retryable),
-      details: payload,
+      status: response.status, code, retryable: Boolean(payload?.retryable), details: payload,
     });
   }
   return payload;
@@ -93,6 +79,9 @@ export const api = {
   me: () => request('/auth/me'),
   logout: () => request('/auth/logout', { method: 'POST', mutation: false }),
   configuration: () => request('/configuration'),
+  checkoutCatalog: () => request('/checkout/catalog'),
+  catalogAdmin: () => request('/admin/catalog'),
+  catalogSave: (body, key) => request('/admin/catalog/products', { method: 'POST', body, mutation: true, headers: { 'Idempotency-Key': key } }),
   board: () => request('/service-board'),
   kds: (stationId) => request(`/kds/stations/${encodeURIComponent(stationId)}`),
   service: (serviceId) => request(`/services/${encodeURIComponent(serviceId)}`),
@@ -108,33 +97,22 @@ export const api = {
   serveCourse: (serviceId, courseId) => request(`/services/${serviceId}/courses/${courseId}/serve`, { method: 'POST', mutation: true }),
   startItem: (serviceId, courseId, itemId) => request(`/services/${serviceId}/courses/${courseId}/items/${itemId}/start`, { method: 'POST', mutation: true }),
   readyItem: (serviceId, courseId, itemId) => request(`/services/${serviceId}/courses/${courseId}/items/${itemId}/ready`, { method: 'POST', mutation: true }),
-
   checkoutService: (serviceId) => request(`/checkout/services/${encodeURIComponent(serviceId)}`),
   checkoutAddConsumption: (serviceId, productId, quantity = 1) => request(`/checkout/services/${serviceId}/consumptions`, {
-    method: 'POST',
-    body: { product_id: productId, quantity: Number(quantity) },
-    mutation: true,
+    method: 'POST', body: { product_id: productId, quantity: Number(quantity) }, mutation: true,
   }),
   checkoutCancelConsumption: (serviceId, consumptionId, reason) => request(`/checkout/services/${serviceId}/consumptions/${consumptionId}/cancel`, {
-    method: 'POST',
-    body: { reason },
-    mutation: true,
+    method: 'POST', body: { reason }, mutation: true,
   }),
   checkoutAddPayment: (serviceId, body) => request(`/checkout/services/${serviceId}/payments`, { method: 'POST', body, mutation: true }),
   checkoutClose: (serviceId) => request(`/checkout/services/${serviceId}/close`, { method: 'POST', mutation: true }),
 };
 
 export async function restoreSession() {
-  if (!session.token) {
-    session.restored = true;
-    return;
-  }
+  if (!session.token) { session.restored = true; return; }
   try {
     const result = await api.me();
     saveSession(session.token, result.user);
-  } catch {
-    clearSession();
-  } finally {
-    session.restored = true;
-  }
+  } catch { clearSession(); }
+  finally { session.restored = true; }
 }
