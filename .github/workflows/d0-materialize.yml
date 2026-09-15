@@ -1,7 +1,7 @@
 name: D0 source import (one-shot)
 
-# Transport the exact locally linted/tested patch, then delete this helper and
-# its transport files. The resulting PR contains reviewable source, not blobs.
+# Only imports verified source. Workflow edits/removal are made separately by
+# the authorized repository connector because this job has contents-only access.
 on:
   push:
     branches: [feat/d0-independent-service-lifecycle]
@@ -16,12 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 3
       - name: Verify exact source and import on this feature branch only
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = '297fa596a7ff29010ab6fc3d2aec5706fd5d813b'
+          test "$(git rev-parse HEAD~2)" = '297fa596a7ff29010ab6fc3d2aec5706fd5d813b'
           python3 - <<'PY'
           import base64, hashlib, lzma, pathlib
           encoded = ''.join(pathlib.Path(f'.github/staging/d0/part{i}.b64').read_text().strip() for i in range(1, 5))
@@ -40,9 +40,12 @@ jobs:
           assert all(p == 'AGENTS.md' or p == '.github/workflows/domain-tests.yml' or p.startswith(('backend/', 'docs/')) for p in paths), paths
           PY
           git diff --cached --check
-          git rm .github/staging/d0/part1.b64 .github/staging/d0/part2.b64 .github/staging/d0/part3.b64 .github/staging/d0/part4.b64 .github/workflows/d0-materialize.yml
+          # GITHUB_TOKEN cannot modify workflow files. Preserve them in this
+          # source-only commit; apply CI additions/removal via the connector.
+          git restore --source=HEAD --staged --worktree .github/workflows/domain-tests.yml
+          git rm .github/staging/d0/part1.b64 .github/staging/d0/part2.b64 .github/staging/d0/part3.b64 .github/staging/d0/part4.b64
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'D0: independent service, occupancy and account lifecycle' -m 'Import verified source patch 7da624b4c802cda7f3f0836bd73f32b4aa6d30c1d1f5592130e5ce3697b6caed; 61 local dependency-free checks passed. Full PostgreSQL/API CI required before integration. Remove one-shot transport files.'
+          git commit -m 'D0: independent service, occupancy and account lifecycle' -m 'Import verified patch 7da624b4c802cda7f3f0836bd73f32b4aa6d30c1d1f5592130e5ce3697b6caed except workflow additions. 61 local dependency-free checks passed. Full PostgreSQL/API CI required before integration.'
           git push origin HEAD:refs/heads/feat/d0-independent-service-lifecycle
           git rev-parse HEAD
