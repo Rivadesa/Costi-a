@@ -1,6 +1,6 @@
 namespace Costina.Domain;
 
-public sealed class TableOccupancy : Aggregate
+public sealed partial class TableOccupancy : Aggregate
 {
     public string TableId { get; }
     public string ServiceId { get; }

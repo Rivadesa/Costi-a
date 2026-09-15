@@ -1,0 +1,133 @@
+namespace Costina.Domain;
+
+// Trusted persistence boundary. These records are not accepted as HTTP commands.
+public sealed record DiningSnapshot(string Id, BusinessScope Scope, string TableId, int Pax,
+    DiningState State, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
+    IReadOnlyList<CourseView> Courses);
+public sealed record AccountSnapshot(string Id, BusinessScope Scope, string ServiceId,
+    AccountState State, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments);
+public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string TableId,
+    string ServiceId, OccupancyState State, DateTimeOffset? ReleasedAt);
+
+public sealed partial class DiningService
+{
+    public DiningSnapshot Snapshot() => new(Id, Scope, TableId, Pax, State, StartedAt,
+        CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()));
+
+    public static DiningService Restore(DiningSnapshot value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        Guard.Rule(Enum.IsDefined(value.State), "invalid_snapshot", "Unknown dining state.");
+        var result = new DiningService(value.Id, value.Scope, value.TableId, value.Pax,
+            value.Courses.Select(c => new CourseDefinition(c.Id, c.Name,
+                c.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
+                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray())).ToArray());
+        result.courses.Clear();
+        result.courses.AddRange(value.Courses.Select(c => CourseExecution.Restore(c, value.Pax)));
+        Guard.Rule(result.courses.Count(c => c.Active) <= 1, "invalid_snapshot", "Multiple active courses.");
+        Guard.Rule(value.State != DiningState.Completed || result.courses.All(c => c.Terminal),
+            "invalid_snapshot", "Completed service has unfinished courses.");
+        Guard.Rule(value.State is not (DiningState.Open or DiningState.Cancelled) ||
+            result.courses.All(c => c.State is CourseState.Pending or CourseState.Skipped),
+            "invalid_snapshot", "Unstarted service has kitchen activity.");
+        Guard.Rule((value.State is DiningState.InService or DiningState.Paused or DiningState.Completed)
+            == value.StartedAt.HasValue, "invalid_snapshot", "Start timestamp does not match dining state.");
+        Guard.Rule((value.State == DiningState.Completed) == value.CompletedAt.HasValue,
+            "invalid_snapshot", "Completion timestamp does not match dining state.");
+        Guard.Rule(value.CompletedAt is null || value.CompletedAt >= value.StartedAt,
+            "invalid_snapshot", "Invalid dining timestamps.");
+        result.State = value.State; result.StartedAt = value.StartedAt; result.CompletedAt = value.CompletedAt;
+        return result;
+    }
+}
+
+internal sealed partial class CourseExecution
+{
+    internal static CourseExecution Restore(CourseView value, int pax)
+    {
+        Guard.Rule(Enum.IsDefined(value.State), "invalid_snapshot", "Unknown course state.");
+        var result = new CourseExecution(new CourseDefinition(value.Id, value.Name,
+            value.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
+                p.Quantity, p.GuestPosition, p.Mandatory)).ToArray()), pax);
+        foreach (var item in value.Preparations)
+        {
+            Guard.Rule(Enum.IsDefined(item.State), "invalid_snapshot", "Unknown preparation state.");
+            result.Find(item.Id).State = item.State;
+        }
+        var fired = value.State is CourseState.Fired or CourseState.Preparing or CourseState.Ready or CourseState.Served;
+        var ready = value.State is CourseState.Ready or CourseState.Served;
+        Guard.Rule(fired == value.FiredAt.HasValue && ready == value.ReadyAt.HasValue &&
+            (value.State == CourseState.Served) == value.ServedAt.HasValue,
+            "invalid_snapshot", "Course timestamps do not match state.");
+        Guard.Rule(value.State != CourseState.Skipped || !string.IsNullOrWhiteSpace(value.SkipReason),
+            "invalid_snapshot", "Skipped course needs a reason.");
+        Guard.Rule(value.State == CourseState.Skipped || value.SkipReason is null,
+            "invalid_snapshot", "Unexpected skip reason.");
+        Guard.Rule(!ready || value.Preparations.All(p => !p.Mandatory || p.State == PreparationState.Ready),
+            "invalid_snapshot", "Mandatory preparation is not ready.");
+        Guard.Rule(fired || value.Preparations.All(p => p.State == PreparationState.Pending),
+            "invalid_snapshot", "Unsent course has preparation activity.");
+        Guard.Rule(!fired || value.Preparations.All(p => p.State != PreparationState.Pending),
+            "invalid_snapshot", "Sent course has unsent preparations.");
+        Guard.Rule(value.State != CourseState.Fired || value.Preparations.All(p => p.State == PreparationState.Fired),
+            "invalid_snapshot", "Fired course has unexpected preparation state.");
+        Guard.Rule(value.ReadyAt is null || value.ReadyAt >= value.FiredAt,
+            "invalid_snapshot", "Invalid readiness timestamp.");
+        Guard.Rule(value.ServedAt is null || value.ServedAt >= value.ReadyAt,
+            "invalid_snapshot", "Invalid served timestamp.");
+        result.State = value.State; result.FiredAt = value.FiredAt; result.ReadyAt = value.ReadyAt;
+        result.ServedAt = value.ServedAt; result.SkipReason = value.SkipReason;
+        return result;
+    }
+}
+
+public sealed partial class SettlementAccount
+{
+    public AccountSnapshot Snapshot() => new(Id, Scope, ServiceId, State,
+        Array.AsReadOnly(charges.ToArray()), Array.AsReadOnly(payments.ToArray()));
+
+    public static SettlementAccount Restore(AccountSnapshot value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        Guard.Rule(Enum.IsDefined(value.State), "invalid_snapshot", "Unknown account state.");
+        var result = new SettlementAccount(value.Id, value.Scope, value.ServiceId);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in value.Charges)
+        {
+            Guard.Text(line.Id, nameof(line.Id)); Guard.Text(line.Description, nameof(line.Description));
+            Guard.Rule(ids.Add(line.Id) && line.Quantity > 0 && line.UnitPriceCents >= 0,
+                "invalid_snapshot", "Invalid or duplicate charge.");
+            Guard.Rule(line.Voided == !string.IsNullOrWhiteSpace(line.VoidReason),
+                "invalid_snapshot", "Invalid charge cancellation.");
+            _ = checked(line.Quantity * line.UnitPriceCents);
+            result.charges.Add(line);
+        }
+        ids.Clear();
+        foreach (var payment in value.Payments)
+        {
+            Guard.Text(payment.Id, nameof(payment.Id)); Guard.Text(payment.Method, nameof(payment.Method));
+            Guard.Rule(ids.Add(payment.Id) && payment.AmountCents > 0,
+                "invalid_snapshot", "Invalid or duplicate payment.");
+            result.payments.Add(payment);
+        }
+        _ = result.TotalCents; _ = result.PaidCents;
+        Guard.Rule(value.State != AccountState.Closed || (result.BalanceCents == 0 && result.CreditCents == 0),
+            "invalid_snapshot", "Closed account is not balanced.");
+        result.State = value.State;
+        return result;
+    }
+}
+
+public sealed partial class TableOccupancy
+{
+    public OccupancySnapshot Snapshot() => new(Id, Scope, TableId, ServiceId, State, ReleasedAt);
+    public static TableOccupancy Restore(OccupancySnapshot value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        Guard.Rule(Enum.IsDefined(value.State) &&
+            (value.State == OccupancyState.Released) == value.ReleasedAt.HasValue,
+            "invalid_snapshot", "Invalid occupancy state/timestamp.");
+        return new TableOccupancy(value.Id, value.Scope, value.TableId, value.ServiceId)
+            { State = value.State, ReleasedAt = value.ReleasedAt };
+    }
+}

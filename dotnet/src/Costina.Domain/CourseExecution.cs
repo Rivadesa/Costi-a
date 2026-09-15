@@ -1,7 +1,7 @@
 namespace Costina.Domain;
 
 // Only DiningService can invoke mutations. Callers receive immutable snapshots.
-internal sealed class CourseExecution
+internal sealed partial class CourseExecution
 {
     private sealed class Preparation(PreparationDefinition definition)
     {

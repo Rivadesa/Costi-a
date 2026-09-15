@@ -13,7 +13,7 @@ public sealed record AccountView(string Id, string ServiceId, AccountState State
     PaymentCoverage Coverage, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments);
 
 // An account can remain open after table release. No dependency on DiningService.
-public sealed class SettlementAccount : Aggregate
+public sealed partial class SettlementAccount : Aggregate
 {
     private readonly List<ChargeLine> charges = [];
     private readonly List<PaymentEntry> payments = [];
@@ -40,7 +40,7 @@ public sealed class SettlementAccount : Aggregate
         Guard.Rule(quantity > 0 && unitPriceCents >= 0, "invalid_charge", "Invalid quantity or price.");
         Guard.Rule(charges.All(c => c.Id != lineId), "duplicate_charge", "This charge ID already exists.");
         var line = new ChargeLine(lineId, description, quantity, unitPriceCents);
-        _ = checked(TotalCents + line.TotalCents); // Validate overflow before any mutation/event.
+        _ = checked(TotalCents + line.TotalCents);
         charges.Add(line);
         Emit("account.charge_added", stamp, ("charge_id", lineId),
             ("amount_cents", line.TotalCents.ToString(CultureInfo.InvariantCulture)));
@@ -67,7 +67,6 @@ public sealed class SettlementAccount : Aggregate
         Guard.Rule(index >= 0, "charge_not_found", "Charge not found.");
         Guard.Rule(!charges[index].Voided, "charge_already_voided", "Charge already voided.");
         charges[index] = charges[index] with { Voided = true, VoidReason = reason };
-        // No stock movement and no refund are inferred from voiding a charge.
         Emit("account.charge_voided", stamp, ("charge_id", lineId), ("reason", reason));
     }
 

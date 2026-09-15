@@ -1,7 +1,7 @@
 namespace Costina.Domain;
 
 // No reference to SettlementAccount: payments cannot change pacing by construction.
-public sealed class DiningService : Aggregate
+public sealed partial class DiningService : Aggregate
 {
     private readonly List<CourseExecution> courses;
     public string TableId { get; }
