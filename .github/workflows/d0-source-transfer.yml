@@ -1,0 +1,91 @@
+name: D0 verified source transfer
+
+# One-time handoff helper, never merged into develop.
+# Materializes already locally tested source as an unreferenced Git commit.
+# A developer must inspect it and update the feature ref through the connector.
+on:
+  push:
+    branches: ['build/d0-source-transfer']
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Verify, apply and test the exact source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          parts = [pathlib.Path(f'.handoff/d0-transfer-{i}.b64').read_text().strip() for i in range(3)]
+          def blobsha(s):
+              b = s.encode()
+              return hashlib.sha1(b'blob ' + str(len(b)).encode() + b'\0' + b).hexdigest()
+          assert blobsha(parts[0]) == '33e540e7c2c12e4df2ff3993d76007bc5f75045a'
+          assert blobsha(parts[2]) == 'ddab20d737278e34e1b27aa5fe8d2b429acaee89'
+          # Remove a duplicated transport fragment, then require the original blob hash.
+          if blobsha(parts[1]) != 'b8a5c8ac3d86b40c771cc9ea1ba9f0891e425b4e':
+              marker = 'MyNntbO/Yuxv'
+              assert parts[1].count(marker) == 2
+              first = parts[1].index(marker) + len(marker)
+              second = parts[1].index(marker, first) + len(marker)
+              parts[1] = parts[1][:first] + parts[1][second:]
+          assert blobsha(parts[1]) == 'b8a5c8ac3d86b40c771cc9ea1ba9f0891e425b4e'
+          patch = gzip.decompress(base64.b64decode(''.join(parts), validate=True))
+          assert len(patch) == 96498
+          assert hashlib.sha256(patch).hexdigest() == '45f78ccbdec8999aae117ccb247cba751b22ad4f94a897f10f0d9ecf004d8e94'
+          destination = pathlib.Path('/tmp/costia-d0.patch')
+          destination.write_bytes(patch)
+          subprocess.run(['git','checkout','--detach','297fa596a7ff29010ab6fc3d2aec5706fd5d813b'], check=True)
+          subprocess.run(['git','apply','--check',str(destination)], check=True)
+          subprocess.run(['git','apply',str(destination)], check=True)
+          subprocess.run(['git','add','-N','.'], check=True)
+          PY
+          cd backend
+          find app src tests database routes config bootstrap public -name '*.php' -print0 | xargs -0 -n1 php -l
+          php tests/run.php
+          php tests/projections.php
+          php tests/application.php
+          php tests/lifecycle.php
+      - name: Create source-only Git tree and commit without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          repo = 'Rivadesa/Costi-a'
+          base = '297fa596a7ff29010ab6fc3d2aec5706fd5d813b'
+          assert subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip() == base
+          paths = [p for p in subprocess.check_output(['git','diff','--name-only','-z','HEAD'], text=True).split('\0') if p]
+          assert len(paths) == 41, (len(paths), paths)
+          assert all(p.startswith(('backend/', 'docs/')) or p in ('AGENTS.md', '.github/workflows/domain-tests.yml') for p in paths)
+          assert not pathlib.Path('.handoff').exists()
+          def api(endpoint, body):
+              result = subprocess.run(['gh','api','--method','POST',f'repos/{repo}/{endpoint}','--input','-'], input=json.dumps(body), text=True, check=True, capture_output=True)
+              return json.loads(result.stdout)
+          tree = api('git/trees', {'base_tree':'11d5d0c98351a611e16e5e679c2d597268bd483c','tree':[{'path':p,'mode':'100644','type':'blob','content':pathlib.Path(p).read_text()} for p in paths]})
+          commit = api('git/commits', {'message':'D0: separate service pacing, occupancy and account settlement\n\nNon-destructive lifecycle migration; actor audit; independent API actions; legacy close 410; domain and PostgreSQL regression tests; ADR-008/009. Full framework CI is required before integration. Related #17 and #19.','tree':tree['sha'],'parents':[base]})
+          manifest = {'commit_sha':commit['sha'],'tree_sha':tree['sha'],'parent_sha':base,'changed_files':paths,'patch_sha256':'45f78ccbdec8999aae117ccb247cba751b22ad4f94a897f10f0d9ecf004d8e94','verified':'PHP syntax and four dependency-free suites; PHPUnit/PostgreSQL pending'}
+          pathlib.Path('/tmp/d0-source-manifest.json').write_text(json.dumps(manifest, indent=2))
+          print('D0_SOURCE_COMMIT=' + commit['sha'])
+          print('D0_SOURCE_TREE=' + tree['sha'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d0-source-manifest
+          path: /tmp/d0-source-manifest.json
+          retention-days: 7
