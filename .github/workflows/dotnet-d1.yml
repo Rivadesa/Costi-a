@@ -74,16 +74,26 @@ jobs:
       - name: Snapshot checks on Windows
         run: dotnet run --project tests/Costina.PersistenceChecks -c Release
       - name: Publish Windows service binary (not an installer)
-        run: dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o ../../artifacts/d1-server
+        run: dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o ../artifacts/d1-server
+      - name: Record build and hashes
+        shell: pwsh
+        run: |
+          $manifest = @{commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; sdk=(dotnet --version); kind='engineering-server-not-installer'; files=@()}
+          Get-ChildItem ../artifacts/d1-server -File -Recurse | ForEach-Object {
+            $manifest.files += @{file=$_.FullName.Substring((Resolve-Path ../artifacts/d1-server).Path.Length+1); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content ../artifacts/d1-server/build-manifest.json
       - name: Archive tracked source for reproducible handoff
-        run: git archive -o ../../artifacts/d1-source.zip HEAD
+        run: git archive -o ../artifacts/d1-source.zip HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: costina-d1-server-windows-engineering
           path: artifacts/d1-server/
+          if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: costina-d1-source
           path: artifacts/d1-source.zip
+          if-no-files-found: error
           retention-days: 14
