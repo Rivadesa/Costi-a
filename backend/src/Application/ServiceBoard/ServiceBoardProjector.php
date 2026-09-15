@@ -36,6 +36,8 @@ final class ServiceBoardProjector
             'service_id' => $service->id,
             'table_id' => $service->tableId,
             'pax' => $service->pax,
+            'occupancy_status' => $service->occupancy->value,
+            'lifecycle_review_required' => $service->lifecycleReviewRequired,
             'service_status' => $service->status->value,
             'course' => $course ? [
                 'id' => $course->id,

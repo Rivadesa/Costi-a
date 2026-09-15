@@ -16,9 +16,15 @@ This repository is maintained by humans and AI assistants. Treat repository docu
 
 V1A fine-dining service orchestration. Do not broaden the MVP to inventory, full reservations, ecommerce, fiscal engine or hotel unless the issue explicitly belongs to a later phase or only a boundary is being prepared.
 
-## Non-negotiable architecture
+## Approved D0/D1 transition (2026-09-15)
 
-Unless superseded by ADR:
+Read `docs/adr/ADR-008-windows-native-transition.md`, `ADR-009-independent-lifecycle.md` and `docs/phases/D0.md` FIRST. User approved phase-by-phase development. Target: .NET 10 / ASP.NET Core Windows Service + PostgreSQL + WPF Windows client, Vue/TypeScript PWA for mobile/KDS. No Docker/WSL/Redis requirement for restaurant installation. D0 corrects the PHP behavioral reference, NOT a new Laravel product commitment. Do not develop new business modules in PHP; port verified contracts in D1. Do not claim .NET/WPF/installer built merely because the ADR exists.
+
+Service pacing, party occupancy and provisional account are independent. Paid/pending_payment are legacy values, never operational statuses. No silent legacy-state guesses; new commands and conservative migration are in ADR-009. Historical idempotency/outbox/payments stay intact. Never run both runtimes as writers. A D0 migration is not compatible with an old writable backend.
+
+## Original implementation (historical, superseded as target by ADR-008)
+
+Reference runtime until D1 only:
 - local-primary restaurant server;
 - Laravel + PostgreSQL + Redis backend;
 - Vue 3 clients;

@@ -31,6 +31,8 @@ final class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(\Hospitality\Application\Contracts\OpenAccountRepository::class, \App\Infrastructure\Persistence\LaravelOpenAccountRepository::class);
+        $this->app->bind(\Hospitality\Application\Contracts\AuditStore::class, \App\Infrastructure\Persistence\LaravelAuditStore::class);
         $this->app->scoped(\Hospitality\Application\Contracts\CatalogAdminRepository::class, \App\Infrastructure\Persistence\LaravelCatalogAdminRepository::class);
         $this->app->scoped(LaravelTableServiceRepository::class);
         $this->app->scoped(TableServiceRepository::class, CatalogAwareTableServiceRepository::class);

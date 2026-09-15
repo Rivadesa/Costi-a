@@ -205,9 +205,41 @@ final class TableServiceCommandService
     /** @return array<string, mixed> */
     public function close(CommandContext $context, string $serviceId, string $idempotencyKey): array
     {
-        return $this->executor->execute($context, $serviceId, $idempotencyKey, 'service.close', [], function (TableService $service): array {
+        return $this->executor->execute($context, $serviceId, $idempotencyKey, 'service.complete', [], function (TableService $service): array {
             $service->close();
             return $this->serviceResult($service);
+        });
+    }
+
+    public function releaseTable(CommandContext $context, string $serviceId, string $key, string $reason): array
+    {
+        return $this->executor->execute($context, $serviceId, $key, 'table.release', ['reason' => $reason], function (TableService $service) use ($reason): array {
+            $service->releaseTable($reason);
+            return ['service_id' => $service->id, 'occupancy_status' => $service->occupancy->value];
+        });
+    }
+
+    public function closeAccount(CommandContext $context, string $serviceId, string $key): array
+    {
+        return $this->executor->execute($context, $serviceId, $key, 'account.close', [], function (TableService $service): array {
+            $service->closeAccount();
+            return ['service_id' => $service->id, 'account_closed_at' => $service->accountClosedAt?->format(DATE_ATOM)];
+        });
+    }
+
+    public function reopenAccount(CommandContext $context, string $serviceId, string $key, string $reason): array
+    {
+        return $this->executor->execute($context, $serviceId, $key, 'account.reopen', ['reason' => $reason], function (TableService $service) use ($reason): array {
+            $service->reopenAccount($reason);
+            return ['service_id' => $service->id, 'account_closed_at' => null];
+        });
+    }
+
+    public function reconcileLifecycle(CommandContext $context, string $serviceId, string $key, string $status, string $reason): array
+    {
+        return $this->executor->execute($context, $serviceId, $key, 'service.lifecycle_review', compact('status', 'reason'), function (TableService $service) use ($status, $reason): array {
+            $service->reconcileLifecycle(\Hospitality\Domain\Service\ServiceStatus::from($status), $reason);
+            return ['service_id' => $service->id, 'status' => $service->status->value, 'lifecycle_review_required' => false];
         });
     }
 
@@ -219,8 +251,7 @@ final class TableServiceCommandService
             'status' => $service->status->value,
             'table_id' => $service->tableId,
             'pax' => $service->pax,
-            'subtotal_cents' => $service->subtotalCents(),
-            'paid_cents' => $service->paidCents(),
+            'occupancy_status' => $service->occupancy->value,
         ];
     }
 

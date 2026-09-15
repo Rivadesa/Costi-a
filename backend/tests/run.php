@@ -100,7 +100,7 @@ $service->cancelConsumption($water->id, 'Duplicado');
 ok($service->subtotalCents() === 34200, 'cancelled consumption remains traceable but leaves total');
 
 $service->recordPayment('card', 34200);
-ok($service->status === ServiceStatus::Paid, 'full payment changes service to paid');
+ok($service->status === ServiceStatus::InService, 'full payment does not change operational status');
 $service->close();
 ok($service->status === ServiceStatus::Closed, 'paid service closes operationally');
 

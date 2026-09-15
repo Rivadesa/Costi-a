@@ -159,7 +159,10 @@ $commands->close($context, $serviceId, 'integration-close');
 
 $closed = $queries->detail($context, $serviceId);
 check($closed['status'] === 'closed', 'fully paid service closes operationally');
-check($operational->serviceBoard($context) === [], 'closed service disappears from active service board');
+check(count($operational->serviceBoard($context)) === 1, 'completed service stays visible until physical release');
+$commands->releaseTable($context, $serviceId, 'integration-release', 'Guests have left');
+check($operational->serviceBoard($context) === [], 'released service disappears from occupied service board');
+$commands->closeAccount($context, $serviceId, 'integration-account-close');
 check(DB::table('idempotency_keys')->where('tenant_id', $tenantId)->where('idempotency_key', 'integration-wine')->count() === 1, 'idempotency record is stored once');
 check(DB::table('outbox_events')->where('aggregate_id', $serviceId)->count() >= 10, 'domain operations are durably written to outbox');
 check((int) DB::table('table_services')->where('id', $serviceId)->value('version') > 5, 'aggregate optimistic version advances across commands');

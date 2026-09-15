@@ -1,3 +1,5 @@
+> **Transición D0, 2026-09-15:** la arquitectura objetivo está aceptada en [ADR-008](adr/ADR-008-windows-native-transition.md): .NET/ASP.NET Core + WPF + PostgreSQL + Vue PWA; sin Docker obligatorio en el restaurante. El runtime ejecutable de referencia sigue siendo PHP hasta D1. [ADR-009](adr/ADR-009-independent-lifecycle.md) sustituye cualquier estado de servicio acoplado a pago/cierre descrito abajo. El resto de este documento conserva el diseño previo como referencia; no autoriza volver a Laravel/Tauri como destino ni poner D0 en producción. Consultar [D0](phases/D0.md) y [STATUS](STATUS.md).
+
 # Architecture
 
 ## 1. Architectural objective

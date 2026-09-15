@@ -16,6 +16,7 @@ Route::prefix('v1')->group(function (): void {
         'api_version' => 'v1',
         'phase' => 'V1A',
         'authority' => 'local-primary',
+        'lifecycle_contract' => 'd0-v2',
     ]);
 
     Route::post('/auth/login', [AuthController::class, 'login']);
@@ -66,6 +67,19 @@ Route::prefix('v1')->group(function (): void {
             ->middleware('hospitality.permission:kitchen.update');
         Route::post('/services/{serviceId}/courses/{courseId}/items/{itemId}/ready', [TableServiceController::class, 'readyPreparation'])
             ->middleware('hospitality.permission:kitchen.update');
+
+        Route::post('/services/{serviceId}/complete', [\App\Http\Controllers\Api\V1\LifecycleController::class, 'complete'])
+            ->middleware('hospitality.permission:service.complete');
+        Route::post('/services/{serviceId}/release-table', [\App\Http\Controllers\Api\V1\LifecycleController::class, 'release'])
+            ->middleware('hospitality.permission:table.release');
+        Route::post('/services/{serviceId}/review-lifecycle', [\App\Http\Controllers\Api\V1\LifecycleController::class, 'review'])
+            ->middleware('hospitality.permission:service.lifecycle.review');
+        Route::get('/checkout/services', [CheckoutController::class, 'index'])
+            ->middleware('hospitality.permission:payment.record');
+        Route::post('/checkout/services/{serviceId}/close-account', [\App\Http\Controllers\Api\V1\LifecycleController::class, 'closeAccount'])
+            ->middleware('hospitality.permission:account.close');
+        Route::post('/checkout/services/{serviceId}/reopen-account', [\App\Http\Controllers\Api\V1\LifecycleController::class, 'reopenAccount'])
+            ->middleware('hospitality.permission:account.reopen');
 
         Route::prefix('/checkout/services/{serviceId}')->group(function (): void {
             Route::get('/', [CheckoutController::class, 'show'])

@@ -10,6 +10,10 @@ use Hospitality\Domain\Shared\Ulid;
 final class TableService
 {
     public ServiceStatus $status = ServiceStatus::Open;
+    public OccupancyStatus $occupancy = OccupancyStatus::Occupied;
+    public ?\DateTimeImmutable $releasedAt = null;
+    public ?\DateTimeImmutable $accountClosedAt = null;
+    public bool $lifecycleReviewRequired = false;
     private ?MenuTemplate $menu = null;
     /** @var array<string, Guest> */
     private array $guests = [];
@@ -72,9 +76,20 @@ final class TableService
         array $courses,
         array $consumptions,
         array $payments,
+        OccupancyStatus $occupancy = OccupancyStatus::Occupied,
+        ?\DateTimeImmutable $releasedAt = null,
+        ?\DateTimeImmutable $accountClosedAt = null,
+        bool $lifecycleReviewRequired = false,
     ): self {
         $service = new self($id, $tenantId, $companyId, $locationId, $tableId, $pax, $openedAt);
+        if (in_array($status, [ServiceStatus::Paid, ServiceStatus::PendingPayment], true)) {
+            throw new \DomainException('Legacy payment status requires the D0 lifecycle migration.');
+        }
         $service->status = $status;
+        $service->occupancy = $occupancy;
+        $service->releasedAt = $releasedAt;
+        $service->accountClosedAt = $accountClosedAt;
+        $service->lifecycleReviewRequired = $lifecycleReviewRequired;
         $service->menu = $menu;
 
         foreach ($guests as $guest) {
@@ -95,6 +110,8 @@ final class TableService
 
     public function assignMenu(MenuTemplate $menu): void
     {
+        $this->assertServiceEditable();
+        $this->assertAccountEditable();
         if ($this->menu !== null) {
             throw new \DomainException('A menu is already assigned to this service.');
         }
@@ -108,6 +125,7 @@ final class TableService
 
     public function addGuest(?string $name = null): Guest
     {
+        $this->assertServiceEditable();
         $position = count($this->guests) + 1;
         if ($position > $this->pax) {
             throw new \DomainException('Cannot add more guests than service pax.');
@@ -120,6 +138,7 @@ final class TableService
 
     public function addRestriction(string $guestId, Restriction $restriction): void
     {
+        $this->assertServiceEditable();
         $guest = $this->guests[$guestId] ?? throw new \DomainException('Guest not found.');
         $guest->addRestriction($restriction);
         $this->record('service.restriction_added', [
@@ -133,6 +152,7 @@ final class TableService
 
     public function start(): void
     {
+        $this->assertServiceEditable();
         if ($this->status !== ServiceStatus::Open) {
             throw new \DomainException('Only open services can start.');
         }
@@ -161,6 +181,7 @@ final class TableService
 
     public function startCourseItem(string $courseId, string $itemId): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $item = $course->startItem($itemId);
         $this->record('course_item.started', [
@@ -173,6 +194,7 @@ final class TableService
 
     public function markCourseItemReady(string $courseId, string $itemId): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $item = $course->markItemReady($itemId);
         $this->record('course_item.ready', [
@@ -185,6 +207,7 @@ final class TableService
 
     public function markCourseReady(string $courseId): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $course->validateReady();
         $this->record('course.ready', ['course_id' => $courseId]);
@@ -192,6 +215,7 @@ final class TableService
 
     public function serveCourse(string $courseId): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $course->serve();
         $this->record('course.served', ['course_id' => $courseId]);
@@ -199,6 +223,7 @@ final class TableService
 
     public function skipCourse(string $courseId, string $reason): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $course->skip($reason);
         $this->record('course.skipped', ['course_id' => $courseId, 'reason' => $reason]);
@@ -206,6 +231,7 @@ final class TableService
 
     public function substituteCourseItem(string $courseId, string $itemId, string $name, string $stationId, string $reason): void
     {
+        $this->assertServiceEditable();
         $course = $this->course($courseId);
         $item = $course->substituteItem($itemId, $name, $stationId, $reason);
         $this->record('course_item.substituted', [
@@ -220,6 +246,7 @@ final class TableService
     /** @param list<PreparationTemplate> $preparations */
     public function addExtraCourse(string $name, array $preparations = []): ServiceCourse
     {
+        $this->assertServiceEditable();
         $sequence = count($this->courses) + 1;
         $course = new ServiceCourse(Ulid::generate(), 'extra', $sequence, $name, $preparations, $this->pax, true);
         $this->courses[$course->id] = $course;
@@ -229,6 +256,7 @@ final class TableService
 
     public function pause(?string $reason = null): void
     {
+        $this->assertServiceEditable();
         if ($this->status !== ServiceStatus::InService) {
             throw new \DomainException('Only an active service can be paused.');
         }
@@ -238,6 +266,7 @@ final class TableService
 
     public function resume(): void
     {
+        $this->assertServiceEditable();
         if ($this->status !== ServiceStatus::Paused) {
             throw new \DomainException('Only a paused service can resume.');
         }
@@ -247,6 +276,7 @@ final class TableService
 
     public function moveTable(string $tableId): void
     {
+        $this->assertServiceEditable();
         $before = $this->tableId;
         $this->tableId = $tableId;
         $this->record('service.table_changed', ['from' => $before, 'to' => $tableId]);
@@ -257,9 +287,7 @@ final class TableService
         if ($quantity < 1 || $unitPriceCents < 0) {
             throw new \InvalidArgumentException('Invalid consumption quantity/price.');
         }
-        if (in_array($this->status, [ServiceStatus::Closed, ServiceStatus::Cancelled], true)) {
-            throw new \DomainException('Cannot add consumption to a closed service.');
-        }
+        $this->assertAccountEditable();
         $consumption = new Consumption(Ulid::generate(), $name, $quantity, $unitPriceCents);
         $this->consumptions[$consumption->id] = $consumption;
         $this->record('consumption.added', ['consumption_id' => $consumption->id, 'name' => $name, 'quantity' => $quantity, 'unit_price_cents' => $unitPriceCents]);
@@ -268,6 +296,7 @@ final class TableService
 
     public function cancelConsumption(string $consumptionId, string $reason): void
     {
+        $this->assertAccountEditable();
         $consumption = $this->consumptions[$consumptionId] ?? throw new \DomainException('Consumption not found.');
         $consumption->cancel($reason);
         $this->record('consumption.cancelled', ['consumption_id' => $consumptionId, 'reason' => $reason]);
@@ -285,17 +314,10 @@ final class TableService
         if ($amountCents <= 0) {
             throw new \InvalidArgumentException('Payment amount must be positive.');
         }
-        if (in_array($this->status, [ServiceStatus::Closed, ServiceStatus::Cancelled], true)) {
-            throw new \DomainException('Cannot record payment on a closed/cancelled service.');
-        }
+        $this->assertAccountEditable();
         $payment = new Payment(Ulid::generate(), $method, $amountCents, new \DateTimeImmutable());
         $this->payments[$payment->id] = $payment;
         $this->record('payment.recorded', ['payment_id' => $payment->id, 'method' => $method, 'amount_cents' => $amountCents]);
-        if ($this->paidCents() >= $this->subtotalCents()) {
-            $this->status = ServiceStatus::Paid;
-        } else {
-            $this->status = ServiceStatus::PendingPayment;
-        }
         return $payment;
     }
 
@@ -304,16 +326,83 @@ final class TableService
         return array_sum(array_map(fn (Payment $p) => $p->amountCents, $this->payments));
     }
 
+    /** Operational completion only; payment and physical release are independent. */
     public function close(): void
     {
-        if ($this->status !== ServiceStatus::Paid) {
-            throw new \DomainException('Service must be fully paid before closing.');
-        }
-        if ($this->hasActiveCourse()) {
-            throw new \DomainException('Cannot close service with active kitchen courses.');
+        $this->assertServiceEditable();
+        foreach ($this->courses as $course) {
+            if (!in_array($course->status, [CourseStatus::Served, CourseStatus::Skipped, CourseStatus::Cancelled], true)) {
+                throw new \DomainException('Serve or explicitly skip all courses before completing the service.');
+            }
         }
         $this->status = ServiceStatus::Closed;
-        $this->record('service.closed');
+        $this->record('service.completed');
+    }
+
+    public function releaseTable(string $reason): void
+    {
+        $this->assertReviewed();
+        if (trim($reason) === '') {
+            throw new \InvalidArgumentException('Table release requires a reason.');
+        }
+        if (!in_array($this->status, [ServiceStatus::Closed, ServiceStatus::Cancelled], true)) {
+            throw new \DomainException('Complete the operational service before releasing the table.');
+        }
+        if ($this->occupancy !== OccupancyStatus::Occupied || $this->hasActiveCourse()) {
+            throw new \DomainException('Table already released or kitchen work is active.');
+        }
+        $this->occupancy = OccupancyStatus::Released;
+        $this->releasedAt = new \DateTimeImmutable();
+        $this->record('table.released', ['table_id' => $this->tableId, 'reason' => $reason]);
+    }
+
+    public function settlementStatus(): SettlementStatus
+    {
+        $balance = $this->subtotalCents() - $this->paidCents();
+        if ($balance < 0) return SettlementStatus::Overpaid;
+        if ($balance === 0) return SettlementStatus::Paid;
+        return $this->paidCents() > 0 ? SettlementStatus::PartiallyPaid : SettlementStatus::Unpaid;
+    }
+
+    public function closeAccount(): void
+    {
+        $this->assertAccountEditable();
+        if ($this->subtotalCents() !== $this->paidCents()) {
+            throw new \DomainException('Account requires exact settlement; outstanding or excess payments need resolution.');
+        }
+        $this->accountClosedAt = new \DateTimeImmutable();
+        $this->record('account.closed');
+    }
+
+    /** Provisional accounts only: a future fiscalized account requires fiscal rules. */
+    public function reopenAccount(string $reason): void
+    {
+        $this->assertReviewed();
+        if (trim($reason) === '') throw new \InvalidArgumentException('Account reopening requires a reason.');
+        if ($this->accountClosedAt === null) throw new \DomainException('Account is already open.');
+        $this->accountClosedAt = null;
+        $this->record('account.reopened', ['reason' => $reason]);
+    }
+
+    /** Legacy paid/pending_payment overwrote pacing; do not guess that history. */
+    public function reconcileLifecycle(ServiceStatus $status, string $reason): void
+    {
+        if (!$this->lifecycleReviewRequired) throw new \DomainException('No legacy lifecycle review is pending.');
+        if (trim($reason) === '') throw new \InvalidArgumentException('Lifecycle review requires a reason.');
+        if (!in_array($status, [ServiceStatus::Open, ServiceStatus::InService, ServiceStatus::Paused], true)) {
+            throw new \InvalidArgumentException('Review must select open, in_service or paused.');
+        }
+        if ($this->occupancy !== OccupancyStatus::Occupied) throw new \DomainException('Review requires an occupied service.');
+        if ($status !== ServiceStatus::Open && $this->menu === null) throw new \DomainException('Active service requires a menu.');
+        if ($status === ServiceStatus::Open) {
+            foreach ($this->courses as $course) {
+                if ($course->status !== CourseStatus::Pending) throw new \DomainException('Progressed service cannot be reviewed as not started.');
+            }
+        }
+        $before = $this->status->value;
+        $this->status = $status;
+        $this->lifecycleReviewRequired = false;
+        $this->record('service.lifecycle_reviewed', ['before' => $before, 'after' => $status->value, 'reason' => $reason]);
     }
 
     public function cancel(string $reason): void
@@ -324,6 +413,8 @@ final class TableService
         if ($this->status === ServiceStatus::Closed) {
             throw new \DomainException('Closed services cannot be operationally cancelled.');
         }
+        $this->assertServiceEditable();
+        if ($this->hasActiveCourse()) throw new \DomainException('Cannot cancel with active kitchen work.');
         $this->status = ServiceStatus::Cancelled;
         $this->record('service.cancelled', ['reason' => $reason]);
     }
@@ -419,8 +510,28 @@ final class TableService
         return false;
     }
 
+    private function assertReviewed(): void
+    {
+        if ($this->lifecycleReviewRequired) throw new \DomainException('Legacy lifecycle requires authorized review.');
+    }
+
+    private function assertAccountEditable(): void
+    {
+        $this->assertReviewed();
+        if ($this->accountClosedAt !== null) throw new \DomainException('Provisional account is closed; reopen explicitly before corrections.');
+    }
+
+    private function assertServiceEditable(): void
+    {
+        $this->assertReviewed();
+        if ($this->occupancy !== OccupancyStatus::Occupied || in_array($this->status, [ServiceStatus::Closed, ServiceStatus::Cancelled], true)) {
+            throw new \DomainException('Operational service has ended or its table was released.');
+        }
+    }
+
     private function assertOperable(): void
     {
+        $this->assertServiceEditable();
         if (!in_array($this->status, [ServiceStatus::InService, ServiceStatus::Paused], true)) {
             throw new \DomainException('Service is not active.');
         }

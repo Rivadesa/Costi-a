@@ -16,7 +16,7 @@ final class PermissionCatalog
     public static function maitre(): array
     {
         return [
-            'service.view', 'service.open', 'service.edit', 'service.manage', 'service.close',
+            'service.view', 'service.open', 'service.edit', 'service.manage', 'service.close', 'service.complete', 'table.release', 'account.close',
             'course.fire', 'course.serve', 'course.modify',
             'consumption.add', 'consumption.cancel', 'payment.record',
             'kitchen.view', 'kitchen.pass',

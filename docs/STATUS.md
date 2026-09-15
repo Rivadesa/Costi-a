@@ -1,3 +1,21 @@
+# Estado del corte D0 — 2026-09-15
+
+**Arquitectura objetivo aceptada; implementación Windows nativa todavía no creada.** ADR-008 registra .NET/WPF/PostgreSQL + Vue PWA. El código nuevo de este corte corrige la referencia PHP y prepara una migración verificable de servicio/ocupación/cuenta (ADR-009).
+
+- Implementado en rama D0: operaciones y permisos separados, auditoría de mutaciones, cuenta accesible tras liberar mesa, índice único de ocupación, snapshots históricos y revisión de paid/pending_payment ambiguos.
+- Comprobado localmente: sintaxis PHP y smoke tests de dominio/aplicación/proyecciones, más 30 comprobaciones del contrato de ciclo de vida.
+- Validación PostgreSQL/HTTP del commit D0: **pendiente de CI al redactar este documento**. Consultar PR/checks y comentario de validación; no convertir pendiente en completado sin resultado.
+- No hay EXE nuevo. 0.1.1 sigue siendo artefacto histórico; el cierre antiguo devuelve conflicto y no es interfaz completa del contrato D0.
+- Emparejamiento de dispositivos, TLS LAN, cola durable de cliente, SignalR, backups/restauración Windows, WPF y empaquetado .NET continúan pendientes. No sustituir Verial ni usar datos reales.
+
+## Próxima entrega
+
+D1: solución .NET, port del circuito vertical, cliente WPF y servidor Windows con PostgreSQL en una instalación limpia sin Docker. Ver [D0](phases/D0.md) y los nuevos ADRs. El issue #17 solo se cerrará tras la verificación de código, migración y pruebas; la prueba física es otra puerta.
+
+---
+
+## Evidencia histórica anterior (no equivale a CI D0)
+
 # Estado verificable del desarrollo
 
 Actualizado: 2026-09-14. Leer junto a `AGENTS.md`. Este documento sustituye al estado antiguo de PR #7; distingue código, pruebas automáticas y validación física.

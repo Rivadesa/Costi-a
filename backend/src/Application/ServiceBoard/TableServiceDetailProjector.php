@@ -17,6 +17,8 @@ final class TableServiceDetailProjector
             'id' => $service->id,
             'table_id' => $service->tableId,
             'pax' => $service->pax,
+            'occupancy_status' => $service->occupancy->value,
+            'lifecycle_review_required' => $service->lifecycleReviewRequired,
             'status' => $service->status->value,
             'opened_at' => $service->openedAt->format(DATE_ATOM),
             'menu' => $menu === null ? null : [

@@ -20,6 +20,7 @@ final class ServiceMutationExecutor
         private readonly TransactionManager $transactions,
         private readonly IdempotencyStore $idempotency,
         private readonly OutboxStore $outbox,
+        private readonly ?\Hospitality\Application\Contracts\AuditStore $audit = null,
     ) {
     }
 
@@ -75,6 +76,7 @@ final class ServiceMutationExecutor
             $this->services->save($service);
 
             foreach ($service->pullEvents() as $event) {
+                $this->audit?->append($context, $event);
                 $this->outbox->append(
                     $context->tenantId,
                     $context->companyId,

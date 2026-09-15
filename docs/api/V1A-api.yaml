@@ -1,3 +1,4 @@
+# D0 changes/superseding lifecycle routes: see D0-lifecycle.yaml. Legacy checkout close is blocked; old financial service statuses are not current.
 openapi: 3.1.0
 info:
   title: Hospitality OS V1A Local API

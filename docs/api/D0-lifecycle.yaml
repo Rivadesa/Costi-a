@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Hospitality D0 lifecycle supplement
+  version: d0-v2
+  description: >-
+    Supplements V1A-api.yaml. Reference PHP runtime only until .NET D1.
+    status is operational; financial axes are only returned under checkout.
+    Legacy POST checkout/services/{id}/close returns 409 without writes.
+servers:
+  - url: /api/v1
+security:
+  - LocalToken: []
+components:
+  securitySchemes:
+    LocalToken:
+      type: http
+      scheme: bearer
+  parameters:
+    ServiceId:
+      in: path
+      name: serviceId
+      required: true
+      schema: {type: string}
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: {type: string, minLength: 1}
+  requestBodies:
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: {type: string, minLength: 1, maxLength: 1000}
+  responses:
+    Success:
+      description: Confirmed command result; repeat key replays without duplicate audit/event.
+    Forbidden:
+      description: Server-side role does not grant required scope/permission.
+    Conflict:
+      description: Business, optimistic-version or idempotency conflict; no partial writes.
+    Validation:
+      description: Invalid or missing input/header.
+paths:
+  /services/{serviceId}/complete:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceId'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: completeOperationalService
+      summary: service.complete; ends pacing only, not account or occupancy
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Validation'}
+  /services/{serviceId}/release-table:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceId'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: releasePartyOccupancy
+      summary: table.release; requires ended service; keeps all account/history data
+      requestBody: {$ref: '#/components/requestBodies/Reason'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Validation'}
+  /services/{serviceId}/review-lifecycle:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceId'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: reviewAmbiguousLegacyLifecycle
+      summary: service.lifecycle.review; no automatic guessing from legacy payments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status: {type: string, enum: [open, in_service, paused]}
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Validation'}
+  /checkout/services/{serviceId}/close-account:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceId'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: closeProvisionalAccount
+      summary: account.close; exact zero balance only; does not end kitchen service
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Validation'}
+  /checkout/services/{serviceId}/reopen-account:
+    parameters:
+      - {$ref: '#/components/parameters/ServiceId'}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: reopenProvisionalAccount
+      summary: account.reopen; no fiscalized accounts are implemented in D0
+      requestBody: {$ref: '#/components/requestBodies/Reason'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Validation'}
+  /checkout/services:
+    get:
+      operationId: listOpenProvisionalAccounts
+      summary: payment.record; includes completed/released parties with unclosed accounts
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, maximum: 100000, default: 1}
+      responses:
+        '200':
+          description: data (up to 50 checkout projections), page, has_more
+        '403': {$ref: '#/components/responses/Forbidden'}

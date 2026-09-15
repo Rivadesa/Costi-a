@@ -13,6 +13,7 @@ use Hospitality\Domain\Service\CourseTemplate;
 use Hospitality\Domain\Service\Guest;
 use Hospitality\Domain\Service\MenuTemplate;
 use Hospitality\Domain\Service\Payment;
+use Hospitality\Domain\Service\OccupancyStatus;
 use Hospitality\Domain\Service\Restriction;
 use Hospitality\Domain\Service\RestrictionSeverity;
 use Hospitality\Domain\Service\RestrictionType;
@@ -74,6 +75,10 @@ final class LaravelTableServiceRepository implements TableServiceRepository
             $courses,
             $consumptions,
             $payments,
+            OccupancyStatus::from((string) $row->occupancy_status),
+            $this->dateTime($row->released_at),
+            $this->dateTime($row->account_closed_at),
+            (bool) $row->lifecycle_review_required,
         );
 
         $this->loadedVersions[$service] = (int) $row->version;
@@ -88,6 +93,18 @@ final class LaravelTableServiceRepository implements TableServiceRepository
     }
 
     public function save(TableService $service): void
+    {
+        try {
+            $this->persist($service);
+        } catch (\Illuminate\Database\QueryException $error) {
+            if ((string) $error->getCode() === '23505' && str_contains($error->getMessage(), 'table_services_one_occupant')) {
+                throw new ConcurrencyConflict('Another service already occupies this table.');
+            }
+            throw $error;
+        }
+    }
+
+    private function persist(TableService $service): void
     {
         $existing = DB::table('table_services')
             ->where('id', $service->id)
@@ -105,7 +122,7 @@ final class LaravelTableServiceRepository implements TableServiceRepository
         ];
 
         $startedAt = $meta['started_at'];
-        if ($startedAt === null && !in_array($service->status, [ServiceStatus::Prepared, ServiceStatus::Open], true)) {
+        if ($startedAt === null && in_array($service->status, [ServiceStatus::InService, ServiceStatus::Paused], true) && !$service->lifecycleReviewRequired) {
             $startedAt = $now;
         }
 
@@ -127,6 +144,10 @@ final class LaravelTableServiceRepository implements TableServiceRepository
                 'location_id' => $service->locationId,
                 'dining_table_id' => $service->tableId,
                 'status' => $service->status->value,
+                'occupancy_status' => $service->occupancy->value,
+                'released_at' => $service->releasedAt,
+                'account_closed_at' => $service->accountClosedAt,
+                'lifecycle_review_required' => $service->lifecycleReviewRequired,
                 'pax' => $service->pax,
                 'opened_at' => $service->openedAt,
                 'started_at' => $startedAt,
@@ -155,6 +176,10 @@ final class LaravelTableServiceRepository implements TableServiceRepository
                 ->update([
                     'dining_table_id' => $service->tableId,
                     'status' => $service->status->value,
+                'occupancy_status' => $service->occupancy->value,
+                'released_at' => $service->releasedAt,
+                'account_closed_at' => $service->accountClosedAt,
+                'lifecycle_review_required' => $service->lifecycleReviewRequired,
                     'pax' => $service->pax,
                     'started_at' => $startedAt,
                     'closed_at' => $closedAt,

@@ -23,7 +23,7 @@ final class LaravelActiveTableServiceRepository implements ActiveTableServiceRep
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('location_id', $locationId)
-            ->whereNotIn('status', ['closed', 'cancelled'])
+            ->where('occupancy_status', 'occupied')
             ->orderBy('opened_at')
             ->pluck('id');
 

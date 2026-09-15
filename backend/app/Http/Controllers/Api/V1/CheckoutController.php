@@ -75,10 +75,13 @@ final class CheckoutController
 
     public function close(Request $request, string $serviceId): JsonResponse
     {
-        return response()->json($this->commands->close(
-            $this->contexts->fromRequest($request),
-            $serviceId,
-            $this->contexts->idempotencyKey($request),
-        ));
+        return response()->json(['error' => 'lifecycle_upgrade_required',
+            'message' => 'Use separate complete, release-table and close-account actions.', 'retryable' => false], 409);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $data = $request->validate(['page' => ['sometimes', 'integer', 'min:1', 'max:100000']]);
+        return response()->json($this->queries->openAccounts($this->contexts->fromRequest($request), (int) ($data['page'] ?? 1)));
     }
 }

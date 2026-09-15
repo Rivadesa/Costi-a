@@ -18,6 +18,10 @@ final class CheckoutDetailProjector
             'table_id' => $service->tableId,
             'pax' => $service->pax,
             'status' => $service->status->value,
+            'occupancy_status' => $service->occupancy->value,
+            'settlement_status' => $service->settlementStatus()->value,
+            'account_closed_at' => $service->accountClosedAt?->format(DATE_ATOM),
+            'lifecycle_review_required' => $service->lifecycleReviewRequired,
             'opened_at' => $service->openedAt->format(DATE_ATOM),
             'menu' => $menu === null ? null : [
                 'id' => $menu->id,
@@ -45,7 +49,7 @@ final class CheckoutDetailProjector
             ], $service->payments()),
             'subtotal_cents' => $service->subtotalCents(),
             'paid_cents' => $service->paidCents(),
-            'balance_cents' => max(0, $service->subtotalCents() - $service->paidCents()),
+            'balance_cents' => $service->subtotalCents() - $service->paidCents(),
         ];
     }
 }
