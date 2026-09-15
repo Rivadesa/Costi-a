@@ -37,6 +37,7 @@ builder.Host.UseWindowsService(options=>options.ServiceName="Costina D1 Laborato
 builder.WebHost.ConfigureKestrel(options=> { options.Listen(IPAddress.Loopback,port); options.Limits.MaxRequestBodySize=32768; });
 builder.Services.AddSingleton(store);
 var app=builder.Build();
+app.UseRouting();
 app.Use(async (context,next)=>
 {
     context.Response.Headers.CacheControl="no-store";
@@ -51,12 +52,12 @@ app.Use(async (context,next)=>
         if(context.Request.Headers.Keys.Any(k=>new[]{"X-Tenant-Id","X-Company-Id","X-Location-Id"}.Contains(k,StringComparer.OrdinalIgnoreCase)))
             throw new ArgumentException("Scope is assigned by this server, not request headers.");
         context.Items["role"]=role;
-        var path=context.Request.Path.Value ?? "";
-        bool allowed=role=="main" || (!path.Contains("/checkout/",StringComparison.Ordinal) &&
-            !path.Contains("/occupancy/",StringComparison.Ordinal) &&
-            (HttpMethods.IsGet(context.Request.Method) || (role=="service" &&
-                !path.EndsWith("/complete",StringComparison.Ordinal) && !path.EndsWith("/cancel-unstarted",StringComparison.Ordinal)) ||
-                (role=="kitchen" && (path.EndsWith("/preparation-start",StringComparison.Ordinal) || path.EndsWith("/preparation-ready",StringComparison.Ordinal) || path.EndsWith("/ready",StringComparison.Ordinal)))));
+        var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
+        var action=context.Request.RouteValues["action"]?.ToString();
+        bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
+        if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method))
+            allowed &= action is "preparation-start" or "preparation-ready" or "ready";
+        if (role=="service" && action is "complete" or "cancel-unstarted") allowed=false;
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
         await next();
     }
@@ -84,7 +85,8 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     using var reader=new StreamReader(context.Request.Body);
     var body=await reader.ReadToEndAsync(context.RequestAborted);
     if(body.Length>32768) throw new ArgumentException("Request too large.");
-    var request=Wire.Decode<T>(body);
+    var request=JsonSerializer.Deserialize<T>(body,Wire.Json);
+    if(request is null) throw new ArgumentException("Empty command.");
     var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context.Request.Method+"\n"+context.Request.Path+"\n"+body)));
     var identity=Identity(context);
     var response=await store.ExecuteAsync(identity,context.Request.Headers["Idempotency-Key"].ToString(),fingerprint,
@@ -93,16 +95,16 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
 }
 const string prefix="/api/native/v1";
 app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.2.0-d1.1"}); });
-app.MapGet(prefix+"/board",async (HttpContext c)=>Json(await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted)));
+app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>Json(await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted)))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,d.Entity.View());},c.RequestAborted)));
+    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,d.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.View());},c.RequestAborted)));
-app.MapPost(prefix+"/services",(HttpContext c)=>Write<OpenRequest>(c,LocalOperations.Open));
+    {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/services",(Func<HttpContext,Task<IResult>>)(c=>Write<OpenRequest>(c,LocalOperations.Open))).WithMetadata(new RouteAccess("main","service"));
 app.MapPost(prefix+"/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
-    Write<DiningCommand>(c,(u,i,r)=>LocalOperations.Dining(u,i,id,action,r)));
+    Write<DiningCommand>(c,(u,i,r)=>LocalOperations.Dining(u,i,id,action,r))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
-    Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r)));
+    Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
-    Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r)));
+    Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
 await app.RunAsync();

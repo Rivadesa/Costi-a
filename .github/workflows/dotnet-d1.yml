@@ -46,6 +46,8 @@ jobs:
         run: dotnet run --project tests/Costina.PersistenceChecks -c Release --no-build
       - name: Exercise real HTTP PostgreSQL process restart and concurrency
         run: python3 tests/http/native_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: Verify endpoint authorization independent of URL casing
+        run: python3 tests/http/security_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Upload exact executed evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -53,6 +55,7 @@ jobs:
           name: d1-postgres-http-evidence
           path: |
             dotnet/d1-http-results.json
+            dotnet/d1-security-results.json
             dotnet/d1-http-server.log
             dotnet/d1-sdk.txt
           retention-days: 14
@@ -72,8 +75,15 @@ jobs:
         run: dotnet run --project tests/Costina.PersistenceChecks -c Release
       - name: Publish Windows service binary (not an installer)
         run: dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o ../../artifacts/d1-server
+      - name: Archive tracked source for reproducible handoff
+        run: git archive -o ../../artifacts/d1-source.zip HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: costina-d1-server-windows-engineering
           path: artifacts/d1-server/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1-source
+          path: artifacts/d1-source.zip
           retention-days: 14
