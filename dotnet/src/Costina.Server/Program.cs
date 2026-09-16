@@ -37,6 +37,7 @@ builder.Host.UseWindowsService(options=>options.ServiceName="Costina D1 Laborato
 builder.WebHost.ConfigureKestrel(options=> { options.Listen(IPAddress.Loopback,port); options.Limits.MaxRequestBodySize=32768; });
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(source);
+builder.Services.AddSingleton(scope);
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
