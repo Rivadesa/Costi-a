@@ -5,7 +5,8 @@ namespace Costina.Server;
 
 public sealed record OpenRequest(string TableId,int Pax,string MenuId);
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
-    int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null);
+    int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
+    string? Decision=null,string? Note=null);
 public sealed record AccountCommand(long ExpectedVersion,string? ProductId=null,int Quantity=1,string? PaymentId=null,
     string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
@@ -65,7 +66,8 @@ public static class LocalOperations
                 ParseEnum<RestrictionKind>(request.Kind),Required(request.Substance),
                 ParseEnum<RestrictionSeverity>(request.Severity),stamp); break;
             case "remove-restriction": entity.RemoveRestriction(Required(request.RestrictionId),Required(request.Reason),stamp); break;
-            case "acknowledge-restrictions": entity.AcknowledgeRestrictions(stamp); break;
+            case "review-preparation": entity.ReviewPreparation(Required(request.CourseId),Required(request.ItemId),
+                ParseEnum<ReviewDecision>(request.Decision),Required(request.Note),stamp); break;
             default: throw new StoreNotFound();
         }
         await unit.Save(entity,stored.Version);

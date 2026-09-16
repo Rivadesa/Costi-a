@@ -36,7 +36,7 @@ public sealed partial class DiningService : Aggregate
     {
         Check(stamp);
         Guard.Rule(State == DiningState.InService, "service_not_running", "Service must be running to fire a course.");
-        Guard.Rule(!restrictionsPendingAck, "restrictions_unacknowledged", "Kitchen must acknowledge the restriction change before firing more work.");
+        Guard.Rule(!RestrictionsPendingAck, "restrictions_unreviewed", "Kitchen must review every affected preparation before firing more work.");
         Guard.Rule(!courses.Any(c => c.Active), "active_course", "Another course is still active.");
         var course = courses.FirstOrDefault(c => c.State == CourseState.Pending)
             ?? throw new RuleViolation("no_pending_course", "There are no pending courses.");
@@ -62,7 +62,6 @@ public sealed partial class DiningService : Aggregate
     public void ValidateReady(string courseId, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Guard.Rule(!restrictionsPendingAck, "restrictions_unacknowledged", "Kitchen must acknowledge the restriction change before validating a course.");
         Find(courseId).ValidateReady(stamp);
         Emit("course.ready", stamp, ("course_id", courseId));
     }
@@ -70,7 +69,6 @@ public sealed partial class DiningService : Aggregate
     public void Serve(string courseId, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Guard.Rule(!restrictionsPendingAck, "restrictions_unacknowledged", "Kitchen must acknowledge the restriction change before serving.");
         Find(courseId).Serve(stamp);
         Emit("course.served", stamp, ("course_id", courseId));
     }
@@ -123,7 +121,7 @@ public sealed partial class DiningService : Aggregate
 
     public DiningView View() => new(Id, TableId, Pax, State,
         Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: restrictionsPendingAck);
+        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck);
     private CourseExecution Find(string id) => courses.FirstOrDefault(c => c.Id == id)
         ?? throw new RuleViolation("course_not_found", "Course not found.");
     private void KitchenAllowed(CommandStamp stamp)

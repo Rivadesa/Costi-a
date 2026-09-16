@@ -17,7 +17,8 @@ PRs nativas integradas en `develop` (merge `0ae4e71`, 2026-09-16, y posteriores)
 - D3.2 (issue #25, corte 2): restricciones por comensal estructuradas con severidad, proyectadas por elaboración, y protocolo de acuse de cocina que bloquea validar/servir/disparar hasta el reconocimiento. Ver `docs/native/D3.2-guest-restrictions.md`.
 - D3.3 (issue #25, corte 3): la orden incierta del cliente persiste cifrada (DPAPI) y sobrevive cierres forzados; al reconectar se restaura y solo admite el reintento idéntico. Ver `docs/native/D3.3-durable-pending.md` y el CI de su PR.
 - PR #34: guía del laboratorio de ingeniería en Windows (`docs/native/lab-engineering.md`).
-- D3.4 (corte correctivo tras la revisión externa `docs/reviews/2026-09-16-revision-seguridad-funcionamiento.md`): contexto de comando inmutable en WPF (F01), fallo cerrado y conciliación asistida ante un pendiente ilegible sin destruir evidencia (F02), almacén durable aislado por instalación/ámbito/rol/ventana (F03), rechazos definitivos solo con eco de la clave y código reconocible (F04), versión única `0.7.0-d3.4` desde los csproj (F08). Ver `docs/native/D3.4-client-hardening.md` y el CI de su PR. **Requiere repetir `init-lab` una vez** (tabla `native_d1.installation`).
+- D3.4 (corte correctivo tras la revisión externa `docs/reviews/2026-09-16-revision-seguridad-funcionamiento.md`): contexto de comando inmutable en WPF (F01), fallo cerrado y conciliación asistida ante un pendiente ilegible sin destruir evidencia (F02), almacén durable aislado por instalación/ámbito/rol/ventana (F03), rechazos definitivos solo con eco de la clave y código reconocible (F04), versión única `0.7.0-d3.4` desde los csproj (F08). Ver `docs/native/D3.4-client-hardening.md` y el CI de su PR. **Requiere repetir `init-lab` una vez** (tabla `native_d1.installation`). PR #35.
+- D3.5 (issue #36, F05): reconocer un cambio de restricción obliga a revisar cada elaboración enviada afectada y decidir (no afecta / adaptar / rehacer, con nota); `remake` retira la validación del pase. Ver `docs/native/D3.5-restriction-review.md` y el CI de su PR.
 
 Evidencia ejecutada sobre el estado integrado hasta D3.3 (todas en verde):
 
@@ -33,7 +34,7 @@ Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio 
 ## Hoja de ruta y pendientes
 
 - #25 completa con D3.1–D3.3 (+ D3.4 correctivo); **pendiente de cierre con evidencia física**: guiones manuales de D3.2, D3.3 y D3.4 en el laboratorio (los ejecuta el equipo de laboratorio).
-- Hallazgos de la revisión externa aún abiertos: **F05** (reconocer un cambio de restricción no revalida un pase ya listo — decisión de producto con cocina antes de implementar), **F06** (identidades y transporte de laboratorio → cubierto por #26 y #27), **F07** (cuentas cerradas anticipadamente y créditos sin devolución — decisión de producto). Deuda de mantenimiento señalada: lock de dependencias (#13), protección efectiva de ramas, audiencia explícita por tipo de evento, N+1 en `Board()`.
+- Hallazgos de la revisión externa: **F05** → D3.5 (#36); **F07** → #37 (cuentas cerradas anticipadamente admiten reapertura auditada y devoluciones desde el PC principal; los comanderos solo marcan platos y consumos); **F06** (identidades y transporte de laboratorio) → #26 y #27. Deuda de mantenimiento señalada: lock de dependencias (#13), protección efectiva de ramas, audiencia explícita por tipo de evento, N+1 en `Board()`.
 - Siguientes hitos: #26 identidad (usuarios, dispositivos, QR, tokens; retirada de `COSTINA_KEY_*`), #27 empaquetado, #28 PWA; #24 (realtime) cubierto por D2.
 - PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
 
@@ -42,7 +43,7 @@ Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio 
 1. Vinculación segura de dispositivos y permisos por estación (#26): un perfil `main` no autoriza físicamente al equipo principal.
 2. Servidor Windows como servicio, TLS local, LAN, backups/restauración, observabilidad y actualización/rollback (#27).
 3. Comanderos y KDS en tablets/móviles (#28) y pruebas físicas de latencia/concurrencia.
-4. Decisiones de producto F05 y F07 traducidas a dominio y tests.
+4. F07 (#37) traducido a dominio y tests (F05 cubierto por D3.5).
 5. Administración editable de mesas, estaciones y menús (hoy fixtures de laboratorio).
 6. Migración/integración del legado (#17) con datos reales; no cargar datos reales sobre fixtures.
 

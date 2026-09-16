@@ -34,7 +34,7 @@ class DesktopReadChecks(unittest.TestCase):
             data=h.ok('/session',role=role)
             self.assertRegex(data['installationId'],r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
             ids.add(data['installationId'])
-            self.assertTrue(data['serverVersion'].startswith('0.7.0-d3.4'),data['serverVersion'])
+            self.assertTrue(data['serverVersion'].startswith('0.8.0-d3.5'),data['serverVersion'])
         self.assertEqual(1,len(ids))
         h.stop_server();h.start_server()
         self.assertEqual(ids.pop(),h.ok('/session')['installationId'])

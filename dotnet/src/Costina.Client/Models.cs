@@ -22,11 +22,18 @@ public sealed record GuestRestrictionDto(string Id, int? GuestPosition, string K
     public string GuestLabel => GuestPosition is null ? "Mesa" : "Comensal " + GuestPosition;
     public override string ToString() => $"{GuestLabel} · {KindLabel} {Substance} ({SeverityLabel})";
 }
+// Decision de cocina sobre una elaboracion tras un cambio de restriccion (D3.5): siempre con texto.
+public sealed record PreparationReviewDto(string Decision, string Note, DateTimeOffset At)
+{
+    public string Label => Decision switch { "Unaffected" => "no afecta", "Adapt" => "adaptada", "Remake" => "rehecha", _ => Decision };
+}
 public sealed record PreparationDto(string Id, string Name, string StationId, int Quantity, int? GuestPosition, bool Mandatory, string State,
-    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null)
+    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null, bool ReviewPending = false, PreparationReviewDto? Review = null)
 {
     public string RestrictionsText => Restrictions is null or [] ? ""
         : string.Join("  ·  ", Restrictions.Select(r => $"⚠ {r.KindLabel} {r.Substance} ({r.SeverityLabel})"));
+    public string ReviewText => ReviewPending ? "⚠ PENDIENTE DE REVISIÓN"
+        : Review is null ? "" : $"{Review.Label}: {Review.Note}";
 }
 public sealed record CourseDto(string Id, string Name, string State, DateTimeOffset? FiredAt,
     DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt, string? SkipReason, PreparationDto[] Preparations,

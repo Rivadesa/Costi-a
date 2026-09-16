@@ -16,7 +16,7 @@ public sealed partial class DiningService
 {
     public DiningSnapshot Snapshot() => new(Id, Scope, TableId, Pax, State, StartedAt,
         CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        restrictions.AsReadOnly(), restrictionsPendingAck);
+        restrictions.AsReadOnly(), RestrictionsPendingAck);
 
     public static DiningService Restore(DiningSnapshot value)
     {
@@ -55,7 +55,11 @@ public sealed partial class DiningService
         Guard.Rule(!value.RestrictionsPendingAck
             || value.State is DiningState.InService or DiningState.Paused,
             "invalid_snapshot", "Pending acknowledgement requires an active service.");
-        result.restrictionsPendingAck = value.RestrictionsPendingAck;
+        // Compatibilidad D3.2: un payload con acuse global pendiente pero sin marcas por elaboracion
+        // (anterior a D3.5) deja pendientes TODAS las elaboraciones del pase enviado: revisar de mas
+        // es seguro; dar por revisado lo que nadie decidio, no.
+        if (value.RestrictionsPendingAck && !result.courses.Any(c => c.ReviewPending))
+            foreach (var course in result.courses) course.FlagForReview(_ => true);
         result.State = value.State; result.StartedAt = value.StartedAt; result.CompletedAt = value.CompletedAt;
         return result;
     }
@@ -69,12 +73,17 @@ internal sealed partial class CourseExecution
         var result = new CourseExecution(new CourseDefinition(value.Id, value.Name,
             value.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
                 p.Quantity, p.GuestPosition, p.Mandatory)).ToArray()), pax);
+        var fired = value.State is CourseState.Fired or CourseState.Preparing or CourseState.Ready or CourseState.Served;
         foreach (var item in value.Preparations)
         {
             Guard.Rule(Enum.IsDefined(item.State), "invalid_snapshot", "Unknown preparation state.");
-            result.Find(item.Id).State = item.State;
+            Guard.Rule(!item.ReviewPending || (fired && value.State != CourseState.Served),
+                "invalid_snapshot", "Review pending on a preparation that is not in the kitchen.");
+            Guard.Rule(item.Review is null || (Enum.IsDefined(item.Review.Decision) && !string.IsNullOrWhiteSpace(item.Review.Note)),
+                "invalid_snapshot", "Malformed persisted preparation review.");
+            var preparation = result.Find(item.Id);
+            preparation.State = item.State; preparation.ReviewPending = item.ReviewPending; preparation.Review = item.Review;
         }
-        var fired = value.State is CourseState.Fired or CourseState.Preparing or CourseState.Ready or CourseState.Served;
         var ready = value.State is CourseState.Ready or CourseState.Served;
         Guard.Rule(fired == value.FiredAt.HasValue && ready == value.ReadyAt.HasValue &&
             (value.State == CourseState.Served) == value.ServedAt.HasValue,

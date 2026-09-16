@@ -34,6 +34,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string restrictionKind = "allergy";
     [ObservableProperty] private string restrictionSubstance = "";
     [ObservableProperty] private string restrictionSeverity = "severe";
+    [ObservableProperty] private string reviewNote = "";
     [ObservableProperty] private string serviceTitle = "Selecciona una mesa";
 
     // Contexto inmutable de un comando: identidad y version de la MISMA entidad leida correctamente,
@@ -45,10 +46,11 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private bool Allowed(string action) => action switch
     {
         "start" or "fire-next" or "pause" or "resume" or "complete" or "cancel-unstarted"
-        or "declare-restriction" or "remove-restriction" or "acknowledge-restrictions"
+        or "declare-restriction" or "remove-restriction"
             => Context?.Data.Actions?.Contains(action) == true,
         "ready" or "serve" or "skip" => Context is not null && SelectedCourse?.Actions?.Contains(action) == true,
-        "preparation-start" or "preparation-ready" => Context is not null && SelectedPreparation?.Actions?.Contains(action) == true,
+        "preparation-start" or "preparation-ready" or "review-preparation"
+            => Context is not null && SelectedPreparation?.Actions?.Contains(action) == true,
         "release" => Context is not null && SelectedEntry?.Occupancy.Actions?.Contains(action) == true,
         _ => false
     };
@@ -58,7 +60,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     {
         ActCommand.NotifyCanExecuteChanged(); OpenCommand.NotifyCanExecuteChanged();
         ReleaseCommand.NotifyCanExecuteChanged(); DeclareRestrictionCommand.NotifyCanExecuteChanged();
-        RemoveRestrictionCommand.NotifyCanExecuteChanged(); AcknowledgeCommand.NotifyCanExecuteChanged();
+        RemoveRestrictionCommand.NotifyCanExecuteChanged(); ReviewCommand.NotifyCanExecuteChanged();
     }
 
     internal void ApplyConfiguration(Configuration config)
@@ -88,7 +90,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         try
         {
             Dining = null; Courses = []; SelectedCourse = null; Preparations = []; SelectedPreparation = null;
-            Restrictions = []; SelectedRestriction = null; RestrictionsPendingAck = false; RestrictionSubstance = "";
+            Restrictions = []; SelectedRestriction = null; RestrictionsPendingAck = false; RestrictionSubstance = ""; ReviewNote = "";
             ServiceTitle = "Lectura pendiente: sin datos fiables de la mesa seleccionada.";
         }
         finally { rendering = wasRendering; }
@@ -225,15 +227,20 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         shell.Status = "Operación confirmada por el servidor: restricción retirada.";
     });
 
-    private bool CanAcknowledge() => shell.Writable && Allowed("acknowledge-restrictions");
-    [RelayCommand(CanExecute = nameof(CanAcknowledge))]
-    private Task Acknowledge() => shell.Run(async () =>
+    // Revision por elaboracion (D3.5): cocina decide que pasa con ESE plato; la nota es obligatoria.
+    private bool CanReview(string? decision) => decision is not null && CanAction("review-preparation");
+    [RelayCommand(CanExecute = nameof(CanReview))]
+    private Task Review(string decision) => shell.Run(async () =>
     {
         var context = Require();
-        await shell.Api!.SendAsync("services/" + ApiClient.Segment(context.Data.Id) + "/commands/acknowledge-restrictions",
-            new { expectedVersion = context.Version }, "Cocina reconoce el cambio de restricciones · " + context.Data.TableId);
+        var preparation = SelectedPreparation ?? throw new InvalidOperationException("Selecciona la elaboración a revisar.");
+        if (string.IsNullOrWhiteSpace(ReviewNote)) throw new ArgumentException("Indica qué se ha revisado o cambiado (nota obligatoria).");
+        await shell.Api!.SendAsync("services/" + ApiClient.Segment(context.Data.Id) + "/commands/review-preparation",
+            new { expectedVersion = context.Version, courseId = SelectedCourse?.Id, itemId = preparation.Id, decision, note = ReviewNote.Trim() },
+            "Revisión de cocina (" + decision + ") · " + preparation.Name + " · " + context.Data.TableId);
+        ReviewNote = "";
         await shell.RefreshAll();
-        shell.Status = "Cocina ha reconocido el cambio de restricciones.";
+        shell.Status = "Cocina ha registrado su decisión sobre " + preparation.Name + ": " + decision + ".";
     });
 
     private bool CanRelease() => shell.Writable && Allowed("release");
