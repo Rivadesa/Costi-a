@@ -13,13 +13,34 @@ public sealed class ApiError(int status, string code) : Exception($"HTTP {status
 }
 public sealed record PendingCommand(string Key, string Path, string Body, string Description);
 
-// One uncertain command at a time. In this cut it survives connection loss, not process shutdown.
+// Cola durable minima: exactamente UNA orden incierta, persistida fuera del proceso.
+// La implementacion decide cifrado y ubicacion; esta biblioteca solo define el contrato.
+// Nunca se persisten la clave de acceso ni credenciales: solo el comando y su Idempotency-Key.
+public interface IPendingStore
+{
+    void Save(PendingCommand command);
+    PendingCommand? Load();
+    void Clear();
+}
+
+// One uncertain command at a time; with an attached store it survives process shutdown.
 // No financial/domain rules or database driver are present in this library.
 public sealed class ApiClient : IDisposable
 {
     private readonly HttpClient http;
     private readonly SemaphoreSlim mutation = new(1, 1);
+    private IPendingStore? store;
     public PendingCommand? Pending { get; private set; }
+
+    // Se llama tras autenticar (cuando ya se conoce el rol que identifica el fichero).
+    // Si hay una orden persistida de una sesion anterior, queda restaurada y bloquea
+    // nuevas mutaciones hasta reintentarla identica o recibir un rechazo explicito.
+    public void AttachPendingStore(IPendingStore pendingStore)
+    {
+        store = pendingStore;
+        if (Pending is not null) { store.Save(Pending); return; }
+        Pending = store.Load();
+    }
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
     public ApiClient(Uri endpoint, string key, HttpMessageHandler? handler = null)
     {
@@ -52,6 +73,7 @@ public sealed class ApiClient : IDisposable
         {
             if (Pending is not null) throw new InvalidOperationException("Resuelve primero la orden sin confirmar.");
             Pending = new(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
+            store?.Save(Pending); // durable ANTES del primer intento: un cierre forzado no la pierde
             return await Attempt();
         }
         finally { mutation.Release(); }
@@ -75,12 +97,12 @@ public sealed class ApiClient : IDisposable
         using var response = await http.SendAsync(request);
         // Only explicit rejection statuses from the application resolve the uncertainty.
         // Authentication changes, redirects, gateways and malformed responses retain the exact command.
-        if ((int)response.StatusCode is 403 or 404 or 409 or 422) Pending = null;
+        if ((int)response.StatusCode is 403 or 404 or 409 or 422) { Pending = null; store?.Clear(); }
         await Check(response);
         var data = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), Json);
         if (data.ValueKind != JsonValueKind.Object || (!data.TryGetProperty("version", out _) && !data.TryGetProperty("serviceId", out _)))
             throw new JsonException("Respuesta de comando no reconocida; conserva el mismo reintento.");
-        Pending = null;
+        Pending = null; store?.Clear();
         return data;
     }
     private static async Task Check(HttpResponseMessage response)

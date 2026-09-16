@@ -30,10 +30,12 @@ public partial class MainWindow : Window
 
     private void WindowClosing(object? sender, CancelEventArgs e)
     {
-        if (shell.Busy || shell.HasPending)
+        // Una peticion en vuelo sigue bloqueando el cierre; una orden pendiente ya NO:
+        // esta persistida cifrada y se recupera al reconectar (cola durable D3.3).
+        if (shell.Busy)
         {
             e.Cancel = true;
-            shell.Status = "Hay una operación en curso o sin confirmar. Comprueba/reintenta antes de cerrar. Un cierre forzado pierde el reintento de esta sesión.";
+            shell.Status = "Hay una operación en curso. Espera a que termine antes de cerrar.";
             return;
         }
         shell.DisposeConnections();
