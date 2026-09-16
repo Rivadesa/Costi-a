@@ -4,7 +4,7 @@ Read root instructions, ADR-008/009, docs/native/D1-postgres-api.md and docs/nat
 
 D1.2 adds a real WPF client, a typed HTTP library and four authenticated read endpoints. Operational DTOs/configuration contain no money. Checkout is separate and server-authorized, including read APIs and main-only UI. Never treat a client profile as authorization or accept client prices for normal catalogue sales. Keep service, occupancy and settlement independent.
 
-D1 restrictions remain: isolated *_d1_lab/*_d1_test database, loopback HTTP, explicit random role keys, no production identities/device pairing or complete allergy handling. Normal startup never migrates or seeds. No migration of real data is implied. Root onboarding still describes the legacy branch until native PRs are integrated.
+D1 restrictions remain: isolated *_d1_lab/*_d1_test database, loopback HTTP, explicit random role keys, no production identities/device pairing or complete allergy handling. Normal startup never migrates or seeds. No migration of real data is implied. PRs #19–#22 are integrated in `develop` (merge `0ae4e71`); root `AGENTS.md` and `docs/STATUS.md` describe both stacks, with the legacy runtime frozen.
 
 Compile the desktop and run tests/Costina.ClientChecks and tests/Costina.DesktopChecks on Windows; the latter instantiates a real window but does not claim a live end-to-end backend service. Run prior D0 acceptance, snapshot tests and HTTP tests including desktop_reads.py against PostgreSQL. Every write retains audit/outbox/idempotency in one transaction.
 

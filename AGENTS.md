@@ -10,20 +10,19 @@ This repository is maintained by humans and AI assistants. Treat repository docu
 4. `docs/PRODUCT_SCOPE.md`
 5. `docs/ARCHITECTURE.md`
 6. `docs/DOMAIN_MODEL.md`
-7. relevant ADRs, especially `ADR-007-service-control-vs-checkout.md` for any UI/account work
+7. relevant ADRs, especially `ADR-008-windows-native-transition.md`, `ADR-009-independent-lifecycles.md` and `ADR-007-service-control-vs-checkout.md` for any UI/account work
+8. `dotnet/AGENTS.md` before touching anything under `dotnet/`
 
 ## Current product priority
 
-V1A fine-dining service orchestration. Do not broaden the MVP to inventory, full reservations, ecommerce, fiscal engine or hotel unless the issue explicitly belongs to a later phase or only a boundary is being prepared.
+Native .NET transition (ADR-008) toward the first real fine-dining service: dining room + kitchen + account + basic catalog. Milestone issues #24–#28. Do not broaden to inventory, purchases, vouchers, fiscal engine, TheFork, WooCommerce or hotel unless the issue explicitly belongs to a later phase or only a boundary is being prepared.
 
 ## Non-negotiable architecture
 
 Unless superseded by ADR:
 - local-primary restaurant server;
-- Laravel + PostgreSQL + Redis backend;
-- Vue 3 clients;
-- Tauri desktop on Windows;
-- PWA possible for waiter/KDS;
+- new native engine (ADR-008): C#/.NET server as a Windows service, PostgreSQL, WPF main client, Vue/TypeScript PWA for tablets/phones/KDS; no Docker/Redis/WSL as restaurant runtime;
+- legacy runtime (ADR-002/003, frozen): Laravel + PostgreSQL + Redis backend, Vue 3 clients, Tauri desktop — do not extend, migrate or delete it until the native engine replaces it with executed proof, and never write to its database from the native engine;
 - modular monolith;
 - transactional outbox;
 - no multi-master cloud/local;
