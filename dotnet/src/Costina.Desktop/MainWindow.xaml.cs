@@ -7,16 +7,18 @@ using Costina.Client;
 namespace Costina.Desktop;
 
 // This bounded first UI contains presentation handlers only; all commands are authorized by the server.
-// Read refresh is manual to avoid interrupting selection/editing during the laboratory test.
+// Realtime notices and reconnections only queue the same authoritative HTTP re-read that the
+// manual button triggers; state is never taken from the channel and duplicates are harmless.
 public partial class MainWindow : Window
 {
     private ApiClient? api;
+    private RealtimeSubscription? realtime;
     private SessionInfo? session;
     private BoardEntry[] board = [];
     private Versioned<DiningDto>? dining;
     private Versioned<AccountDto>? account;
     private string? serviceId, accountServiceId;
-    private bool busy, rendering;
+    private bool busy, rendering, refreshQueued;
     private bool Main => session?.Role == "main";
     private bool Sala => session?.Role is "main" or "service";
     private bool Kitchen => session?.Role is "main" or "kitchen";
@@ -37,7 +39,22 @@ public partial class MainWindow : Window
                 _ => "No se pudo interpretar la respuesta. Comprueba la versión y actualiza; no dupliques la orden."
             };
         }
-        finally { busy = false; Controls(); }
+        finally
+        {
+            busy = false; Controls();
+            if (refreshQueued && api is not null)
+            {
+                refreshQueued = false;
+                _ = Dispatcher.BeginInvoke(async () => await Run(Refresh));
+            }
+        }
+    }
+    // Coalesce: los avisos que llegan durante una operación no la interrumpen; se relee una vez al terminar.
+    private void QueueRefresh()
+    {
+        if (api is null) return;
+        if (busy) { refreshQueued = true; return; }
+        _ = Run(Refresh);
     }
     private void Controls()
     {
@@ -78,11 +95,13 @@ public partial class MainWindow : Window
     {
         if (!Uri.TryCreate(Endpoint.Text.Trim(), UriKind.Absolute, out var uri)) throw new ArgumentException("Dirección no válida.");
         var candidate = new ApiClient(uri, AccessKey.Password);
+        var key = AccessKey.Password;
         try
         {
             var identity = await candidate.GetAsync<SessionInfo>("session");
             var config = await candidate.GetAsync<Configuration>("configuration");
             api = candidate; session = identity;
+            await StartRealtime(uri, key);
             rendering = true;
             try { TableSelect.ItemsSource = config.Tables; TableSelect.SelectedIndex = 0; MenuSelect.ItemsSource = config.Menus; MenuSelect.SelectedIndex = 0; }
             finally { rendering = false; }
@@ -91,8 +110,32 @@ public partial class MainWindow : Window
         }
         catch { if (api == candidate) Reset(); else candidate.Dispose(); throw; }
     }
+    // Fallo del canal = degradación, no error: el refresco manual sigue siendo el respaldo.
+    private async Task StartRealtime(Uri uri, string key)
+    {
+        try
+        {
+            realtime = new RealtimeSubscription(uri, key);
+            realtime.Notified += _ => Dispatcher.BeginInvoke(QueueRefresh);
+            realtime.Reconnected += () => Dispatcher.BeginInvoke(QueueRefresh);
+            realtime.StateChanged += state => Dispatcher.BeginInvoke(() => RealtimeState.Text = state switch
+            {
+                "connected" => "Tiempo real activo: los cambios de otros puestos aparecen sin pulsar Actualizar.",
+                "reconnecting" => "Tiempo real reconectando. Los datos pueden estar desactualizados.",
+                _ => "Tiempo real desconectado. Usa Actualizar; los datos no se refrescan solos."
+            });
+            await realtime.StartAsync();
+        }
+        catch
+        {
+            _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null;
+            RealtimeState.Text = "Tiempo real no disponible en este servidor. Usa el botón Actualizar.";
+        }
+    }
     private void Reset()
     {
+        _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false;
+        RealtimeState.Text = "Tiempo real inactivo.";
         api?.Dispose(); api = null; session = null; dining = null; account = null; board = [];
         serviceId = accountServiceId = null; rendering = true;
         try {
@@ -123,7 +166,7 @@ public partial class MainWindow : Window
             UpdatePreparations();
         } finally { rendering = false; }
         if (Main && Tabs.SelectedItem == CheckoutTab) await RefreshAccount();
-        ReadTime.Text = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss}. Pulsa Actualizar para ver acciones de otros puestos.";
+        ReadTime.Text = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
     }
     private void UpdatePreparations()
     {
@@ -212,6 +255,7 @@ public partial class MainWindow : Window
     private void WindowClosing(object? sender, CancelEventArgs e)
     {
         if (busy || api?.Pending is not null) { e.Cancel = true; Status.Text = "Hay una operación en curso o sin confirmar. Comprueba/reintenta antes de cerrar. Un cierre forzado pierde el reintento de esta sesión."; return; }
+        _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask);
         api?.Dispose();
     }
 }
