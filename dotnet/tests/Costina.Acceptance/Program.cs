@@ -334,14 +334,14 @@ internal static class Program
         });
         Test("account affordances follow balance and lifecycle", () => {
             var account = Account();
-            var view = account.ViewWithActions();
-            True(view.Actions!.Contains("add-product") && view.Actions.Contains("payment") && view.Actions.Contains("void-charge"));
-            True(!view.Actions.Contains("close")); Equal(1, view.VoidableChargeIds!.Count);
+            var view = account.ViewWithActions(); var actions = view.Actions!;
+            True(actions.Contains("add-product") && actions.Contains("payment") && actions.Contains("void-charge"));
+            True(!actions.Contains("close")); Equal(1, view.VoidableChargeIds!.Count);
             account.RecordPayment("p", "card", 30000, Stamp);
             True(account.ViewWithActions().Actions!.Contains("close"));
             account.VoidCharge("menus", "x", Stamp);
-            view = account.ViewWithActions();
-            True(!view.Actions!.Contains("close") && !view.Actions.Contains("void-charge") && view.VoidableChargeIds!.Count == 0);
+            view = account.ViewWithActions(); actions = view.Actions!;
+            True(!actions.Contains("close") && !actions.Contains("void-charge") && view.VoidableChargeIds!.Count == 0);
             account.AddCharge("l2", "Reequilibrio", 1, 30000, Stamp); account.Close(Stamp);
             Equal(0, account.ViewWithActions().Actions!.Count);
         });
