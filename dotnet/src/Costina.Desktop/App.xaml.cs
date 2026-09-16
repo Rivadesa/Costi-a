@@ -3,18 +3,16 @@ using System.Windows.Controls;
 namespace Costina.Desktop;
 public partial class App : Application
 {
+    // Test hosts own the window lifetime. This changes presentation startup, never API authorization.
+    public bool CreateDefaultWindow { get; set; } = true;
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Test hosts may deliberately own the window lifecycle. Standard manual connection still works.
-        if (StartupUri is not null && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COSTINA_DESKTOP_URL")))
-        {
-            StartupUri = null;
-            var window = new MainWindow();
-            ApplyTrialConnection(window);
-            MainWindow = window;
-            window.Show();
-        }
         base.OnStartup(e);
+        if (!CreateDefaultWindow) return;
+        var window = new MainWindow();
+        ApplyTrialConnection(window);
+        MainWindow = window;
+        window.Show();
     }
     public static void ApplyTrialConnection(MainWindow window)
     {

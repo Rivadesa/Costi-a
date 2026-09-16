@@ -36,7 +36,7 @@ Section "Aplicación y motor de ensayo"
  WriteUninstaller "$INSTDIR\Uninstall.exe"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CostinaTrialD13" "DisplayName" "Costina - Ensayo nativo D1.3"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CostinaTrialD13" "DisplayVersion" "0.2.1"
- WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CostinaTrialD13" "UninstallString" '$"$INSTDIR\Uninstall.exe$"'
+ WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CostinaTrialD13" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CostinaTrialD13" "Publisher" "Xeitoso (build de ensayo sin firma)"
 SectionEnd
 Section "Uninstall"

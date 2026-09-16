@@ -24,7 +24,7 @@ internal static class Program
         if(args.Length!=2 || Environment.GetEnvironmentVariable("GITHUB_ACTIONS")!="true")
             throw new InvalidOperationException("Installation integration checks run only in an isolated Windows CI runner.");
         output=Path.GetFullPath(args[1]);Directory.CreateDirectory(output);
-        var app=new App();app.InitializeComponent();app.StartupUri=null;app.ShutdownMode=ShutdownMode.OnExplicitShutdown;
+        var app=new App { CreateDefaultWindow=false };app.InitializeComponent();app.ShutdownMode=ShutdownMode.OnExplicitShutdown;
         var result=1;
         app.Startup+=async (_,_)=>{
             try {await Run(Path.GetFullPath(args[0]));result=0;}
