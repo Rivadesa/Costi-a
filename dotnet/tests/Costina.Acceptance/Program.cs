@@ -289,6 +289,70 @@ internal static class Program
         Test("negative legacy accounting requires reconciliation instead of truncation", () => {
             Throws<ArgumentException>(() => LegacyLifecyclePlanner.Plan(new("s", "open", false, false, [], -1, 0)));
         });
+        Test("advertised affordances are exactly the executable actions in every stage", () => {
+            bool Try(Action attempt) { try { attempt(); return true; } catch (RuleViolation) { return false; } }
+            void Consistent(bool advertised, bool executable, string label)
+            { if (advertised != executable) throw new Exception($"Affordance mismatch: {label} advertised={advertised} executable={executable}"); }
+            var serviceCatalog = new Dictionary<string, Action<DiningService>> {
+                ["start"] = s => s.Start(Stamp), ["fire-next"] = s => s.FireNext(Stamp),
+                ["pause"] = s => s.Pause("x", Stamp), ["resume"] = s => s.Resume(Stamp),
+                ["complete"] = s => s.Complete(Stamp), ["cancel-unstarted"] = s => s.CancelUnstarted("x", Stamp) };
+            var courseCatalog = new Dictionary<string, Action<DiningService>> {
+                ["ready"] = s => s.ValidateReady("course-1", Stamp), ["serve"] = s => s.Serve("course-1", Stamp),
+                ["skip"] = s => s.Skip("course-1", "x", Stamp) };
+            var prepCatalog = new Dictionary<string, Action<DiningService>> {
+                ["preparation-start"] = s => s.StartPreparation("course-1", "fish", Stamp),
+                ["preparation-ready"] = s => s.ReadyPreparation("course-1", "fish", Stamp) };
+            var stages = new (string Name, Action<DiningService> Build)[] {
+                ("open", _ => { }),
+                ("started", s => s.Start(Stamp)),
+                ("fired", s => { s.Start(Stamp); s.FireNext(Stamp); }),
+                ("preparing", s => { s.Start(Stamp); s.FireNext(Stamp); s.StartPreparation("course-1", "fish", Stamp); }),
+                ("mandatory-ready", s => { s.Start(Stamp); s.FireNext(Stamp); s.ReadyPreparation("course-1", "fish", Stamp); s.ReadyPreparation("course-1", "sauce", Stamp); }),
+                ("course-ready", s => { s.Start(Stamp); s.FireNext(Stamp); s.ReadyPreparation("course-1", "fish", Stamp); s.ReadyPreparation("course-1", "sauce", Stamp); s.ValidateReady("course-1", Stamp); }),
+                ("paused-fired", s => { s.Start(Stamp); s.FireNext(Stamp); s.Pause("x", Stamp); }),
+                ("first-served", s => { s.Start(Stamp); ServeCurrent(s, s.FireNext(Stamp)); }),
+                ("all-served", s => { s.Start(Stamp); ServeCurrent(s, s.FireNext(Stamp)); ServeCurrent(s, s.FireNext(Stamp)); }),
+                ("completed", Finish) };
+            foreach (var (name, build) in stages)
+            {
+                DiningService At() { var s = Service(); build(s); return s; }
+                var view = At().View(true);
+                var course = view.Courses.Single(c => c.Id == "course-1");
+                var item = course.Preparations.Single(p => p.Id == "fish");
+                foreach (var (action, run) in serviceCatalog)
+                    Consistent(view.Actions!.Contains(action), Try(() => run(At())), $"{name}/{action}");
+                foreach (var (action, run) in courseCatalog)
+                    Consistent(course.Actions!.Contains(action), Try(() => run(At())), $"{name}/course-1/{action}");
+                foreach (var (action, run) in prepCatalog)
+                    Consistent(item.Actions!.Contains(action), Try(() => run(At())), $"{name}/fish/{action}");
+            }
+        });
+        Test("plain view carries no affordances and stays snapshot-identical", () => {
+            var service = Service(); service.Start(Stamp);
+            True(service.View().Actions is null && service.View().Courses.All(c => c.Actions is null));
+        });
+        Test("account affordances follow balance and lifecycle", () => {
+            var account = Account();
+            var view = account.ViewWithActions(); var actions = view.Actions!;
+            True(actions.Contains("add-product") && actions.Contains("payment") && actions.Contains("void-charge"));
+            True(!actions.Contains("close")); Equal(1, view.VoidableChargeIds!.Count);
+            account.RecordPayment("p", "card", 30000, Stamp);
+            True(account.ViewWithActions().Actions!.Contains("close"));
+            account.VoidCharge("menus", "x", Stamp);
+            view = account.ViewWithActions(); actions = view.Actions!;
+            True(!actions.Contains("close") && !actions.Contains("void-charge") && view.VoidableChargeIds!.Count == 0);
+            account.AddCharge("l2", "Reequilibrio", 1, 30000, Stamp); account.Close(Stamp);
+            Equal(0, account.ViewWithActions().Actions!.Count);
+        });
+        Test("release affordance appears only while occupied and dining finished", () => {
+            var service = Service(); var occupancy = Occupancy();
+            True(!occupancy.View(service).Actions!.Contains("release"));
+            Finish(service);
+            True(occupancy.View(service).Actions!.Contains("release"));
+            occupancy.Release(service, "x", Stamp);
+            True(!occupancy.View(service).Actions!.Contains("release"));
+        });
         // Shared fixtures document mappings, including deliberately unresolved cases.
         var fixtures = JsonSerializer.Deserialize<List<LegacyCase>>(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "fixtures", "legacy-lifecycle.json")), Json)

@@ -50,6 +50,8 @@ jobs:
         run: python3 tests/http/security_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Verify scoped desktop reads and released accounts
         run: python3 tests/http/desktop_reads.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: Verify domain affordances filtered per role over HTTP
+        run: python3 tests/http/affordances_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: D2 realtime publisher and SignalR flow with real processes
         run: dotnet run --project tests/Costina.RealtimeChecks -c Release -- src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Upload exact executed evidence

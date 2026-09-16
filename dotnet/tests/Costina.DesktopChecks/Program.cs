@@ -15,12 +15,27 @@ internal static class Program
         if(!((Button)window.FindName("ConnectButton")).IsEnabled) throw new Exception("Connection button must be available.");
         if(((TabItem)window.FindName("CheckoutTab")).Visibility!=Visibility.Collapsed) throw new Exception("Checkout visible without authenticated role.");
         if(((TabControl)window.FindName("Tabs")).IsEnabled) throw new Exception("Unauthenticated operations enabled.");
+        // D3.1: la habilitacion es un mapeo puro de las affordances del servidor, sin reglas locales.
+        var shell=new Costina.Desktop.ViewModels.ShellViewModel();
+        shell.Session=new("service","t","c","l",["open"]);
+        var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start"]);
+        shell.Service.Dining=new(3,new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]));
+        shell.Service.SelectedCourse=new Costina.Client.CourseDto("c1","Pase","Ready",null,null,null,null,[prep],["serve"]);
+        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start"))
+            throw new Exception("Advertised affordances must enable their controls.");
+        if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparation-ready")||shell.Service.CanAction("release"))
+            throw new Exception("Actions the server did not advertise must stay disabled.");
+        if(!shell.CanOpen) throw new Exception("Session affordance must drive the open panel.");
+        shell.Busy=true;
+        if(shell.Service.CanAction("pause")) throw new Exception("Busy must gate every action.");
+        shell.Busy=false; shell.Session=null;
+        if(shell.Service.CanAction("pause")||shell.CanOpen) throw new Exception("Disconnected must gate every action.");
         Directory.CreateDirectory("artifacts/desktop");
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
         using(var file=File.Create("artifacts/desktop/startup.png")) encoder.Save(file);
-        File.WriteAllText("artifacts/desktop/window-checks.txt","3/3 startup checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
-        window.Close();app.Shutdown();Console.WriteLine("WPF startup: 3/3 passed");return 0;
+        File.WriteAllText("artifacts/desktop/window-checks.txt","Startup and viewmodel affordance-mapping checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
+        window.Close();app.Shutdown();Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
     }
 }

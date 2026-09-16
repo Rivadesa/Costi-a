@@ -35,4 +35,8 @@ Check(o2.State==OccupancyState.Released && o2.PendingEvents.Count==0,"occupancy 
 Rejected(()=>TableOccupancy.Restore(o.Snapshot() with {ReleasedAt=null}),"released snapshot without timestamp rejected");
 var json=Wire.Encode(restored.View());
 Check(!json.Contains("paid",StringComparison.OrdinalIgnoreCase) && !json.Contains("price",StringComparison.OrdinalIgnoreCase) && !json.Contains("account",StringComparison.OrdinalIgnoreCase),"operational DTO has no money");
+// D3.1: las affordances se calculan al leer y NUNCA entran en los payloads persistidos.
+foreach(var payload in new[]{Wire.Encode(d.Snapshot()),Wire.Encode(restored.Snapshot()),Wire.Encode(a2.Snapshot()),Wire.Encode(o.Snapshot())})
+    Check(!payload.Contains("actions",StringComparison.OrdinalIgnoreCase),"snapshot payload has no affordances");
+Check(Wire.Encode(restored.View())==Wire.Encode(DiningService.Restore(restored.Snapshot()).View()),"plain view stays action-free after restore");
 Console.WriteLine($"D1 snapshots: {checks}/{checks} passed.");

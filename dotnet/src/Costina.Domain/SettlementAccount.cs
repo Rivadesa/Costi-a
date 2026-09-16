@@ -8,9 +8,11 @@ public sealed record ChargeLine(string Id, string Description, int Quantity, lon
     public long TotalCents => Voided ? 0 : checked(Quantity * UnitPriceCents);
 }
 public sealed record PaymentEntry(string Id, string Method, long AmountCents, DateTimeOffset At);
+// Actions/VoidableChargeIds: affordances de lectura (nunca persistidas; AccountView no va a snapshot).
 public sealed record AccountView(string Id, string ServiceId, AccountState State,
     long TotalCents, long PaidCents, long BalanceCents, long CreditCents,
-    PaymentCoverage Coverage, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments);
+    PaymentCoverage Coverage, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments,
+    IReadOnlyList<string>? Actions = null, IReadOnlyList<string>? VoidableChargeIds = null);
 
 // An account can remain open after table release. No dependency on DiningService.
 public sealed partial class SettlementAccount : Aggregate

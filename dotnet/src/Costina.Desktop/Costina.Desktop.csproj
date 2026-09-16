@@ -1,8 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.2.0-d1.2</Version>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.4.0-d3.1</Version>
     <AssemblyName>Costina.Desktop</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../Costina.Client/Costina.Client.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Costina.Client/Costina.Client.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
 </Project>

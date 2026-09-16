@@ -10,9 +10,13 @@ public static class DesktopReadRoutes
     {
         var reads=new DesktopReadRepository(source);
         const string prefix="/api/native/v1";
-        app.MapGet(prefix+"/session",(Func<HttpContext,IResult>)(c=>Results.Json(new {
-            role=(string)c.Items["role"]!,tenantId=scope.TenantId,companyId=scope.CompanyId,locationId=scope.LocationId
-        }))).WithMetadata(new RouteAccess("main","service","kitchen"));
+        app.MapGet(prefix+"/session",(Func<HttpContext,IResult>)(c=>{
+            var role=(string)c.Items["role"]!;
+            return Results.Json(new {
+                role,tenantId=scope.TenantId,companyId=scope.CompanyId,locationId=scope.LocationId,
+                // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar.
+                actions=new[]{"open"}.Where(a=>Affordances.Allows(role,a)).ToArray()
+            });})).WithMetadata(new RouteAccess("main","service","kitchen"));
         app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(new {
             tables=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted),
             menus=(await reads.Configuration<MenuDefinition>(scope,"menu",c.RequestAborted)).Select(m=>new {m.Id,m.Name}).ToArray()
