@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.2.1-d1.3</Version></PropertyGroup>
+ <ItemGroup><ProjectReference Include="../Costina.TrialHost/Costina.TrialHost.csproj" /></ItemGroup>
+</Project>

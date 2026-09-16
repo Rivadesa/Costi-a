@@ -1,9 +1,9 @@
 <Window x:Class="Costina.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Costiña · Windows nativo · D1.2" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
+ Title="Costiña · Windows nativo · D1.3" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.2.0-d1.2 · WPF nativo · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.2.1-d1.3 · WPF nativo · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="http://127.0.0.1:5088" Width="260"/></StackPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Clave del rol de laboratorio"/><PasswordBox x:Name="AccessKey" Width="280" Height="36" Padding="8"/></StackPanel>

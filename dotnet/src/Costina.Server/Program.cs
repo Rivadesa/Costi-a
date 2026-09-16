@@ -94,7 +94,7 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.2.0-d1.1"}); });
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.2.1-d1.3"}); });
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>Json(await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted)))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
     {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,d.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
@@ -108,4 +108,15 @@ app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,st
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
     Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
 app.MapDesktopReadRoutes(source,scope);
+// Only the visible local trial host enables this. Closing its pipe also requests a clean stop.
+if (Environment.GetEnvironmentVariable("COSTINA_SUPERVISED_TRIAL") == "true")
+{
+    _ = Task.Run(async () => {
+        while (!app.Lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            var line = await Console.In.ReadLineAsync();
+            if (line is null or "STOP") { app.Lifetime.StopApplication(); break; }
+        }
+    });
+}
 await app.RunAsync();

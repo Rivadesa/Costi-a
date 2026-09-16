@@ -1,0 +1,18 @@
+<Window x:Class="Costina.Launcher.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Costiña · Asistente de ensayo D1.3" Width="760" Height="650" MinWidth="680" MinHeight="580" Background="#F4F5F7" Closing="ClosingWindow">
+ <Grid Margin="28"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel><TextBlock Text="COSTIÑA · PRUEBA LOCAL" FontSize="26" FontWeight="SemiBold"/><TextBlock Text="Windows nativo · 0.2.1-d1.3 · Sin Docker" FontSize="15" Margin="0,6,0,18"/></StackPanel>
+  <Border Grid.Row="1" Background="#FFF0CE" Padding="14"><TextBlock Text="Solo datos ficticios y un PC. Este asistente inicia PostgreSQL y el motor real en tu sesión de Windows. No es todavía una instalación de producción ni un servicio automático al arrancar Windows." TextWrapping="Wrap"/></Border>
+  <WrapPanel Grid.Row="2" Margin="0,18,0,10">
+   <Button x:Name="Prepare" Content="1. Preparar datos ficticios" Padding="14,12" Margin="0,0,8,8" Click="PrepareClick"/>
+   <Button x:Name="Start" Content="2. Iniciar instalación" Padding="14,12" Margin="0,0,8,8" Click="StartClick"/>
+   <Button x:Name="Stop" Content="Detener instalación" Padding="14,12" Margin="0,0,8,8" Click="StopClick"/>
+  </WrapPanel>
+  <StackPanel Grid.Row="3"><TextBlock Text="3. ABRIR PUESTOS DE PRUEBA" FontWeight="Bold" Margin="0,2,0,8"/><WrapPanel>
+   <Button x:Name="Main" Content="Equipo principal" Padding="14,12" Margin="0,0,8,8" Tag="main" Click="OpenClick"/>
+   <Button x:Name="Service" Content="Sala" Padding="14,12" Margin="0,0,8,8" Tag="service" Click="OpenClick"/>
+   <Button x:Name="Kitchen" Content="Cocina" Padding="14,12" Margin="0,0,8,8" Tag="kitchen" Click="OpenClick"/>
+  </WrapPanel><TextBlock Text="Las tres ventanas comparten la misma base. Sala y cocina no reciben cuentas ni pagos. Pulsa Actualizar para ver cambios de otro puesto." TextWrapping="Wrap" Margin="0,2,0,14"/></StackPanel>
+  <Border Grid.Row="4" Background="White" Padding="14"><ScrollViewer><StackPanel><TextBlock x:Name="State" Text="Comprobando instalación..." FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock x:Name="Detail" Margin="0,12,0,0" TextWrapping="Wrap"/></StackPanel></ScrollViewer></Border>
+  <TextBlock Grid.Row="5" Margin="0,16,0,0" Text="Antes de detener: cierra los puestos y resuelve cualquier orden sin confirmar. Las copias externas, la red LAN y el instalador de servicio Windows son fases pendientes." TextWrapping="Wrap" Foreground="#4B5563"/>
+ </Grid>
+</Window>

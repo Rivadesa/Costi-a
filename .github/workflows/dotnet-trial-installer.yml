@@ -1,0 +1,74 @@
+name: Native trial installer and real Windows flow
+on:
+  pull_request:
+    paths: ['dotnet/**', 'deploy/native-trial/**', '.github/workflows/dotnet-trial-installer.yml', 'docs/native/D1.3*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-installation:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Build self-contained clients and native PostgreSQL installer
+        shell: pwsh
+        run: ./deploy/native-trial/package.ps1
+      - name: Install into an isolated path with spaces
+        shell: pwsh
+        run: |
+          $path=Join-Path $env:RUNNER_TEMP 'Costina D13 installed'
+          $p=Start-Process artifacts/Costina-D1.3-Setup.exe -ArgumentList "/S /D=$path" -Wait -PassThru
+          if($p.ExitCode -ne 0 -or !(Test-Path "$path/launcher/Costina.Launcher.exe")){throw 'Installer did not produce the expected files'}
+          "COSTINA_TEST_PACKAGE=$path" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Exercise actual WPF and native Windows PostgreSQL
+        shell: pwsh
+        working-directory: dotnet
+        run: |
+          dotnet --info > ../artifacts/windows-sdk.txt
+          dotnet run --project tests/Costina.TrialChecks -c Release -- "$env:COSTINA_TEST_PACKAGE" "../artifacts/trial-evidence"
+          if($LASTEXITCODE -ne 0){throw 'Native trial acceptance failed'}
+      - name: Verify uninstall preserves separate data
+        shell: pwsh
+        run: |
+          $data=Join-Path $env:LOCALAPPDATA 'Xeitoso/CostinaTrialD13'
+          $hash=(Get-FileHash "$data/installation.dat").Hash
+          $p=Start-Process "$env:COSTINA_TEST_PACKAGE/Uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if((Get-FileHash "$data/installation.dat").Hash -ne $hash){throw 'Uninstaller changed user data'}
+          if(!(Test-Path "$data/data/PG_VERSION")){throw 'Uninstaller removed PostgreSQL data'}
+          'Program uninstalled; protected config and database retained.' | Set-Content artifacts/trial-evidence/uninstall.txt
+      - name: Bind installer to source and evidence
+        shell: pwsh
+        run: |
+          @{commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;sha256=(Get-FileHash artifacts/Costina-D1.3-Setup.exe -Algorithm SHA256).Hash;version='0.2.1-d1.3'} | ConvertTo-Json | Set-Content artifacts/installer-manifest.json
+          git archive -o artifacts/d1.3-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1.3-installer
+          path: |
+            artifacts/Costina-D1.3-Setup.exe
+            artifacts/installer-manifest.json
+            artifacts/trial-package/LEEME.txt
+            artifacts/trial-package/trial-package.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1.3-source
+          path: artifacts/d1.3-source.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: costina-d1.3-windows-evidence
+          path: |
+            artifacts/trial-evidence/
+            artifacts/windows-sdk.txt
+            artifacts/trial-package/trial-package.json
+          if-no-files-found: warn
+          retention-days: 14

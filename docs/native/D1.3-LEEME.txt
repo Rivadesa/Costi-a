@@ -1,0 +1,39 @@
+COSTIÑA D1.3 — ENSAYO NATIVO EN UN PC WINDOWS X64
+
+1. Instala Costina-D1.3-Setup.exe para tu usuario Windows.
+2. Abre el acceso Costina D1.3. Pulsa «Preparar datos ficticios» una vez.
+3. Pulsa «Iniciar instalación» y espera el estado confirmado de disponibilidad.
+4. Pulsa «Equipo principal». El cliente se autentica automáticamente contra el motor real.
+5. Abre mesa, inicia servicio, envía el pase, prepara sus elaboraciones, valida y sirve.
+6. En Cuenta/Caja selecciona agua o vino del catálogo; no aparece en seguimiento.
+7. Puedes abrir otras ventanas de Sala y Cocina en ESTE PC. Pulsa Actualizar.
+8. Al terminar, cierra los puestos y pulsa Detener instalación en el asistente.
+9. En la siguiente sesión pulsa solo Iniciar instalación. Los datos siguen ahí.
+
+NO ES UNA DEMO EN MEMORIA. Los datos se guardan en PostgreSQL nativo.
+NO requiere Docker, SDK, comandos ni crear manualmente variables o contraseñas.
+El instalador contiene los programas y dependencias; no descarga durante la instalación.
+
+LÍMITES IMPORTANTES
+Es ensayo con datos ficticios, NO un servicio real de restaurante.
+No abre puertos LAN ni instala todavía servicios Windows de arranque automático.
+El asistente mantiene los procesos en la sesión del usuario. Cerrar sesión/apagar corta la prueba.
+La arquitectura final sigue siendo servicio Windows independiente; no se declara implementada aquí.
+Claves de ensayo por rol: el usuario local puede abrir todos los perfiles. No equivale a usuarios/dispositivos de producción.
+Refresco manual; pendiente de SignalR, cola durable, TLS/LAN, alérgenos completos, backup, facturación e inventario.
+Una orden SIN CONFIRMAR no debe repetirse con otra clave; el cierre forzado pierde el reintento de sesión.
+La compilación y el CI no certifican el hardware de tu restaurante.
+
+DATOS
+LocalAppData\Xeitoso\CostinaTrialD13 contiene base, configuración protegida y diagnóstico.
+No publiques installation.dat ni lo envíes a un chat. La protección depende del usuario Windows.
+Desinstalar conserva los datos. No borres directorios ni reinicialices como reparación.
+La persistencia en este disco NO es backup. Copiar una base abierta no garantiza restauración.
+D1.3 no modifica la versión 0.1.1 ni reutiliza su base. No es un actualizador de producción.
+
+DISTRIBUCIÓN
+Build de desarrollo sin firma de editor; comprueba el origen y el manifiesto antes de abrir.
+No desactives el antivirus. Los hashes comprueban coincidencia, no sustituyen una firma.
+PostgreSQL 17.11 distribuido desde los binarios oficiales de EDB; avisos del proveedor dentro de pgsql.
+Runtime .NET autocontenido y bibliotecas C++ de redistribución Microsoft incluidas.
+Código y versiones exactas: consulta el manifiesto y la PR de D1.3 en Rivadesa/Costi-a.
