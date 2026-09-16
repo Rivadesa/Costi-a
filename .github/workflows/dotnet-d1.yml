@@ -1,0 +1,99 @@
+name: Native D1 PostgreSQL and HTTP
+on:
+  pull_request:
+    paths: ['dotnet/**', '.github/workflows/dotnet-d1.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: costina
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: costina_d1_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U costina -d costina_d1_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      COSTINA_DB: 'Host=127.0.0.1;Port=5432;Database=costina_d1_test;Username=costina;Password=ci-only'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: costina
+      PGPASSWORD: ci-only
+      PGDATABASE: costina_d1_test
+    defaults:
+      run:
+        working-directory: dotnet
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Build real server and restore checks
+        run: |
+          dotnet --info > d1-sdk.txt
+          dotnet build src/Costina.Server -c Release
+          dotnet build tests/Costina.PersistenceChecks -c Release
+      - name: Run prior D0 acceptance
+        run: dotnet run --project tests/Costina.Acceptance -c Release
+      - name: Execute snapshot checks
+        run: dotnet run --project tests/Costina.PersistenceChecks -c Release --no-build
+      - name: Exercise real HTTP PostgreSQL process restart and concurrency
+        run: python3 tests/http/native_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: Verify endpoint authorization independent of URL casing
+        run: python3 tests/http/security_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: Upload exact executed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-postgres-http-evidence
+          path: |
+            dotnet/d1-http-results.json
+            dotnet/d1-security-results.json
+            dotnet/d1-http-server.log
+            dotnet/d1-sdk.txt
+          retention-days: 14
+  windows-compile:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run: {working-directory: dotnet}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Domain acceptance on Windows
+        run: dotnet run --project tests/Costina.Acceptance -c Release
+      - name: Snapshot checks on Windows
+        run: dotnet run --project tests/Costina.PersistenceChecks -c Release
+      - name: Publish Windows service binary (not an installer)
+        run: dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o ../artifacts/d1-server
+      - name: Record build and hashes
+        shell: pwsh
+        run: |
+          $manifest = @{commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; sdk=(dotnet --version); kind='engineering-server-not-installer'; files=@()}
+          Get-ChildItem ../artifacts/d1-server -File -Recurse | ForEach-Object {
+            $manifest.files += @{file=$_.FullName.Substring((Resolve-Path ../artifacts/d1-server).Path.Length+1); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content ../artifacts/d1-server/build-manifest.json
+      - name: Archive tracked source for reproducible handoff
+        run: git archive -o ../artifacts/d1-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1-server-windows-engineering
+          path: artifacts/d1-server/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1-source
+          path: artifacts/d1-source.zip
+          if-no-files-found: error
+          retention-days: 14
