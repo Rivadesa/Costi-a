@@ -6,15 +6,14 @@ def act(sid, action, role='main', **fields):
     return h.ok('/services/' + sid + '/commands/' + action,
                 dict(expectedVersion=h.dining(sid)['version'], **fields), role=role)
 
-def free_table():
-    occupied = {b['service']['tableId'] for b in h.ok('/board')}
-    return next('M' + str(i) for i in range(1, 9) if 'M' + str(i) not in occupied)
-
 class RestrictionChecks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Ambito propio: mesas limpias y determinismo, sin depender del estado
+        # que dejaron las demas suites en la base compartida del job.
+        h.ENV['COSTINA_TENANT'] = 'd3-restrictions'
         h.NativeHttp.setUpClass()
-        cls.sid = h.open_table(free_table())
+        cls.sid = h.open_table('M1')
     @classmethod
     def tearDownClass(cls): h.stop_server()
 
@@ -72,7 +71,7 @@ class RestrictionChecks(unittest.TestCase):
         self.assertFalse(h.dining(self.sid)['data']['restrictionsPendingAck'])
 
     def test_05_events_flow_to_outbox_for_realtime(self):
-        rows = h.sql("SELECT count(*) FROM native_d1.outbox WHERE type LIKE 'restriction.%'")
+        rows = h.sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d3-restrictions' AND type LIKE 'restriction.%'")
         self.assertGreaterEqual(int(rows), 4)
 
 if __name__ == '__main__': unittest.main()
