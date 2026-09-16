@@ -65,6 +65,7 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
     }
 }
 
+public sealed record BoardRow(long Version, DiningView Service, OccupancyView Occupancy, long OccupancyVersion);
 public sealed record StoredDining(long Version, DiningService Entity);
 public sealed record StoredAccount(long Version, SettlementAccount Entity);
 public sealed record StoredOccupancy(long Version, TableOccupancy Entity);
@@ -194,14 +195,15 @@ public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transact
     public Task<int> SeedConfiguration<T>(string kind,string id,T value) => Sql(
         "INSERT INTO native_d1.configuration (tenant,company,location,kind,id,payload) VALUES (@tenant,@company,@location,@kind,@id,@payload::jsonb) ON CONFLICT DO NOTHING",
         [("kind",kind),("id",id),("payload",Wire.Encode(value))]);
-    public async Task<IReadOnlyList<object>> Board()
+    public async Task<IReadOnlyList<BoardRow>> Board()
     {
         var ids = await Rows("SELECT service_id FROM native_d1.occupancies WHERE " + ScopeWhere + " AND state='Occupied' ORDER BY table_id LIMIT 200",[],r => r.GetString(0));
-        var result = new List<object>();
+        var result = new List<BoardRow>();
         foreach (var id in ids)
         {
             var d = await Dining(id); var o = await Occupancy(id);
-            result.Add(new { version=d.Version, service=d.Entity.View(), occupancy=o.Entity.View(), occupancyVersion=o.Version });
+            // Affordances calculadas al leer; el servidor las filtra por rol antes de responder.
+            result.Add(new(d.Version, d.Entity.View(true), o.Entity.View(d.Entity), o.Version));
         }
         return result;
     }

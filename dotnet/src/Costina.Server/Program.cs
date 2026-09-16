@@ -102,12 +102,15 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.3.0-d2"}); });
-app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>Json(await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted)))).WithMetadata(new RouteAccess("main","service","kitchen"));
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.4.0-d3.1"}); });
+string Role(HttpContext c)=>(string)c.Items["role"]!;
+app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
+    var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
+    return Json(rows.Select(r=>Affordances.Filter(r,Role(c))).ToArray());})).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,d.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
+    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,Affordances.Filter(d.Entity.View(true),Role(c)));},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
+    {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.ViewWithActions());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/services",(Func<HttpContext,Task<IResult>>)(c=>Write<OpenRequest>(c,LocalOperations.Open))).WithMetadata(new RouteAccess("main","service"));
 app.MapPost(prefix+"/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
     Write<DiningCommand>(c,(u,i,r)=>LocalOperations.Dining(u,i,id,action,r))).WithMetadata(new RouteAccess("main","service","kitchen"));
