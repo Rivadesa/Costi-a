@@ -1,0 +1,17 @@
+[
+  {"Name":"open","Status":"open","Started":false,"Closed":false,"Courses":["pending"],"Total":30000,"Paid":0,"ExpectedDining":"Open","ExpectedCoverage":"Unpaid"},
+  {"Name":"active","Status":"in_service","Started":true,"Closed":false,"Courses":["served","preparing"],"Total":30000,"Paid":10000,"ExpectedDining":"InService","ExpectedCoverage":"PartiallyPaid"},
+  {"Name":"paused","Status":"paused","Started":true,"Closed":false,"Courses":["served","pending"],"Total":30000,"Paid":0,"ExpectedDining":"Paused","ExpectedCoverage":"Unpaid"},
+  {"Name":"prepaid-unknown","Status":"paid","Started":true,"Closed":false,"Courses":["pending"],"Total":30000,"Paid":30000,"ExpectedDining":null,"ExpectedCoverage":"Paid"},
+  {"Name":"partial-unknown","Status":"pending_payment","Started":true,"Closed":false,"Courses":["served","pending"],"Total":30000,"Paid":10000,"ExpectedDining":null,"ExpectedCoverage":"PartiallyPaid"},
+  {"Name":"closed-complete","Status":"closed","Started":true,"Closed":true,"Courses":["served","skipped"],"Total":30000,"Paid":30000,"ExpectedDining":"Completed","ExpectedCoverage":"Paid"},
+  {"Name":"closed-unserved","Status":"closed","Started":true,"Closed":true,"Courses":["served","pending"],"Total":30000,"Paid":30000,"ExpectedDining":null,"ExpectedCoverage":"Paid"},
+  {"Name":"closed-missing-time","Status":"closed","Started":true,"Closed":false,"Courses":["served"],"Total":30000,"Paid":30000,"ExpectedDining":null,"ExpectedCoverage":"Paid"},
+  {"Name":"cancelled","Status":"cancelled","Started":false,"Closed":false,"Courses":["pending"],"Total":30000,"Paid":0,"ExpectedDining":"Cancelled","ExpectedCoverage":"Unpaid"},
+  {"Name":"cancelled-live-work","Status":"cancelled","Started":true,"Closed":false,"Courses":["preparing"],"Total":30000,"Paid":10000,"ExpectedDining":null,"ExpectedCoverage":"PartiallyPaid"},
+  {"Name":"unknown","Status":"mystery","Started":false,"Closed":false,"Courses":[],"Total":30000,"Paid":0,"ExpectedDining":null,"ExpectedCoverage":"Unpaid"},
+  {"Name":"unknown-course","Status":"in_service","Started":true,"Closed":false,"Courses":["mystery"],"Total":30000,"Paid":0,"ExpectedDining":null,"ExpectedCoverage":"Unpaid"},
+  {"Name":"credit","Status":"paid","Started":true,"Closed":false,"Courses":["served"],"Total":30000,"Paid":31000,"ExpectedDining":null,"ExpectedCoverage":"Credit"},
+  {"Name":"open-with-progress","Status":"open","Started":false,"Closed":false,"Courses":["served"],"Total":30000,"Paid":0,"ExpectedDining":null,"ExpectedCoverage":"Unpaid"},
+  {"Name":"prepared","Status":"prepared","Started":false,"Closed":false,"Courses":[],"Total":0,"Paid":0,"ExpectedDining":null,"ExpectedCoverage":"Paid"}
+]

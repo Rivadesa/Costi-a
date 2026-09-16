@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Costina.Domain/Costina.Domain.csproj" />
+    <ProjectReference Include="../../src/Costina.Migration/Costina.Migration.csproj" />
+    <None Update="fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Costina.Domain/Costina.Domain.csproj" />
+  <Project Path="src/Costina.Migration/Costina.Migration.csproj" />
+  <Project Path="tests/Costina.Acceptance/Costina.Acceptance.csproj" />
+</Solution>
