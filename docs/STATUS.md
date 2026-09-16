@@ -12,7 +12,8 @@ PRs nativas integradas en `develop` (merge `0ae4e71`, 2026-09-16):
 - PR #20 (D0): dominio con agregados independientes `DiningService`/`TableOccupancy`/`SettlementAccount`, 52 escenarios de aceptación, planner legacy de solo lectura.
 - PR #21 (D1.1): persistencia Npgsql con transacciones, bloqueo optimista, idempotencia por clave, outbox y auditoría; API `/api/native/v1` solo loopback con claves de rol de laboratorio.
 - PR #22 (D1.2): cliente WPF con biblioteca `Costina.Client`, cuatro lecturas autenticadas nuevas; refresco manual.
-- D2 (realtime, issue #24): publicador supervisado del outbox y canal SignalR con notificaciones finas y separación económica; suscripción WPF con reconexión y relectura autoritativa. Ver `docs/native/D2-realtime.md` y el CI de su PR para la evidencia ejecutada.
+- D2 (realtime, issue #24): publicador supervisado del outbox y canal SignalR con notificaciones finas y separación económica; suscripción WPF con reconexión y relectura autoritativa. Ver `docs/native/D2-realtime.md`. Evidencia: 9/9 checks en CI y guion manual completado por el promotor.
+- D3.1 (issue #25, corte 1): affordances calculadas por el dominio y filtradas por rol; cliente WPF refactorizado a MVVM con habilitación mapeada del servidor. Ver `docs/native/D3.1-mvvm-affordances.md` y el CI de su PR.
 
 Evidencia ejecutada sobre el estado integrado (todas en verde):
 
@@ -22,7 +23,7 @@ Evidencia ejecutada sobre el estado integrado (todas en verde):
 | D1 PostgreSQL/HTTP en `25d62f9` (contenido de #22) | https://github.com/Rivadesa/Costi-a/actions/runs/35067731398 |
 | WPF desktop en `25d62f9` | https://github.com/Rivadesa/Costi-a/actions/runs/35067731433 |
 
-Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio (no usuarios/dispositivos), realtime at-least-once sin cola durable en cliente, sin restricciones por comensal, sin instalador de producción ni backups, code-behind en WPF. Hoja de ruta: issues #25 (MVVM/restricciones/cola durable), #26 (identidad), #27 (empaquetado), #28 (PWA); #24 (realtime) cubierto por D2.
+Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio (no usuarios/dispositivos), realtime at-least-once sin cola durable en cliente, sin restricciones por comensal, sin instalador de producción ni backups. Hoja de ruta: issues #25 (restricciones y cola durable pendientes; MVVM cubierto por D3.1), #26 (identidad), #27 (empaquetado), #28 (PWA); #24 (realtime) cubierto por D2.
 
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar**: su job `windows-installation` no tiene ejecución verde sobre su commit de cabeza.
 
