@@ -296,7 +296,10 @@ internal static class Program
             var serviceCatalog = new Dictionary<string, Action<DiningService>> {
                 ["start"] = s => s.Start(Stamp), ["fire-next"] = s => s.FireNext(Stamp),
                 ["pause"] = s => s.Pause("x", Stamp), ["resume"] = s => s.Resume(Stamp),
-                ["complete"] = s => s.Complete(Stamp), ["cancel-unstarted"] = s => s.CancelUnstarted("x", Stamp) };
+                ["complete"] = s => s.Complete(Stamp), ["cancel-unstarted"] = s => s.CancelUnstarted("x", Stamp),
+                ["declare-restriction"] = s => s.DeclareRestriction(1, RestrictionKind.Allergy, "apio", RestrictionSeverity.Severe, Stamp),
+                ["remove-restriction"] = s => s.RemoveRestriction(s.Restrictions.FirstOrDefault()?.Id ?? "missing", "x", Stamp),
+                ["acknowledge-restrictions"] = s => s.AcknowledgeRestrictions(Stamp) };
             var courseCatalog = new Dictionary<string, Action<DiningService>> {
                 ["ready"] = s => s.ValidateReady("course-1", Stamp), ["serve"] = s => s.Serve("course-1", Stamp),
                 ["skip"] = s => s.Skip("course-1", "x", Stamp) };
@@ -313,7 +316,14 @@ internal static class Program
                 ("paused-fired", s => { s.Start(Stamp); s.FireNext(Stamp); s.Pause("x", Stamp); }),
                 ("first-served", s => { s.Start(Stamp); ServeCurrent(s, s.FireNext(Stamp)); }),
                 ("all-served", s => { s.Start(Stamp); ServeCurrent(s, s.FireNext(Stamp)); ServeCurrent(s, s.FireNext(Stamp)); }),
-                ("completed", Finish) };
+                ("completed", Finish),
+                ("with-restriction", s => s.DeclareRestriction(2, RestrictionKind.Intolerance, "lactosa", RestrictionSeverity.Moderate, Stamp)),
+                ("pending-ack", s => { s.Start(Stamp); s.FireNext(Stamp);
+                    s.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp); }),
+                ("pending-after-ready", s => { s.Start(Stamp); s.FireNext(Stamp);
+                    s.ReadyPreparation("course-1", "fish", Stamp); s.ReadyPreparation("course-1", "sauce", Stamp);
+                    s.ValidateReady("course-1", Stamp);
+                    s.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp); }) };
             foreach (var (name, build) in stages)
             {
                 DiningService At() { var s = Service(); build(s); return s; }
@@ -344,6 +354,65 @@ internal static class Program
             True(!actions.Contains("close") && !actions.Contains("void-charge") && view.VoidableChargeIds!.Count == 0);
             account.AddCharge("l2", "Reequilibrio", 1, 30000, Stamp); account.Close(Stamp);
             Equal(0, account.ViewWithActions().Actions!.Count);
+        });
+        Test("declaring before firing needs no kitchen acknowledgement", () => {
+            var service = Service();
+            service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            True(!service.RestrictionsPendingAck); service.Start(Stamp);
+            Equal("course-1", service.FireNext(Stamp));
+        });
+        Test("restriction change after firing blocks kitchen flow until acknowledged", () => {
+            var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
+            service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            True(service.RestrictionsPendingAck);
+            service.StartPreparation("course-1", "fish", Stamp); // los marcados de estacion siguen
+            service.ReadyPreparation("course-1", "fish", Stamp); service.ReadyPreparation("course-1", "sauce", Stamp);
+            Rule("restrictions_unacknowledged", () => service.ValidateReady("course-1", Stamp));
+            service.AcknowledgeRestrictions(Stamp);
+            True(!service.RestrictionsPendingAck);
+            service.ValidateReady("course-1", Stamp); service.Serve("course-1", Stamp);
+            Equal("course-2", service.FireNext(Stamp));
+        });
+        Test("removal after firing also requires acknowledgement", () => {
+            var service = Service();
+            var id = service.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
+            service.Start(Stamp); service.FireNext(Stamp);
+            service.RemoveRestriction(id, "El cliente lo retira", Stamp);
+            True(service.RestrictionsPendingAck && service.Restrictions.Count == 0);
+            Rule("restrictions_unacknowledged", () => service.Serve("course-1", Stamp));
+        });
+        Test("invalid, duplicate and finished restriction changes are rejected", () => {
+            var service = Service();
+            Rule("invalid_guest", () => service.DeclareRestriction(3, RestrictionKind.Allergy, "x", RestrictionSeverity.Severe, Stamp));
+            service.DeclareRestriction(1, RestrictionKind.Allergy, "Marisco", RestrictionSeverity.Severe, Stamp);
+            Rule("duplicate_restriction", () => service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Mild, Stamp));
+            Rule("restriction_not_found", () => service.RemoveRestriction("missing", "x", Stamp));
+            Rule("nothing_to_acknowledge", () => { service.Start(Stamp); service.AcknowledgeRestrictions(Stamp); });
+            var finished = Service(); Finish(finished);
+            Rule("service_finished", () => finished.DeclareRestriction(1, RestrictionKind.Allergy, "x", RestrictionSeverity.Severe, Stamp));
+        });
+        Test("preparations project only the applicable restrictions with severity", () => {
+            var service = Service();
+            service.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            service.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
+            var course = service.View(true).Courses.Single(c => c.Id == "course-1");
+            var fish = course.Preparations.Single(p => p.Id == "fish");     // comensal 2
+            var sauce = course.Preparations.Single(p => p.Id == "sauce");   // sin comensal
+            Equal(2, fish.Restrictions!.Count);
+            True(fish.Restrictions.Any(r => r.Substance == "marisco" && r.Severity == RestrictionSeverity.Severe));
+            Equal(2, sauce.Restrictions!.Count); // sin posicion: puede ser para cualquier comensal
+            True(service.View().Courses.All(c => c.Preparations.All(p => p.Restrictions is null)),
+                "Plain views must not carry projected restrictions.");
+            Equal(2, service.View().Restrictions!.Count);
+        });
+        Test("restriction events carry structured data for audit", () => {
+            var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
+            service.ClearPendingEvents();
+            service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            var declared = service.PendingEvents.Single();
+            Equal("restriction.declared", declared.Type);
+            Equal("marisco", declared.Data["substance"]); Equal("Severe", declared.Data["severity"]);
+            Equal("True", declared.Data["kitchen_ack_required"]);
         });
         Test("release affordance appears only while occupied and dining finished", () => {
             var service = Service(); var occupancy = Occupancy();
