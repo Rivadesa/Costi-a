@@ -64,8 +64,8 @@ app.Use(async (context,next)=>
         // La restriccion de cocina aplica a los comandos de comedor ({action} presente).
         // Un POST sin action con metadatos que admiten kitchen (negociacion del hub) no es un comando.
         if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method) && action is not null)
-            allowed &= action is "preparation-start" or "preparation-ready" or "ready";
-        if (role=="service" && action is "complete" or "cancel-unstarted") allowed=false;
+            allowed &= action is "preparation-start" or "preparation-ready" or "ready" or "acknowledge-restrictions";
+        if (role=="service" && action is "complete" or "cancel-unstarted" or "acknowledge-restrictions") allowed=false;
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
         await next();
     }
@@ -102,7 +102,7 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.4.0-d3.1"}); });
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.5.0-d3.2"}); });
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
     var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);

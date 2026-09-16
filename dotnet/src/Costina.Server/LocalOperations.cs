@@ -4,7 +4,8 @@ using Costina.Persistence;
 namespace Costina.Server;
 
 public sealed record OpenRequest(string TableId,int Pax,string MenuId);
-public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null);
+public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
+    int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null);
 public sealed record AccountCommand(long ExpectedVersion,string? ProductId=null,int Quantity=1,string? PaymentId=null,
     string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
@@ -12,6 +13,9 @@ public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
 public static class LocalOperations
 {
     private static string Required(string? value) => !string.IsNullOrWhiteSpace(value) ? value : throw new ArgumentException("A required command field is missing.");
+    private static T ParseEnum<T>(string? value) where T : struct, Enum
+        => Enum.TryParse<T>(Required(value), true, out var parsed) && Enum.IsDefined(parsed) ? parsed
+            : throw new ArgumentException($"Unsupported {typeof(T).Name} value.");
     private static void Version(long actual,long expected)
     {
         if(expected < 1) throw new ArgumentException("expectedVersion must be positive.");
@@ -57,6 +61,11 @@ public static class LocalOperations
             case "resume": entity.Resume(stamp); break;
             case "complete": entity.Complete(stamp); break;
             case "cancel-unstarted": entity.CancelUnstarted(Required(request.Reason),stamp); break;
+            case "declare-restriction": entity.DeclareRestriction(request.GuestPosition,
+                ParseEnum<RestrictionKind>(request.Kind),Required(request.Substance),
+                ParseEnum<RestrictionSeverity>(request.Severity),stamp); break;
+            case "remove-restriction": entity.RemoveRestriction(Required(request.RestrictionId),Required(request.Reason),stamp); break;
+            case "acknowledge-restrictions": entity.AcknowledgeRestrictions(stamp); break;
             default: throw new StoreNotFound();
         }
         await unit.Save(entity,stored.Version);

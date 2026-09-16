@@ -35,6 +35,22 @@ Check(o2.State==OccupancyState.Released && o2.PendingEvents.Count==0,"occupancy 
 Rejected(()=>TableOccupancy.Restore(o.Snapshot() with {ReleasedAt=null}),"released snapshot without timestamp rejected");
 var json=Wire.Encode(restored.View());
 Check(!json.Contains("paid",StringComparison.OrdinalIgnoreCase) && !json.Contains("price",StringComparison.OrdinalIgnoreCase) && !json.Contains("account",StringComparison.OrdinalIgnoreCase),"operational DTO has no money");
+// D3.2: restricciones por comensal persisten en el snapshot; el acuse pendiente sobrevive reinicios.
+var dres=new DiningService("sr",scope,"M2",2,[new("p1","Pase",[new("a","Plato","hot",GuestPosition:1)])]);
+dres.DeclareRestriction(1,RestrictionKind.Allergy,"marisco",RestrictionSeverity.Severe,stamp);
+dres.Start(stamp); dres.FireNext(stamp);
+dres.DeclareRestriction(null,RestrictionKind.Preference,"sin cilantro",RestrictionSeverity.Mild,stamp);
+var dres2=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(dres.Snapshot())));
+Check(dres2.RestrictionsPendingAck && dres2.Restrictions.Count==2,"restriction change survives restart still unacknowledged");
+Check(Wire.Encode(dres2.Snapshot())==Wire.Encode(dres.Snapshot()),"restriction round trip is lossless");
+dres2.AcknowledgeRestrictions(stamp);
+Check(!DiningService.Restore(dres2.Snapshot()).RestrictionsPendingAck,"acknowledgement persists");
+Check(!Wire.Encode(dres.Snapshot()).Contains("\"restrictions\":null"),"snapshot stores the restriction list itself");
+var legacy=Wire.Decode<DiningSnapshot>(Wire.Encode(d.Snapshot()) .Replace(",\"restrictions\":[],\"restrictionsPendingAck\":false",""));
+Check(DiningService.Restore(legacy).Restrictions.Count==0,"pre-D3.2 payload without restriction fields restores cleanly");
+Rejected(()=>DiningService.Restore(dres.Snapshot() with {Restrictions=[new("id",5,RestrictionKind.Allergy,"x",RestrictionSeverity.Severe)]}),"restriction outside pax rejected");
+var openSnap=new DiningService("so",scope,"M3",1,[new("c","c",[new("p","p","cold")])]).Snapshot();
+Rejected(()=>DiningService.Restore(openSnap with {RestrictionsPendingAck=true}),"pending acknowledgement on inactive service rejected");
 // D3.1: las affordances se calculan al leer y NUNCA entran en los payloads persistidos.
 foreach(var payload in new[]{Wire.Encode(d.Snapshot()),Wire.Encode(restored.Snapshot()),Wire.Encode(a2.Snapshot()),Wire.Encode(o.Snapshot())})
     Check(!payload.Contains("actions",StringComparison.OrdinalIgnoreCase),"snapshot payload has no affordances");

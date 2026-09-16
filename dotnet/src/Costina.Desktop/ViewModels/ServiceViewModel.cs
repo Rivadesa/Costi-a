@@ -24,12 +24,20 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private MenuChoice? selectedMenu;
     [ObservableProperty] private string pax = "2";
     [ObservableProperty] private string reason = "";
+    [ObservableProperty] private GuestRestrictionDto[] restrictions = [];
+    [ObservableProperty] private GuestRestrictionDto? selectedRestriction;
+    [ObservableProperty] private bool restrictionsPendingAck;
+    [ObservableProperty] private string restrictionGuest = "";
+    [ObservableProperty] private string restrictionKind = "allergy";
+    [ObservableProperty] private string restrictionSubstance = "";
+    [ObservableProperty] private string restrictionSeverity = "severe";
     [ObservableProperty] private string serviceTitle = "Selecciona una mesa";
 
     // Unico punto de verdad para la habilitacion: la accion esta en la lista que envio el servidor.
     private bool Allowed(string action) => action switch
     {
         "start" or "fire-next" or "pause" or "resume" or "complete" or "cancel-unstarted"
+        or "declare-restriction" or "remove-restriction" or "acknowledge-restrictions"
             => Dining?.Data.Actions?.Contains(action) == true,
         "ready" or "serve" or "skip" => SelectedCourse?.Actions?.Contains(action) == true,
         "preparation-start" or "preparation-ready" => SelectedPreparation?.Actions?.Contains(action) == true,
@@ -41,7 +49,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     internal void Sync()
     {
         ActCommand.NotifyCanExecuteChanged(); OpenCommand.NotifyCanExecuteChanged();
-        ReleaseCommand.NotifyCanExecuteChanged();
+        ReleaseCommand.NotifyCanExecuteChanged(); DeclareRestrictionCommand.NotifyCanExecuteChanged();
+        RemoveRestrictionCommand.NotifyCanExecuteChanged(); AcknowledgeCommand.NotifyCanExecuteChanged();
     }
 
     internal void ApplyConfiguration(Configuration config)
@@ -61,6 +70,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             Board = []; SelectedEntry = null; Dining = null; Courses = []; SelectedCourse = null;
             Preparations = []; SelectedPreparation = null; Tables = []; Menus = [];
             serviceId = null; Reason = ""; ServiceTitle = "Selecciona una mesa";
+            Restrictions = []; SelectedRestriction = null; RestrictionsPendingAck = false; RestrictionSubstance = "";
         }
         finally { rendering = false; }
     }
@@ -81,6 +91,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             ServiceTitle = current is null ? "Sin mesas ocupadas. Puedes abrir una mesa."
                 : $"{current.Data.TableId} · {current.Data.Pax} personas · {current.Data.State}";
             Courses = current?.Data.Courses ?? [];
+            Restrictions = current?.Data.Restrictions ?? [];
+            RestrictionsPendingAck = current?.Data.RestrictionsPendingAck ?? false;
             SelectedCourse = Courses.FirstOrDefault(c => c.Id == previousCourse)
                 ?? Courses.FirstOrDefault(c => c.State is "Fired" or "Preparing" or "Ready")
                 ?? Courses.FirstOrDefault(c => c.State == "Pending") ?? Courses.LastOrDefault();
@@ -131,6 +143,48 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         serviceId = result.GetProperty("serviceId").GetString();
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: abrir " + SelectedTable.Name;
+    });
+
+    private bool CanDeclareRestriction() => shell.Writable && Allowed("declare-restriction");
+    [RelayCommand(CanExecute = nameof(CanDeclareRestriction))]
+    private Task DeclareRestriction() => shell.Run(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(RestrictionSubstance)) throw new ArgumentException("Indica la sustancia o preferencia.");
+        int? guest = null;
+        if (!string.IsNullOrWhiteSpace(RestrictionGuest))
+        {
+            if (!int.TryParse(RestrictionGuest, out var position)) throw new ArgumentException("Comensal no válido (vacío = toda la mesa).");
+            guest = position;
+        }
+        await shell.Api!.SendAsync("services/" + ApiClient.Segment(serviceId!) + "/commands/declare-restriction",
+            new { expectedVersion = Dining!.Version, guestPosition = guest, kind = RestrictionKind,
+                  substance = RestrictionSubstance.Trim(), severity = RestrictionSeverity },
+            "Declarar restricción de comensal");
+        RestrictionSubstance = "";
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: restricción declarada.";
+    });
+
+    private bool CanRemoveRestriction() => shell.Writable && Allowed("remove-restriction") && SelectedRestriction is not null;
+    [RelayCommand(CanExecute = nameof(CanRemoveRestriction))]
+    private Task RemoveRestriction() => shell.Run(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(Reason)) throw new ArgumentException("Introduce el motivo de la retirada.");
+        await shell.Api!.SendAsync("services/" + ApiClient.Segment(serviceId!) + "/commands/remove-restriction",
+            new { expectedVersion = Dining!.Version, restrictionId = SelectedRestriction!.Id, reason = Reason },
+            "Retirar restricción con motivo");
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: restricción retirada.";
+    });
+
+    private bool CanAcknowledge() => shell.Writable && Allowed("acknowledge-restrictions");
+    [RelayCommand(CanExecute = nameof(CanAcknowledge))]
+    private Task Acknowledge() => shell.Run(async () =>
+    {
+        await shell.Api!.SendAsync("services/" + ApiClient.Segment(serviceId!) + "/commands/acknowledge-restrictions",
+            new { expectedVersion = Dining!.Version }, "Cocina reconoce el cambio de restricciones");
+        await shell.RefreshAll();
+        shell.Status = "Cocina ha reconocido el cambio de restricciones.";
     });
 
     private bool CanRelease() => shell.Writable && Allowed("release");

@@ -12,28 +12,33 @@ public sealed partial class DiningService
         bool active = State is DiningState.InService or DiningState.Paused;
         var actions = new List<string>();
         if (State == DiningState.Open && courses.Count > 0) actions.Add("start");
-        if (State == DiningState.InService && !courses.Any(c => c.Active)
+        if (State == DiningState.InService && !restrictionsPendingAck && !courses.Any(c => c.Active)
             && courses.Any(c => c.State == CourseState.Pending)) actions.Add("fire-next");
         if (State == DiningState.InService) actions.Add("pause");
         if (State == DiningState.Paused) actions.Add("resume");
         if (active && courses.All(c => c.Terminal)) actions.Add("complete");
         if (State == DiningState.Open && courses.All(c => !c.Active)) actions.Add("cancel-unstarted");
+        if (State is not (DiningState.Completed or DiningState.Cancelled)) actions.Add("declare-restriction");
+        if (State is not (DiningState.Completed or DiningState.Cancelled) && restrictions.Count > 0)
+            actions.Add("remove-restriction");
+        if (active && restrictionsPendingAck) actions.Add("acknowledge-restrictions");
         return new(Id, TableId, Pax, State,
-            Array.AsReadOnly(courses.Select(c => c.ViewWithActions(State)).ToArray()),
-            actions.AsReadOnly());
+            Array.AsReadOnly(courses.Select(c => c.ViewWithActions(State, restrictions, restrictionsPendingAck)).ToArray()),
+            actions.AsReadOnly(), restrictions.AsReadOnly(), restrictionsPendingAck);
     }
 }
 
 internal sealed partial class CourseExecution
 {
-    internal CourseView ViewWithActions(DiningState serviceState)
+    internal CourseView ViewWithActions(DiningState serviceState,
+        IReadOnlyList<GuestRestriction> restrictions, bool pendingAck)
     {
         bool kitchenActive = serviceState is DiningState.InService or DiningState.Paused;
         bool preparing = State is CourseState.Fired or CourseState.Preparing;
         var actions = new List<string>();
-        if (kitchenActive && preparing
+        if (kitchenActive && preparing && !pendingAck
             && preparations.All(p => !p.Definition.Mandatory || p.State == PreparationState.Ready)) actions.Add("ready");
-        if (kitchenActive && State == CourseState.Ready) actions.Add("serve");
+        if (kitchenActive && !pendingAck && State == CourseState.Ready) actions.Add("serve");
         if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
             && State == CourseState.Pending) actions.Add("skip");
         var items = preparations.Select(p =>
@@ -42,7 +47,8 @@ internal sealed partial class CourseExecution
             if (kitchenActive && preparing && p.State == PreparationState.Fired) itemActions.Add("preparation-start");
             if (kitchenActive && preparing && p.State is PreparationState.Fired or PreparationState.Preparing)
                 itemActions.Add("preparation-ready");
-            return p.View() with { Actions = itemActions.AsReadOnly() };
+            return p.View() with { Actions = itemActions.AsReadOnly(),
+                Restrictions = restrictions.Where(r => DiningService.Applies(r, p.Definition.GuestPosition)).ToArray() };
         }).ToArray();
         return View() with { Preparations = Array.AsReadOnly(items), Actions = actions.AsReadOnly() };
     }

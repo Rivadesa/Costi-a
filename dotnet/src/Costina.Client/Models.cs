@@ -11,13 +11,25 @@ public sealed record ProductChoice(string Id, string Name, string Presentation, 
 { public override string ToString() => $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }
 public sealed record AccountChoice(string ServiceId, string TableId, string State)
 { public override string ToString() => $"{TableId} · {State} · {ServiceId[..Math.Min(8, ServiceId.Length)]}"; }
+// Etiquetas de restriccion SIEMPRE con texto y severidad: nunca depender solo del color.
+public sealed record GuestRestrictionDto(string Id, int? GuestPosition, string Kind, string Substance, string Severity)
+{
+    public string KindLabel => Kind switch { "Allergy" => "ALERGIA", "Intolerance" => "Intolerancia", _ => "Preferencia" };
+    public string SeverityLabel => Severity switch { "Severe" => "grave", "Moderate" => "moderada", _ => "leve" };
+    public string GuestLabel => GuestPosition is null ? "Mesa" : "Comensal " + GuestPosition;
+    public override string ToString() => $"{GuestLabel} · {KindLabel} {Substance} ({SeverityLabel})";
+}
 public sealed record PreparationDto(string Id, string Name, string StationId, int Quantity, int? GuestPosition, bool Mandatory, string State,
-    string[]? Actions = null);
+    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null)
+{
+    public string RestrictionsText => Restrictions is null or [] ? ""
+        : string.Join("  ·  ", Restrictions.Select(r => $"⚠ {r.KindLabel} {r.Substance} ({r.SeverityLabel})"));
+}
 public sealed record CourseDto(string Id, string Name, string State, DateTimeOffset? FiredAt,
     DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt, string? SkipReason, PreparationDto[] Preparations,
     string[]? Actions = null);
 public sealed record DiningDto(string Id, string TableId, int Pax, string State, CourseDto[] Courses,
-    string[]? Actions = null);
+    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null, bool RestrictionsPendingAck = false);
 public sealed record OccupancyDto(string Id, string TableId, string ServiceId, string State, DateTimeOffset? ReleasedAt,
     string[]? Actions = null);
 public sealed record BoardEntry(long Version, DiningDto Service, OccupancyDto Occupancy, long OccupancyVersion)
