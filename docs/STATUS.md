@@ -1,8 +1,31 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-09-14. Leer junto a `AGENTS.md`. Este documento sustituye al estado antiguo de PR #7; distingue código, pruebas automáticas y validación física.
+Actualizado: 2026-09-16. Leer junto a `AGENTS.md`. Este documento sustituye al estado antiguo de PR #7; distingue código, pruebas automáticas y validación física.
 
-## Integración confirmada
+## Transición nativa .NET integrada (ADR-008/009)
+
+El desarrollo nuevo usa el motor nativo C#/.NET + PostgreSQL + WPF bajo `dotnet/` (ADR-008). El runtime Laravel/Tauri 0.1.1 queda **congelado**: no se amplía, no se migra y no se borra hasta que el motor nativo lo sustituya con pruebas. Leer `dotnet/AGENTS.md` antes de tocar `dotnet/`.
+
+PRs nativas integradas en `develop` (merge `0ae4e71`, 2026-09-16):
+
+- PR #19: plan de producto Windows/multidispositivo (`docs/plans/2026-09-15-windows-multidevice-erp.md`), propuesta, no implementación.
+- PR #20 (D0): dominio con agregados independientes `DiningService`/`TableOccupancy`/`SettlementAccount`, 52 escenarios de aceptación, planner legacy de solo lectura.
+- PR #21 (D1.1): persistencia Npgsql con transacciones, bloqueo optimista, idempotencia por clave, outbox y auditoría; API `/api/native/v1` solo loopback con claves de rol de laboratorio.
+- PR #22 (D1.2): cliente WPF con biblioteca `Costina.Client`, cuatro lecturas autenticadas nuevas; refresco manual.
+
+Evidencia ejecutada sobre el estado integrado (todas en verde):
+
+| Comprobación | GitHub Actions |
+| --- | --- |
+| D0 dominio en `develop` (merge `0ae4e71`) | https://github.com/Rivadesa/Costi-a/actions/runs/35067724791 |
+| D1 PostgreSQL/HTTP en `25d62f9` (contenido de #22) | https://github.com/Rivadesa/Costi-a/actions/runs/35067731398 |
+| WPF desktop en `25d62f9` | https://github.com/Rivadesa/Costi-a/actions/runs/35067731433 |
+
+Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio (no usuarios/dispositivos), sin publicador SignalR (outbox sin publicar), sin cola durable en cliente, sin restricciones por comensal, sin instalador de producción ni backups, code-behind en WPF. Hoja de ruta: issues #24 (realtime), #25 (MVVM/restricciones/cola durable), #26 (identidad), #27 (empaquetado), #28 (PWA).
+
+PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar**: su job `windows-installation` no tiene ejecución verde sobre su commit de cabeza.
+
+## Integración confirmada (runtime legado, congelado)
 
 `main` sigue reservada para versiones estables. `develop` integra el trabajo de pruebas, no una versión de producción.
 
