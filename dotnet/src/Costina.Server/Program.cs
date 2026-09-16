@@ -107,4 +107,5 @@ app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,st
     Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
     Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
+app.MapDesktopReadRoutes(source,scope);
 await app.RunAsync();

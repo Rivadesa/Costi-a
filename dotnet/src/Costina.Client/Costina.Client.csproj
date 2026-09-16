@@ -1,5 +1,3 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <Description>Typed client for the authenticated Costina local laboratory API. No direct database access.</Description>
-  </PropertyGroup>
+  <PropertyGroup><Description>Typed client for the authenticated Costina local laboratory API. No direct database access.</Description></PropertyGroup>
 </Project>
