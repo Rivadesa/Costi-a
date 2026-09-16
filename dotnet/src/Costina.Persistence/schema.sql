@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS native_d1.outbox (
  aggregate_id text NOT NULL, type text NOT NULL, occurred_at timestamptz NOT NULL, payload jsonb NOT NULL,
  published_at timestamptz NULL
 );
+CREATE INDEX IF NOT EXISTS outbox_unpublished
+ ON native_d1.outbox (tenant, company, location, occurred_at, id) WHERE published_at IS NULL;
 CREATE TABLE IF NOT EXISTS native_d1.audit (
  id uuid PRIMARY KEY, event_id uuid NOT NULL UNIQUE REFERENCES native_d1.outbox(id),
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
