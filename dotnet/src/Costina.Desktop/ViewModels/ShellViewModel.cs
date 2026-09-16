@@ -100,10 +100,18 @@ public sealed partial class ShellViewModel : ObservableObject
             var identity = await candidate.GetAsync<SessionInfo>("session");
             var config = await candidate.GetAsync<Configuration>("configuration");
             Api = candidate; Session = identity;
+            // Cola durable: con el rol ya autenticado se engancha el almacen cifrado y,
+            // si quedo una orden sin confirmar de otra sesion, se restaura y bloquea todo
+            // hasta reintentarla identica (misma Idempotency-Key y mismos bytes).
+            candidate.AttachPendingStore(new DpapiPendingStore(uri, identity.Role));
+            Pending = candidate.Pending;
             Service.ApplyConfiguration(config);
             await StartRealtime(uri, key);
             await RefreshAll();
-            Status = $"Conectado al servidor real · rol {identity.Role} · {identity.CompanyId}/{identity.LocationId}";
+            Status = Pending is not null
+                ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
+                    + "\". Reintenta la misma orden antes de operar."
+                : $"Conectado al servidor real · rol {identity.Role} · {identity.CompanyId}/{identity.LocationId}";
         }
         catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
     });

@@ -30,6 +30,17 @@ internal static class Program
         if(shell.Service.CanAction("pause")) throw new Exception("Busy must gate every action.");
         shell.Busy=false; shell.Session=null;
         if(shell.Service.CanAction("pause")||shell.CanOpen) throw new Exception("Disconnected must gate every action.");
+        // D3.3: la orden incierta persiste cifrada con DPAPI y un fichero corrupto se descarta.
+        var store=new DpapiPendingStore(new Uri("http://127.0.0.1:59999"),"checks");
+        store.Clear();
+        var command=new Costina.Client.PendingCommand("k123","services/x/commands/start","{\"marker-secreto\":7}","Start");
+        store.Save(command);
+        if(store.Load() is not {Key:"k123"} restored||restored.Body!=command.Body) throw new Exception("DPAPI round trip must be lossless.");
+        var pendingFile=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Costina","pending-59999-checks.bin");
+        if(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(pendingFile)).Contains("marker-secreto")) throw new Exception("Pending file must not be plaintext.");
+        File.WriteAllBytes(pendingFile,[1,2,3]);
+        if(store.Load() is not null) throw new Exception("A corrupted pending file must be discarded.");
+        if(File.Exists(pendingFile)) throw new Exception("Discarding must delete the corrupted file.");
         Directory.CreateDirectory("artifacts/desktop");
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);
