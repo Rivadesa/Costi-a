@@ -70,8 +70,13 @@ class AffordanceChecks(unittest.TestCase):
         self.assertIn('close', data['actions'])
 
     def test_05_command_responses_stay_action_free(self):
-        table = free_table()
-        sid = h.open_table(table)
+        # Libera la mesa del servicio completado en test_03 usando su propia affordance
+        # (no depende de que queden mesas libres en la base compartida del job).
+        row = next(b for b in h.ok('/board') if b['service']['id'] == self.sid)
+        self.assertIn('release', row['occupancy']['actions'])
+        h.ok('/occupancy/' + self.sid + '/release',
+             {'expectedVersion': row['occupancyVersion'], 'reason': 'affordance test'})
+        sid = h.open_table(row['service']['tableId'])
         response = h.mutate(sid, 'start')
         self.assertIsNone(response['data'].get('actions'))
         self.assertTrue(all(c.get('actions') is None for c in response['data']['courses']))
