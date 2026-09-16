@@ -212,7 +212,12 @@ class NativeHttp(unittest.TestCase):
 
     def test_11_outbox_and_audit_are_one_to_one(self):
         self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),sql('SELECT count(*) FROM native_d1.outbox'))
-        self.assertEqual(sql("SELECT count(*) FROM native_d1.outbox WHERE published_at IS NOT NULL"),'0')
+        # D2: el publicador del servidor marca published_at para SU ambito. La publicacion es
+        # asincrona (at-least-once), asi que se espera el drenado en vez de exigir instantaneidad.
+        for _ in range(100):
+            if sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d1-tenant' AND published_at IS NULL")=='0': break
+            time.sleep(0.1)
+        self.assertEqual(sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d1-tenant' AND published_at IS NULL"),'0')
 
 if __name__=='__main__':
     result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(NativeHttp))
