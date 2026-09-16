@@ -36,6 +36,11 @@ var builder=WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(options=>options.ServiceName="Costina D1 Laboratory");
 builder.WebHost.ConfigureKestrel(options=> { options.Listen(IPAddress.Loopback,port); options.Limits.MaxRequestBodySize=32768; });
 builder.Services.AddSingleton(store);
+builder.Services.AddSingleton(source);
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IEventSink,HubEventSink>();
+builder.Services.AddSingleton<OutboxPublisher>();
+builder.Services.AddHostedService<OutboxPublisherService>();
 var app=builder.Build();
 app.UseRouting();
 app.Use(async (context,next)=>
@@ -55,7 +60,9 @@ app.Use(async (context,next)=>
         var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
         var action=context.Request.RouteValues["action"]?.ToString();
         bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
-        if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method))
+        // La restriccion de cocina aplica a los comandos de comedor ({action} presente).
+        // Un POST sin action con metadatos que admiten kitchen (negociacion del hub) no es un comando.
+        if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method) && action is not null)
             allowed &= action is "preparation-start" or "preparation-ready" or "ready";
         if (role=="service" && action is "complete" or "cancel-unstarted") allowed=false;
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
@@ -94,7 +101,7 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.2.0-d1.1"}); });
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.3.0-d2"}); });
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>Json(await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted)))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
     {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,d.Entity.View());},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
@@ -108,4 +115,6 @@ app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,st
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
     Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
 app.MapDesktopReadRoutes(source,scope);
+// Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
+app.MapHub<EventsHub>(prefix+"/events").WithMetadata(new RouteAccess("main","service","kitchen"));
 await app.RunAsync();
