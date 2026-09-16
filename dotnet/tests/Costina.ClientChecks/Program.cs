@@ -59,9 +59,49 @@ await Check("operational DTO excludes financial fields",()=>{
     Assert(types.SelectMany(t=>t.GetProperties()).All(p=>!new[]{"Price","Balance","Payments","Account","TotalCents"}.Any(x=>p.Name.Contains(x,StringComparison.OrdinalIgnoreCase))));
     return Task.CompletedTask;
 });
+await Check("durable store saves before first attempt and clears on success",async()=>{
+    var store=new MemoryStore();var calls=0;
+    using var client=Client(new Handler((_,_)=>Task.FromResult(++calls==1?Response(503,"{\"error\":\"operation_unconfirmed\"}"):Response(200,"{\"version\":2}"))));
+    client.AttachPendingStore(store);
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
+    Assert(store.Stored is not null&&store.Stored.Body==client.Pending!.Body&&store.Stored.Key==client.Pending.Key);
+    await client.RetryAsync();Assert(store.Stored is null&&client.Pending is null);
+});
+await Check("explicit rejection clears the durable command",async()=>{
+    var store=new MemoryStore();
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(409,"{\"error\":\"version_conflict\"}"))));
+    client.AttachPendingStore(store);
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
+    Assert(store.Stored is null&&client.Pending is null);
+});
+await Check("restored command from a previous process replays identical bytes and key",async()=>{
+    var store=new MemoryStore{Stored=new PendingCommand("key-abc","services/x/commands/start","{\"expectedVersion\":7}","Start")};
+    string? sentBody=null,sentKey=null;
+    using var client=Client(new Handler(async(r,_)=>{
+        sentBody=await r.Content!.ReadAsStringAsync();sentKey=r.Headers.GetValues("Idempotency-Key").Single();
+        return Response(200,"{\"version\":8}");
+    }));
+    client.AttachPendingStore(store);
+    Assert(client.Pending is {Key:"key-abc"});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Otra");});
+    await client.RetryAsync();
+    Assert(sentBody=="{\"expectedVersion\":7}"&&sentKey=="key-abc"&&store.Stored is null);
+});
+await Check("attaching a store with a live pending persists it",async()=>{
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(503,"{}"))));
+    await Throws<ApiError>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    var store=new MemoryStore();client.AttachPendingStore(store);
+    Assert(store.Stored is not null&&store.Stored.Key==client.Pending!.Key);
+});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;
 sealed class Handler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> send):HttpMessageHandler {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>send(request,ct);
+}
+sealed class MemoryStore:IPendingStore {
+    public PendingCommand? Stored;
+    public void Save(PendingCommand command)=>Stored=command;
+    public PendingCommand? Load()=>Stored;
+    public void Clear()=>Stored=null;
 }
