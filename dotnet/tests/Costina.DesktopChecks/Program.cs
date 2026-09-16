@@ -16,37 +16,82 @@ internal static class Program
         if(((TabItem)window.FindName("CheckoutTab")).Visibility!=Visibility.Collapsed) throw new Exception("Checkout visible without authenticated role.");
         if(((TabControl)window.FindName("Tabs")).IsEnabled) throw new Exception("Unauthenticated operations enabled.");
         // D3.1: la habilitacion es un mapeo puro de las affordances del servidor, sin reglas locales.
+        // D3.4 (F01): ademas, solo hay contexto accionable cuando la fila seleccionada coincide con la entidad leida.
         var shell=new Costina.Desktop.ViewModels.ShellViewModel();
-        shell.Session=new("service","t","c","l",["open"]);
+        shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4");
         var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start"]);
-        shell.Service.Dining=new(3,new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]));
+        var dto=new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]);
+        var entry=new Costina.Client.BoardEntry(3,dto,new("o1","M1","s1","Occupied",null,["release"]),1);
+        shell.Service.Board=[entry]; shell.Service.SelectedEntry=entry;   // sin Api la seleccion no dispara lecturas
+        shell.Service.Dining=new(3,dto);
         shell.Service.SelectedCourse=new Costina.Client.CourseDto("c1","Pase","Ready",null,null,null,null,[prep],["serve"]);
-        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start"))
+        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start")||!shell.Service.CanAction("release"))
             throw new Exception("Advertised affordances must enable their controls.");
-        if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparation-ready")||shell.Service.CanAction("release"))
+        if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparation-ready"))
             throw new Exception("Actions the server did not advertise must stay disabled.");
         if(!shell.CanOpen) throw new Exception("Session affordance must drive the open panel.");
         shell.Busy=true;
         if(shell.Service.CanAction("pause")) throw new Exception("Busy must gate every action.");
-        shell.Busy=false; shell.Session=null;
+        shell.Busy=false;
+        var other=new Costina.Client.BoardEntry(1,new("s2","M2",2,"InService",[],["pause"]),new("o2","M2","s2","Occupied",null,["release"]),1);
+        shell.Service.Board=[entry,other]; shell.Service.SelectedEntry=other;   // destino nuevo con el detalle antiguo aun cargado
+        if(shell.Service.CanAction("pause")||shell.Service.CanAction("fire-next")||shell.Service.CanAction("serve")||shell.Service.CanAction("release")||shell.Service.CanAction("preparation-start"))
+            throw new Exception("A selection that does not match the loaded detail must disable every action.");
+        shell.Service.SelectedEntry=entry;
+        if(!shell.Service.CanAction("pause")) throw new Exception("Returning to the loaded entity restores its actions.");
+        shell.Session=null;
         if(shell.Service.CanAction("pause")||shell.CanOpen) throw new Exception("Disconnected must gate every action.");
-        // D3.3: la orden incierta persiste cifrada con DPAPI y un fichero corrupto se descarta.
-        var store=new DpapiPendingStore(new Uri("http://127.0.0.1:59999"),"checks");
-        store.Clear();
-        var command=new Costina.Client.PendingCommand("k123","services/x/commands/start","{\"marker-secreto\":7}","Start");
-        store.Save(command);
-        if(store.Load() is not {Key:"k123"} restored||restored.Body!=command.Body) throw new Exception("DPAPI round trip must be lossless.");
-        var pendingFile=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Costina","pending-59999-checks.bin");
-        if(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(pendingFile)).Contains("marker-secreto")) throw new Exception("Pending file must not be plaintext.");
-        File.WriteAllBytes(pendingFile,[1,2,3]);
-        if(store.Load() is not null) throw new Exception("A corrupted pending file must be discarded.");
-        if(File.Exists(pendingFile)) throw new Exception("Discarding must delete the corrupted file.");
+        // D3.4 (F01) en caja: nunca se cobra ni se carga en una cuenta distinta de la leida.
+        shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4");
+        shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua","Botella",400)]; shell.Checkout.SelectedProduct=shell.Checkout.Products[0];
+        shell.Checkout.Accounts=[new Costina.Client.AccountChoice("s1","M1","Open"),new Costina.Client.AccountChoice("s2","M2","Open")];
+        shell.Checkout.SelectedAccount=shell.Checkout.Accounts[0];
+        shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",0,0,0,0,"none",[],[],["add-product","payment"],[]));
+        if(!shell.Checkout.AddCommand.CanExecute(null)||!shell.Checkout.PayCommand.CanExecute(null)) throw new Exception("Matching account must enable its advertised actions.");
+        shell.Checkout.SelectedAccount=shell.Checkout.Accounts[1];
+        if(shell.Checkout.AddCommand.CanExecute(null)||shell.Checkout.PayCommand.CanExecute(null)) throw new Exception("Account actions must never target a different account than the loaded one.");
+        // D3.4 (F02/F03): almacen durable aislado por instalacion, ambito, rol y ventana; la evidencia se conserva.
+        var folder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
+        var session=new Costina.Client.SessionInfo("checks","t","c","l",null,"inst-checks","0.7.0-d3.4");
+        string[] files;
+        using(var first=new DpapiPendingStore(session,folder))
+        using(var second=new DpapiPendingStore(session,folder))
+        {
+            if(first.Slot==second.Slot) throw new Exception("Two live windows of the same role must never share a durable slot.");
+            var command=new Costina.Client.PendingCommand("k123","services/x/commands/start","{\"marker-secreto\":7}","Start");
+            first.Save(command);
+            if(second.Load().Outcome!=Costina.Client.PendingOutcome.Absent) throw new Exception("A window must not see another window's pending command.");
+            var load=first.Load();
+            if(load.Outcome!=Costina.Client.PendingOutcome.Restored||load.Command is not {Key:"k123"} restored||restored.Body!=command.Body) throw new Exception("DPAPI round trip must be lossless.");
+            files=Directory.GetFiles(folder,"*.bin");
+            if(files.Length!=1||System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(files[0])).Contains("marker-secreto")) throw new Exception("Pending body must not be plaintext.");
+            first.Clear("otra-clave");
+            if(!File.Exists(files[0])) throw new Exception("Clearing a different key must not delete the stored command.");
+            // Cuerpo cifrado danado: se conserva la cabecera con la clave, se informa y NO se borra.
+            var bytes=File.ReadAllBytes(files[0]); var newline=Array.IndexOf(bytes,(byte)'\n');
+            File.WriteAllBytes(files[0],[..bytes[..(newline+1)],(byte)1,(byte)2,(byte)3]);
+            var damaged=first.Load();
+            if(damaged.Outcome!=Costina.Client.PendingOutcome.Unreadable||damaged.Key!="k123"||!File.Exists(files[0])) throw new Exception("A damaged pending file must be reported with its key and kept.");
+            first.Discard();
+            if(File.Exists(files[0])||Directory.GetFiles(folder,"*.cuarentena-*").Length!=1) throw new Exception("Discarding must quarantine the evidence, not destroy it.");
+            if(first.Load().Outcome!=Costina.Client.PendingOutcome.Absent) throw new Exception("After quarantine the slot is empty.");
+            first.Save(command); first.Clear("k123");
+            if(File.Exists(files[0])) throw new Exception("Clearing the confirmed key must delete the file.");
+            // Fichero de otra instalacion en el mismo hueco: se informa y nunca se reenvia.
+            using(var foreign=new DpapiPendingStore(new("checks","t","c","l",null,"inst-otra","0.7.0-d3.4"),folder)) foreign.Save(command);
+            File.Move(Directory.GetFiles(folder,"inst-otra-*.bin").Single(),files[0]);
+            if(first.Load() is not {Outcome:Costina.Client.PendingOutcome.Unreadable,Key:"k123"}) throw new Exception("A command from another installation must never be restored.");
+            first.Discard();
+        }
+        using(var third=new DpapiPendingStore(session,folder))
+            if(third.Slot!=0) throw new Exception("A released slot must be reused by the next window.");
+        Directory.Delete(folder,true);
         Directory.CreateDirectory("artifacts/desktop");
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
         using(var file=File.Create("artifacts/desktop/startup.png")) encoder.Save(file);
-        File.WriteAllText("artifacts/desktop/window-checks.txt","Startup and viewmodel affordance-mapping checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
+        File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
         window.Close();app.Shutdown();Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
     }
 }

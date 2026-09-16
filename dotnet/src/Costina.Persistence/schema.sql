@@ -53,3 +53,10 @@ CREATE TABLE IF NOT EXISTS native_d1.configuration (
  kind text NOT NULL CHECK (kind IN ('table','menu','product')), id text NOT NULL, payload jsonb NOT NULL,
  PRIMARY KEY (tenant,company,location,kind,id)
 );
+-- D3.4: identidad estable de la instalacion (una sola fila, creada una vez). El cliente separa por
+-- ella su orden durable: un pendiente de otra instalacion en el mismo puerto nunca se reenvia.
+CREATE TABLE IF NOT EXISTS native_d1.installation (
+ id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(),
+ single boolean NOT NULL DEFAULT true UNIQUE CHECK (single)
+);
+INSERT INTO native_d1.installation (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM native_d1.installation);

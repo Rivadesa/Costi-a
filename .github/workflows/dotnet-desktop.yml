@@ -30,37 +30,41 @@ jobs:
       - name: Record exact build manifest and complete source
         shell: pwsh
         run: |
-          foreach ($folder in @('../artifacts/desktop', '../artifacts/server')) {
+          # La version del manifiesto sale del csproj de cada componente (F08): una sola fuente, nunca una cadena fija.
+          $versions=@{desktop=([xml](Get-Content src/Costina.Desktop/Costina.Desktop.csproj)).SelectSingleNode('//Version').InnerText;
+                      server=([xml](Get-Content src/Costina.Server/Costina.Server.csproj)).SelectSingleNode('//Version').InnerText}
+          foreach ($component in @('desktop', 'server')) {
+            $folder="../artifacts/$component"
             $base=(Resolve-Path $folder).Path
             $files=Get-ChildItem $folder -File -Recurse | ForEach-Object {
               @{path=$_.FullName.Substring($base.Length+1); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
             }
-            @{version='0.2.0-d1.2'; commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; files=@($files)} | ConvertTo-Json -Depth 6 | Set-Content "$folder/build-manifest.json"
+            @{component=$component; version=$versions[$component]; commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; files=@($files)} | ConvertTo-Json -Depth 6 | Set-Content "$folder/build-manifest.json"
           }
-          git -C .. archive -o artifacts/d1.2-source.zip HEAD
+          git -C .. archive -o artifacts/source.zip HEAD
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
-          name: costina-d1.2-windows-desktop
+          name: costina-windows-desktop
           path: artifacts/desktop/
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: costina-d1.2-windows-server
+          name: costina-windows-server
           path: artifacts/server/
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: costina-d1.2-complete-source
-          path: artifacts/d1.2-source.zip
+          name: costina-complete-source
+          path: artifacts/source.zip
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: costina-d1.2-desktop-evidence
+          name: costina-desktop-evidence
           path: dotnet/artifacts/desktop/
           if-no-files-found: warn
           retention-days: 14

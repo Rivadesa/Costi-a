@@ -23,19 +23,23 @@ KEYS = {r: secrets.token_hex(32) for r in ('main', 'service', 'kitchen')}
 for role, key in KEYS.items(): ENV['COSTINA_KEY_' + role.upper()] = key
 PROCESS = None
 LOG = None
+LAST_HEADERS = {}  # cabeceras de la ultima respuesta (D3.4: el servidor hace eco de Idempotency-Key)
 
 def sql(query):
     return subprocess.check_output(['psql', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], env=ENV, text=True).strip()
 
 def request(path, data=None, role='main', key=None, raw=None, headers=None):
+    global LAST_HEADERS
     h = {'Authorization': 'Bearer ' + KEYS.get(role, ''), 'Content-Type': 'application/json'}
     if data is not None or raw is not None: h['Idempotency-Key'] = key or secrets.token_hex(16)
     h.update(headers or {})
     body = raw if raw is not None else json.dumps(data).encode() if data is not None else None
     req = urllib.request.Request(BASE + '/api/native/v1' + path, data=body, headers=h)
     try:
-        with urllib.request.urlopen(req, timeout=15) as r: return r.status, r.read()
-    except urllib.error.HTTPError as e: return e.code, e.read()
+        with urllib.request.urlopen(req, timeout=15) as r:
+            LAST_HEADERS = dict(r.headers); return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        LAST_HEADERS = dict(e.headers); return e.code, e.read()
 
 def ok(path, data=None, **kw):
     status, body = request(path, data, **kw)

@@ -8,7 +8,7 @@ Todo vive en una única carpeta (recomendado: `.lab/` dentro del clon, añadida 
 
 1. **PostgreSQL 17.11 portable** (EDB, versión exacta fijada — la misma que D1.3):
    `https://get.enterprisedb.com/postgresql/postgresql-17.11-3-windows-x64-binaries.zip` → descomprimir; queda `pgsql/`.
-2. **Binarios del último run verde de CI** del workflow "Native WPF desktop acceptance" sobre `develop`: artefactos `costina-d1.2-windows-server` → `server/` y `costina-d1.2-windows-desktop` → `client/`. Anotar el run y commit exactos usados (el manifiesto del artefacto los lleva).
+2. **Binarios del último run verde de CI** del workflow "Native WPF desktop acceptance" sobre `develop`: artefactos `costina-windows-server` → `server/` y `costina-windows-desktop` → `client/` (hasta D3.3 se llamaban `costina-d1.2-*`). Anotar el run y commit exactos usados (el manifiesto `build-manifest.json` de cada artefacto lleva versión, commit y hashes).
 
 ## Montaje (una vez)
 
@@ -29,7 +29,7 @@ Todo vive en una única carpeta (recomendado: `.lab/` dentro del clon, añadida 
 
 ## Actualizar binarios tras integrar una PR
 
-Cerrar todo (`0-parar-todo.cmd`), sustituir `server/` y `client/` por los artefactos del nuevo run verde, y repetir `init-lab` solo si el corte tocó esquema o índices (el doc del corte lo dice). `data/` y los secretos se conservan.
+Cerrar todo (`0-parar-todo.cmd`), sustituir `server/` y `client/` por los artefactos del nuevo run verde, y repetir `init-lab` solo si el corte tocó esquema o índices (el doc del corte lo dice; D3.4 lo requiere una vez por la tabla `installation`). `data/` y los secretos se conservan. Si el motor arranca con "run init-lab once more", es exactamente eso.
 
 ## Trampas conocidas del montaje
 

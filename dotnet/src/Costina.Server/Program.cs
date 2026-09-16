@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,12 @@ if(args.Length == 1 && args[0] == "init-lab")
 }
 if(args.Length != 0) throw new ArgumentException("Only init-lab or normal startup is supported.");
 await store.CheckAsync();
+var installation = await store.InstallationAsync();
+// Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
+var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+var plus = informational.IndexOf('+');
+var serverVersion = plus < 0 ? informational : informational[..plus];
+var serverBuild = plus < 0 ? "" : informational[(plus + 1)..];
 var roles = new[] { "main", "service", "kitchen" };
 var keys = roles.ToDictionary(r=>r,r=>RequiredEnvironment("COSTINA_KEY_"+r.ToUpperInvariant()));
 if(keys.Values.Any(k=>k.Length<32) || keys.Values.Distinct().Count()!=3)
@@ -47,6 +54,11 @@ app.UseRouting();
 app.Use(async (context,next)=>
 {
     context.Response.Headers.CacheControl="no-store";
+    // Eco de la clave de idempotencia: cualquier respuesta, incluido un rechazo, identifica el comando
+    // al que contesta. El cliente no cierra una incertidumbre con una respuesta que no la lleve.
+    var idempotency=context.Request.Headers["Idempotency-Key"].ToString();
+    if(idempotency.Length is >0 and <=128 && idempotency.All(ch=>ch is >= '!' and <= '~'))
+        context.Response.Headers["Idempotency-Key"]=idempotency;
     try
     {
         if(context.Request.Path=="/health") { await next(); return; }
@@ -102,7 +114,7 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version="0.5.0-d3.2"}); });
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version=serverVersion,build=serverBuild}); });
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
     var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
@@ -118,7 +130,14 @@ app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,st
     Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
     Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
-app.MapDesktopReadRoutes(source,scope);
+// Conciliacion de una orden cuyo resultado el cliente no pudo conservar: devuelve la respuesta
+// guardada de ESA clave para el mismo actor, o found=false. Nunca ejecuta ni reintenta nada.
+app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
+    var stored=await store.ReadAsync(Identity(c),u=>u.CommandResponse(key),c.RequestAborted);
+    return Results.Text(stored is null ? Wire.Encode(new {key,found=false})
+        : "{\"key\":"+Wire.Encode(key)+",\"found\":true,\"response\":"+stored+"}","application/json");
+}).WithMetadata(new RouteAccess("main","service","kitchen"));
+app.MapDesktopReadRoutes(source,scope,installation,serverVersion);
 // Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
 app.MapHub<EventsHub>(prefix+"/events").WithMetadata(new RouteAccess("main","service","kitchen"));
 await app.RunAsync();
