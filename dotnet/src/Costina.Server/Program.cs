@@ -76,8 +76,8 @@ app.Use(async (context,next)=>
         // La restriccion de cocina aplica a los comandos de comedor ({action} presente).
         // Un POST sin action con metadatos que admiten kitchen (negociacion del hub) no es un comando.
         if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method) && action is not null)
-            allowed &= action is "preparation-start" or "preparation-ready" or "ready" or "acknowledge-restrictions";
-        if (role=="service" && action is "complete" or "cancel-unstarted" or "acknowledge-restrictions") allowed=false;
+            allowed &= action is "preparation-start" or "preparation-ready" or "ready" or "review-preparation";
+        if (role=="service" && action is "complete" or "cancel-unstarted" or "review-preparation") allowed=false;
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
         await next();
     }

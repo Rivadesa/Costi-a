@@ -8,12 +8,12 @@ namespace Costina.Server;
 // El dominio calcula QUE admite el agregado; aqui se decide QUIEN puede verlo/hacerlo.
 public static class Affordances
 {
-    private static readonly string[] KitchenAllowed = ["preparation-start", "preparation-ready", "ready", "acknowledge-restrictions"];
+    private static readonly string[] KitchenAllowed = ["preparation-start", "preparation-ready", "ready", "review-preparation"];
 
     public static bool Allows(string role, string action) => role switch
     {
         "main" => true,
-        "service" => action is not ("complete" or "cancel-unstarted" or "release" or "acknowledge-restrictions"),
+        "service" => action is not ("complete" or "cancel-unstarted" or "release" or "review-preparation"),
         "kitchen" => KitchenAllowed.Contains(action, StringComparer.Ordinal),
         _ => false
     };

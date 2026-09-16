@@ -19,14 +19,15 @@ internal static class Program
         // D3.4 (F01): ademas, solo hay contexto accionable cuando la fila seleccionada coincide con la entidad leida.
         var shell=new Costina.Desktop.ViewModels.ShellViewModel();
         shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4");
-        var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start"]);
+        var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start","review-preparation"],null,true);
         var dto=new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]);
         var entry=new Costina.Client.BoardEntry(3,dto,new("o1","M1","s1","Occupied",null,["release"]),1);
         shell.Service.Board=[entry]; shell.Service.SelectedEntry=entry;   // sin Api la seleccion no dispara lecturas
         shell.Service.Dining=new(3,dto);
         shell.Service.SelectedCourse=new Costina.Client.CourseDto("c1","Pase","Ready",null,null,null,null,[prep],["serve"]);
-        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start")||!shell.Service.CanAction("release"))
+        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start")||!shell.Service.CanAction("release")||!shell.Service.CanAction("review-preparation"))
             throw new Exception("Advertised affordances must enable their controls.");
+        if(prep.ReviewText!="⚠ PENDIENTE DE REVISIÓN") throw new Exception("A pending review must be stated in text, never colour only.");
         if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparation-ready"))
             throw new Exception("Actions the server did not advertise must stay disabled.");
         if(!shell.CanOpen) throw new Exception("Session affordance must drive the open panel.");

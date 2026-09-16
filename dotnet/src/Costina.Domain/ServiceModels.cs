@@ -20,7 +20,11 @@ public sealed record PreparationView(string Id, string Name, string StationId, i
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? Actions = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<GuestRestriction>? Restrictions = null);
+    IReadOnlyList<GuestRestriction>? Restrictions = null,
+    // D3.5 (aditivos, SI persisten): revision pendiente y ultima decision de cocina sobre esta elaboracion.
+    bool ReviewPending = false,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    PreparationReview? Review = null);
 public sealed record CourseView(string Id, string Name, CourseState State,
     DateTimeOffset? FiredAt, DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt,
     string? SkipReason, IReadOnlyList<PreparationView> Preparations,

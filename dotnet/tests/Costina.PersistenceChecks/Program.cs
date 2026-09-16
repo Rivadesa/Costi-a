@@ -43,8 +43,13 @@ dres.DeclareRestriction(null,RestrictionKind.Preference,"sin cilantro",Restricti
 var dres2=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(dres.Snapshot())));
 Check(dres2.RestrictionsPendingAck && dres2.Restrictions.Count==2,"restriction change survives restart still unacknowledged");
 Check(Wire.Encode(dres2.Snapshot())==Wire.Encode(dres.Snapshot()),"restriction round trip is lossless");
-dres2.AcknowledgeRestrictions(stamp);
-Check(!DiningService.Restore(dres2.Snapshot()).RestrictionsPendingAck,"acknowledgement persists");
+Check(dres2.View().Courses[0].Preparations[0].ReviewPending,"pending review per preparation survives restart");
+dres2.ReviewPreparation("p1","a",ReviewDecision.Adapt,"sin cilantro",stamp);
+var dres3=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(dres2.Snapshot())));
+Check(!dres3.RestrictionsPendingAck && dres3.View().Courses[0].Preparations[0].Review?.Decision==ReviewDecision.Adapt,"review decision persists and clears the pending flag");
+// D3.5: un payload D3.2 (acuse global pendiente, sin marcas por elaboracion) restaura con TODAS las elaboraciones enviadas pendientes.
+var legacyAck=Wire.Decode<DiningSnapshot>(Wire.Encode(dres.Snapshot()).Replace("\"reviewPending\":true","\"reviewPending\":false"));
+Check(legacyAck.RestrictionsPendingAck && DiningService.Restore(legacyAck).View().Courses[0].Preparations.All(p=>p.ReviewPending),"pre-D3.5 payload with global acknowledgement restores every sent preparation as pending review");
 Check(!Wire.Encode(dres.Snapshot()).Contains("\"restrictions\":null"),"snapshot stores the restriction list itself");
 var legacy=Wire.Decode<DiningSnapshot>(Wire.Encode(d.Snapshot()) .Replace(",\"restrictions\":[],\"restrictionsPendingAck\":false",""));
 Check(DiningService.Restore(legacy).Restrictions.Count==0,"pre-D3.2 payload without restriction fields restores cleanly");

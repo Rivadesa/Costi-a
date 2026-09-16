@@ -8,14 +8,18 @@ public enum RestrictionSeverity { Severe, Moderate, Mild }
 public sealed record GuestRestriction(string Id, int? GuestPosition, RestrictionKind Kind,
     string Substance, RestrictionSeverity Severity);
 
+// Decision de cocina sobre UNA elaboracion afectada por un cambio de restriccion (D3.5, F05):
+// no afecta / se adapta (con el cambio aplicado) / se rehace. Siempre con nota y responsable.
+public enum ReviewDecision { Unaffected, Adapt, Remake }
+public sealed record PreparationReview(ReviewDecision Decision, string Note, DateTimeOffset At);
+
 public sealed partial class DiningService
 {
     private readonly List<GuestRestriction> restrictions = [];
-    private bool restrictionsPendingAck;
 
     public IReadOnlyList<GuestRestriction> Restrictions => restrictions.AsReadOnly();
-    public bool RestrictionsPendingAck => restrictionsPendingAck;
-    private bool KitchenWorkSent => courses.Any(c => c.Active);
+    // Derivado, nunca un booleano suelto: hay trabajo enviado con elaboraciones sin revisar.
+    public bool RestrictionsPendingAck => courses.Any(c => c.ReviewPending);
 
     // Una restriccion aplica a una elaboracion si cualquiera de las dos es de mesa entera
     // o si coinciden en posicion de comensal.
@@ -36,14 +40,15 @@ public sealed partial class DiningService
             && string.Equals(r.Substance, substance, StringComparison.OrdinalIgnoreCase)),
             "duplicate_restriction", "This restriction is already declared for that guest.");
         var id = Guid.NewGuid().ToString("N");
-        restrictions.Add(new(id, guestPosition, kind, substance, severity));
-        // Protocolo de acuse: un cambio con trabajo ya enviado a cocina exige reconocimiento
-        // explicito antes de validar, servir o disparar mas pases (ADR-009).
-        if (KitchenWorkSent) restrictionsPendingAck = true;
+        var restriction = new GuestRestriction(id, guestPosition, kind, substance, severity);
+        restrictions.Add(restriction);
+        // Protocolo de revision (ADR-009, F05): cada elaboracion ya enviada a la que aplica el cambio
+        // queda pendiente de una decision explicita de cocina antes de validar, servir o disparar mas.
+        var affected = FlagAffected(restriction);
         Emit("restriction.declared", stamp, ("restriction_id", id), ("kind", kind.ToString()),
             ("substance", substance), ("severity", severity.ToString()),
             ("guest_position", guestPosition?.ToString() ?? "all"),
-            ("kitchen_ack_required", restrictionsPendingAck.ToString()));
+            ("affected_preparations", affected.ToString()));
         return id;
     }
 
@@ -58,20 +63,25 @@ public sealed partial class DiningService
         var removed = restrictions[index];
         restrictions.RemoveAt(index);
         // La historia queda en outbox/auditoria: retirar del estado actual no es un borrado silencioso.
-        if (KitchenWorkSent) restrictionsPendingAck = true;
+        // Las elaboraciones que se adaptaron a la restriccion retirada tambien exigen decision.
+        var affected = FlagAffected(removed);
         Emit("restriction.removed", stamp, ("restriction_id", removed.Id), ("reason", reason),
-            ("substance", removed.Substance), ("kitchen_ack_required", restrictionsPendingAck.ToString()));
+            ("substance", removed.Substance), ("affected_preparations", affected.ToString()));
     }
 
-    // Acto de cocina: confirma que el cambio se ha visto. Permitido tambien en pausa,
-    // como el resto de reconocimientos de trabajo ya enviado.
-    public void AcknowledgeRestrictions(CommandStamp stamp)
+    // Acto de cocina por elaboracion: decide que pasa con ESE plato tras el cambio. Permitido en pausa,
+    // como el resto de reconocimientos de trabajo ya enviado. "Rehacer" devuelve la elaboracion a
+    // enviada y retira la validacion del pase si la tenia: nada sale sin una nueva validacion.
+    public void ReviewPreparation(string courseId, string itemId, ReviewDecision decision, string note, CommandStamp stamp)
     {
-        Check(stamp);
-        Guard.Rule(State is DiningState.InService or DiningState.Paused,
-            "service_not_active", "Acknowledgement requires an active or paused service.");
-        Guard.Rule(restrictionsPendingAck, "nothing_to_acknowledge", "There is no unacknowledged restriction change.");
-        restrictionsPendingAck = false;
-        Emit("restriction.acknowledged", stamp);
+        KitchenAllowed(stamp);
+        note = Guard.Text(note, nameof(note));
+        Guard.Rule(Enum.IsDefined(decision), "invalid_review", "Unknown review decision.");
+        Find(courseId).Review(itemId, decision, note, stamp);
+        Emit("restriction.reviewed", stamp, ("course_id", courseId), ("item_id", itemId),
+            ("decision", decision.ToString()), ("note", note));
     }
+
+    private int FlagAffected(GuestRestriction restriction)
+        => courses.Sum(c => c.FlagForReview(position => Applies(restriction, position)));
 }

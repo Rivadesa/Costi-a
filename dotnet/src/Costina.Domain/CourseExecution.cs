@@ -7,8 +7,11 @@ internal sealed partial class CourseExecution
     {
         public PreparationDefinition Definition { get; } = definition;
         public PreparationState State { get; set; } = PreparationState.Pending;
+        public bool ReviewPending { get; set; }
+        public PreparationReview? Review { get; set; }
         public PreparationView View() => new(Definition.Id, Definition.Name, Definition.StationId,
-            Definition.Quantity, Definition.GuestPosition, Definition.Mandatory, State);
+            Definition.Quantity, Definition.GuestPosition, Definition.Mandatory, State,
+            ReviewPending: ReviewPending, Review: Review);
     }
 
     private readonly List<Preparation> preparations;
@@ -21,6 +24,7 @@ internal sealed partial class CourseExecution
     public string? SkipReason { get; private set; }
     public bool Active => State is CourseState.Fired or CourseState.Preparing or CourseState.Ready;
     public bool Terminal => State is CourseState.Served or CourseState.Skipped;
+    public bool ReviewPending => preparations.Any(p => p.ReviewPending);
 
     public CourseExecution(CourseDefinition definition, int pax)
     {
@@ -74,6 +78,7 @@ internal sealed partial class CourseExecution
     public void ValidateReady(CommandStamp stamp)
     {
         EnsurePreparing();
+        Guard.Rule(!ReviewPending, "restrictions_unreviewed", "Review every preparation affected by the restriction change before validating.");
         Guard.Rule(preparations.All(p => !p.Definition.Mandatory || p.State == PreparationState.Ready),
             "mandatory_preparation_pending", "Every mandatory preparation must be ready.");
         State = CourseState.Ready;
@@ -83,6 +88,7 @@ internal sealed partial class CourseExecution
     public void Serve(CommandStamp stamp)
     {
         Guard.Rule(State == CourseState.Ready, "course_not_ready", "Course is not ready.");
+        Guard.Rule(!ReviewPending, "restrictions_unreviewed", "Review every preparation affected by the restriction change before serving.");
         State = CourseState.Served;
         ServedAt = stamp.At;
     }
@@ -94,6 +100,30 @@ internal sealed partial class CourseExecution
         Guard.Rule(State == CourseState.Pending, "course_not_pending", "Only unsent courses can be skipped in D0.");
         State = CourseState.Skipped;
         SkipReason = reason;
+    }
+
+    // Marca para revision las elaboraciones YA enviadas a las que aplica el cambio. Un pase no
+    // enviado no necesita revision: al dispararse, cada elaboracion proyecta las restricciones vigentes.
+    internal int FlagForReview(Func<int?, bool> applies)
+    {
+        if (!Active) return 0;
+        var count = 0;
+        foreach (var p in preparations.Where(p => applies(p.Definition.GuestPosition)))
+        { p.ReviewPending = true; count++; }
+        return count;
+    }
+
+    internal void Review(string id, ReviewDecision decision, string note, CommandStamp stamp)
+    {
+        Guard.Rule(Active, "course_not_preparing", "Course is not available for review.");
+        var item = Find(id);
+        Guard.Rule(item.ReviewPending, "nothing_to_review", "This preparation has no pending restriction review.");
+        item.ReviewPending = false;
+        item.Review = new(decision, note, stamp.At);
+        if (decision != ReviewDecision.Remake) return;
+        // Rehacer: la elaboracion vuelve a enviada y el pase pierde su validacion de salida.
+        item.State = PreparationState.Fired;
+        if (State == CourseState.Ready) { State = CourseState.Preparing; ReadyAt = null; }
     }
 
     public CourseView View() => new(Id, Name, State, FiredAt, ReadyAt, ServedAt, SkipReason,
