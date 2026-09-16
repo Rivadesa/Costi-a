@@ -1,91 +1,93 @@
 <Window x:Class="Costina.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Costiña · Windows nativo · D2" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
+ Title="Costiña · Windows nativo · D3.1" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
+<Window.Resources><BooleanToVisibilityConverter x:Key="Bool2Vis"/></Window.Resources>
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.3.0-d2 · WPF nativo · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.4.0-d3.1 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
-   <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="http://127.0.0.1:5088" Width="260"/></StackPanel>
-   <StackPanel Margin="0,0,12,0"><TextBlock Text="Clave del rol de laboratorio"/><PasswordBox x:Name="AccessKey" Width="280" Height="36" Padding="8"/></StackPanel>
-   <Button x:Name="ConnectButton" Content="Conectar" Click="ConnectClick" VerticalAlignment="Bottom"/>
-   <Button x:Name="DisconnectButton" Content="Desconectar" Click="DisconnectClick" VerticalAlignment="Bottom"/>
-   <Button x:Name="RefreshButton" Content="Actualizar" Click="RefreshClick" VerticalAlignment="Bottom"/>
+   <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="260"/></StackPanel>
+   <StackPanel Margin="0,0,12,0"><TextBlock Text="Clave del rol de laboratorio"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="280" Height="36" Padding="8"/></StackPanel>
+   <Button x:Name="ConnectButton" Content="Conectar" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
+   <Button x:Name="DisconnectButton" Content="Desconectar" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
+   <Button x:Name="RefreshButton" Content="Actualizar" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
   </WrapPanel>
-  <Border Background="#E6EBF1" Padding="10" Margin="0,10,0,6"><TextBlock x:Name="Status" Text="Introduce la clave del servidor. La aplicación no almacena la clave en disco." TextWrapping="Wrap"/></Border>
-  <Border x:Name="PendingPanel" Background="#FFF0CE" Padding="8" Margin="0,0,0,8" Visibility="Collapsed"><DockPanel>
-   <Button x:Name="RetryButton" DockPanel.Dock="Right" Content="Reintentar la misma orden" Click="RetryClick"/>
-   <TextBlock x:Name="PendingText" TextWrapping="Wrap" VerticalAlignment="Center"/>
+  <Border Background="#E6EBF1" Padding="10" Margin="0,10,0,6"><TextBlock Text="{Binding Status}" TextWrapping="Wrap"/></Border>
+  <Border Background="#FFF0CE" Padding="8" Margin="0,0,0,8" Visibility="{Binding HasPending, Converter={StaticResource Bool2Vis}}"><DockPanel>
+   <Button DockPanel.Dock="Right" Content="Reintentar la misma orden" Command="{Binding RetryCommand}"/>
+   <TextBlock Text="{Binding PendingText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
   </DockPanel></Border>
  </StackPanel>
  <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-  <TextBlock x:Name="RealtimeState" Text="Tiempo real inactivo."/>
-  <TextBlock x:Name="ReadTime" Text="Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo."/>
+  <TextBlock Text="{Binding RealtimeState}"/>
+  <TextBlock Text="{Binding ReadTime}"/>
  </StackPanel>
- <TabControl x:Name="Tabs" SelectionChanged="TabChanged">
+ <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged">
   <TabItem Header="  Comedor y cocina  " x:Name="ServiceTab">
    <Grid Margin="14"><Grid.ColumnDefinitions><ColumnDefinition Width="245"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <DockPanel Grid.Column="0">
-     <StackPanel DockPanel.Dock="Top" x:Name="OpenPanel">
+     <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
       <TextBlock Text="ABRIR MESA" FontWeight="Bold" Margin="0,0,0,8"/>
-      <ComboBox x:Name="TableSelect" Margin="0,0,0,6"/>
-      <ComboBox x:Name="MenuSelect" Margin="0,0,0,6"/>
-      <WrapPanel><TextBlock Text="Personas " VerticalAlignment="Center"/><TextBox x:Name="PaxInput" Text="2" Width="60"/>
-       <Button x:Name="OpenButton" Content="Abrir" Click="OpenClick"/></WrapPanel>
+      <ComboBox ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" Margin="0,0,0,6"/>
+      <ComboBox ItemsSource="{Binding Service.Menus}" SelectedItem="{Binding Service.SelectedMenu}" Margin="0,0,0,6"/>
+      <WrapPanel><TextBlock Text="Personas " VerticalAlignment="Center"/><TextBox Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+       <Button Content="Abrir" Command="{Binding Service.OpenCommand}"/></WrapPanel>
       <TextBlock Text="MESAS OCUPADAS" Margin="0,18,0,8" FontWeight="Bold"/>
      </StackPanel>
-     <ListBox x:Name="BoardList" SelectionChanged="BoardChanged" BorderThickness="0"/>
+     <ListBox ItemsSource="{Binding Service.Board}" SelectedItem="{Binding Service.SelectedEntry}" BorderThickness="0"/>
     </DockPanel>
     <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <StackPanel Grid.Row="0"><TextBlock x:Name="ServiceTitle" Text="Selecciona una mesa" FontSize="20" FontWeight="SemiBold"/>
+     <StackPanel Grid.Row="0"><TextBlock Text="{Binding Service.ServiceTitle}" FontSize="20" FontWeight="SemiBold"/>
       <TextBlock Text="Seguimiento operativo. Sin precios, cuenta ni pagos." Margin="0,5,0,8"/></StackPanel>
      <WrapPanel Grid.Row="1">
-      <Button x:Name="StartButton" Content="Iniciar servicio" Tag="start" Click="DiningClick"/>
-      <Button x:Name="FireButton" Content="Enviar siguiente pase" Tag="fire-next" Click="DiningClick"/>
-      <Button x:Name="ServeButton" Content="Marcar servido" Tag="serve" Click="DiningClick"/>
-      <Button x:Name="PauseButton" Content="Pausar" Tag="pause" Click="DiningClick"/>
-      <Button x:Name="ResumeButton" Content="Reanudar" Tag="resume" Click="DiningClick"/>
+      <Button Content="Iniciar servicio" Command="{Binding Service.ActCommand}" CommandParameter="start"/>
+      <Button Content="Enviar siguiente pase" Command="{Binding Service.ActCommand}" CommandParameter="fire-next"/>
+      <Button Content="Marcar servido" Command="{Binding Service.ActCommand}" CommandParameter="serve"/>
+      <Button Content="Pausar" Command="{Binding Service.ActCommand}" CommandParameter="pause"/>
+      <Button Content="Reanudar" Command="{Binding Service.ActCommand}" CommandParameter="resume"/>
      </WrapPanel>
-     <DataGrid Grid.Row="2" x:Name="Courses" SelectionChanged="CourseChanged"><DataGrid.Columns>
+     <DataGrid Grid.Row="2" IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}"><DataGrid.Columns>
       <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="145"/>
       <DataGridTextColumn Header="Servido" Binding="{Binding ServedAt, StringFormat=HH:mm:ss}" Width="115"/>
      </DataGrid.Columns></DataGrid>
-     <WrapPanel Grid.Row="3" x:Name="KitchenActions">
+     <WrapPanel Grid.Row="3" Visibility="{Binding IsKitchen, Converter={StaticResource Bool2Vis}}">
       <TextBlock Text="COCINA / PASE" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
-      <Button x:Name="PrepStartButton" Content="Iniciar elaboración" Tag="preparation-start" Click="DiningClick"/>
-      <Button x:Name="PrepReadyButton" Content="Elaboración lista" Tag="preparation-ready" Click="DiningClick"/>
-      <Button x:Name="ValidateButton" Content="Validar pase listo" Tag="ready" Click="DiningClick"/>
+      <Button Content="Iniciar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
+      <Button Content="Elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
+      <Button Content="Validar pase listo" Command="{Binding Service.ActCommand}" CommandParameter="ready"/>
      </WrapPanel>
-     <DataGrid Grid.Row="4" x:Name="Preparations" SelectionChanged="PreparationChanged"><DataGrid.Columns>
+     <DataGrid Grid.Row="4" IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Service.Preparations}" SelectedItem="{Binding Service.SelectedPreparation}"><DataGrid.Columns>
       <DataGridTextColumn Header="Preparación" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estación" Binding="{Binding StationId}" Width="90"/>
       <DataGridTextColumn Header="Comensal" Binding="{Binding GuestPosition}" Width="80"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="115"/>
      </DataGrid.Columns></DataGrid>
-     <StackPanel Grid.Row="5"><TextBox x:Name="Reason" ToolTip="Motivo para pausa, omisión o liberación" Margin="0,8,0,0"/>
-      <WrapPanel><Button x:Name="SkipButton" Content="Omitir pase con motivo" Tag="skip" Click="DiningClick"/>
-       <Button x:Name="CompleteButton" Content="Terminar servicio" Tag="complete" Click="DiningClick"/>
-       <Button x:Name="ReleaseButton" Content="Liberar mesa" Click="ReleaseClick"/></WrapPanel>
+     <StackPanel Grid.Row="5"><TextBox Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" ToolTip="Motivo para pausa, omisión o liberación" Margin="0,8,0,0"/>
+      <WrapPanel><Button Content="Omitir pase con motivo" Command="{Binding Service.ActCommand}" CommandParameter="skip"/>
+       <Button Content="Terminar servicio" Command="{Binding Service.ActCommand}" CommandParameter="complete"/>
+       <Button Content="Liberar mesa" Command="{Binding Service.ReleaseCommand}"/></WrapPanel>
      </StackPanel>
     </Grid>
    </Grid>
   </TabItem>
-  <TabItem Header="  Cuenta / Caja  " x:Name="CheckoutTab" Visibility="Collapsed">
+  <TabItem Header="  Cuenta / Caja  " x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
    <DockPanel Margin="18">
     <StackPanel DockPanel.Dock="Top">
      <TextBlock Text="CUENTA / CAJA · SOLO PUESTO AUTORIZADO" FontSize="20" FontWeight="SemiBold"/>
      <TextBlock Text="Registro operativo de ensayo: no emite facturas ni realiza cargos bancarios." Margin="0,8,0,14"/>
-     <ComboBox x:Name="AccountSelect" SelectionChanged="AccountChanged" Margin="0,0,0,8"/>
-     <TextBlock x:Name="Totals" FontSize="18" Margin="0,6,0,10"/>
-     <WrapPanel><ComboBox x:Name="ProductSelect" Width="340"/><TextBox x:Name="QuantityInput" Text="1" Width="60" Margin="10,0,10,0"/>
-      <Button x:Name="AddButton" Content="Añadir del catálogo" Click="AddClick"/></WrapPanel>
+     <ComboBox ItemsSource="{Binding Checkout.Accounts}" SelectedItem="{Binding Checkout.SelectedAccount}" Margin="0,0,0,8"/>
+     <TextBlock Text="{Binding Checkout.Totals}" FontSize="18" Margin="0,6,0,10"/>
+     <WrapPanel><ComboBox ItemsSource="{Binding Checkout.Products}" SelectedItem="{Binding Checkout.SelectedProduct}" Width="340"/>
+      <TextBox Text="{Binding Checkout.Quantity, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="10,0,10,0"/>
+      <Button Content="Añadir del catálogo" Command="{Binding Checkout.AddCommand}"/></WrapPanel>
     </StackPanel>
     <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-     <WrapPanel><TextBox x:Name="AmountInput" Width="140" ToolTip="Importe del pago en euros" Margin="0,0,10,0"/>
-      <ComboBox x:Name="MethodSelect" Width="140" SelectedIndex="0"><ComboBoxItem Tag="card">Tarjeta</ComboBoxItem><ComboBoxItem Tag="cash">Efectivo</ComboBoxItem><ComboBoxItem Tag="other">Otro</ComboBoxItem></ComboBox>
-      <Button x:Name="PayButton" Content="Registrar pago de prueba" Click="PayClick"/>
-      <Button x:Name="CloseAccountButton" Content="Cerrar cuenta saldada" Click="CloseAccountClick"/>
+     <WrapPanel><TextBox Text="{Binding Checkout.Amount, UpdateSourceTrigger=PropertyChanged}" Width="140" ToolTip="Importe del pago en euros" Margin="0,0,10,0"/>
+      <ComboBox Width="140" SelectedValuePath="Tag" SelectedValue="{Binding Checkout.Method}"><ComboBoxItem Tag="card" IsSelected="True">Tarjeta</ComboBoxItem><ComboBoxItem Tag="cash">Efectivo</ComboBoxItem><ComboBoxItem Tag="other">Otro</ComboBoxItem></ComboBox>
+      <Button Content="Registrar pago de prueba" Command="{Binding Checkout.PayCommand}"/>
+      <Button Content="Cerrar cuenta saldada" Command="{Binding Checkout.CloseAccountCommand}"/>
      </WrapPanel>
-     <TextBlock x:Name="AccountState" TextWrapping="Wrap"/>
+     <TextBlock Text="{Binding Checkout.AccountState}" TextWrapping="Wrap"/>
     </StackPanel>
-    <DataGrid x:Name="Charges"><DataGrid.Columns>
+    <DataGrid IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Checkout.Charges}"><DataGrid.Columns>
      <DataGridTextColumn Header="Concepto" Binding="{Binding Description}" Width="*"/><DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity}" Width="100"/>
      <DataGridTextColumn Header="Importe" Binding="{Binding Amount}" Width="120"/><DataGridCheckBoxColumn Header="Anulado" Binding="{Binding Voided}" Width="90"/>
     </DataGrid.Columns></DataGrid>
