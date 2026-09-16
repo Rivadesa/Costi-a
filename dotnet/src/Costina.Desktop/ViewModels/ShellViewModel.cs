@@ -21,6 +21,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private SessionInfo? session;
     [ObservableProperty] private bool busy;
     [ObservableProperty] private PendingCommand? pending;
+    [ObservableProperty] private PendingLoad? blocked;
     [ObservableProperty] private string status = "Introduce la clave del servidor. La aplicación no almacena la clave en disco.";
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
@@ -29,24 +30,35 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool Connected => Session is not null;
     public bool IsMain => Session?.Role == "main";
-    public bool Writable => Connected && !Busy && Pending is null;
+    // Fallo cerrado: con una orden sin confirmar o una orden anterior ilegible no se admite nada nuevo.
+    public bool Writable => Connected && !Busy && Pending is null && Blocked is null;
     public bool HasPending => Pending is not null;
+    public bool HasBlocked => Blocked is not null;
     public bool CanOpen => Session?.Actions?.Contains("open") == true;
     public bool TabsEnabled => Connected && !Busy;
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     public string PendingText => Pending is null ? "" :
         "SIN CONFIRMAR: " + Pending.Description + ". Conservamos el mismo identificador. No repitas la acción por otro medio sin comprobarla.";
+    public string BlockedText => Blocked is null ? "" : Blocked.Outcome switch
+    {
+        PendingOutcome.Unavailable => "ORDEN ANTERIOR INACCESIBLE: " + Blocked.Detail
+            + " No se admiten órdenes nuevas hasta poder leerla. Cierra otras ventanas o revisa el disco y vuelve a conectar.",
+        _ => "ORDEN ANTERIOR ILEGIBLE" + (Blocked.Key is null ? " (sin identificador)" : " (identificador " + Blocked.Key + ")") + ": "
+            + Blocked.Detail + " Pudo haberse aplicado. Consulta al servidor antes de operar; la evidencia se conserva en cuarentena al descartar."
+    };
 
     internal void Sync()
     {
         OnPropertyChanged(nameof(Connected)); OnPropertyChanged(nameof(IsMain));
         OnPropertyChanged(nameof(Writable)); OnPropertyChanged(nameof(HasPending));
+        OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
         OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled));
         OnPropertyChanged(nameof(IsKitchen));
         DisconnectCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged(); RetryCommand.NotifyCanExecuteChanged();
+        ReconcileCommand.NotifyCanExecuteChanged(); DiscardCommand.NotifyCanExecuteChanged();
         Service.Sync(); Checkout.Sync();
     }
 
@@ -68,7 +80,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         finally
         {
-            Busy = false; Pending = Api?.Pending; Sync();
+            Busy = false; Pending = Api?.Pending; Blocked = Api?.Blocked; Sync();
             if (refreshQueued && Api is not null)
             {
                 refreshQueued = false;
@@ -98,20 +110,24 @@ public sealed partial class ShellViewModel : ObservableObject
         try
         {
             var identity = await candidate.GetAsync<SessionInfo>("session");
+            if (string.IsNullOrEmpty(identity.InstallationId))
+                throw new InvalidOperationException("El servidor no identifica su instalación: actualiza el motor a la misma versión que este cliente.");
             var config = await candidate.GetAsync<Configuration>("configuration");
             Api = candidate; Session = identity;
-            // Cola durable: con el rol ya autenticado se engancha el almacen cifrado y,
-            // si quedo una orden sin confirmar de otra sesion, se restaura y bloquea todo
-            // hasta reintentarla identica (misma Idempotency-Key y mismos bytes).
-            candidate.AttachPendingStore(new DpapiPendingStore(uri, identity.Role));
-            Pending = candidate.Pending;
+            // Cola durable: con la identidad ya autenticada se engancha el almacen cifrado, aislado por
+            // instalacion, ambito, rol y ventana. Una orden sin confirmar de otra sesion se restaura y
+            // bloquea todo hasta reintentarla identica; una ilegible bloquea hasta conciliar con el servidor.
+            candidate.AttachPendingStore(new DpapiPendingStore(identity));
+            Pending = candidate.Pending; Blocked = candidate.Blocked;
             Service.ApplyConfiguration(config);
             await StartRealtime(uri, key);
             await RefreshAll();
-            Status = Pending is not null
+            Status = Blocked is not null
+                ? "Conectado. ORDEN ANTERIOR NO LEGIBLE: no se admiten órdenes nuevas hasta consultarla al servidor o descartarla conservando la evidencia."
+                : Pending is not null
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
-                : $"Conectado al servidor real · rol {identity.Role} · {identity.CompanyId}/{identity.LocationId}";
+                : $"Conectado al servidor real {identity.ServerVersion} · rol {identity.Role} · {identity.CompanyId}/{identity.LocationId}";
         }
         catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
     });
@@ -143,7 +159,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false;
         RealtimeState = "Tiempo real inactivo.";
-        Api?.Dispose(); Api = null; Session = null; Pending = null;
+        Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
         Service.Clear(); Checkout.Clear();
         Status = "Desconectado. La clave no se guarda en disco.";
         ReadTime = "Sin lectura actual del servidor.";
@@ -175,5 +191,28 @@ public sealed partial class ShellViewModel : ObservableObject
         if (path == "services") Service.SelectService(result.GetProperty("serviceId").GetString());
         await RefreshAll();
         Status = "Reintento confirmado con el mismo identificador.";
+    });
+
+    // Conciliacion asistida de una orden ilegible: el servidor dice si consta como aplicada.
+    private bool CanReconcile() => Connected && !Busy && Blocked is { Outcome: PendingOutcome.Unreadable, Key: not null };
+    [RelayCommand(CanExecute = nameof(CanReconcile))]
+    private Task Reconcile() => Run(async () =>
+    {
+        var outcome = await Api!.ReconcileAsync();
+        await RefreshAll();
+        Status = outcome == "confirmed"
+            ? "El servidor confirma que la orden anterior SÍ se aplicó. Bloqueo retirado y datos releídos; la evidencia queda en cuarentena."
+            : "El servidor NO tiene constancia de la orden anterior. Comprueba el estado antes de repetirla; ahora puedes descartarla (la evidencia se conserva).";
+    });
+
+    // Descartar solo tras consultar (o si no hay identificador que consultar); nunca destruye el fichero.
+    private bool CanDiscard() => Connected && !Busy && Blocked is { Outcome: PendingOutcome.Unreadable } load
+        && (load.Key is null || Api?.LastReconciliation == "unknown");
+    [RelayCommand(CanExecute = nameof(CanDiscard))]
+    private Task Discard() => Run(() =>
+    {
+        Api!.DiscardBlocked();
+        Status = "Orden ilegible descartada. El fichero queda en cuarentena en la carpeta de la aplicación para revisión.";
+        return Task.CompletedTask;
     });
 }

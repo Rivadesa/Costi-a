@@ -7,3 +7,4 @@ frontend/**/dist/
 frontend/**/src-tauri/target/
 backend/.phpunit.cache/
 *.log
+__pycache__/

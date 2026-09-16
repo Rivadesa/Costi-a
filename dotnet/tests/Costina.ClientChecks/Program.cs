@@ -15,6 +15,10 @@ async Task Throws<T>(Func<Task> test) where T:Exception {
 }
 ApiClient Client(HttpMessageHandler handler) => new(new Uri("http://127.0.0.1:5088"),new string('a',40),handler);
 HttpResponseMessage Response(int code,string json) => new((HttpStatusCode)code) {Content=new StringContent(json,Encoding.UTF8,"application/json")};
+// Rechazo de la aplicacion que identifica el comando: el servidor D3.4 hace eco de la Idempotency-Key.
+HttpResponseMessage Rejection(int code,string json,HttpRequestMessage request) {
+    var response=Response(code,json); response.Headers.Add("Idempotency-Key",request.Headers.GetValues("Idempotency-Key").Single()); return response;
+}
 foreach(var sample in new[]{("9,50",950L),("9.5",950L),("0,01",1L),("150",15000L)})
     await Check("exact money "+sample.Item1,()=>{Assert(Money.Parse(sample.Item1)==sample.Item2);return Task.CompletedTask;});
 foreach(var sample in new[]{"0","-1","1.234","1,234.00","1e3","NaN","9,",",50"})
@@ -46,30 +50,48 @@ await Check("malformed successful response retains command",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{}"))));
     await Throws<JsonException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
-await Check("version conflict resolves rejection without auto-resubmit",async()=>{
-    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(409,"{\"error\":\"version_conflict\"}"))));
+await Check("version conflict identified by key resolves rejection without auto-resubmit",async()=>{
+    using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"version_conflict\"}",r))));
     await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is null);
 });
 await Check("401 preserves uncertain mutation",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(401,"{}"))));
     await Throws<ApiError>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
+// D3.4 (F04): solo un rechazo definitivo reconocible, que identifica ESTE comando, cierra la incertidumbre.
+await Check("409 without echoed key retains the command",async()=>{
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(409,"{\"error\":\"version_conflict\"}"))));
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+});
+await Check("409 echoing another key retains the command",async()=>{
+    using var client=Client(new Handler((_,_)=>{var r=Response(409,"{\"error\":\"version_conflict\"}");r.Headers.Add("Idempotency-Key","otra");return Task.FromResult(r);}));
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+});
+await Check("transient storage_conflict retains the command",async()=>{
+    using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"storage_conflict\"}",r))));
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+});
+await Check("non-JSON 403 retains the command",async()=>{
+    using var client=Client(new Handler((r,_)=>{var html=new HttpResponseMessage(HttpStatusCode.Forbidden){Content=new StringContent("<html>forbidden</html>",Encoding.UTF8,"text/html")};
+        html.Headers.Add("Idempotency-Key",r.Headers.GetValues("Idempotency-Key").Single());return Task.FromResult(html);}));
+    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+});
 await Check("operational DTO excludes financial fields",()=>{
     var types=new[]{typeof(DiningDto),typeof(CourseDto),typeof(PreparationDto),typeof(BoardEntry)};
     Assert(types.SelectMany(t=>t.GetProperties()).All(p=>!new[]{"Price","Balance","Payments","Account","TotalCents"}.Any(x=>p.Name.Contains(x,StringComparison.OrdinalIgnoreCase))));
     return Task.CompletedTask;
 });
-await Check("durable store saves before first attempt and clears on success",async()=>{
+await Check("durable store saves before first attempt and clears only the confirmed key",async()=>{
     var store=new MemoryStore();var calls=0;
     using var client=Client(new Handler((_,_)=>Task.FromResult(++calls==1?Response(503,"{\"error\":\"operation_unconfirmed\"}"):Response(200,"{\"version\":2}"))));
     client.AttachPendingStore(store);
     await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
     Assert(store.Stored is not null&&store.Stored.Body==client.Pending!.Body&&store.Stored.Key==client.Pending.Key);
-    await client.RetryAsync();Assert(store.Stored is null&&client.Pending is null);
+    await client.RetryAsync();Assert(store.Stored is null&&client.Pending is null&&store.ClearedKeys.Single()==store.LastSavedKey);
 });
 await Check("explicit rejection clears the durable command",async()=>{
     var store=new MemoryStore();
-    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(409,"{\"error\":\"version_conflict\"}"))));
+    using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"version_conflict\"}",r))));
     client.AttachPendingStore(store);
     await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
     Assert(store.Stored is null&&client.Pending is null);
@@ -93,6 +115,45 @@ await Check("attaching a store with a live pending persists it",async()=>{
     var store=new MemoryStore();client.AttachPendingStore(store);
     Assert(store.Stored is not null&&store.Stored.Key==client.Pending!.Key);
 });
+// D3.4 (F02): un fichero ilegible bloquea (fallo cerrado) hasta conciliar con el servidor; la evidencia no se destruye.
+await Check("unreadable durable file blocks mutations and server confirmation lifts the block",async()=>{
+    var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.Unreadable,null,"k9","dañado")};
+    using var client=Client(new Handler((r,_)=>{
+        Assert(r.Method==HttpMethod.Get&&r.RequestUri!.AbsolutePath=="/api/native/v1/commands/k9");
+        return Task.FromResult(Response(200,"{\"key\":\"k9\",\"found\":true,\"response\":{\"version\":3}}"));
+    }));
+    client.AttachPendingStore(store);
+    Assert(client.Blocked is {Outcome:PendingOutcome.Unreadable,Key:"k9"}&&client.Pending is null);
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    Assert(!store.Discarded);
+    await Throws<InvalidOperationException>(()=>{client.DiscardBlocked();return Task.CompletedTask;});   // sin consultar no se descarta
+    Assert(await client.ReconcileAsync()=="confirmed"&&client.Blocked is null&&store.Discarded&&store.ClearedKeys.Count==0);
+});
+await Check("unknown reconciliation keeps the block until an explicit discard that quarantines",async()=>{
+    var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.Unreadable,null,"k10","dañado")};
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"key\":\"k10\",\"found\":false}"))));
+    client.AttachPendingStore(store);
+    Assert(await client.ReconcileAsync()=="unknown"&&client.Blocked is not null);
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    client.DiscardBlocked();
+    Assert(client.Blocked is null&&store.Discarded);
+});
+await Check("unavailable durable file blocks and cannot be discarded",async()=>{
+    var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.Unavailable,null,null,"bloqueado")};
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"version\":1}"))));
+    client.AttachPendingStore(store);
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
+    await Throws<InvalidOperationException>(()=>{client.DiscardBlocked();return Task.CompletedTask;});
+    Assert(client.Blocked is not null&&!store.Discarded);
+});
+await Check("unreadable file without key can only be discarded explicitly",async()=>{
+    var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.Unreadable,null,null,"cabecera dañada")};
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"version\":1}"))));
+    client.AttachPendingStore(store);
+    await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
+    client.DiscardBlocked();Assert(client.Blocked is null&&store.Discarded);
+});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;
@@ -100,8 +161,10 @@ sealed class Handler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponse
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>send(request,ct);
 }
 sealed class MemoryStore:IPendingStore {
-    public PendingCommand? Stored;
-    public void Save(PendingCommand command)=>Stored=command;
-    public PendingCommand? Load()=>Stored;
-    public void Clear()=>Stored=null;
+    public PendingCommand? Stored; public PendingLoad? Forced; public bool Discarded; public string? LastSavedKey;
+    public List<string> ClearedKeys=[];
+    public void Save(PendingCommand command){Stored=command;LastSavedKey=command.Key;}
+    public PendingLoad Load()=>Forced??(Stored is null?new(PendingOutcome.Absent,null,null,""):new(PendingOutcome.Restored,Stored,Stored.Key,""));
+    public void Clear(string key){ClearedKeys.Add(key);if(Stored?.Key==key)Stored=null;}
+    public void Discard(){Discarded=true;Forced=null;Stored=null;}
 }

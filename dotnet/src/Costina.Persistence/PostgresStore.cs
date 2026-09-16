@@ -25,6 +25,22 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
     {
         await using var command = dataSource.CreateCommand("SELECT version FROM native_d1.schema_version");
         if (!Equals(await command.ExecuteScalarAsync(ct), 1)) throw new InvalidDataException("Run the explicit D1 schema initialization first.");
+        await InstallationAsync(ct);
+    }
+
+    // Identidad estable de esta instalacion, creada una sola vez por init-lab; no cambia al reiniciar.
+    public async Task<Guid> InstallationAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await using var command = dataSource.CreateCommand("SELECT id FROM native_d1.installation");
+            return await command.ExecuteScalarAsync(ct) is Guid id ? id
+                : throw new InvalidDataException("Installation identity missing; run init-lab once more.");
+        }
+        catch (PostgresException e) when (e.SqlState == "42P01")
+        {
+            throw new InvalidDataException("This build adds the installation identity table; run init-lab once more.");
+        }
     }
 
     public async Task<T> ReadAsync<T>(ExecutionIdentity identity, Func<Unit, Task<T>> read, CancellationToken ct = default)
@@ -191,6 +207,15 @@ public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transact
             [("kind",kind),("id",id)], r => r.GetString(0));
         if (rows.Count == 0) throw new StoreNotFound();
         return Wire.Decode<T>(rows[0]);
+    }
+    // Conciliacion: solo el MISMO actor y ambito ven el resultado guardado de su clave de idempotencia.
+    public async Task<string?> CommandResponse(string commandKey)
+    {
+        if (string.IsNullOrWhiteSpace(commandKey) || commandKey.Length > 128 || commandKey.Any(char.IsControl))
+            throw new ArgumentException("Invalid command key.");
+        var rows = await Rows("SELECT response FROM native_d1.commands WHERE " + ScopeWhere + " AND actor=@actor AND key=@key",
+            [("actor", identity.ActorId), ("key", commandKey)], r => r.GetString(0));
+        return rows.Count == 0 ? null : rows[0];
     }
     public Task<int> SeedConfiguration<T>(string kind,string id,T value) => Sql(
         "INSERT INTO native_d1.configuration (tenant,company,location,kind,id,payload) VALUES (@tenant,@company,@location,@kind,@id,@payload::jsonb) ON CONFLICT DO NOTHING",

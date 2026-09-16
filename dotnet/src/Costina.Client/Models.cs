@@ -1,9 +1,12 @@
 using System.Globalization;
+using System.Text.Json;
 namespace Costina.Client;
 
 public sealed record Versioned<T>(long Version, T Data);
 public sealed record SessionInfo(string Role, string TenantId, string CompanyId, string LocationId,
-    string[]? Actions = null);
+    string[]? Actions = null, string? InstallationId = null, string? ServerVersion = null);
+// Resultado de conciliar una clave de idempotencia: si el servidor la aplico, devuelve su respuesta guardada.
+public sealed record CommandLookup(string Key, bool Found, JsonElement? Response = null);
 public sealed record TableChoice(string Id, string Name, int Capacity) { public override string ToString() => Name; }
 public sealed record MenuChoice(string Id, string Name) { public override string ToString() => Name; }
 public sealed record Configuration(TableChoice[] Tables, MenuChoice[] Menus);
