@@ -13,10 +13,14 @@ public sealed record CourseDefinition(string Id, string Name, IReadOnlyList<Prep
 
 // Actions: affordances calculadas por el dominio en el momento de la lectura, NUNCA persistidas.
 // Con valor null la propiedad no se serializa: los payloads de snapshot quedan identicos a D1.
+// Restrictions (por elaboracion): proyeccion calculada al leer desde la lista del servicio;
+// nunca persistida (la fuente unica vive en el agregado y su snapshot).
 public sealed record PreparationView(string Id, string Name, string StationId, int Quantity,
     int? GuestPosition, bool Mandatory, PreparationState State,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? Actions = null);
+    IReadOnlyList<string>? Actions = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<GuestRestriction>? Restrictions = null);
 public sealed record CourseView(string Id, string Name, CourseState State,
     DateTimeOffset? FiredAt, DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt,
     string? SkipReason, IReadOnlyList<PreparationView> Preparations,
@@ -24,10 +28,13 @@ public sealed record CourseView(string Id, string Name, CourseState State,
     IReadOnlyList<string>? Actions = null);
 
 // These DTOs contain no account, payment, price, balance or fiscal fields.
+// Restrictions/RestrictionsPendingAck son ESTADO del servicio (no affordances) y viajan siempre.
 public sealed record DiningView(string Id, string TableId, int Pax, DiningState State,
     IReadOnlyList<CourseView> Courses,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? Actions = null);
+    IReadOnlyList<string>? Actions = null,
+    IReadOnlyList<GuestRestriction>? Restrictions = null,
+    bool RestrictionsPendingAck = false);
 public sealed record OccupancyView(string Id, string TableId, string ServiceId,
     OccupancyState State, DateTimeOffset? ReleasedAt,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]

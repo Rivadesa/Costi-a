@@ -1,9 +1,12 @@
 namespace Costina.Domain;
 
 // Trusted persistence boundary. These records are not accepted as HTTP commands.
+// Restrictions/RestrictionsPendingAck son aditivos opcionales: un payload D1 sin ellos
+// restaura con lista vacia y sin acuse pendiente; payload_version sigue siendo 1.
 public sealed record DiningSnapshot(string Id, BusinessScope Scope, string TableId, int Pax,
     DiningState State, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
-    IReadOnlyList<CourseView> Courses);
+    IReadOnlyList<CourseView> Courses,
+    IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false);
 public sealed record AccountSnapshot(string Id, BusinessScope Scope, string ServiceId,
     AccountState State, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments);
 public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string TableId,
@@ -12,7 +15,8 @@ public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string Ta
 public sealed partial class DiningService
 {
     public DiningSnapshot Snapshot() => new(Id, Scope, TableId, Pax, State, StartedAt,
-        CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()));
+        CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
+        restrictions.AsReadOnly(), restrictionsPendingAck);
 
     public static DiningService Restore(DiningSnapshot value)
     {
@@ -36,6 +40,22 @@ public sealed partial class DiningService
             "invalid_snapshot", "Completion timestamp does not match dining state.");
         Guard.Rule(value.CompletedAt is null || value.CompletedAt >= value.StartedAt,
             "invalid_snapshot", "Invalid dining timestamps.");
+        foreach (var restriction in value.Restrictions ?? [])
+        {
+            Guard.Rule(!string.IsNullOrWhiteSpace(restriction.Id) && !string.IsNullOrWhiteSpace(restriction.Substance)
+                && Enum.IsDefined(restriction.Kind) && Enum.IsDefined(restriction.Severity),
+                "invalid_snapshot", "Malformed persisted restriction.");
+            Guard.Rule(restriction.GuestPosition is null
+                || (restriction.GuestPosition >= 1 && restriction.GuestPosition <= value.Pax),
+                "invalid_snapshot", "Persisted restriction refers to a guest outside the service.");
+            Guard.Rule(result.restrictions.All(r => r.Id != restriction.Id),
+                "invalid_snapshot", "Duplicate persisted restriction identity.");
+            result.restrictions.Add(restriction);
+        }
+        Guard.Rule(!value.RestrictionsPendingAck
+            || value.State is DiningState.InService or DiningState.Paused,
+            "invalid_snapshot", "Pending acknowledgement requires an active service.");
+        result.restrictionsPendingAck = value.RestrictionsPendingAck;
         result.State = value.State; result.StartedAt = value.StartedAt; result.CompletedAt = value.CompletedAt;
         return result;
     }
