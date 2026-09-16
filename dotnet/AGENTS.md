@@ -1,13 +1,11 @@
 # Native transition instructions
 
-Read root instructions, ADR-008/009 and docs/native/D1-postgres-api.md. In dotnet/, the approved direction is .NET, PostgreSQL and WPF for Windows plus Vue/TypeScript mobile clients. D0 is the separated domain; D1.1 adds scoped PostgreSQL persistence and a loopback-only laboratory ASP.NET Core API. WPF is not implemented in this branch.
+Read root instructions, ADR-008/009, docs/native/D1-postgres-api.md and docs/native/D1.2-desktop.md. The approved native transition is .NET/PostgreSQL/WPF plus Vue/TypeScript mobile clients. Legacy Laravel/Tauri must remain unchanged and must never write concurrently into this isolated native database.
 
-Do not modify or reseed the existing Laravel/Tauri installation. The native schema is isolated; no legacy migration is authorized by compilation. Do not close #17 until end-to-end product migration/integration exists.
+D1.2 adds a real WPF client, a typed HTTP library and four authenticated read endpoints. Operational DTOs/configuration contain no money. Checkout is separate and server-authorized, including read APIs and main-only UI. Never treat a client profile as authorization or accept client prices for normal catalogue sales. Keep service, occupancy and settlement independent.
 
-Keep service, table occupancy and account independent. Service DTOs and responses contain no financial data. Endpoint metadata defines permissions: never rely on raw URL substring/casing or a client-selected profile. D1 role keys are lab-only; real users/device binding/TLS/permissions per station are future gates, not completed features.
+D1 restrictions remain: isolated *_d1_lab/*_d1_test database, loopback HTTP, explicit random role keys, no production identities/device pairing or complete allergy handling. Normal startup never migrates or seeds. No migration of real data is implied. Root onboarding still describes the legacy branch until native PRs are integrated.
 
-Persistence is current-state per aggregate with versioned JSONB payloads and relational scope/FK/unique/version constraints. Snapshots are trusted internal data, never HTTP command input. No replay to rehydrate; no phantom events. Every write and its outbox/audit/idempotent response share a transaction. No publisher is implemented yet. Document any additional normalization or repository/ORM change.
+Compile the desktop and run tests/Costina.ClientChecks and tests/Costina.DesktopChecks on Windows; the latter instantiates a real window but does not claim a live end-to-end backend service. Run prior D0 acceptance, snapshot tests and HTTP tests including desktop_reads.py against PostgreSQL. Every write retains audit/outbox/idempotency in one transaction.
 
-Run D0 using dotnet run --project tests/Costina.Acceptance, not dotnet test. D1 uses tests/Costina.PersistenceChecks and tests/http/native_http.py + security_http.py with a dedicated *_d1_test PostgreSQL database. CI containers are test infrastructure, not a Windows deployment dependency. The Windows artifact is an engineering server, not a GUI/installer.
-
-Before finishing: exact commit, executed CI evidence, docs/native/D1-postgres-api.md and PR state. Do not mark tests executed from code inspection. No production claims from a Linux HTTP test or Windows compilation alone.
+D1.2 refresh is manual. Uncertain commands retain the original bytes/key during the session; forced shutdown loses this pending state. No durable queue or WebSockets claims. No Windows/PostgreSQL automatic installer claims. Publish the entire self-contained directory, not the executable alone. Record exact CI commit, verified artifacts and physical testing separately. #17 remains open until actual legacy migration/integration.

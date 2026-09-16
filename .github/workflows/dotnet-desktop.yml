@@ -1,0 +1,66 @@
+name: Native WPF desktop acceptance
+on:
+  pull_request:
+    paths: ['dotnet/**', '.github/workflows/dotnet-desktop.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dotnet
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Test typed client and uncertain retries
+        run: dotnet run --project tests/Costina.ClientChecks -c Release
+      - name: Instantiate and render actual WPF window
+        run: dotnet run --project tests/Costina.DesktopChecks -c Release
+      - name: Publish Windows client and paired local engine
+        run: |
+          dotnet publish src/Costina.Desktop -c Release -r win-x64 --self-contained true -o ../artifacts/desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o ../artifacts/server
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record exact build manifest and complete source
+        shell: pwsh
+        run: |
+          foreach ($folder in @('../artifacts/desktop', '../artifacts/server')) {
+            $base=(Resolve-Path $folder).Path
+            $files=Get-ChildItem $folder -File -Recurse | ForEach-Object {
+              @{path=$_.FullName.Substring($base.Length+1); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+            }
+            @{version='0.2.0-d1.2'; commit=$env:GITHUB_SHA; run=$env:GITHUB_RUN_ID; files=@($files)} | ConvertTo-Json -Depth 6 | Set-Content "$folder/build-manifest.json"
+          }
+          git -C .. archive -o artifacts/d1.2-source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1.2-windows-desktop
+          path: artifacts/desktop/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1.2-windows-server
+          path: artifacts/server/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: costina-d1.2-complete-source
+          path: artifacts/d1.2-source.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: costina-d1.2-desktop-evidence
+          path: dotnet/artifacts/desktop/
+          if-no-files-found: warn
+          retention-days: 14
