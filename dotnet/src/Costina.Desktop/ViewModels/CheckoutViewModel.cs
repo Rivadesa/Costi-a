@@ -23,6 +23,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     [ObservableProperty] private string quantity = "1";
     [ObservableProperty] private string amount = "";
     [ObservableProperty] private string method = "card";
+    [ObservableProperty] private string note = "";
     [ObservableProperty] private string totals = "";
     [ObservableProperty] private string accountState = "";
 
@@ -35,7 +36,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     internal void Sync()
     {
         AddCommand.NotifyCanExecuteChanged(); PayCommand.NotifyCanExecuteChanged();
-        CloseAccountCommand.NotifyCanExecuteChanged();
+        CloseAccountCommand.NotifyCanExecuteChanged(); ReopenCommand.NotifyCanExecuteChanged(); RefundCommand.NotifyCanExecuteChanged();
     }
 
     internal void Clear()
@@ -93,9 +94,10 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
             Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id == previousProduct) ?? catalog.FirstOrDefault();
             Account = current; Charges = current?.Data.Charges ?? [];
             Totals = current is null ? "Sin cuenta seleccionada"
-                : $"Total {Money.Format(current.Data.TotalCents)}  ·  Pagado {Money.Format(current.Data.PaidCents)}  ·  Pendiente {Money.Format(current.Data.BalanceCents)}  ·  Crédito {Money.Format(current.Data.CreditCents)}";
+                : $"Total {Money.Format(current.Data.TotalCents)}  ·  Pagado {Money.Format(current.Data.PaidCents)}  ·  Pendiente {Money.Format(current.Data.BalanceCents)}  ·  Crédito {Money.Format(current.Data.CreditCents)}  ·  Devuelto {Money.Format(current.Data.RefundedCents)}";
             AccountState = current is null ? ""
-                : $"Estado {current.Data.State}. {current.Data.Payments.Length} pagos de prueba registrados. Cerrar la cuenta no termina el servicio.";
+                : $"Estado {current.Data.State}. {current.Data.Payments.Length} pagos y {current.Data.Refunds?.Length ?? 0} devoluciones de prueba. Cerrar la cuenta no termina el servicio."
+                  + (current.Data.State == "Closed" ? " CUENTA CERRADA: para admitir cambios, reábrela con motivo desde este puesto." : "");
         }
         finally { rendering = false; }
         Sync();
@@ -137,6 +139,37 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         Amount = "";
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: pago de prueba registrado.";
+    });
+
+    // Reapertura auditada (D3.6): solo desde el puesto principal y con motivo; el servidor la audita.
+    private bool CanReopen() => shell.Writable && Allowed("reopen");
+    [RelayCommand(CanExecute = nameof(CanReopen))]
+    private Task Reopen() => shell.Run(async () =>
+    {
+        var context = Require();
+        if (string.IsNullOrWhiteSpace(Note)) throw new ArgumentException("Indica el motivo de la reapertura.");
+        await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/reopen",
+            new { expectedVersion = context.Version, reason = Note.Trim() },
+            "Reabrir cuenta con motivo · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+        Note = "";
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: cuenta reabierta; vuelve a admitir cambios.";
+    });
+
+    // Devolucion: solo consume credito existente; el pago original nunca se borra.
+    private bool CanRefund() => shell.Writable && Allowed("refund");
+    [RelayCommand(CanExecute = nameof(CanRefund))]
+    private Task Refund() => shell.Run(async () =>
+    {
+        var context = Require();
+        var cents = Money.Parse(Amount);
+        if (string.IsNullOrWhiteSpace(Note)) throw new ArgumentException("Indica el motivo de la devolución.");
+        await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/refund",
+            new { expectedVersion = context.Version, refundId = Guid.NewGuid().ToString("N"), method = Method, amountCents = cents, reason = Note.Trim() },
+            "Devolver crédito · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+        Amount = ""; Note = "";
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: devolución registrada.";
     });
 
     private bool CanCloseAccount() => shell.Writable && Allowed("close");

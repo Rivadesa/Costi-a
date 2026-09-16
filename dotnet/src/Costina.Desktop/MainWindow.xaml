@@ -1,10 +1,10 @@
 <Window x:Class="Costina.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Costiña · Windows nativo · D3.5" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
+ Title="Costiña · Windows nativo · D3.6" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
 <Window.Resources><BooleanToVisibilityConverter x:Key="Bool2Vis"/></Window.Resources>
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.8.0-d3.5 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.9.0-d3.6 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="260"/></StackPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Clave del rol de laboratorio"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="280" Height="36" Padding="8"/></StackPanel>
@@ -118,6 +118,10 @@
       <ComboBox Width="140" SelectedValuePath="Tag" SelectedValue="{Binding Checkout.Method}"><ComboBoxItem Tag="card" IsSelected="True">Tarjeta</ComboBoxItem><ComboBoxItem Tag="cash">Efectivo</ComboBoxItem><ComboBoxItem Tag="other">Otro</ComboBoxItem></ComboBox>
       <Button Content="Registrar pago de prueba" Command="{Binding Checkout.PayCommand}"/>
       <Button Content="Cerrar cuenta saldada" Command="{Binding Checkout.CloseAccountCommand}"/>
+     </WrapPanel>
+     <WrapPanel Margin="0,6,0,0"><TextBox Text="{Binding Checkout.Note, UpdateSourceTrigger=PropertyChanged}" Width="300" ToolTip="Motivo obligatorio para reabrir o devolver" Margin="0,0,10,0"/>
+      <Button Content="Devolver crédito (importe y motivo)" Command="{Binding Checkout.RefundCommand}"/>
+      <Button Content="Reabrir cuenta con motivo" Command="{Binding Checkout.ReopenCommand}"/>
      </WrapPanel>
      <TextBlock Text="{Binding Checkout.AccountState}" TextWrapping="Wrap"/>
     </StackPanel>

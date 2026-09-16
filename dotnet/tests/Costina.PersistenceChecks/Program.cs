@@ -29,6 +29,18 @@ Check(a3.State==AccountState.Closed && a3.View().Charges.Count==2 && a3.View().C
 Rejected(()=>SettlementAccount.Restore(a.Snapshot() with {State=AccountState.Closed,Payments=[]}),"closed debt rejected");
 Rejected(()=>SettlementAccount.Restore(a.Snapshot() with {Charges=[a.View().Charges[0],a.View().Charges[0]]}),"duplicate persisted charges rejected");
 Rejected(()=>SettlementAccount.Restore(a.Snapshot() with {Payments=[a.View().Payments[0] with {AmountCents=-1}]}),"negative persisted payment rejected");
+// D3.6: reapertura auditada y devoluciones persisten; un payload anterior sin refunds restaura limpio.
+a3.Reopen("bebida tardia",stamp); a3.AddCharge("l3","Café",1,200,stamp);
+var a4=SettlementAccount.Restore(Wire.Decode<AccountSnapshot>(Wire.Encode(a3.Snapshot())));
+Check(a4.State==AccountState.Open && a4.BalanceCents==200 && a4.View().Charges.Count==3,"reopened account persists with its new charge");
+var r=new SettlementAccount("r",scope,"s"); r.AddCharge("l1","Menú",1,15000,stamp); r.RecordPayment("p","card",20000,stamp);
+r.Refund("rf","cash",5000,"cobro de más",stamp);
+var r2=SettlementAccount.Restore(Wire.Decode<AccountSnapshot>(Wire.Encode(r.Snapshot())));
+Check(r2.RefundedCents==5000 && r2.PaidCents==15000 && r2.CreditCents==0 && r2.View().Refunds!.Count==1,"refund persists and nets the payment");
+Rejected(()=>SettlementAccount.Restore(r.Snapshot() with {Refunds=[r.View().Refunds![0] with {AmountCents=25000}]}),"refund above recorded payments rejected");
+Rejected(()=>SettlementAccount.Restore(r.Snapshot() with {Refunds=[r.View().Refunds![0] with {Reason=" "}]}),"refund without reason rejected");
+var legacyAccount=Wire.Decode<AccountSnapshot>(Wire.Encode(a.Snapshot()).Replace(",\"refunds\":[]",""));
+Check(SettlementAccount.Restore(legacyAccount).RefundedCents==0,"pre-D3.6 account payload restores without refunds");
 var o=new TableOccupancy("o",scope,"M1","s"); o.Release(restored,"salida",stamp);
 var o2=TableOccupancy.Restore(Wire.Decode<OccupancySnapshot>(Wire.Encode(o.Snapshot())));
 Check(o2.State==OccupancyState.Released && o2.PendingEvents.Count==0,"occupancy restores without phantom events");

@@ -6,9 +6,9 @@ namespace Costina.Server;
 public sealed record OpenRequest(string TableId,int Pax,string MenuId);
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
-    string? Decision=null,string? Note=null);
+    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1);
 public sealed record AccountCommand(long ExpectedVersion,string? ProductId=null,int Quantity=1,string? PaymentId=null,
-    string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null);
+    string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null,string? RefundId=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
 
 public static class LocalOperations
@@ -89,10 +89,30 @@ public static class LocalOperations
                 entity.RecordPayment(Required(request.PaymentId),request.Method,request.AmountCents,stamp); break;
             case "void-charge": entity.VoidCharge(Required(request.ChargeId),Required(request.Reason),stamp); break;
             case "close": entity.Close(stamp); break;
+            case "reopen": entity.Reopen(Required(request.Reason),stamp); break;
+            case "refund":
+                if(request.Method is not ("cash" or "card" or "other")) throw new ArgumentException("Unsupported refund method.");
+                entity.Refund(Required(request.RefundId),request.Method,request.AmountCents,Required(request.Reason),stamp); break;
             default: throw new StoreNotFound();
         }
         await unit.Save(entity,stored.Version);
         return new Versioned<AccountView>(stored.Version+1,entity.View());
+    }
+    // Consumo a mayores desde un comandero (sala): contexto operativo = version del servicio que el camarero ve;
+    // la cuenta se anexa bajo su propia version en la misma transaccion. La respuesta NO lleva importes:
+    // el precio lo fija el catalogo del servidor y la cuenta se gestiona en el puesto principal (ADR-007).
+    public static async Task<object> Consumption(Unit unit,ExecutionIdentity identity,string id,DiningCommand request)
+    {
+        var dining=await unit.Dining(id); Version(dining.Version,request.ExpectedVersion);
+        if(dining.Entity.State==DiningState.Cancelled) throw new RuleViolation("service_finished","A cancelled service takes no consumptions.");
+        var account=await unit.Account(id);
+        var product=await unit.Configuration<ProductDefinition>("product",Required(request.ProductId));
+        if(!product.Active) throw new RuleViolation("product_unavailable","Product unavailable.");
+        var chargeId=Guid.NewGuid().ToString("N");
+        account.Entity.AddCharge(chargeId,product.Name+" · "+product.Presentation,request.Quantity,product.PriceCents,
+            new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow));
+        await unit.Save(account.Entity,account.Version);
+        return new { version=dining.Version,chargeId,productId=product.Id,quantity=request.Quantity };
     }
     public static async Task<object> Release(Unit unit,ExecutionIdentity identity,string id,ReleaseCommand request)
     {
