@@ -152,6 +152,30 @@ async Task<JsonElement> Post(string role, string path, object body)
     if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {(int)response.StatusCode}: {text}");
     return JsonSerializer.Deserialize<JsonElement>(text, Wire.Json);
 }
+async Task<int> RunCli(string input, params string[] arguments)
+{
+    var info = new ProcessStartInfo("dotnet") { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+    info.ArgumentList.Add(serverDll);
+    foreach (var argument in arguments) info.ArgumentList.Add(argument);
+    info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString;
+    info.Environment["COSTINA_TENANT"] = "rt-tenant"; info.Environment["COSTINA_COMPANY"] = "rt-company";
+    info.Environment["COSTINA_LOCATION"] = "rt-location";
+    foreach (var (role, key) in keys) info.Environment["COSTINA_KEY_" + role] = key;
+    using var process = Process.Start(info) ?? throw new Exception("Could not start the CLI process.");
+    await process.StandardInput.WriteLineAsync(input); process.StandardInput.Close();
+    await process.WaitForExitAsync();
+    return process.ExitCode;
+}
+async Task<JsonElement> Anon(string path, object body, string? bearer = null)
+{
+    using var request = new HttpRequestMessage(HttpMethod.Post, path)
+    { Content = new StringContent(JsonSerializer.Serialize(body, Wire.Json), Encoding.UTF8, "application/json") };
+    if (bearer is not null) request.Headers.Add("Authorization", "Bearer " + bearer);
+    var response = await http.SendAsync(request);
+    var text = await response.Content.ReadAsStringAsync();
+    if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {(int)response.StatusCode}: {text}");
+    return JsonSerializer.Deserialize<JsonElement>(text, Wire.Json);
+}
 TimeSpan[] fastRetries = [.. Enumerable.Repeat(TimeSpan.FromMilliseconds(500), 60)];
 RealtimeSubscription Subscribe(string role, ConcurrentQueue<Costina.Client.EventNotice> notices, ConcurrentQueue<string> states)
 {
@@ -223,6 +247,35 @@ try
         Assert(response.IsSuccessStatusCode, "Authoritative re-read after reconnection must succeed.");
         var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), Wire.Json);
         Assert(body.GetProperty("version").GetInt64() >= 1, "Re-read must return a versioned state.");
+    });
+
+    await Check("B6 pairing issues a device identity and revocation aborts live realtime", async () =>
+    {
+        Assert(await RunCli("clave-de-ensayo-larga-1", "create-user", "gerente", "main") == 0, "create-user CLI must succeed");
+        var admin = (await Anon("/api/native/v1/auth/login", new { username = "gerente", password = "clave-de-ensayo-larga-1" }))
+            .GetProperty("token").GetString()!;
+        var issued = await Anon("/api/native/v1/auth/pairings", new { }, admin);
+        var claimed = await Anon("/api/native/v1/auth/pairings/claim",
+            new { code = issued.GetProperty("code").GetString(), deviceName = "tablet-b6" });
+        var pairingId = claimed.GetProperty("pairingId").GetString()!;
+        _ = await Anon($"/api/native/v1/auth/pairings/{pairingId}/approve", new { role = "service", station = "sala-1" }, admin);
+        var credentials = await Anon($"/api/native/v1/auth/pairings/{pairingId}/collect",
+            new { pollSecret = claimed.GetProperty("pollSecret").GetString() });
+        var deviceToken = credentials.GetProperty("deviceToken").GetString()!;
+        var deviceStates = new ConcurrentQueue<string>();
+        var deviceNotices = new ConcurrentQueue<Costina.Client.EventNotice>();
+        // Sin reintentos de reconexion: el aborto del servidor se observa directamente como "closed".
+        await using var deviceSub = new RealtimeSubscription(endpoint, deviceToken, []);
+        deviceSub.StateChanged += deviceStates.Enqueue;
+        deviceSub.Notified += deviceNotices.Enqueue;
+        await deviceSub.StartAsync();
+        _ = await Post("MAIN", "/api/native/v1/services", new { tableId = "M2", pax = 2, menuId = "LAB-TASTING" });
+        await WaitUntil(() => deviceNotices.Any(n => n.Type == "service.created"), 15, "device realtime notice");
+        _ = await Anon($"/api/native/v1/auth/devices/{credentials.GetProperty("deviceId").GetString()}/revoke", new { }, admin);
+        await WaitUntil(() => deviceStates.Contains("closed"), 10, "revoked device connection aborted");
+        using var probe = new HttpRequestMessage(HttpMethod.Get, "/api/native/v1/session");
+        probe.Headers.Add("Authorization", "Bearer " + deviceToken);
+        Assert((int)(await http.SendAsync(probe)).StatusCode == 401, "revoked device token must be rejected");
     });
 }
 finally

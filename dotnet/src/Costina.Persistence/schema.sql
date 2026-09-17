@@ -84,3 +84,24 @@ CREATE TABLE IF NOT EXISTS native_d1.sessions (
  FOREIGN KEY (tenant, company, location, user_id) REFERENCES native_d1.users (tenant, company, location, id)
 );
 CREATE INDEX IF NOT EXISTS sessions_live ON native_d1.sessions (token_hash) WHERE revoked_at IS NULL;
+-- D4.2 (#26, F06): dispositivos como identidad SEPARADA del usuario. El emparejamiento nace de un
+-- codigo de un solo uso y corta caducidad aprobado por un administrador con rol y estacion; del
+-- secreto del dispositivo y de los codigos solo se guardan hashes. La estacion se aplica en D4.3.
+CREATE TABLE IF NOT EXISTS native_d1.devices (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, secret_hash text NOT NULL UNIQUE,
+ role text NOT NULL CHECK (role IN ('main','service','kitchen')),
+ station text NOT NULL,
+ approved_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ revoked_at timestamptz NULL, revoked_by text NULL,
+ PRIMARY KEY (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS native_d1.pairings (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ code_hash text NOT NULL UNIQUE, created_by text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL,
+ status text NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','claimed','approved','denied','consumed')),
+ device_name text NULL, poll_secret_hash text NULL, claimed_at timestamptz NULL,
+ approved_role text NULL, approved_station text NULL, decided_by text NULL,
+ PRIMARY KEY (tenant, company, location, id)
+);

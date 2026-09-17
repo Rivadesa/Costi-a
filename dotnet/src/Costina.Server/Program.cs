@@ -57,12 +57,16 @@ builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(source);
 builder.Services.AddSingleton(scope);
 builder.Services.AddSingleton<IdentityStore>();
+builder.Services.AddSingleton<DeviceStore>();
+builder.Services.AddSingleton<DeviceConnectionRegistry>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
 builder.Services.AddHostedService<OutboxPublisherService>();
 var app=builder.Build();
 var identityStore=app.Services.GetRequiredService<IdentityStore>();
+var deviceStore=app.Services.GetRequiredService<DeviceStore>();
+var deviceConnections=app.Services.GetRequiredService<DeviceConnectionRegistry>();
 app.UseRouting();
 app.Use(async (context,next)=>
 {
@@ -74,13 +78,26 @@ app.Use(async (context,next)=>
         context.Response.Headers["Idempotency-Key"]=idempotency;
     try
     {
-        if(context.Request.Path=="/health" || context.Request.Path=="/api/native/v1/auth/login") { await next(); return; }
+        // Anonimos: login, y el par claim/collect del emparejamiento (el dispositivo aun no tiene
+        // credencial). Todos con respuesta generica y freno ante datos invalidos.
+        bool anonymousAuth=context.Request.Path=="/api/native/v1/auth/login"
+            || context.Request.Path=="/api/native/v1/auth/pairings/claim"
+            || (context.Request.Path.StartsWithSegments("/api/native/v1/auth/pairings",out var pairingRest)
+                && pairingRest.Value is not null && pairingRest.Value.EndsWith("/collect",StringComparison.Ordinal));
+        if(context.Request.Path=="/health" || anonymousAuth) { await next(); return; }
         var bearer=context.Request.Headers.Authorization.ToString();
         var provided=bearer.StartsWith("Bearer ",StringComparison.Ordinal) ? bearer[7..] : "";
         // D4.1: primero sesion de usuario (token de corta vida con renovacion deslizante y
         // revocacion); las claves de rol de laboratorio siguen como respaldo hasta D4.3.
-        string? role=null; AuthenticatedSession? userSession=null;
-        if(provided.Length>0)
+        string? role=null; AuthenticatedSession? userSession=null; AuthenticatedDevice? device=null;
+        if(provided.StartsWith("dev.",StringComparison.Ordinal))
+        {
+            // Credencial de dispositivo emparejado: dev.<id>.<secreto>. Solo su hash vive en la base.
+            var parts=provided.Split('.',3);
+            if(parts.Length==3) device=await deviceStore.AuthenticateAsync(parts[1],parts[2],context.RequestAborted);
+            if(device is not null) role=device.Role;
+        }
+        else if(provided.Length>0)
         {
             userSession=await identityStore.AuthenticateAsync(provided,context.RequestAborted);
             if(userSession is not null) role=userSession.Role;
@@ -95,8 +112,11 @@ app.Use(async (context,next)=>
             throw new ArgumentException("Scope is assigned by this server, not request headers.");
         context.Items["role"]=role;
         // Actor de auditoria: la persona real cuando hay sesion; el rol de laboratorio si no.
-        context.Items["actor"]=userSession is null ? "lab-"+role : "user:"+userSession.Username;
+        context.Items["actor"]=device is not null ? "device:"+device.Name
+            : userSession is not null ? "user:"+userSession.Username : "lab-"+role;
         context.Items["sessionId"]=userSession?.SessionId;
+        context.Items["deviceId"]=device?.DeviceId;
+        context.Items["station"]=device?.Station;
         var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
         var action=context.Request.RouteValues["action"]?.ToString();
         bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
@@ -164,6 +184,59 @@ app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
     var (token,expiresAt,role,username)=login.Value;
     return Results.Json(new {token,expiresAt,role,username});
 }));
+// D4.2 — emparejamiento de dispositivos. El QR lo pinta el cliente; el servidor emite el codigo.
+app.MapPost(prefix+"/auth/pairings",(Func<HttpContext,Task<IResult>>)(async c=>{
+    var issued=await deviceStore.CreatePairingAsync((string)c.Items["actor"]!,c.RequestAborted);
+    return Results.Json(new {pairingId=issued.PairingId,code=issued.Code,expiresAt=issued.ExpiresAt});
+})).WithMetadata(new RouteAccess("main"));
+app.MapGet(prefix+"/auth/pairings/pending",(Func<HttpContext,Task<IResult>>)(async c=>
+    Results.Json(await deviceStore.PendingAsync(c.RequestAborted)))).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/pairings/{id}/approve",async (HttpContext c,string id)=>{
+    using var reader=new StreamReader(c.Request.Body);
+    var request=JsonSerializer.Deserialize<PairingDecisionRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json)
+        ?? throw new ArgumentException("Role and station are required.");
+    if(!await deviceStore.DecideAsync(id,true,request.Role,request.Station,(string)c.Items["actor"]!,c.RequestAborted))
+        throw new StoreNotFound();
+    return Results.Json(new {approved=true});
+}).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/pairings/{id}/deny",async (HttpContext c,string id)=>{
+    if(!await deviceStore.DecideAsync(id,false,null,null,(string)c.Items["actor"]!,c.RequestAborted)) throw new StoreNotFound();
+    return Results.Json(new {approved=false});
+}).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/pairings/claim",(Func<HttpContext,Task<IResult>>)(async c=>{
+    using var reader=new StreamReader(c.Request.Body);
+    var request=JsonSerializer.Deserialize<PairingClaimRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json);
+    var claimed=request is null||string.IsNullOrWhiteSpace(request.Code)?null
+        :await deviceStore.ClaimAsync(request.Code,request.DeviceName??"",c.RequestAborted);
+    if(claimed is null)
+    {
+        await Task.Delay(400,c.RequestAborted);
+        c.Response.StatusCode=401; return Results.Json(new {error="invalid_code"});
+    }
+    return Results.Json(new {pairingId=claimed.Value.PairingId,pollSecret=claimed.Value.PollSecret});
+}));
+app.MapPost(prefix+"/auth/pairings/{id}/collect",async (HttpContext c,string id)=>{
+    using var reader=new StreamReader(c.Request.Body);
+    var request=JsonSerializer.Deserialize<PairingCollectRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json);
+    var (status,credentials)=request is null||string.IsNullOrWhiteSpace(request.PollSecret)
+        ?("unknown",(DeviceCredentials?)null)
+        :await deviceStore.CollectAsync(id,request.PollSecret,c.RequestAborted);
+    if(credentials is not null)
+        return Results.Json(new {status="approved",deviceId=credentials.DeviceId,
+            deviceToken="dev."+credentials.DeviceId+"."+credentials.Secret,
+            role=credentials.Role,station=credentials.Station});
+    if(status=="claimed") return Results.Json(new {status="pending"});
+    if(status=="denied") { c.Response.StatusCode=403; return Results.Json(new {status="denied"}); }
+    await Task.Delay(400,c.RequestAborted);
+    c.Response.StatusCode=404; return Results.Json(new {error="unknown_pairing"});
+});
+app.MapGet(prefix+"/auth/devices",(Func<HttpContext,Task<IResult>>)(async c=>
+    Results.Json(await deviceStore.DevicesAsync(c.RequestAborted)))).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/devices/{id}/revoke",async (HttpContext c,string id)=>{
+    if(!await deviceStore.RevokeAsync(id,(string)c.Items["actor"]!,c.RequestAborted)) throw new StoreNotFound();
+    deviceConnections.AbortAll(id); // expulsion inmediata de las conexiones SignalR vivas
+    return Results.Json(new {revoked=true});
+}).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/auth/logout",(Func<HttpContext,Task<IResult>>)(async c=>{
     var sessionId=c.Items["sessionId"] as string;
     if(sessionId is not null) await identityStore.RevokeSessionAsync(sessionId,c.RequestAborted);

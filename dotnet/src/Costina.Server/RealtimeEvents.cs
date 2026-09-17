@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Costina.Persistence;
 using Microsoft.AspNetCore.SignalR;
 
@@ -6,15 +7,37 @@ namespace Costina.Server;
 // El hub no expone metodos invocables: es un canal de solo-notificacion.
 // La pertenencia a grupos se decide con el rol autenticado por el middleware,
 // nunca con datos elegidos por el cliente.
-public sealed class EventsHub : Hub
+// D4.2: registro de conexiones vivas por dispositivo. La revocacion no espera a la proxima
+// peticion: aborta en el acto las conexiones SignalR del dispositivo revocado.
+public sealed class DeviceConnectionRegistry
+{
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, HubCallerContext>> byDevice = new();
+    public void Register(string deviceId, HubCallerContext context)
+        => byDevice.GetOrAdd(deviceId, _ => new()).TryAdd(context.ConnectionId, context);
+    public void Unregister(string deviceId, string connectionId)
+    { if (byDevice.TryGetValue(deviceId, out var map)) map.TryRemove(connectionId, out _); }
+    public void AbortAll(string deviceId)
+    { if (byDevice.TryRemove(deviceId, out var map)) foreach (var context in map.Values) context.Abort(); }
+}
+
+public sealed class EventsHub(DeviceConnectionRegistry devices) : Hub
 {
     public override async Task OnConnectedAsync()
     {
-        var role = Context.GetHttpContext()?.Items["role"] as string
+        var http = Context.GetHttpContext();
+        var role = http?.Items["role"] as string
             ?? throw new HubException("Missing authenticated role.");
+        if (http?.Items["deviceId"] is string deviceId) devices.Register(deviceId, Context);
         await Groups.AddToGroupAsync(Context.ConnectionId, "ops");
         if (role == "main") await Groups.AddToGroupAsync(Context.ConnectionId, "fin");
         await base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        if (Context.GetHttpContext()?.Items["deviceId"] is string deviceId)
+            devices.Unregister(deviceId, Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
     }
 }
 
