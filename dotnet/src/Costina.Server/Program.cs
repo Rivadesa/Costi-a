@@ -25,7 +25,18 @@ if(args.Length == 1 && args[0] == "init-lab")
     await store.InitializeAsync(); await LabConfiguration.Seed(store,scope);
     Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
 }
-if(args.Length != 0) throw new ArgumentException("Only init-lab or normal startup is supported.");
+// D4.1: alta explicita de usuarios. La contrasena entra por stdin (nunca argumento ni variable
+// de entorno, nunca eco ni log). No hay credenciales por defecto: sin usuarios solo funcionan
+// las claves de laboratorio, que se retiran en D4.3.
+if(args.Length == 3 && args[0] == "create-user")
+{
+    await store.CheckAsync();
+    var password = Console.ReadLine() ?? "";
+    var created = await new IdentityStore(source,scope).CreateUserAsync(args[1],password,args[2]);
+    Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
+    return;
+}
+if(args.Length != 0) throw new ArgumentException("Only init-lab, create-user <username> <role> or normal startup is supported.");
 await store.CheckAsync();
 var installation = await store.InstallationAsync();
 // Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
@@ -45,11 +56,13 @@ builder.WebHost.ConfigureKestrel(options=> { options.Listen(IPAddress.Loopback,p
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(source);
 builder.Services.AddSingleton(scope);
+builder.Services.AddSingleton<IdentityStore>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
 builder.Services.AddHostedService<OutboxPublisherService>();
 var app=builder.Build();
+var identityStore=app.Services.GetRequiredService<IdentityStore>();
 app.UseRouting();
 app.Use(async (context,next)=>
 {
@@ -61,15 +74,29 @@ app.Use(async (context,next)=>
         context.Response.Headers["Idempotency-Key"]=idempotency;
     try
     {
-        if(context.Request.Path=="/health") { await next(); return; }
+        if(context.Request.Path=="/health" || context.Request.Path=="/api/native/v1/auth/login") { await next(); return; }
         var bearer=context.Request.Headers.Authorization.ToString();
         var provided=bearer.StartsWith("Bearer ",StringComparison.Ordinal) ? bearer[7..] : "";
-        var digest=SHA256.HashData(Encoding.UTF8.GetBytes(provided));
-        var role=keys.FirstOrDefault(k=>CryptographicOperations.FixedTimeEquals(digest,SHA256.HashData(Encoding.UTF8.GetBytes(k.Value)))).Key;
+        // D4.1: primero sesion de usuario (token de corta vida con renovacion deslizante y
+        // revocacion); las claves de rol de laboratorio siguen como respaldo hasta D4.3.
+        string? role=null; AuthenticatedSession? userSession=null;
+        if(provided.Length>0)
+        {
+            userSession=await identityStore.AuthenticateAsync(provided,context.RequestAborted);
+            if(userSession is not null) role=userSession.Role;
+            else
+            {
+                var digest=SHA256.HashData(Encoding.UTF8.GetBytes(provided));
+                role=keys.FirstOrDefault(k=>CryptographicOperations.FixedTimeEquals(digest,SHA256.HashData(Encoding.UTF8.GetBytes(k.Value)))).Key;
+            }
+        }
         if(role is null) { context.Response.StatusCode=401; await context.Response.WriteAsJsonAsync(new {error="unauthorized"}); return; }
         if(context.Request.Headers.Keys.Any(k=>new[]{"X-Tenant-Id","X-Company-Id","X-Location-Id"}.Contains(k,StringComparer.OrdinalIgnoreCase)))
             throw new ArgumentException("Scope is assigned by this server, not request headers.");
         context.Items["role"]=role;
+        // Actor de auditoria: la persona real cuando hay sesion; el rol de laboratorio si no.
+        context.Items["actor"]=userSession is null ? "lab-"+role : "user:"+userSession.Username;
+        context.Items["sessionId"]=userSession?.SessionId;
         var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
         var action=context.Request.RouteValues["action"]?.ToString();
         bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
@@ -98,7 +125,7 @@ app.Use(async (context,next)=>
         await context.Response.WriteAsJsonAsync(new {error="operation_unconfirmed",message="Reload state and retry with the same key."});
     }
 });
-ExecutionIdentity Identity(HttpContext context)=>new(scope,"lab-"+(string)context.Items["role"]!);
+ExecutionIdentity Identity(HttpContext context)=>new(scope,(string)context.Items["actor"]!);
 IResult Json(object value)=>Results.Text(Wire.Encode(value),"application/json");
 async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,Task<object>> work)
 {
@@ -123,6 +150,25 @@ app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await s
     {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,Affordances.Filter(d.Entity.View(true),Role(c)));},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
     {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.ViewWithActions());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
+    using var reader=new StreamReader(c.Request.Body);
+    var request=JsonSerializer.Deserialize<LoginRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json);
+    if(request is null||string.IsNullOrWhiteSpace(request.Username)||string.IsNullOrEmpty(request.Password))
+        throw new ArgumentException("Username and password are required.");
+    var login=await identityStore.LoginAsync(request.Username,request.Password,c.RequestAborted);
+    if(login is null)
+    {
+        await Task.Delay(400,c.RequestAborted); // freno minimo y respuesta generica: no revela si el usuario existe
+        c.Response.StatusCode=401; return Results.Json(new {error="invalid_credentials"});
+    }
+    var (token,expiresAt,role,username)=login.Value;
+    return Results.Json(new {token,expiresAt,role,username});
+}));
+app.MapPost(prefix+"/auth/logout",(Func<HttpContext,Task<IResult>>)(async c=>{
+    var sessionId=c.Items["sessionId"] as string;
+    if(sessionId is not null) await identityStore.RevokeSessionAsync(sessionId,c.RequestAborted);
+    return Results.Json(new {loggedOut=sessionId is not null});
+})).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/services",(Func<HttpContext,Task<IResult>>)(c=>Write<OpenRequest>(c,LocalOperations.Open))).WithMetadata(new RouteAccess("main","service"));
 app.MapPost(prefix+"/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
     Write<DiningCommand>(c,(u,i,r)=>action=="add-consumption" ? LocalOperations.Consumption(u,i,id,r) : LocalOperations.Dining(u,i,id,action,r)))

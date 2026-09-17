@@ -4,6 +4,7 @@ using Costina.Persistence;
 namespace Costina.Server;
 
 public sealed record OpenRequest(string TableId,int Pax,string MenuId);
+public sealed record LoginRequest(string Username,string Password);
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
     string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1);
