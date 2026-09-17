@@ -19,6 +19,8 @@ public static class DesktopReadRoutes
                 installationId=installation.ToString("D"),serverVersion,
                 // actor: usuario real con sesion (user:nombre) o rol de laboratorio (lab-rol). Auditable en tests.
                 actor=(string)c.Items["actor"]!,
+                // station: solo dispositivos emparejados (D4.2); su aplicacion en permisos llega en D4.3.
+                station=c.Items["station"] as string,
                 // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar.
                 // add-consumption: consumo a mayores desde sala sin importes (D3.6); cocina no marca consumos.
                 actions=new[]{"open","add-consumption"}.Where(a=>Affordances.Allows(role,a)).ToArray()
