@@ -72,4 +72,11 @@ Rejected(()=>DiningService.Restore(openSnap with {RestrictionsPendingAck=true}),
 foreach(var payload in new[]{Wire.Encode(d.Snapshot()),Wire.Encode(restored.Snapshot()),Wire.Encode(a2.Snapshot()),Wire.Encode(o.Snapshot())})
     Check(!payload.Contains("actions",StringComparison.OrdinalIgnoreCase),"snapshot payload has no affordances");
 Check(Wire.Encode(restored.View())==Wire.Encode(DiningService.Restore(restored.Snapshot()).View()),"plain view stays action-free after restore");
+// D4.1: hash de contrasena PBKDF2 puro (sin base de datos).
+var stored=PasswordHashing.Hash("una-contrasena-de-ensayo");
+Check(stored.StartsWith("pbkdf2-sha256.210000.") && !stored.Contains("una-contrasena"),"password hash stores no plaintext");
+Check(PasswordHashing.Verify("una-contrasena-de-ensayo",stored),"correct password verifies");
+Check(!PasswordHashing.Verify("otra-contrasena-distinta",stored),"wrong password fails");
+Check(!PasswordHashing.Verify("una-contrasena-de-ensayo","basura.sin.formato"),"malformed stored hash fails closed");
+Check(PasswordHashing.Hash("x")!=PasswordHashing.Hash("x"),"salt makes every hash unique");
 Console.WriteLine($"D1 snapshots: {checks}/{checks} passed.");

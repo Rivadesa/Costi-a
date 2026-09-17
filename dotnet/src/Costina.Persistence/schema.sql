@@ -60,3 +60,27 @@ CREATE TABLE IF NOT EXISTS native_d1.installation (
  single boolean NOT NULL DEFAULT true UNIQUE CHECK (single)
 );
 INSERT INTO native_d1.installation (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM native_d1.installation);
+-- D4.1 (#26, F06): identidad RELACIONAL, nunca JSONB. Usuarios con contrasena (PBKDF2, solo el
+-- hash) y sesiones con token de corta vida (solo su hash SHA-256), renovacion deslizante,
+-- caducidad absoluta y revocacion individual. Las claves de rol de laboratorio conviven hasta D4.3.
+CREATE TABLE IF NOT EXISTS native_d1.users (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ username text NOT NULL CHECK (username = lower(username)),
+ password_hash text NOT NULL,
+ role text NOT NULL CHECK (role IN ('main','service','kitchen')),
+ active boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY (tenant, company, location, id),
+ UNIQUE (tenant, company, location, username)
+);
+CREATE TABLE IF NOT EXISTS native_d1.sessions (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ user_id text NOT NULL, token_hash text NOT NULL UNIQUE,
+ issued_at timestamptz NOT NULL DEFAULT now(),
+ expires_at timestamptz NOT NULL,
+ absolute_expires_at timestamptz NOT NULL,
+ revoked_at timestamptz NULL,
+ PRIMARY KEY (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, user_id) REFERENCES native_d1.users (tenant, company, location, id)
+);
+CREATE INDEX IF NOT EXISTS sessions_live ON native_d1.sessions (token_hash) WHERE revoked_at IS NULL;
