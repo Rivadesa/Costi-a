@@ -34,7 +34,8 @@ class DesktopReadChecks(unittest.TestCase):
             data=h.ok('/session',role=role)
             self.assertRegex(data['installationId'],r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
             ids.add(data['installationId'])
-            self.assertTrue(data['serverVersion'].startswith('0.9.0-d3.6'),data['serverVersion'])
+            # Formato de version del corte, no valor exacto: fijarlo rompia el test en cada bump.
+            self.assertRegex(data['serverVersion'], r'^\d+\.\d+\.\d+-d\d', data['serverVersion'])
         self.assertEqual(1,len(ids))
         h.stop_server();h.start_server()
         self.assertEqual(ids.pop(),h.ok('/session')['installationId'])
