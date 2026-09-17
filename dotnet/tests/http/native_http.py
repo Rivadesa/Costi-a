@@ -24,10 +24,12 @@ ENV.update(COSTINA_LAB_MODE='true', COSTINA_PORT='5088', COSTINA_TENANT='d1-tena
 KEYS = {r: '' for r in ('main', 'service', 'kitchen')}
 LAB_PASSWORD = 'lab-password-ensayo-123'
 
-def _provision_identities():
+def _provision_identities(env):
+    # MISMO entorno que el servidor en marcha: un reinicio con otro ambito (test_07) crea y
+    # loguea los usuarios de ESE ambito. Errores ruidosos: aqui no se reintenta en silencio.
     for role in ('main', 'service', 'kitchen'):
         subprocess.run(['dotnet', str(SERVER), 'create-user', 'lab-' + role, role],
-                       env=ENV, input=LAB_PASSWORD, text=True, capture_output=True)  # idempotente: si existe, falla y da igual
+                       env=env, input=LAB_PASSWORD, text=True, capture_output=True)  # idempotente: si existe, falla y da igual
         req = urllib.request.Request(BASE + '/api/native/v1/auth/login',
             data=json.dumps({'username': 'lab-' + role, 'password': LAB_PASSWORD}).encode(),
             headers={'Content-Type': 'application/json'})
@@ -80,8 +82,9 @@ def start_server(extra=None):
         try:
             with urllib.request.urlopen(BASE + '/health', timeout=1) as r:
                 if r.status == 200:
-                    _provision_identities()
+                    _provision_identities(env)
                     return
+        except urllib.error.HTTPError: raise
         except (OSError, urllib.error.URLError): pass
         time.sleep(.1)
     raise TimeoutError('Server did not become ready')
