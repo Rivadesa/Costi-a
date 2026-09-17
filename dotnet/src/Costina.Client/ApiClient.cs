@@ -78,6 +78,17 @@ public sealed class ApiClient : IDisposable
         var text = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<T>(text, Json) ?? throw new JsonException("Respuesta vacía.");
     }
+    // POST autenticado directo para operaciones de IDENTIDAD (emparejamientos, revocaciones,
+    // logout): sin Idempotency-Key ni orden incierta. Los comandos de dominio siguen en SendAsync.
+    public async Task<JsonElement> PostRawAsync<T>(string path, T body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, SafePath(path))
+        { Content = new StringContent(JsonSerializer.Serialize(body, Json), Encoding.UTF8, "application/json") };
+        using var response = await http.SendAsync(request);
+        await Check(response);
+        return JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), Json);
+    }
+
     public async Task<JsonElement> SendAsync<T>(string path, T body, string description)
     {
         if (!await mutation.WaitAsync(0)) throw new InvalidOperationException("Ya hay una operación en curso.");

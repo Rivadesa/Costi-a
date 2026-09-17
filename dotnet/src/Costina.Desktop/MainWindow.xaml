@@ -4,13 +4,22 @@
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.12.0-d4.3 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.13.0-d4.3b · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
-   <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="260"/></StackPanel>
-   <StackPanel Margin="0,0,12,0"><TextBlock Text="Clave del rol de laboratorio"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="280" Height="36" Padding="8"/></StackPanel>
-   <Button x:Name="ConnectButton" Content="Conectar" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
+   <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
+   <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
+   <StackPanel Margin="0,0,8,0"><TextBlock Text="Contraseña"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="180" Height="36" Padding="8"/></StackPanel>
+   <Button x:Name="ConnectButton" Content="Entrar" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
+   <Button Content="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}" VerticalAlignment="Bottom"/>
    <Button x:Name="DisconnectButton" Content="Desconectar" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
    <Button x:Name="RefreshButton" Content="Actualizar" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
+  </WrapPanel>
+  <WrapPanel Margin="0,6,0,0" Visibility="{Binding ConnectEnabled, Converter={StaticResource Bool2Vis}}">
+   <TextBlock Text="Emparejar este puesto:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+   <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (pestaña Puestos del PC principal)"/>
+   <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. tablet-sala-1)"/>
+   <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
+   <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
   </WrapPanel>
   <Border Background="#E6EBF1" Padding="10" Margin="0,10,0,6"><TextBlock Text="{Binding Status}" TextWrapping="Wrap"/></Border>
   <Border Background="#FFF0CE" Padding="8" Margin="0,0,0,8" Visibility="{Binding HasPending, Converter={StaticResource Bool2Vis}}"><DockPanel>
@@ -101,6 +110,33 @@
      </StackPanel>
     </Grid>
    </Grid>
+  </TabItem>
+  <TabItem Header="  Puestos  " x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <DockPanel Margin="18">
+    <StackPanel DockPanel.Dock="Top">
+     <TextBlock Text="PUESTOS Y EMPAREJAMIENTO · SOLO ADMINISTRACIÓN" FontSize="20" FontWeight="SemiBold"/>
+     <WrapPanel Margin="0,10,0,4">
+      <Button Content="Generar código de emparejamiento" Command="{Binding Devices.GenerateCodeCommand}"/>
+      <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo. El QR llegará con la PWA."/>
+     </WrapPanel>
+     <TextBlock Text="{Binding Devices.PairingInfo}" Margin="0,0,0,12" TextWrapping="Wrap"/>
+     <TextBlock Text="SOLICITUDES PENDIENTES" FontWeight="Bold"/>
+     <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="110" BorderThickness="0"/>
+     <WrapPanel Margin="0,6,0,14">
+      <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Devices.ApproveRole}">
+       <ComboBoxItem Tag="service" IsSelected="True">Sala</ComboBoxItem><ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="main">Principal</ComboBoxItem>
+      </ComboBox>
+      <TextBox Text="{Binding Devices.ApproveStation, UpdateSourceTrigger=PropertyChanged}" Width="140" Margin="8,0,8,0" ToolTip="Estación (p. ej. sala-1, cold, hot, pase)"/>
+      <Button Content="Aprobar" Command="{Binding Devices.ApproveCommand}"/>
+      <Button Content="Denegar" Command="{Binding Devices.DenyCommand}"/>
+     </WrapPanel>
+     <TextBlock Text="PUESTOS EMPAREJADOS" FontWeight="Bold"/>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+     <Button Content="Revocar puesto seleccionado (expulsión inmediata)" Command="{Binding Devices.RevokeCommand}" HorizontalAlignment="Left"/>
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Devices.Devices}" SelectedItem="{Binding Devices.SelectedDevice}" BorderThickness="0"/>
+   </DockPanel>
   </TabItem>
   <TabItem Header="  Cuenta / Caja  " x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
    <DockPanel Margin="18">
