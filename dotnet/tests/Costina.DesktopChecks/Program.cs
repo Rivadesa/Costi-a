@@ -87,6 +87,15 @@ internal static class Program
         using(var third=new DpapiPendingStore(session,folder))
             if(third.Slot!=0) throw new Exception("A released slot must be reused by the next window.");
         Directory.Delete(folder,true);
+        // D4.3b: la credencial del puesto emparejado persiste cifrada y lo corrupto se descarta.
+        var deviceStore=new DpapiDeviceStore(new Uri("http://127.0.0.1:59998"));
+        deviceStore.Clear();
+        deviceStore.Save("dev.abc123.secreto-de-prueba");
+        if(deviceStore.Load()!="dev.abc123.secreto-de-prueba") throw new Exception("Device token round trip must be lossless.");
+        var deviceFile=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Costina","device-59998.bin");
+        if(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(deviceFile)).Contains("secreto-de-prueba")) throw new Exception("Device token file must not be plaintext.");
+        File.WriteAllBytes(deviceFile,[9,9,9]);
+        if(deviceStore.Load() is not null||File.Exists(deviceFile)) throw new Exception("Corrupted device file must be discarded and deleted.");
         Directory.CreateDirectory("artifacts/desktop");
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);

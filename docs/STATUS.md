@@ -43,6 +43,8 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin i
 
 - D4.3a (issue #26, corte 3 servidor): claves de laboratorio retiradas (solo sesiones de usuario y dispositivos emparejados), matriz rol×estación en cocina espejada en affordances, billete efímero de un solo uso para el hub (preparación PWA) y suites migradas a identidades reales. El WPF necesita D4.3b para volver a conectar. Ver `docs/native/D4.3a-station-authz.md` y el CI de su PR.
 
+- D4.3b (issue #26, cierre en código): el WPF entra por usuario+contraseña o como puesto emparejado (token DPAPI), empareja desde la pantalla de conexión y administra puestos (generar código, aprobar con rol y estación, revocar con expulsión inmediata). Ver `docs/native/D4.3b-wpf-login.md` y el CI de su PR.
+
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
 
 ## Bloqueos antes de piloto operativo (motor nativo)
