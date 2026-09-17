@@ -60,6 +60,8 @@ jobs:
         run: python3 tests/http/identity_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Verify device pairing, single-use codes and revocation over HTTP
         run: python3 tests/http/pairing_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: Verify station matrix and single-use hub tickets over HTTP
+        run: python3 tests/http/station_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: D2 realtime publisher and SignalR flow with real processes
         run: dotnet run --project tests/Costina.RealtimeChecks -c Release -- src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Upload exact executed evidence

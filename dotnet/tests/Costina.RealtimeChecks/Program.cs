@@ -112,8 +112,9 @@ await Check("A4 already published events are never repeated", async () =>
 
 // ---------- Parte B: servidor real + SignalR ----------
 var serverDll = args.Length == 1 ? args[0] : throw new ArgumentException("Pass the Costina.Server.dll path.");
-string RandomKey() => Convert.ToHexString(RandomNumberGenerator.GetBytes(20));
-var keys = new Dictionary<string, string> { ["MAIN"] = RandomKey(), ["SERVICE"] = RandomKey(), ["KITCHEN"] = RandomKey() };
+// D4.3: sin claves de rol. Cada rol autentica como usuario lab-<rol>; keys guarda TOKENS de sesion.
+var keys = new Dictionary<string, string> { ["MAIN"] = "", ["SERVICE"] = "", ["KITCHEN"] = "" };
+const string LabPassword = "lab-password-ensayo-123";
 var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
 var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
 var endpoint = new Uri($"http://127.0.0.1:{port}");
@@ -126,7 +127,6 @@ Process Spawn(string? argument)
     info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString;
     info.Environment["COSTINA_TENANT"] = "rt-tenant"; info.Environment["COSTINA_COMPANY"] = "rt-company";
     info.Environment["COSTINA_LOCATION"] = "rt-location"; info.Environment["COSTINA_PORT"] = port.ToString();
-    foreach (var (role, key) in keys) info.Environment["COSTINA_KEY_" + role] = key;
     var process = Process.Start(info) ?? throw new Exception("Could not start the server process.");
     process.OutputDataReceived += (_, e) => { lock (serverLog) serverLog.AppendLine(e.Data); };
     process.ErrorDataReceived += (_, e) => { lock (serverLog) serverLog.AppendLine(e.Data); };
@@ -160,7 +160,6 @@ async Task<int> RunCli(string input, params string[] arguments)
     info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString;
     info.Environment["COSTINA_TENANT"] = "rt-tenant"; info.Environment["COSTINA_COMPANY"] = "rt-company";
     info.Environment["COSTINA_LOCATION"] = "rt-location";
-    foreach (var (role, key) in keys) info.Environment["COSTINA_KEY_" + role] = key;
     using var process = Process.Start(info) ?? throw new Exception("Could not start the CLI process.");
     await process.StandardInput.WriteLineAsync(input); process.StandardInput.Close();
     await process.WaitForExitAsync();
@@ -190,6 +189,12 @@ try
 {
     using (var init = Spawn("init-lab")) { await init.WaitForExitAsync(); Assert(init.ExitCode == 0, "init-lab failed"); }
     server = Spawn(null); await WaitHealthy();
+    foreach (var role in new[] { "main", "service", "kitchen" })
+    {
+        _ = await RunCli(LabPassword, "create-user", "lab-" + role, role);
+        keys[role.ToUpperInvariant()] = (await Anon("/api/native/v1/auth/login",
+            new { username = "lab-" + role, password = LabPassword })).GetProperty("token").GetString()!;
+    }
 
     var mainNotices = new ConcurrentQueue<Costina.Client.EventNotice>(); var mainStates = new ConcurrentQueue<string>();
     var salaNotices = new ConcurrentQueue<Costina.Client.EventNotice>(); var salaStates = new ConcurrentQueue<string>();

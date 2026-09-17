@@ -19,8 +19,20 @@ BASE = 'http://127.0.0.1:5088'
 ENV = os.environ.copy()
 ENV.update(COSTINA_LAB_MODE='true', COSTINA_PORT='5088', COSTINA_TENANT='d1-tenant',
            COSTINA_COMPANY='d1-company', COSTINA_LOCATION='d1-location')
-KEYS = {r: secrets.token_hex(32) for r in ('main', 'service', 'kitchen')}
-for role, key in KEYS.items(): ENV['COSTINA_KEY_' + role.upper()] = key
+# D4.3: las claves de rol quedan retiradas. Cada rol autentica como usuario lab-<rol> con
+# sesion real; KEYS pasa a contener tokens de sesion y todas las suites siguen funcionando.
+KEYS = {r: '' for r in ('main', 'service', 'kitchen')}
+LAB_PASSWORD = 'lab-password-ensayo-123'
+
+def _provision_identities():
+    for role in ('main', 'service', 'kitchen'):
+        subprocess.run(['dotnet', str(SERVER), 'create-user', 'lab-' + role, role],
+                       env=ENV, input=LAB_PASSWORD, text=True, capture_output=True)  # idempotente: si existe, falla y da igual
+        req = urllib.request.Request(BASE + '/api/native/v1/auth/login',
+            data=json.dumps({'username': 'lab-' + role, 'password': LAB_PASSWORD}).encode(),
+            headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            KEYS[role] = json.loads(r.read())['token']
 PROCESS = None
 LOG = None
 LAST_HEADERS = {}  # cabeceras de la ultima respuesta (D3.4: el servidor hace eco de Idempotency-Key)
@@ -67,7 +79,9 @@ def start_server(extra=None):
         if PROCESS.poll() is not None: raise RuntimeError('Server exited; inspect d1-http-server.log')
         try:
             with urllib.request.urlopen(BASE + '/health', timeout=1) as r:
-                if r.status == 200: return
+                if r.status == 200:
+                    _provision_identities()
+                    return
         except (OSError, urllib.error.URLError): pass
         time.sleep(.1)
     raise TimeoutError('Server did not become ready')
