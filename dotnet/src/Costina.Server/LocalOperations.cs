@@ -49,9 +49,29 @@ public static class LocalOperations
                 new Dictionary<string,string>{{"service_id",id}})});
         return new { serviceId=id,version=1,occupancyVersion=1 };
     }
+    // Matriz de estacion (D4.3, F06): un dispositivo solo marca elaboraciones de SU estacion, y
+    // validar o revisar un pase exige la estacion 'pase'. Un usuario con sesion (Station null)
+    // no tiene restriccion: el chef en el PC decide. La estacion nunca amplia el rol, solo acota.
+    private static void StationAllowed(ExecutionIdentity identity,DiningService entity,string action,DiningCommand request)
+    {
+        if(identity.Station is null) return;
+        if(action is "preparation-start" or "preparation-ready")
+        {
+            var station=entity.View().Courses.FirstOrDefault(c=>c.Id==request.CourseId)?
+                .Preparations.FirstOrDefault(p=>p.Id==request.ItemId)?.StationId;
+            if(station is not null && !string.Equals(station,identity.Station,StringComparison.Ordinal))
+                throw new RuleViolation("wrong_station","This device's station cannot mark that preparation.");
+        }
+        else if(action is "ready" or "review-preparation")
+        {
+            if(!string.Equals(identity.Station,"pase",StringComparison.Ordinal))
+                throw new RuleViolation("wrong_station","Course validation and review belong to the 'pase' station.");
+        }
+    }
     public static async Task<object> Dining(Unit unit,ExecutionIdentity identity,string id,string action,DiningCommand request)
     {
         var stored = await unit.Dining(id); Version(stored.Version,request.ExpectedVersion);
+        StationAllowed(identity,stored.Entity,action,request);
         var entity=stored.Entity; var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         switch(action)
         {

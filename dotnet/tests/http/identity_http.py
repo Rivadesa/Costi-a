@@ -47,8 +47,9 @@ class IdentityChecks(unittest.TestCase):
         status, session = bearer('/session', data['token'])
         self.assertEqual(200, status)
         self.assertEqual('user:maitre', session['actor'])
-        # Las claves de laboratorio siguen funcionando (respaldo hasta D4.3), con actor lab-*.
-        self.assertEqual('lab-main', h.ok('/session')['actor'])
+        # D4.3: ya no hay claves de laboratorio; la infraestructura de suites autentica como
+        # usuarios lab-<rol> con sesion real.
+        self.assertEqual('user:lab-main', h.ok('/session')['actor'])
 
     def test_02_failed_login_is_generic_and_never_issues_tokens(self):
         for username, password in [('maitre', 'contrasena-incorrecta-x'), ('nadie', PASSWORD)]:
@@ -100,5 +101,12 @@ class IdentityChecks(unittest.TestCase):
         hashes = h.sql("SELECT string_agg(password_hash, ',') FROM native_d1.users WHERE tenant='d4-identity'")
         self.assertNotIn(PASSWORD, hashes)
         self.assertTrue(all(x.startswith('pbkdf2-sha256.') for x in hashes.split(',')))
+
+    def test_08_no_secrets_in_server_log(self):
+        _, data = login('maitre', PASSWORD)
+        log = open('d1-http-server.log', encoding='utf8', errors='replace').read()
+        self.assertNotIn(PASSWORD, log)
+        self.assertNotIn(h.LAB_PASSWORD, log)
+        self.assertNotIn(data['token'], log)
 
 if __name__ == '__main__': unittest.main()

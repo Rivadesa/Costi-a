@@ -7,6 +7,32 @@ namespace Costina.Server;
 // El hub no expone metodos invocables: es un canal de solo-notificacion.
 // La pertenencia a grupos se decide con el rol autenticado por el middleware,
 // nunca con datos elegidos por el cliente.
+// D4.3 (F06, preparacion PWA): billete efimero para el hub. Un navegador no puede enviar
+// cabeceras arbitrarias en WebSockets, asi que el hub acepta ?access_token= SOLO con un billete
+// de un solo uso y 60 segundos emitido a una identidad ya autenticada. Vive en memoria del
+// proceso (el hub es el mismo proceso), nunca se registra en logs y se consume al usarse.
+public sealed record HubTicket(string Role, string Actor, string? DeviceId, string? Station);
+public sealed class HubTicketStore
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string,(HubTicket Ticket,DateTimeOffset Expires)> tickets = new();
+    public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(60);
+    private static string HashOf(string value) => Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+
+    public (string Token, DateTimeOffset ExpiresAt) Issue(HubTicket ticket)
+    {
+        foreach (var (key, value) in tickets) if (value.Expires < DateTimeOffset.UtcNow) tickets.TryRemove(key, out _);
+        var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var expires = DateTimeOffset.UtcNow + Lifetime;
+        tickets[HashOf(token)] = (ticket, expires);
+        return (token, expires);
+    }
+
+    public HubTicket? Consume(string token)
+        => tickets.TryRemove(HashOf(token), out var entry) && entry.Expires > DateTimeOffset.UtcNow ? entry.Ticket : null;
+}
+
 // D4.2: registro de conexiones vivas por dispositivo. La revocacion no espera a la proxima
 // peticion: aborta en el acto las conexiones SignalR del dispositivo revocado.
 public sealed class DeviceConnectionRegistry

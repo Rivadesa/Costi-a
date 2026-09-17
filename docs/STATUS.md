@@ -30,7 +30,7 @@ Evidencia ejecutada sobre el estado integrado hasta D3.3 (todas en verde):
 | WPF desktop en `25d62f9` | https://github.com/Rivadesa/Costi-a/actions/runs/35067731433 |
 | PR #33 (D3.3): D0, D1 y WPF | https://github.com/Rivadesa/Costi-a/actions/runs/35081131708 · 35081131717 · 35081131715 |
 
-Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio (no usuarios/dispositivos), realtime at-least-once, sin instalador de producción ni backups.
+Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin instalador de producción ni backups.
 
 ## Hoja de ruta y pendientes
 
@@ -40,6 +40,8 @@ Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio 
 - - D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
 
 - D4.2 (issue #26, corte 2): dispositivos como identidad separada, emparejados por código de un solo uso (5 min) aprobado por main con rol y estación; secreto entregado una única vez, solo hashes en reposo; revocación inmediata que aborta también las conexiones SignalR vivas. Ver `docs/native/D4.2-device-pairing.md` y el CI de su PR.
+
+- D4.3a (issue #26, corte 3 servidor): claves de laboratorio retiradas (solo sesiones de usuario y dispositivos emparejados), matriz rol×estación en cocina espejada en affordances, billete efímero de un solo uso para el hub (preparación PWA) y suites migradas a identidades reales. El WPF necesita D4.3b para volver a conectar. Ver `docs/native/D4.3a-station-authz.md` y el CI de su PR.
 
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
 

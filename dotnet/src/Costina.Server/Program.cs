@@ -44,10 +44,12 @@ var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyI
 var plus = informational.IndexOf('+');
 var serverVersion = plus < 0 ? informational : informational[..plus];
 var serverBuild = plus < 0 ? "" : informational[(plus + 1)..];
-var roles = new[] { "main", "service", "kitchen" };
-var keys = roles.ToDictionary(r=>r,r=>RequiredEnvironment("COSTINA_KEY_"+r.ToUpperInvariant()));
-if(keys.Values.Any(k=>k.Length<32) || keys.Values.Distinct().Count()!=3)
-    throw new InvalidOperationException("Provide three distinct random access keys of at least 32 characters.");
+// D4.3: las claves de rol de laboratorio COSTINA_KEY_* quedan RETIRADAS. Toda peticion
+// autentica con sesion de usuario (login) o dispositivo emparejado. Si siguen definidas en el
+// entorno se ignoran y se avisa: dejarlas activas seria mantener una puerta paralela.
+foreach(var legacy in new[]{"COSTINA_KEY_MAIN","COSTINA_KEY_SERVICE","COSTINA_KEY_KITCHEN"})
+    if(Environment.GetEnvironmentVariable(legacy) is not null)
+        Console.WriteLine($"AVISO: {legacy} ya no se usa desde D4.3; eliminala del entorno.");
 var port = int.Parse(Environment.GetEnvironmentVariable("COSTINA_PORT") ?? "5088");
 if(port is < 1024 or > 65535) throw new ArgumentException("Invalid laboratory port.");
 var builder=WebApplication.CreateBuilder(args);
@@ -59,6 +61,7 @@ builder.Services.AddSingleton(scope);
 builder.Services.AddSingleton<IdentityStore>();
 builder.Services.AddSingleton<DeviceStore>();
 builder.Services.AddSingleton<DeviceConnectionRegistry>();
+builder.Services.AddSingleton<HubTicketStore>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
@@ -67,6 +70,9 @@ var app=builder.Build();
 var identityStore=app.Services.GetRequiredService<IdentityStore>();
 var deviceStore=app.Services.GetRequiredService<DeviceStore>();
 var deviceConnections=app.Services.GetRequiredService<DeviceConnectionRegistry>();
+var hubTickets=app.Services.GetRequiredService<HubTicketStore>();
+if(!await identityStore.AnyUserAsync())
+    Console.WriteLine("AVISO: no hay usuarios en este ambito. Crea el primero con: Costina.Server.exe create-user <usuario> main");
 app.UseRouting();
 app.Use(async (context,next)=>
 {
@@ -90,6 +96,21 @@ app.Use(async (context,next)=>
         // D4.1: primero sesion de usuario (token de corta vida con renovacion deslizante y
         // revocacion); las claves de rol de laboratorio siguen como respaldo hasta D4.3.
         string? role=null; AuthenticatedSession? userSession=null; AuthenticatedDevice? device=null;
+        bool isHubPath=context.Request.Path.StartsWithSegments("/api/native/v1/events");
+        if(provided.Length==0 && isHubPath && context.Request.Query["access_token"].ToString() is {Length:>0} hubToken)
+        {
+            // Billete efimero de un solo uso, SOLO para el hub (preparacion PWA, F06). Nunca en logs.
+            var ticket=hubTickets.Consume(hubToken);
+            if(ticket is not null)
+            {
+                context.Items["role"]=ticket.Role; context.Items["actor"]=ticket.Actor;
+                context.Items["deviceId"]=ticket.DeviceId; context.Items["station"]=ticket.Station;
+                var hubAccess=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
+                if(hubAccess is null || !hubAccess.Roles.Contains(ticket.Role,StringComparer.Ordinal))
+                { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
+                await next(); return;
+            }
+        }
         if(provided.StartsWith("dev.",StringComparison.Ordinal))
         {
             // Credencial de dispositivo emparejado: dev.<id>.<secreto>. Solo su hash vive en la base.
@@ -101,11 +122,6 @@ app.Use(async (context,next)=>
         {
             userSession=await identityStore.AuthenticateAsync(provided,context.RequestAborted);
             if(userSession is not null) role=userSession.Role;
-            else
-            {
-                var digest=SHA256.HashData(Encoding.UTF8.GetBytes(provided));
-                role=keys.FirstOrDefault(k=>CryptographicOperations.FixedTimeEquals(digest,SHA256.HashData(Encoding.UTF8.GetBytes(k.Value)))).Key;
-            }
         }
         if(role is null) { context.Response.StatusCode=401; await context.Response.WriteAsJsonAsync(new {error="unauthorized"}); return; }
         if(context.Request.Headers.Keys.Any(k=>new[]{"X-Tenant-Id","X-Company-Id","X-Location-Id"}.Contains(k,StringComparer.OrdinalIgnoreCase)))
@@ -145,7 +161,8 @@ app.Use(async (context,next)=>
         await context.Response.WriteAsJsonAsync(new {error="operation_unconfirmed",message="Reload state and retry with the same key."});
     }
 });
-ExecutionIdentity Identity(HttpContext context)=>new(scope,(string)context.Items["actor"]!);
+ExecutionIdentity Identity(HttpContext context)=>new(scope,(string)context.Items["actor"]!,context.Items["station"] as string);
+string? Station(HttpContext c)=>c.Items["station"] as string;
 IResult Json(object value)=>Results.Text(Wire.Encode(value),"application/json");
 async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,Task<object>> work)
 {
@@ -165,9 +182,9 @@ app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(n
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
     var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
-    return Json(rows.Select(r=>Affordances.Filter(r,Role(c))).ToArray());})).WithMetadata(new RouteAccess("main","service","kitchen"));
+    return Json(rows.Select(r=>Affordances.Filter(r,Role(c),Station(c))).ToArray());})).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,Affordances.Filter(d.Entity.View(true),Role(c)));},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
+    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,Affordances.Filter(d.Entity.View(true),Role(c),Station(c)));},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
     {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.ViewWithActions());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
@@ -237,6 +254,11 @@ app.MapPost(prefix+"/auth/devices/{id}/revoke",async (HttpContext c,string id)=>
     deviceConnections.AbortAll(id); // expulsion inmediata de las conexiones SignalR vivas
     return Results.Json(new {revoked=true});
 }).WithMetadata(new RouteAccess("main"));
+app.MapPost(prefix+"/auth/hub-token",(Func<HttpContext,IResult>)(c=>{
+    var (token,expiresAt)=hubTickets.Issue(new HubTicket((string)c.Items["role"]!,(string)c.Items["actor"]!,
+        c.Items["deviceId"] as string,c.Items["station"] as string));
+    return Results.Json(new {hubToken=token,expiresAt});
+})).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/auth/logout",(Func<HttpContext,Task<IResult>>)(async c=>{
     var sessionId=c.Items["sessionId"] as string;
     if(sessionId is not null) await identityStore.RevokeSessionAsync(sessionId,c.RequestAborted);
