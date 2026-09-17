@@ -1,5 +1,6 @@
 """D4.3: matriz rol x estacion y billete efimero del hub sobre HTTP real. Ambito propio."""
 import json
+import secrets
 import unittest
 import urllib.error
 import urllib.request
@@ -9,6 +10,7 @@ def request(path, data=None, token=None, query=''):
     body = json.dumps(data).encode() if data is not None else None
     headers = {'Content-Type': 'application/json'}
     if token: headers['Authorization'] = 'Bearer ' + token
+    if body is not None: headers['Idempotency-Key'] = secrets.token_hex(16)
     req = urllib.request.Request(h.BASE + '/api/native/v1' + path + query, data=body, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=15) as r: return r.status, json.loads(r.read())
