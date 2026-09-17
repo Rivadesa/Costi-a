@@ -37,7 +37,9 @@ Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio 
 - #25 completa con D3.1–D3.3 (+ D3.4 correctivo); **pendiente de cierre con evidencia física**: guiones manuales de D3.2, D3.3 y D3.4 en el laboratorio (los ejecuta el equipo de laboratorio).
 - Hallazgos de la revisión externa: **F05** → D3.5 (#36); **F07** → #37 (cuentas cerradas anticipadamente admiten reapertura auditada y devoluciones desde el PC principal; los comanderos solo marcan platos y consumos); **F06** (identidades y transporte de laboratorio) → #26 y #27. Deuda de mantenimiento señalada: lock de dependencias (#13), protección efectiva de ramas, audiencia explícita por tipo de evento, N+1 en `Board()`.
 - Siguientes hitos: #26 identidad (usuarios, dispositivos, QR, tokens; retirada de `COSTINA_KEY_*`), #27 empaquetado, #28 PWA; #24 (realtime) cubierto por D2.
-- PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
+- - D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
+
+PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
 
 ## Bloqueos antes de piloto operativo (motor nativo)
 
