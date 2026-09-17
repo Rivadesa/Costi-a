@@ -18,7 +18,8 @@ PRs nativas integradas en `develop` (merge `0ae4e71`, 2026-09-16, y posteriores)
 - D3.3 (issue #25, corte 3): la orden incierta del cliente persiste cifrada (DPAPI) y sobrevive cierres forzados; al reconectar se restaura y solo admite el reintento idéntico. Ver `docs/native/D3.3-durable-pending.md` y el CI de su PR.
 - PR #34: guía del laboratorio de ingeniería en Windows (`docs/native/lab-engineering.md`).
 - D3.4 (corte correctivo tras la revisión externa `docs/reviews/2026-09-16-revision-seguridad-funcionamiento.md`): contexto de comando inmutable en WPF (F01), fallo cerrado y conciliación asistida ante un pendiente ilegible sin destruir evidencia (F02), almacén durable aislado por instalación/ámbito/rol/ventana (F03), rechazos definitivos solo con eco de la clave y código reconocible (F04), versión única `0.7.0-d3.4` desde los csproj (F08). Ver `docs/native/D3.4-client-hardening.md` y el CI de su PR. **Requiere repetir `init-lab` una vez** (tabla `native_d1.installation`). PR #35.
-- D3.5 (issue #36, F05): reconocer un cambio de restricción obliga a revisar cada elaboración enviada afectada y decidir (no afecta / adaptar / rehacer, con nota); `remake` retira la validación del pase. Ver `docs/native/D3.5-restriction-review.md` y el CI de su PR.
+- D3.5 (issue #36, F05): reconocer un cambio de restricción obliga a revisar cada elaboración enviada afectada y decidir (no afecta / adaptar / rehacer, con nota); `remake` retira la validación del pase. Ver `docs/native/D3.5-restriction-review.md` y el CI de su PR (#38).
+- D3.6 (issue #37, F07): una cuenta cerrada anticipadamente se reabre con motivo auditado (`reopen`, solo main) y admite cambios; `refund` devuelve solo crédito existente; consumos a mayores desde sala con `add-consumption` sin importes en la respuesta. Ver `docs/native/D3.6-account-reopen-refund.md` y el CI de su PR.
 
 Evidencia ejecutada sobre el estado integrado hasta D3.3 (todas en verde):
 
@@ -43,7 +44,7 @@ Límites vigentes del motor nativo: solo loopback, claves de rol de laboratorio 
 1. Vinculación segura de dispositivos y permisos por estación (#26): un perfil `main` no autoriza físicamente al equipo principal.
 2. Servidor Windows como servicio, TLS local, LAN, backups/restauración, observabilidad y actualización/rollback (#27).
 3. Comanderos y KDS en tablets/móviles (#28) y pruebas físicas de latencia/concurrencia.
-4. F07 (#37) traducido a dominio y tests (F05 cubierto por D3.5).
+4. Verificación física de D3.4–D3.6 en el laboratorio y decisión sobre devoluciones parciales por medio de pago.
 5. Administración editable de mesas, estaciones y menús (hoy fixtures de laboratorio).
 6. Migración/integración del legado (#17) con datos reales; no cargar datos reales sobre fixtures.
 

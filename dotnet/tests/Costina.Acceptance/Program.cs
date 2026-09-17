@@ -360,8 +360,45 @@ internal static class Program
             account.VoidCharge("menus", "x", Stamp);
             view = account.ViewWithActions(); actions = view.Actions!;
             True(!actions.Contains("close") && !actions.Contains("void-charge") && view.VoidableChargeIds!.Count == 0);
+            True(actions.Contains("refund"), "Credit after a void must be refundable.");
             account.AddCharge("l2", "Reequilibrio", 1, 30000, Stamp); account.Close(Stamp);
-            Equal(0, account.ViewWithActions().Actions!.Count);
+            True(account.ViewWithActions().Actions!.SequenceEqual(["reopen"]), "A closed account only offers an audited reopen.");
+        });
+        Test("closed account reopens with an audited reason and accepts later extras", () => {
+            var account = Account(); account.RecordPayment("p", "card", 30000, Stamp); account.Close(Stamp);
+            Rule("account_closed", () => account.AddCharge("water", "Agua", 1, 400, Stamp));
+            Throws<ArgumentException>(() => account.Reopen(" ", Stamp));
+            account.ClearPendingEvents(); account.Reopen("bebida pedida tras cerrar", Stamp);
+            Equal(AccountState.Open, account.State); Equal("bebida pedida tras cerrar", account.PendingEvents.Single().Data["reason"]);
+            Equal("account.reopened", account.PendingEvents.Single().Type);
+            account.AddCharge("water", "Agua", 1, 400, Stamp);
+            Equal(400L, account.BalanceCents); Equal(1, account.View().Payments.Count); Equal(30000L, account.PaidCents);
+            Rule("account_not_closed", () => account.Reopen("otra vez", Stamp));
+            account.RecordPayment("q", "cash", 400, Stamp); account.Close(Stamp);
+        });
+        Test("refund returns existing credit only, keeps the payment and is audited", () => {
+            var account = Account(); account.RecordPayment("p", "card", 35000, Stamp);
+            Equal(5000L, account.CreditCents); True(account.ViewWithActions().Actions!.Contains("refund"));
+            Rule("refund_exceeds_credit", () => account.Refund("r1", "cash", 6000, "cobro de más", Stamp));
+            Rule("invalid_refund", () => account.Refund("r1", "cash", 0, "x", Stamp));
+            Throws<ArgumentException>(() => account.Refund("r1", "cash", 5000, " ", Stamp));
+            Rule("account_not_balanced", () => account.Close(Stamp));
+            account.ClearPendingEvents(); account.Refund("r1", "cash", 5000, "cobro de más", Stamp);
+            Equal("payment.refunded", account.PendingEvents.Single().Type); Equal("5000", account.PendingEvents.Single().Data["amount_cents"]);
+            Equal(0L, account.CreditCents); Equal(30000L, account.PaidCents); Equal(5000L, account.RefundedCents);
+            Equal(PaymentCoverage.Paid, account.Coverage); Equal(1, account.View().Payments.Count); Equal(1, account.View().Refunds!.Count);
+            Rule("duplicate_refund", () => account.Refund("r1", "cash", 1, "x", Stamp));
+            Rule("duplicate_refund", () => account.Refund("p", "cash", 1, "x", Stamp));
+            True(!account.ViewWithActions().Actions!.Contains("refund"));
+            account.Close(Stamp);
+            Rule("account_closed", () => account.Refund("r2", "cash", 1, "x", Stamp));
+        });
+        Test("void after payment leaves credit that a refund resolves before an honest close", () => {
+            var account = Account(); account.RecordPayment("p", "card", 30000, Stamp);
+            account.VoidCharge("menus", "no consumido", Stamp); Equal(30000L, account.CreditCents);
+            account.Refund("r1", "card", 30000, "anulación tras pagar", Stamp);
+            Equal(0L, account.TotalCents); Equal(0L, account.PaidCents); Equal(30000L, account.RefundedCents);
+            account.Close(Stamp); Equal(AccountState.Closed, account.State);
         });
         Test("declaring before firing needs no kitchen acknowledgement", () => {
             var service = Service();

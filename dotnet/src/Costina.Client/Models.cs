@@ -48,9 +48,10 @@ public sealed record ChargeDto(string Id, string Description, int Quantity, long
     bool Voided, string? VoidReason, long TotalCents)
 { public string Amount => Money.Format(TotalCents); }
 public sealed record PaymentDto(string Id, string Method, long AmountCents, DateTimeOffset At);
+public sealed record RefundDto(string Id, string Method, long AmountCents, string Reason, DateTimeOffset At);
 public sealed record AccountDto(string Id, string ServiceId, string State, long TotalCents, long PaidCents,
     long BalanceCents, long CreditCents, string Coverage, ChargeDto[] Charges, PaymentDto[] Payments,
-    string[]? Actions = null, string[]? VoidableChargeIds = null);
+    string[]? Actions = null, string[]? VoidableChargeIds = null, long RefundedCents = 0, RefundDto[]? Refunds = null);
 public sealed record OpenResult(string ServiceId, long Version, long OccupancyVersion);
 
 public static class Money

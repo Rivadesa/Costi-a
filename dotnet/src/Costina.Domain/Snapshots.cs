@@ -7,8 +7,10 @@ public sealed record DiningSnapshot(string Id, BusinessScope Scope, string Table
     DiningState State, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
     IReadOnlyList<CourseView> Courses,
     IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false);
+// Refunds es aditivo (D3.6): un payload anterior restaura sin devoluciones.
 public sealed record AccountSnapshot(string Id, BusinessScope Scope, string ServiceId,
-    AccountState State, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments);
+    AccountState State, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments,
+    IReadOnlyList<RefundEntry>? Refunds = null);
 public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string TableId,
     string ServiceId, OccupancyState State, DateTimeOffset? ReleasedAt);
 
@@ -113,7 +115,7 @@ internal sealed partial class CourseExecution
 public sealed partial class SettlementAccount
 {
     public AccountSnapshot Snapshot() => new(Id, Scope, ServiceId, State,
-        Array.AsReadOnly(charges.ToArray()), Array.AsReadOnly(payments.ToArray()));
+        Array.AsReadOnly(charges.ToArray()), Array.AsReadOnly(payments.ToArray()), Array.AsReadOnly(refunds.ToArray()));
 
     public static SettlementAccount Restore(AccountSnapshot value)
     {
@@ -139,7 +141,15 @@ public sealed partial class SettlementAccount
                 "invalid_snapshot", "Invalid or duplicate payment.");
             result.payments.Add(payment);
         }
+        foreach (var refund in value.Refunds ?? [])
+        {
+            Guard.Text(refund.Id, nameof(refund.Id)); Guard.Text(refund.Method, nameof(refund.Method));
+            Guard.Rule(ids.Add(refund.Id) && refund.AmountCents > 0 && !string.IsNullOrWhiteSpace(refund.Reason),
+                "invalid_snapshot", "Invalid or duplicate refund.");
+            result.refunds.Add(refund);
+        }
         _ = result.TotalCents; _ = result.PaidCents;
+        Guard.Rule(result.PaidCents >= 0, "invalid_snapshot", "Refunds exceed recorded payments.");
         Guard.Rule(value.State != AccountState.Closed || (result.BalanceCents == 0 && result.CreditCents == 0),
             "invalid_snapshot", "Closed account is not balanced.");
         result.State = value.State;

@@ -18,7 +18,8 @@ public static class DesktopReadRoutes
                 // orden durable y muestra con que servidor habla. No es autorizacion.
                 installationId=installation.ToString("D"),serverVersion,
                 // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar.
-                actions=new[]{"open"}.Where(a=>Affordances.Allows(role,a)).ToArray()
+                // add-consumption: consumo a mayores desde sala sin importes (D3.6); cocina no marca consumos.
+                actions=new[]{"open","add-consumption"}.Where(a=>Affordances.Allows(role,a)).ToArray()
             });})).WithMetadata(new RouteAccess("main","service","kitchen"));
         app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(new {
             tables=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted),

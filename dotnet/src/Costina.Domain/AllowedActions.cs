@@ -78,8 +78,10 @@ public sealed partial class SettlementAccount
             actions.Add("add-product"); actions.Add("payment");
             voidable.AddRange(charges.Where(c => !c.Voided).Select(c => c.Id));
             if (voidable.Count > 0) actions.Add("void-charge");
+            if (CreditCents > 0) actions.Add("refund");
             if (BalanceCents == 0 && CreditCents == 0) actions.Add("close");
         }
+        else actions.Add("reopen");   // cerrada != intocable: reapertura auditada con motivo (D3.6)
         return View() with { Actions = actions.AsReadOnly(), VoidableChargeIds = voidable.AsReadOnly() };
     }
 }

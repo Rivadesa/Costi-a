@@ -8,21 +8,28 @@ public sealed record ChargeLine(string Id, string Description, int Quantity, lon
     public long TotalCents => Voided ? 0 : checked(Quantity * UnitPriceCents);
 }
 public sealed record PaymentEntry(string Id, string Method, long AmountCents, DateTimeOffset At);
+// Devolucion de credito (D3.6, F07): nunca borra un pago ni inventa un consumo; consume credito existente.
+public sealed record RefundEntry(string Id, string Method, long AmountCents, string Reason, DateTimeOffset At);
 // Actions/VoidableChargeIds: affordances de lectura (nunca persistidas; AccountView no va a snapshot).
 public sealed record AccountView(string Id, string ServiceId, AccountState State,
     long TotalCents, long PaidCents, long BalanceCents, long CreditCents,
     PaymentCoverage Coverage, IReadOnlyList<ChargeLine> Charges, IReadOnlyList<PaymentEntry> Payments,
-    IReadOnlyList<string>? Actions = null, IReadOnlyList<string>? VoidableChargeIds = null);
+    IReadOnlyList<string>? Actions = null, IReadOnlyList<string>? VoidableChargeIds = null,
+    long RefundedCents = 0, IReadOnlyList<RefundEntry>? Refunds = null);
 
 // An account can remain open after table release. No dependency on DiningService.
+// "Pagada" (saldo cero) y "cerrada" (liquidacion definitiva) son cosas distintas: una cuenta cerrada
+// antes de tiempo se reabre con motivo auditado y vuelve a admitir cambios (decision de producto, #37).
 public sealed partial class SettlementAccount : Aggregate
 {
     private readonly List<ChargeLine> charges = [];
     private readonly List<PaymentEntry> payments = [];
+    private readonly List<RefundEntry> refunds = [];
     public string ServiceId { get; }
     public AccountState State { get; private set; } = AccountState.Open;
     public long TotalCents => Sum(charges.Select(c => c.TotalCents));
-    public long PaidCents => Sum(payments.Select(p => p.AmountCents));
+    public long RefundedCents => Sum(refunds.Select(r => r.AmountCents));
+    public long PaidCents => checked(Sum(payments.Select(p => p.AmountCents)) - RefundedCents);
     public long BalanceCents => Math.Max(0, checked(TotalCents - PaidCents));
     public long CreditCents => Math.Max(0, checked(PaidCents - TotalCents));
     public PaymentCoverage Coverage => PaidCents > TotalCents ? PaymentCoverage.Credit
@@ -61,6 +68,22 @@ public sealed partial class SettlementAccount : Aggregate
             ("amount_cents", amountCents.ToString(CultureInfo.InvariantCulture)));
     }
 
+    // Solo devuelve credito que existe (sobrepago o anulacion tras pagar). El pago original se conserva.
+    public void Refund(string refundId, string method, long amountCents, string reason, CommandStamp stamp)
+    {
+        Mutable(stamp);
+        refundId = Guard.Text(refundId, nameof(refundId));
+        method = Guard.Text(method, nameof(method));
+        reason = Guard.Text(reason, nameof(reason));
+        Guard.Rule(amountCents > 0, "invalid_refund", "Refund must be positive.");
+        Guard.Rule(refunds.All(r => r.Id != refundId) && payments.All(p => p.Id != refundId),
+            "duplicate_refund", "This refund ID already exists.");
+        Guard.Rule(amountCents <= CreditCents, "refund_exceeds_credit", "A refund can only return existing credit.");
+        refunds.Add(new RefundEntry(refundId, method, amountCents, reason, stamp.At));
+        Emit("payment.refunded", stamp, ("refund_id", refundId), ("method", method),
+            ("amount_cents", amountCents.ToString(CultureInfo.InvariantCulture)), ("reason", reason));
+    }
+
     public void VoidCharge(string lineId, string reason, CommandStamp stamp)
     {
         Mutable(stamp);
@@ -81,8 +104,20 @@ public sealed partial class SettlementAccount : Aggregate
         Emit("account.closed", stamp);
     }
 
+    // Reapertura auditada: la cuenta vuelve a admitir consumos, pagos, anulaciones y devoluciones.
+    // Nada del historial cambia; el motivo y el actor quedan en outbox/auditoria.
+    public void Reopen(string reason, CommandStamp stamp)
+    {
+        Check(stamp);
+        reason = Guard.Text(reason, nameof(reason));
+        Guard.Rule(State == AccountState.Closed, "account_not_closed", "Only a closed account can be reopened.");
+        State = AccountState.Open;
+        Emit("account.reopened", stamp, ("reason", reason));
+    }
+
     public AccountView View() => new(Id, ServiceId, State, TotalCents, PaidCents, BalanceCents,
-        CreditCents, Coverage, Array.AsReadOnly(charges.ToArray()), Array.AsReadOnly(payments.ToArray()));
+        CreditCents, Coverage, Array.AsReadOnly(charges.ToArray()), Array.AsReadOnly(payments.ToArray()),
+        RefundedCents: RefundedCents, Refunds: Array.AsReadOnly(refunds.ToArray()));
     private void Mutable(CommandStamp stamp)
     {
         Check(stamp);

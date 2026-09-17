@@ -125,7 +125,8 @@ app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Jso
     {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.ViewWithActions());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/services",(Func<HttpContext,Task<IResult>>)(c=>Write<OpenRequest>(c,LocalOperations.Open))).WithMetadata(new RouteAccess("main","service"));
 app.MapPost(prefix+"/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
-    Write<DiningCommand>(c,(u,i,r)=>LocalOperations.Dining(u,i,id,action,r))).WithMetadata(new RouteAccess("main","service","kitchen"));
+    Write<DiningCommand>(c,(u,i,r)=>action=="add-consumption" ? LocalOperations.Consumption(u,i,id,r) : LocalOperations.Dining(u,i,id,action,r)))
+    .WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
     Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
 app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
