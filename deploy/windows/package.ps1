@@ -26,7 +26,7 @@ try {
 # no es una firma independiente del proveedor.)
 $postgresVersion = '17.11-3'
 $postgresUrl = "https://get.enterprisedb.com/postgresql/postgresql-$postgresVersion-windows-x64-binaries.zip"
-$postgresSha256 = ''   # se fija tras la primera ejecucion de CI; vacio = se registra y se avisa, no se verifica
+$postgresSha256 = '4B8DB0930C38F6EF845DB919551DEDDA3B6B845AEB0927B3D79A6E8E9E4537CF'   # observado en el run 35331381837 (descarga HTTPS oficial)
 $archive = Join-Path $artifacts "postgresql-$postgresVersion-windows-x64-binaries.zip"
 if (-not (Test-Path $archive)) { Invoke-WebRequest -Uri $postgresUrl -OutFile $archive -MaximumRetryCount 3 }
 $actualSha256 = (Get-FileHash $archive -Algorithm SHA256).Hash

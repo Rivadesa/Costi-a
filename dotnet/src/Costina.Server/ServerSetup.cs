@@ -52,6 +52,9 @@ public static class ServerSetup
                 bootstrapPassword=Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
                 var passwordFile=Path.Combine(ServerSettings.ConfigDirectory,"bootstrap.tmp");
                 File.WriteAllText(passwordFile,bootstrapPassword);
+                // initdb se re-ejecuta con un token RESTRINGIDO (sin el grupo Administradores): el fichero debe
+                // ser legible por el USUARIO que instala, y solo por el.
+                await Tool("icacls.exe",[passwordFile,"/inheritance:r","/grant:r",Environment.UserDomainName+"\\"+Environment.UserName+":F"]);
                 try
                 {
                     await Tool(Path.Combine(bin,"initdb.exe"),["-D",Cluster,"-U","postgres","--auth=scram-sha-256","--encoding=UTF8",
@@ -197,5 +200,5 @@ public static class ServerSetup
     }
 
     // Los mensajes de las herramientas no llevan secretos (van por entorno o fichero), pero se acotan igualmente.
-    private static string FirstLines(string text) => string.Join(" | ",text.Split('\n',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).Take(6));
+    private static string FirstLines(string text) => string.Join(" | ",text.Split('\n',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).TakeLast(8));
 }
