@@ -18,7 +18,39 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
         using var reader = new StreamReader(stream);
         await using var command = new NpgsqlCommand(await reader.ReadToEndAsync(ct), connection, transaction);
         await command.ExecuteNonQueryAsync(ct);
+        // D5.1: privilegios minimos del rol de ejecucion, solo si "provision" lo creo. En un laboratorio
+        // de un solo rol no hay nada que conceder y el esquema queda como siempre.
+        bool runtimeRole;
+        await using (var role = new NpgsqlCommand("SELECT 1 FROM pg_roles WHERE rolname='costina_runtime'", connection, transaction))
+            runtimeRole = await role.ExecuteScalarAsync(ct) is not null;
+        if (runtimeRole)
+        {
+            using var grantsStream = typeof(PostgresStore).Assembly.GetManifestResourceStream("Costina.Persistence.grants.sql")
+                ?? throw new InvalidOperationException("Grants resource missing.");
+            using var grantsReader = new StreamReader(grantsStream);
+            await using var grants = new NpgsqlCommand(await grantsReader.ReadToEndAsync(ct), connection, transaction);
+            await grants.ExecuteNonQueryAsync(ct);
+        }
         await transaction.CommitAsync(ct);
+    }
+
+    // D5.1: "init" solo actua sobre una base sin esquema y "upgrade" solo sobre una que ya lo tiene.
+    public async Task<bool> SchemaExistsAsync(CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand("SELECT to_regclass('native_d1.schema_version') IS NOT NULL");
+        return Equals(await command.ExecuteScalarAsync(ct), true);
+    }
+
+    // D5.1: el motor en marcha no debe poder cambiar el esquema ni borrar auditoria. Verdadero si la
+    // conexion de ejecucion es superusuario, puede crear en el esquema o puede borrar/reescribir auditoria.
+    public async Task<bool> RuntimeOverprivilegedAsync(CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "SELECT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) " +
+            "OR has_schema_privilege(current_user,'native_d1','CREATE') " +
+            "OR has_table_privilege(current_user,'native_d1.audit','DELETE') " +
+            "OR has_table_privilege(current_user,'native_d1.audit','UPDATE')");
+        return Equals(await command.ExecuteScalarAsync(ct), true);
     }
 
     public async Task CheckAsync(CancellationToken ct = default)
