@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-09-16. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-09-18. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -37,7 +37,7 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin i
 - #25 completa con D3.1–D3.3 (+ D3.4 correctivo); **pendiente de cierre con evidencia física**: guiones manuales de D3.2, D3.3 y D3.4 en el laboratorio (los ejecuta el equipo de laboratorio).
 - Hallazgos de la revisión externa: **F05** → D3.5 (#36); **F07** → #37 (cuentas cerradas anticipadamente admiten reapertura auditada y devoluciones desde el PC principal; los comanderos solo marcan platos y consumos); **F06** (identidades y transporte de laboratorio) → #26 y #27. Deuda de mantenimiento señalada: lock de dependencias (#13), protección efectiva de ramas, audiencia explícita por tipo de evento, N+1 en `Board()`.
 - Siguientes hitos: #26 identidad (usuarios, dispositivos, QR, tokens; retirada de `COSTINA_KEY_*`), #27 empaquetado, #28 PWA; #24 (realtime) cubierto por D2.
-- - D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
+- D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
 
 - D4.2 (issue #26, corte 2): dispositivos como identidad separada, emparejados por código de un solo uso (5 min) aprobado por main con rol y estación; secreto entregado una única vez, solo hashes en reposo; revocación inmediata que aborta también las conexiones SignalR vivas. Ver `docs/native/D4.2-device-pairing.md` y el CI de su PR.
 
