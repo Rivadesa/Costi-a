@@ -41,6 +41,9 @@ public static class ServiceInstaller
         await Run("icacls.exe",[ServerSettings.ConfigDirectory,"/inheritance:r","/grant:r",LocalSystem+":(OI)(CI)F",Administrators+":(OI)(CI)F"]);
         await Run("icacls.exe",[ServerSettings.ServerFile,"/grant",Account+":R"]);
         await Run("icacls.exe",[logs,"/grant",Account+":(OI)(CI)M"]);
+        // D5.4: las copias contienen datos del negocio y hashes de credenciales: fuera del alcance de los usuarios.
+        Directory.CreateDirectory(BackupRunner.Folder);
+        await Run("icacls.exe",[BackupRunner.Folder,"/inheritance:r","/grant:r",LocalSystem+":(OI)(CI)F",Administrators+":(OI)(CI)F",Account+":(OI)(CI)M"]);
         await ProtectTlsAsync();
         Console.WriteLine($"Service {Name} registered as {Account} (delayed automatic start, restart on failure). Start it with: sc start {Name}");
     }

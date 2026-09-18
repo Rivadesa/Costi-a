@@ -13,7 +13,8 @@ using Npgsql;
 // y configuracion; "init" crea el esquema en una base vacia; "upgrade" lo actualiza en una existente;
 // "init-lab" anade ademas los fixtures ficticios. Los tres ultimos usan el rol PROPIETARIO. Un
 // arranque normal usa el rol de EJECUCION y jamas migra, siembra ni lee las credenciales del propietario.
-var administrative = args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab";
+var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab")
+    || (args.Length == 2 && args[0] == "restore");
 var settings = new ServerSettings(administrative);
 if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
 // D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
@@ -36,6 +37,8 @@ if(administrative)
     var ownerConnection = settings.Get("COSTINA_DB_OWNER") ?? (laboratory ? connectionString
         : throw new InvalidOperationException("Missing COSTINA_DB_OWNER: schema commands never run with the runtime role."));
     await using var ownerSource = NpgsqlDataSource.Create(ownerConnection);
+    // D5.4: restauracion verificada de una copia sobre una instalacion recien aprovisionada (nunca pisa datos).
+    if(args[0] == "restore") { await new BackupRunner(settings,scope,BuildInfo.Version).RestoreAsync(args[1],ownerConnection); return; }
     var ownerStore = new PostgresStore(ownerSource);
     var exists = await ownerStore.SchemaExistsAsync();
     if(args[0] == "init" && exists)
@@ -68,7 +71,18 @@ if(args.Length == 3 && args[0] == "create-user")
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, provision-tls, renew-tls, install-service, uninstall-service, create-user <username> <role> or normal startup.");
+// D5.4: copia manual inmediata (la desatendida la hace el propio servicio). Usa el rol de ejecucion.
+if(args.Length == 1 && args[0] == "backup")
+{
+    await store.CheckAsync();
+    var manual = new BackupRunner(settings,scope,BuildInfo.Version);
+    var written = await manual.BackupAsync(connectionString);
+    var replicated = await manual.ReplicateAsync(written);
+    Console.WriteLine($"Backup {written.File} written under {BackupRunner.Folder} ({written.SizeBytes} bytes, sha256 {written.Sha256})."
+        + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
+    return;
+}
+if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, create-user <username> <role> or normal startup.");
 // D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
 // instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
 var notices = new List<string>();
@@ -136,6 +150,10 @@ builder.Services.AddSingleton<DeviceConnectionRegistry>();
 builder.Services.AddSingleton<HubTicketStore>();
 builder.Services.AddSingleton<PublisherHealth>();
 builder.Services.AddSingleton<AttemptThrottle>();
+builder.Services.AddSingleton<BackupHealth>();
+var backupRunner = new BackupRunner(settings,scope,serverVersion);
+if(!laboratory) builder.Services.AddHostedService(services=>new BackupService(backupRunner,services.GetRequiredService<BackupHealth>(),
+    settings,connectionString,services.GetRequiredService<ILogger<BackupService>>()));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
@@ -372,6 +390,12 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapDesktopReadRoutes(source,scope,installation,serverVersion);
 // Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
+object Backup()
+{
+    var state=app.Services.GetRequiredService<BackupHealth>().Read();
+    return new {automatic=!laboratory,lastSuccessAt=state.LastSuccessAt,lastFile=state.LastFile,lastError=state.LastError,
+        secondDestinationConfigured=backupRunner.CopyFolder is {Length:>0},lastReplicated=state.CopyReplicated};
+}
 // D5.2: diagnostico operativo, solo main. Sin datos de negocio, importes, rutas ni secretos.
 app.MapGet(prefix+"/diagnostics",(Func<HttpContext,Task<IResult>>)(async c=>{
     var backlog=await store.OutboxBacklogAsync(scope,c.RequestAborted);
@@ -387,7 +411,7 @@ app.MapGet(prefix+"/diagnostics",(Func<HttpContext,Task<IResult>>)(async c=>{
         tls=new {enabled=tlsCertificate is not null,port=tlsCertificate is null ? (int?)null : tlsPort,
             serverCertificateExpiresAt=tlsCertificate is null ? (DateTimeOffset?)null : new DateTimeOffset(tlsCertificate.NotAfter.ToUniversalTime()),
             names=tlsCertificate?.GetNameInfo(X509NameType.DnsName,false),caFingerprintSha256=caFingerprint},
-        lastBackupAt=(DateTimeOffset?)null // D5.4
+        backup=Backup()
     });
 })).WithMetadata(new RouteAccess("main"));
 app.MapHub<EventsHub>(prefix+"/events").WithMetadata(new RouteAccess("main","service","kitchen"));

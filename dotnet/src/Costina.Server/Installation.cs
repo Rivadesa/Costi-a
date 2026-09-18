@@ -107,7 +107,11 @@ public static partial class Provisioner
         WritePrivate(ServerSettings.OwnerFile,new Dictionary<string,string>{["COSTINA_DB_OWNER"]=Connection(OwnerRole,ownerPassword)});
         WritePrivate(ServerSettings.ServerFile,new Dictionary<string,string>{
             ["COSTINA_MODE"]=mode,["COSTINA_DB"]=Connection(RuntimeRole,runtimePassword),
-            ["COSTINA_TENANT"]=tenant,["COSTINA_COMPANY"]=company,["COSTINA_LOCATION"]=location,["COSTINA_PORT"]=port});
+            ["COSTINA_TENANT"]=tenant,["COSTINA_COMPANY"]=company,["COSTINA_LOCATION"]=location,["COSTINA_PORT"]=port}
+            // Ajustes opcionales (no secretos) que el servicio necesitara y que su entorno no hereda de esta consola.
+            .Concat(new[]{"COSTINA_TLS_PORT","COSTINA_PG_BIN","COSTINA_BACKUP_COPY","COSTINA_BACKUP_HOUR","COSTINA_BACKUP_KEEP"}
+                .Where(name=>settings.Get(name) is not null).Select(name=>KeyValuePair.Create(name,settings.Get(name)!)))
+            .ToDictionary(pair=>pair.Key,pair=>pair.Value));
         Console.WriteLine($"Provisioned roles and database {database}. Configuration written under {ServerSettings.ConfigDirectory}. Next: init.");
     }
 

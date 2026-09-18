@@ -30,7 +30,7 @@ Evidencia ejecutada sobre el estado integrado hasta D3.3 (todas en verde):
 | WPF desktop en `25d62f9` | https://github.com/Rivadesa/Costi-a/actions/runs/35067731433 |
 | PR #33 (D3.3): D0, D1 y WPF | https://github.com/Rivadesa/Costi-a/actions/runs/35081131708 · 35081131717 · 35081131715 |
 
-Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin instalador de producción ni backups (Hito 4 en curso; servicio de Windows desde D5.2 y HTTPS en LAN desde D5.3, solo en modo instalación).
+Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin instalador de producción (Hito 4 en curso; servicio de Windows desde D5.2, HTTPS en LAN desde D5.3 y copias con restauración verificada desde D5.4, solo en modo instalación).
 
 ## Hoja de ruta y pendientes
 
@@ -50,6 +50,8 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin i
 - D5.2 (issue #27, corte 2): `install-service`/`uninstall-service` registran el motor como servicio de Windows bajo la cuenta virtual `NT SERVICE\Costina` (arranque automático retardado sin sesión de usuario, recuperación ante caída, ACL que deja `owner.json` fuera del alcance del motor), log en fichero, líneas de petición fuera del log (el billete del hub viaja en la query) y `GET /diagnostics` solo main. Probado en CI sobre un servicio real. Ver `docs/native/D5.2-windows-service.md` y el CI de su PR.
 
 - D5.3 (issue #27, corte 3; transporte de F06): HTTPS en la LAN con una CA local de la instalación con restricciones de nombre críticas (`provision-tls`/`renew-tls`), HTTP solo en loopback, regla de firewall sin perfil público, freno de intentos de login/emparejamiento (429) y cliente WPF que acepta `https://NOMBRE:PUERTO` con validación normal de la cadena. Validado en CI con OpenSSL y con SChannel. Ver `docs/native/D5.3-lan-https.md` y el CI de su PR.
+
+- D5.4 (issue #27, corte 4): copia desatendida diaria con `pg_dump` dentro de una instantánea exportada, manifiesto con SHA-256 y huella del contenido de cada tabla, segundo destino verificado (`COSTINA_BACKUP_COPY`), y `restore` que solo actúa sobre una instalación recién aprovisionada y exige que las huellas restauradas coincidan. CI ejecuta una restauración real y compara por contenido las 13 tablas. Ver `docs/native/D5.4-backup-restore.md` y el CI de su PR.
 
 Hito 3 (#26): completo en código con D4.3b (PR #43); **su cierre espera el guion manual del promotor**. Hito 4 (#27) troceado en D5.1 base → D5.2 servicio de Windows → D5.3 HTTPS en LAN (CA local) → D5.4 backup/restauración → D5.5 instalador → D5.6 guion físico.
 

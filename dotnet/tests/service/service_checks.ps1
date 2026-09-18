@@ -52,8 +52,9 @@ try {
     $env:COSTINA_DB_NAME = 'costina_service_d1_test'
     $env:COSTINA_TENANT = 'svc-tenant'; $env:COSTINA_COMPANY = 'svc-company'; $env:COSTINA_LOCATION = 'svc-location'
     $env:COSTINA_PORT = '5091'
+    $env:COSTINA_PG_BIN = $env:PGBIN   # pg_dump/pg_restore del mismo PostgreSQL; viaja a server.json para el servicio
     Engine provision | Out-Null
-    foreach ($name in 'COSTINA_DB_BOOTSTRAP', 'COSTINA_DB_NAME', 'COSTINA_TENANT', 'COSTINA_COMPANY', 'COSTINA_LOCATION', 'COSTINA_PORT') {
+    foreach ($name in 'COSTINA_DB_BOOTSTRAP', 'COSTINA_DB_NAME', 'COSTINA_TENANT', 'COSTINA_COMPANY', 'COSTINA_LOCATION', 'COSTINA_PORT', 'COSTINA_PG_BIN') {
         Remove-Item "Env:$name"
     }
     Engine init | Out-Null
@@ -128,6 +129,23 @@ try {
         Assert ($diagnostics.publisher.lastSuccessAt) 'The outbox publisher never completed a cycle.'
         Assert ($diagnostics.outbox.pending -eq 0) 'Unexpected outbox backlog.'
         Assert ($diagnostics.dataRoot.freeBytes -gt 0) 'Free space was not reported.'
+    }
+    Check 'the service takes the first backup unattended and keeps it away from ordinary users' {
+        $headers = @{Authorization = "Bearer $((Login).token)" }
+        $backup = $null
+        for ($i = 0; $i -lt 60; $i++) {
+            $backup = (Invoke-RestMethod "$api/diagnostics" -Headers $headers).backup
+            if ($backup.lastSuccessAt -or $backup.lastError) { break }
+            Start-Sleep -Seconds 1
+        }
+        Assert (-not $backup.lastError) "Automatic backup failed: $($backup.lastError)"
+        Assert ($backup.lastSuccessAt -and $backup.automatic) 'The service never took its first backup.'
+        $file = Join-Path $dataRoot "backups\$($backup.lastFile)"
+        Assert ((Test-Path $file) -and (Test-Path "$file.json")) 'Backup file or manifest missing.'
+        $manifest = Get-Content "$file.json" -Raw | ConvertFrom-Json
+        Assert ($manifest.tables.users.rows -eq 1 -and $manifest.sha256 -eq (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()) 'Manifest does not describe the file.'
+        $acl = & icacls.exe (Join-Path $dataRoot 'backups') | Out-String
+        Assert ($acl -notmatch 'Users' -and $acl -notmatch 'Everyone') "backups is too open: $acl"
     }
     Check 'the service writes a log file without secrets' {
         $logs = Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'server-*.log'
