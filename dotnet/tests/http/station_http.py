@@ -88,5 +88,8 @@ class StationChecks(unittest.TestCase):
         self.assertEqual(401, request('/events/negotiate', {}, query='?access_token=inventado')[0])
         self.assertEqual(401, request('/session', None, query='?access_token=' + ticket)[0])
         self.assertEqual(401, request('/auth/hub-token', {})[0])
+        # D5.2: la query con el billete nunca llega al log (lineas de peticion de ASP.NET filtradas).
+        log = open('d1-http-server.log', encoding='utf8', errors='replace').read()
+        self.assertNotIn(ticket, log); self.assertNotIn('access_token', log)
 
 if __name__ == '__main__': unittest.main()

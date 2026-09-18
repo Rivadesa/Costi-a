@@ -75,7 +75,7 @@ public sealed class HubEventSink(IHubContext<EventsHub> hub) : IEventSink
 
 // Bucle supervisado dentro del proceso del servidor: un fallo registra el tipo de error
 // y reintenta con espera mayor; el bucle no muere y no publica secretos en el log.
-public sealed class OutboxPublisherService(OutboxPublisher publisher, ILogger<OutboxPublisherService> logger) : BackgroundService
+public sealed class OutboxPublisherService(OutboxPublisher publisher, PublisherHealth health, ILogger<OutboxPublisherService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -86,11 +86,13 @@ public sealed class OutboxPublisherService(OutboxPublisher publisher, ILogger<Ou
             {
                 var published = await publisher.PublishPendingAsync(ct);
                 delay = published > 0 ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromMilliseconds(250);
+                health.Succeeded();
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception e)
             {
                 logger.LogError("Outbox publish failed: {ErrorType}", e.GetType().Name);
+                health.Failed();
                 delay = TimeSpan.FromSeconds(5);
             }
             try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { break; }

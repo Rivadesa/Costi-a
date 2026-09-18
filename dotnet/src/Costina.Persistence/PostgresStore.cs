@@ -34,6 +34,18 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
         await transaction.CommitAsync(ct);
     }
 
+    // D5.2: cola de avisos sin publicar del ambito, para el diagnostico. Solo cuenta y antiguedad.
+    public async Task<(long Pending, DateTimeOffset? OldestAt)> OutboxBacklogAsync(BusinessScope scope, CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "SELECT count(*), min(occurred_at) FROM native_d1.outbox WHERE tenant=@tenant AND company=@company AND location=@location AND published_at IS NULL");
+        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+        command.Parameters.AddWithValue("location", scope.LocationId);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        await reader.ReadAsync(ct);
+        return (reader.GetInt64(0), reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1));
+    }
+
     // D5.1: "init" solo actua sobre una base sin esquema y "upgrade" solo sobre una que ya lo tiene.
     public async Task<bool> SchemaExistsAsync(CancellationToken ct = default)
     {

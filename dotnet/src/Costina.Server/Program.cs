@@ -15,6 +15,9 @@ using Npgsql;
 var administrative = args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab";
 var settings = new ServerSettings(administrative);
 if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
+// D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
+if(args.Length == 1 && args[0] == "install-service") { await ServiceInstaller.InstallAsync(settings); return; }
+if(args.Length == 1 && args[0] == "uninstall-service") { await ServiceInstaller.UninstallAsync(); return; }
 var mode = settings.Get("COSTINA_MODE") ?? (settings.Get("COSTINA_LAB_MODE") == "true" ? "laboratory" : null)
     ?? throw new InvalidOperationException("Set COSTINA_MODE=installation (provisioned roles) or COSTINA_LAB_MODE=true (engineering laboratory).");
 if(mode is not ("laboratory" or "installation")) throw new InvalidOperationException("COSTINA_MODE must be installation or laboratory.");
@@ -62,13 +65,21 @@ if(args.Length == 3 && args[0] == "create-user")
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, create-user <username> <role> or normal startup.");
-await store.CheckAsync();
+if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, install-service, uninstall-service, create-user <username> <role> or normal startup.");
+// D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
+// instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
+var notices = new List<string>();
+for(var attempt = 0; ; attempt++)
+{
+    try { await store.CheckAsync(); break; }
+    catch(NpgsqlException e) when (!laboratory && attempt < 20 && (e is not PostgresException starting || starting.SqlState == "57P03"))
+    { await Task.Delay(1000); }
+}
 // D5.1: una instalacion se niega a servir con una conexion capaz de DDL o de borrar auditoria.
 if(await store.RuntimeOverprivilegedAsync())
 {
     if(!laboratory) throw new InvalidOperationException("COSTINA_DB must use the provisioned runtime role: this connection can alter the schema or the audit trail.");
-    Console.WriteLine("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
+    notices.Add("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
 }
 var installation = await store.InstallationAsync();
 // Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
@@ -81,11 +92,16 @@ var serverBuild = plus < 0 ? "" : informational[(plus + 1)..];
 // entorno se ignoran y se avisa: dejarlas activas seria mantener una puerta paralela.
 foreach(var legacy in new[]{"COSTINA_KEY_MAIN","COSTINA_KEY_SERVICE","COSTINA_KEY_KITCHEN"})
     if(Environment.GetEnvironmentVariable(legacy) is not null)
-        Console.WriteLine($"AVISO: {legacy} ya no se usa desde D4.3; eliminala del entorno.");
+        notices.Add($"AVISO: {legacy} ya no se usa desde D4.3; eliminala del entorno.");
 var port = int.Parse(settings.Get("COSTINA_PORT") ?? "5088");
 if(port is < 1024 or > 65535) throw new ArgumentException("Invalid laboratory port.");
 var builder=WebApplication.CreateBuilder(args);
-builder.Host.UseWindowsService(options=>options.ServiceName="Costina D1 Laboratory");
+builder.Host.UseWindowsService(options=>options.ServiceName=ServiceInstaller.Name);
+// Las lineas de peticion de ASP.NET incluyen la query (el billete efimero del hub viaja ahi): fuera de
+// cualquier log. Una instalacion registra ademas en fichero, porque un servicio no tiene consola.
+builder.Logging.AddFilter("Microsoft.AspNetCore",LogLevel.Warning);
+if(!laboratory) builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(ServerSettings.DataRoot,"logs")));
+var startedAt=DateTimeOffset.UtcNow;
 builder.WebHost.ConfigureKestrel(options=> { options.Listen(IPAddress.Loopback,port); options.Limits.MaxRequestBodySize=32768; });
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(source);
@@ -94,6 +110,7 @@ builder.Services.AddSingleton<IdentityStore>();
 builder.Services.AddSingleton<DeviceStore>();
 builder.Services.AddSingleton<DeviceConnectionRegistry>();
 builder.Services.AddSingleton<HubTicketStore>();
+builder.Services.AddSingleton<PublisherHealth>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IEventSink,HubEventSink>();
 builder.Services.AddSingleton<OutboxPublisher>();
@@ -104,7 +121,9 @@ var deviceStore=app.Services.GetRequiredService<DeviceStore>();
 var deviceConnections=app.Services.GetRequiredService<DeviceConnectionRegistry>();
 var hubTickets=app.Services.GetRequiredService<HubTicketStore>();
 if(!await identityStore.AnyUserAsync())
-    Console.WriteLine("AVISO: no hay usuarios en este ambito. Crea el primero con: Costina.Server.exe create-user <usuario> main");
+    notices.Add("AVISO: no hay usuarios en este ambito. Crea el primero con: Costina.Server.exe create-user <usuario> main");
+// Los avisos de arranque salen por el logger: consola en laboratorio, fichero cuando es un servicio.
+foreach(var notice in notices) app.Logger.LogWarning("{Notice}",notice);
 app.UseRouting();
 app.Use(async (context,next)=>
 {
@@ -313,5 +332,20 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapDesktopReadRoutes(source,scope,installation,serverVersion);
 // Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
+// D5.2: diagnostico operativo, solo main. Sin datos de negocio, importes, rutas ni secretos.
+app.MapGet(prefix+"/diagnostics",(Func<HttpContext,Task<IResult>>)(async c=>{
+    var backlog=await store.OutboxBacklogAsync(scope,c.RequestAborted);
+    var publisher=app.Services.GetRequiredService<PublisherHealth>();
+    long? freeBytes=null;
+    try { freeBytes=new DriveInfo(Path.GetPathRoot(ServerSettings.DataRoot)!).AvailableFreeSpace; } catch(Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException) { }
+    return Results.Json(new {
+        mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,startedAt,
+        runningAsService=Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService(),
+        publisher=new {lastSuccessAt=publisher.LastSuccessAt,lastFailureAt=publisher.LastFailureAt,consecutiveFailures=publisher.ConsecutiveFailures},
+        outbox=new {pending=backlog.Pending,oldestPendingAt=backlog.OldestAt},
+        dataRoot=new {freeBytes},
+        lastBackupAt=(DateTimeOffset?)null // D5.4
+    });
+})).WithMetadata(new RouteAccess("main"));
 app.MapHub<EventsHub>(prefix+"/events").WithMetadata(new RouteAccess("main","service","kitchen"));
 await app.RunAsync();

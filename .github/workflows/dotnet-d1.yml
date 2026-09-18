@@ -116,3 +116,29 @@ jobs:
           path: artifacts/d1-source.zip
           if-no-files-found: error
           retention-days: 14
+  windows-service:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run: {working-directory: dotnet}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Publish the engine into Program Files (program separate from data)
+        shell: pwsh
+        run: |
+          dotnet publish src/Costina.Server -c Release -r win-x64 --self-contained true -o "$env:ProgramFiles\Costina"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: D5.2 real Windows service - virtual account, ACL, no user session, restart and recovery
+        shell: pwsh
+        run: ./tests/service/service_checks.ps1 -Program "$env:ProgramFiles\Costina"
+      - name: Upload exact executed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d5-windows-service-evidence
+          path: dotnet/artifacts/service/
+          if-no-files-found: warn
+          retention-days: 14
