@@ -148,7 +148,21 @@ class Packaging(unittest.TestCase):
             self.assertEqual((status, session['actor'], session['tenantId']), (200, 'user:jefa', 'd5-tenant'))
             status, configuration = call('/api/native/v1/configuration', token=login['token'])
             self.assertEqual((status, configuration['tables']), (200, []))   # an installation starts without fixtures
+            # D5.2: diagnostico solo main, sin datos de negocio; y log en fichero bajo la raiz de datos.
+            for _ in range(20):
+                status, diagnostics = call('/api/native/v1/diagnostics', token=login['token'])
+                if diagnostics and diagnostics['publisher']['lastSuccessAt']: break
+                time.sleep(.25)
+            self.assertEqual(status, 200)
+            self.assertEqual((diagnostics['mode'], diagnostics['runningAsService'], diagnostics['outbox']['pending']), ('installation', False, 0))
+            self.assertTrue(diagnostics['publisher']['lastSuccessAt']); self.assertGreater(diagnostics['dataRoot']['freeBytes'], 0)
+            self.assertEqual(call('/api/native/v1/diagnostics')[0], 401)
             self.assertEqual(call('/api/native/v1/auth/logout', {}, token=login['token'])[0], 200)
+        logs = list((DATA / 'logs').glob('server-*.log'))
+        self.assertEqual(len(logs), 1)
+        text = logs[0].read_text(encoding='utf8', errors='replace')
+        for secret in (PASSWORD, login['token'], 'Password='):
+            self.assertNotIn(secret, text)
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')
