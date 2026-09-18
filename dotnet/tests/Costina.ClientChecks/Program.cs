@@ -23,7 +23,9 @@ foreach(var sample in new[]{("9,50",950L),("9.5",950L),("0,01",1L),("150",15000L
     await Check("exact money "+sample.Item1,()=>{Assert(Money.Parse(sample.Item1)==sample.Item2);return Task.CompletedTask;});
 foreach(var sample in new[]{"0","-1","1.234","1,234.00","1e3","NaN","9,",",50"})
     await Check("reject money "+sample,()=>Throws<ArgumentException>(()=>{Money.Parse(sample);return Task.CompletedTask;}));
-foreach(var sample in new[]{"http://example.com:5088","http://127.0.0.1:5088/path","http://user@127.0.0.1:5088","http://127.0.0.1:5088/?secret=1"})
+foreach(var sample in new[]{"http://127.0.0.1:5088","https://costina-server.local:5443","https://192.168.1.10:5443"})
+    await Check("accept endpoint "+sample,()=>{ApiClient.ValidateEndpoint(new Uri(sample));return Task.CompletedTask;});
+foreach(var sample in new[]{"http://example.com:5088","http://192.168.1.10:5088","http://costina-server.local:5088","https://user@costina-server.local:5443","https://costina-server.local:5443/path","https://costina-server.local:443","ftp://costina-server.local:5443","http://127.0.0.1:5088/path","http://user@127.0.0.1:5088","http://127.0.0.1:5088/?secret=1"})
     await Check("reject endpoint "+sample,()=>Throws<ArgumentException>(()=>{ApiClient.ValidateEndpoint(new Uri(sample));return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{
     using var client=Client(new Handler((r,_)=>{

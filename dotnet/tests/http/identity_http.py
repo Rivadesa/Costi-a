@@ -102,6 +102,12 @@ class IdentityChecks(unittest.TestCase):
         self.assertNotIn(PASSWORD, hashes)
         self.assertTrue(all(x.startswith('pbkdf2-sha256.') for x in hashes.split(',')))
 
+    def test_075_repeated_failures_are_throttled_per_origin_and_user(self):
+        # D5.3: 10 fallos en 5 minutos bloquean ESE usuario desde ESE origen (429); los demas siguen entrando.
+        for _ in range(10): self.assertEqual(401, login('fantasma', 'contrasena-equivocada-1')[0])
+        self.assertEqual(429, login('fantasma', 'contrasena-equivocada-1')[0])
+        self.assertEqual(200, login('maitre', PASSWORD)[0])
+
     def test_08_no_secrets_in_server_log(self):
         _, data = login('maitre', PASSWORD)
         log = open('d1-http-server.log', encoding='utf8', errors='replace').read()

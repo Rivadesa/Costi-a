@@ -64,11 +64,15 @@ public sealed class ApiClient : IDisposable
     }
     public static void ValidateEndpoint(Uri endpoint)
     {
-        // Local-only until device identity and local TLS are implemented. No TLS validation bypass.
-        if (!endpoint.IsAbsoluteUri || endpoint.Scheme != "http" || endpoint.Host != "127.0.0.1"
-            || endpoint.Port < 1024 || endpoint.UserInfo.Length != 0 || endpoint.Query.Length != 0
+        // D5.3: HTTP solo contra el propio equipo (loopback); en la red local UNICAMENTE https con la
+        // validacion normal de la cadena (la raiz de la CA local se instala en el puesto). Nunca se
+        // desactiva la validacion TLS ni se acepta http hacia otra maquina.
+        if (!endpoint.IsAbsoluteUri) throw new ArgumentException("Dirección no válida.");
+        var local = endpoint.Scheme == "http" && endpoint.Host == "127.0.0.1";
+        var lan = endpoint.Scheme == "https" && endpoint.Host.Length > 0;
+        if (!(local || lan) || endpoint.Port < 1024 || endpoint.UserInfo.Length != 0 || endpoint.Query.Length != 0
             || endpoint.Fragment.Length != 0 || endpoint.AbsolutePath != "/")
-            throw new ArgumentException("Este ensayo solo admite http://127.0.0.1:PUERTO, sin rutas ni credenciales.");
+            throw new ArgumentException("Solo se admite http://127.0.0.1:PUERTO en el propio servidor o https://NOMBRE:PUERTO en la red local, sin rutas ni credenciales.");
     }
     public async Task<T> GetAsync<T>(string path)
     {

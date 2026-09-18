@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -163,6 +165,75 @@ class Packaging(unittest.TestCase):
         text = logs[0].read_text(encoding='utf8', errors='replace')
         for secret in (PASSWORD, login['token'], 'Password='):
             self.assertNotIn(secret, text)
+
+    def test_06b_lan_https_with_a_name_constrained_local_ca(self):
+        """D5.3: an independent TLS stack (OpenSSL) validates the chain with NO exceptions."""
+        env = clean_env(COSTINA_TLS_NAMES='localhost,127.0.0.1')
+        tls = DATA / 'tls'
+        self.assertNotEqual(cli('renew-tls', env=env).returncode, 0)          # nothing to renew from yet
+        made = cli('provision-tls', env=env)
+        self.assertEqual(made.returncode, 0, made.stderr)
+        self.assertIn('fingerprint', made.stdout)
+        for private in ('ca.key', 'server.pfx'):
+            self.assertEqual(oct((tls / private).stat().st_mode & 0o777), '0o600', private)
+        again = cli('provision-tls', env=env)                                  # a trusted CA is never replaced silently
+        self.assertNotEqual(again.returncode, 0)
+        self.assertIn('renew-tls', again.stdout + again.stderr)
+        for public in ('8.8.8.8', 'bad name'):                                # only private addresses and real names
+            self.assertNotEqual(cli('renew-tls', env=clean_env(COSTINA_TLS_NAMES='localhost,' + public)).returncode, 0)
+
+        trusted = ssl.create_default_context(cafile=str(tls / 'ca.crt'))
+        def health(host, context=trusted):
+            with urllib.request.urlopen(f'https://{host}:5443/health', context=context, timeout=10) as r:
+                return json.loads(r.read()), r.headers
+        with Server(clean_env()):
+            for host in ('localhost', '127.0.0.1'):                            # DNS SAN and IP SAN, hostname checked
+                body, headers = health(host)
+                self.assertEqual(body['mode'], 'installation')
+                self.assertIn('max-age', headers.get('Strict-Transport-Security', ''))
+            with self.assertRaises(urllib.error.URLError):                     # nobody trusts it without the local root
+                health('localhost', ssl.create_default_context())
+            with urllib.request.urlopen('https://localhost:5443/ca.crt', context=trusted, timeout=10) as r:
+                self.assertEqual(r.read(), (tls / 'ca.crt').read_bytes())
+            with urllib.request.urlopen(BASE + '/health', timeout=5) as r:      # loopback HTTP stays for the local client
+                self.assertEqual(r.status, 200)
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try: probe.connect(('10.255.255.255', 1)); lan = probe.getsockname()[0]
+            except OSError: lan = None
+            finally: probe.close()
+            if lan and not lan.startswith('127.'):
+                with self.assertRaises(OSError): socket.create_connection((lan, 5088), timeout=3)   # never plain HTTP on the LAN
+                socket.create_connection((lan, 5443), timeout=3).close()                            # HTTPS does listen there
+            status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
+            status, diagnostics = call('/api/native/v1/diagnostics', token=login['token'])
+            self.assertTrue(diagnostics['tls']['enabled']); self.assertEqual(diagnostics['tls']['port'], 5443)
+            self.assertIn(diagnostics['tls']['caFingerprintSha256'], made.stdout)
+
+        # The CA is name constrained: even with its key it cannot vouch for a foreign name.
+        work = Path(tempfile.mkdtemp(prefix='costina-nc-'))
+        def issue(name):
+            run = lambda *a: subprocess.run(['openssl', *a], capture_output=True, text=True)
+            self.assertEqual(run('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(work / (name + '.key')),
+                                 '-out', str(work / (name + '.csr')), '-subj', '/CN=' + name).returncode, 0)
+            (work / (name + '.ext')).write_text('subjectAltName=DNS:' + name + '\n')
+            signed = run('x509', '-req', '-in', str(work / (name + '.csr')), '-CA', str(tls / 'ca.crt'), '-CAkey', str(tls / 'ca.key'),
+                         '-CAserial', str(work / 'ca.srl'), '-CAcreateserial', '-days', '30', '-extfile', str(work / (name + '.ext')),
+                         '-out', str(work / (name + '.crt')))
+            self.assertEqual(signed.returncode, 0, signed.stderr)
+            return run('verify', '-CAfile', str(tls / 'ca.crt'), str(work / (name + '.crt')))
+        self.assertEqual(issue('localhost').returncode, 0)                     # control: a permitted name verifies
+        foreign = issue('evil.example')
+        self.assertNotEqual(foreign.returncode, 0)
+        self.assertIn('permitted subtree violation', foreign.stdout + foreign.stderr)
+
+        # renew-tls reissues the server certificate; the CA devices trust stays the same.
+        ca_before, server_before = (tls / 'ca.crt').read_text(), (tls / 'server.crt').read_text()
+        renewed = cli('renew-tls', env=env)
+        self.assertEqual(renewed.returncode, 0, renewed.stderr)
+        self.assertEqual(ca_before, (tls / 'ca.crt').read_text())
+        self.assertNotEqual(server_before, (tls / 'server.crt').read_text())
+        with Server(clean_env()):
+            self.assertEqual(health('localhost')[0]['mode'], 'installation')
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')

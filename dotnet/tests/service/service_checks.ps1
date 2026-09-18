@@ -60,6 +60,11 @@ try {
     $password | & $exe create-user jefa main | Out-Null
     Assert ($LASTEXITCODE -eq 0) 'create-user failed'
 
+    # D5.3: CA local y certificado ANTES de registrar el servicio (el orden inverso tambien esta soportado).
+    $env:COSTINA_TLS_NAMES = "$($env:COMPUTERNAME.ToLower()),localhost"
+    Engine provision-tls | Out-Null
+    Remove-Item Env:COSTINA_TLS_NAMES
+
     Check 'install-service registers a delayed automatic service under the virtual account' {
         $env:COSTINA_PG_SERVICE = $pg.Name
         Engine install-service | Out-Null
@@ -79,6 +84,16 @@ try {
         Assert ($server -match 'NT SERVICE\\Costina') "server.json must be readable by the service: $server"
         Assert ($server -notmatch 'Users' -and $server -notmatch 'Everyone') "server.json is too open: $server"
     }
+    Check 'TLS material ACL and firewall: the service reads server.pfx only; LAN opens on private/domain profiles' {
+        $pfx = & icacls.exe (Join-Path $dataRoot 'tls\server.pfx') | Out-String
+        $caKey = & icacls.exe (Join-Path $dataRoot 'tls\ca.key') | Out-String
+        Assert ($pfx -match 'NT SERVICE\\Costina') "server.pfx must be readable by the service: $pfx"
+        Assert ($caKey -notmatch 'NT SERVICE' -and $caKey -notmatch 'Users' -and $caKey -notmatch 'Everyone') "ca.key is too open: $caKey"
+        $rule = Get-NetFirewallRule -DisplayName 'Costina-HTTPS-LAN'
+        Assert ($rule.Enabled -eq 'True' -and $rule.Direction -eq 'Inbound' -and $rule.Action -eq 'Allow') 'Unexpected firewall rule.'
+        Assert ("$($rule.Profile)" -notmatch 'Public' -and "$($rule.Profile)" -match 'Private') "Firewall profile must exclude public networks: $($rule.Profile)"
+        Assert (($rule | Get-NetFirewallPortFilter).LocalPort -eq '5443') 'Firewall rule must open only the HTTPS port.'
+    }
     Check 'the service starts without any user session and serves the installation' {
         Start-Service Costina
         $health = Wait-Health
@@ -87,6 +102,16 @@ try {
         Assert ($process.SessionId -eq 0) 'The engine must run in session 0 (no interactive user).'
         $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner
         Assert ($owner.User -eq 'Costina') "Unexpected process owner $($owner.Domain)\$($owner.User)"
+    }
+    Check 'HTTPS validates with the local root and with no exceptions (SChannel, service account key)' {
+        $rejected = $false
+        try { Invoke-RestMethod 'https://localhost:5443/health' -TimeoutSec 10 | Out-Null } catch { $rejected = $true }
+        Assert $rejected 'Without the local root installed the certificate must NOT validate.'
+        Import-Certificate -FilePath (Join-Path $dataRoot 'tls\ca.crt') -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+        foreach ($name in 'localhost', $env:COMPUTERNAME.ToLower()) {
+            $health = Invoke-RestMethod "https://${name}:5443/health" -TimeoutSec 10
+            Assert ($health.mode -eq 'installation') "HTTPS health failed for $name"
+        }
     }
     Check 'login and main-only diagnostics work through the service' {
         $login = Login
@@ -128,12 +153,15 @@ try {
         Engine uninstall-service | Out-Null
         for ($i = 0; $i -lt 30 -and (Get-Service Costina -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
         Assert (-not (Get-Service Costina -ErrorAction SilentlyContinue)) 'The service is still registered.'
+        Assert (-not (Get-NetFirewallRule -DisplayName 'Costina-HTTPS-LAN' -ErrorAction SilentlyContinue)) 'The firewall rule must be removed with the service.'
+        Assert (Test-Path (Join-Path $dataRoot 'tls\ca.key')) 'Uninstalling the service removed the local CA.'
         Assert (Test-Path (Join-Path $dataRoot 'config\server.json')) 'Uninstalling the service removed the configuration.'
         Assert (Test-Path (Join-Path $dataRoot 'config\owner.json')) 'Uninstalling the service removed the owner configuration.'
     }
 }
 catch { $script:failed = $true; $script:results += @{name = 'setup'; passed = $false; error = "$_" }; Write-Host "FAIL setup :: $_" }
 finally {
+    Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -like '*Costina Local CA*' } | Remove-Item -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path 'artifacts/service' | Out-Null
     @{passed = @($script:results | Where-Object { $_.passed }).Count; failed = @($script:results | Where-Object { -not $_.passed }).Count; results = $script:results } |
         ConvertTo-Json -Depth 5 | Set-Content 'artifacts/service/service-checks.json' -Encoding utf8
