@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-09-16. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-09-18. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -37,11 +37,13 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin i
 - #25 completa con D3.1–D3.3 (+ D3.4 correctivo); **pendiente de cierre con evidencia física**: guiones manuales de D3.2, D3.3 y D3.4 en el laboratorio (los ejecuta el equipo de laboratorio).
 - Hallazgos de la revisión externa: **F05** → D3.5 (#36); **F07** → #37 (cuentas cerradas anticipadamente admiten reapertura auditada y devoluciones desde el PC principal; los comanderos solo marcan platos y consumos); **F06** (identidades y transporte de laboratorio) → #26 y #27. Deuda de mantenimiento señalada: lock de dependencias (#13), protección efectiva de ramas, audiencia explícita por tipo de evento, N+1 en `Board()`.
 - Siguientes hitos: #26 identidad (usuarios, dispositivos, QR, tokens; retirada de `COSTINA_KEY_*`), #27 empaquetado, #28 PWA; #24 (realtime) cubierto por D2.
-- - D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
+- D4.1 (issue #26, corte 1): usuarios con contraseña (PBKDF2, alta por CLI sin credenciales por defecto) y sesiones con token de corta vida, renovación deslizante, tope absoluto, logout y revocación; actor de auditoría real. Claves de laboratorio como respaldo hasta D4.3. Ver `docs/native/D4.1-users-sessions.md` y el CI de su PR.
 
 - D4.2 (issue #26, corte 2): dispositivos como identidad separada, emparejados por código de un solo uso (5 min) aprobado por main con rol y estación; secreto entregado una única vez, solo hashes en reposo; revocación inmediata que aborta también las conexiones SignalR vivas. Ver `docs/native/D4.2-device-pairing.md` y el CI de su PR.
 
 - D4.3a (issue #26, corte 3 servidor): claves de laboratorio retiradas (solo sesiones de usuario y dispositivos emparejados), matriz rol×estación en cocina espejada en affordances, billete efímero de un solo uso para el hub (preparación PWA) y suites migradas a identidades reales. El WPF necesita D4.3b para volver a conectar. Ver `docs/native/D4.3a-station-authz.md` y el CI de su PR.
+
+- D4.3b (issue #26, cierre en código): el WPF entra por usuario+contraseña o como puesto emparejado (token DPAPI), empareja desde la pantalla de conexión y administra puestos (generar código, aprobar con rol y estación, revocar con expulsión inmediata). Ver `docs/native/D4.3b-wpf-login.md` y el CI de su PR.
 
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
 

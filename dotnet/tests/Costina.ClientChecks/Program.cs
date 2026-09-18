@@ -154,6 +154,35 @@ await Check("unreadable file without key can only be discarded explicitly",async
     await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
     client.DiscardBlocked();Assert(client.Blocked is null&&store.Discarded);
 });
+await Check("auth login parses result and maps generic rejection",async()=>{
+    using var auth=new AuthClient(new Uri("http://127.0.0.1:5088"),new Handler((r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/auth/login");
+        return Task.FromResult(Response(200,"{\"token\":\"t-1\",\"expiresAt\":\"2026-09-17T12:00:00Z\",\"role\":\"main\",\"username\":\"jefe\"}"));
+    }));
+    var login=await auth.LoginAsync("jefe","una-contrasena-larga");
+    Assert(login.Token=="t-1"&&login.Role=="main"&&login.Username=="jefe");
+});
+await Check("auth login failure raises generic credentials error",async()=>{
+    using var auth=new AuthClient(new Uri("http://127.0.0.1:5088"),new Handler((_,_)=>Task.FromResult(Response(401,"{\"error\":\"invalid_credentials\"}"))));
+    try { await auth.LoginAsync("jefe","mala"); throw new Exception("expected"); }
+    catch(ApiError e){ Assert(e.Status==401&&e.Code=="invalid_credentials"); }
+});
+await Check("pairing collect distinguishes pending, denied and approved",async()=>{
+    var phase=0;
+    using var auth=new AuthClient(new Uri("http://127.0.0.1:5088"),new Handler((_,_)=>Task.FromResult(phase switch{
+        0=>Response(200,"{\"status\":\"pending\"}"),
+        1=>Response(403,"{\"status\":\"denied\"}"),
+        _=>Response(200,"{\"status\":\"approved\",\"deviceId\":\"d1\",\"deviceToken\":\"dev.d1.s\",\"role\":\"service\",\"station\":\"sala-1\"}")})));
+    Assert((await auth.CollectAsync("p","s")).Status=="pending"); phase=1;
+    Assert((await auth.CollectAsync("p","s")).Status=="denied"); phase=2;
+    var approved=await auth.CollectAsync("p","s");
+    Assert(approved.DeviceToken=="dev.d1.s"&&approved.Station=="sala-1");
+});
+await Check("raw identity POST never touches the uncertain command",async()=>{
+    using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"revoked\":true}"))));
+    _=await client.PostRawAsync("auth/devices/x/revoke",new{});
+    Assert(client.Pending is null);
+});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;

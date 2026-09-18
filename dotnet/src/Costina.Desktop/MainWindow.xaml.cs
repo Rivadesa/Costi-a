@@ -16,7 +16,7 @@ public partial class MainWindow : Window
 
     private async void ConnectClick(object sender, RoutedEventArgs e)
     {
-        await shell.ConnectWithKey(AccessKey.Password);
+        await shell.LoginWithPassword(AccessKey.Password);
         if (shell.Connected) AccessKey.Clear();
     }
 
@@ -24,8 +24,11 @@ public partial class MainWindow : Window
     {
         if (e.Source is not TabControl tabs) return;
         shell.Checkout.Visible = tabs.SelectedItem == CheckoutTab;
+        shell.Devices.Visible = tabs.SelectedItem == DevicesTab;
         if (shell.Checkout.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Checkout.LoadAsync);
+        else if (shell.Devices.Visible && shell.IsMain && !shell.Busy)
+            await shell.Run(shell.Devices.LoadAsync);
     }
 
     private void WindowClosing(object? sender, CancelEventArgs e)

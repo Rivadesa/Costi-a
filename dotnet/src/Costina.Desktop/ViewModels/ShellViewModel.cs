@@ -16,17 +16,23 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ServiceViewModel Service { get; }
     public CheckoutViewModel Checkout { get; }
+    public DevicesViewModel Devices { get; }
 
     [ObservableProperty] private string endpoint = "http://127.0.0.1:5088";
+    [ObservableProperty] private string username = "";
+    [ObservableProperty] private string pairName = "";
+    [ObservableProperty] private string pairingStatus = "";
+    [ObservableProperty] private bool pairingBusy;
+    private string? sessionToken;   // solo en memoria; nunca a disco
     [ObservableProperty] private SessionInfo? session;
     [ObservableProperty] private bool busy;
     [ObservableProperty] private PendingCommand? pending;
     [ObservableProperty] private PendingLoad? blocked;
-    [ObservableProperty] private string status = "Introduce la clave del servidor. La aplicación no almacena la clave en disco.";
+    [ObservableProperty] private string status = "Entra con tu usuario y contraseña o conecta este puesto emparejado. La contraseña no se guarda en disco.";
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
 
-    public ShellViewModel() { Service = new(this); Checkout = new(this); }
+    public ShellViewModel() { Service = new(this); Checkout = new(this); Devices = new(this); }
 
     public bool Connected => Session is not null;
     public bool IsMain => Session?.Role == "main";
@@ -55,11 +61,12 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
         OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled));
-        OnPropertyChanged(nameof(IsKitchen));
+        OnPropertyChanged(nameof(IsKitchen)); OnPropertyChanged(nameof(HasPairedDevice));
+        ConnectPairedCommand.NotifyCanExecuteChanged(); PairDeviceCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged(); RetryCommand.NotifyCanExecuteChanged();
         ReconcileCommand.NotifyCanExecuteChanged(); DiscardCommand.NotifyCanExecuteChanged();
-        Service.Sync(); Checkout.Sync();
+        Service.Sync(); Checkout.Sync(); Devices.Sync();
     }
 
     // Coalescencia: los avisos que llegan durante una operacion no la interrumpen; se relee al terminar.
@@ -100,37 +107,114 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         await Service.LoadAsync();
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
+        if (IsMain && Devices.Visible) await Devices.LoadAsync();
         ReadTime = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
     }
 
-    public Task ConnectWithKey(string key) => Run(async () =>
+    private Uri ParseEndpoint()
     {
         if (!Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out var uri)) throw new ArgumentException("Dirección no válida.");
-        var candidate = new ApiClient(uri, key);
+        return uri;
+    }
+
+    // D4.3b: sin claves de laboratorio. Entrada por usuario+contraseña (la contraseña no pasa
+    // por bindings ni se guarda; el token de sesion solo vive en memoria) o por puesto emparejado.
+    public Task LoginWithPassword(string password) => Run(async () =>
+    {
+        var uri = ParseEndpoint();
+        using var auth = new AuthClient(uri);
+        LoginResult login;
+        try { login = await auth.LoginAsync(Username, password); }
+        catch (ApiError error) when (error.Status == 401)
+        { throw new InvalidOperationException("Usuario o contraseña incorrectos."); } // generico: sin pistas
+        await ConnectWithToken(uri, login.Token, isUserSession: true);
+    });
+
+    private bool CanConnectPaired() => ConnectEnabled && HasPairedDevice;
+    [RelayCommand(CanExecute = nameof(CanConnectPaired))]
+    private Task ConnectPaired() => Run(async () =>
+    {
+        var uri = ParseEndpoint();
+        var store = new DpapiDeviceStore(uri);
+        var token = store.Load() ?? throw new InvalidOperationException("Este puesto no está emparejado con ese servidor.");
+        try { await ConnectWithToken(uri, token, isUserSession: false); }
+        catch (ApiError error) when (error.Status == 401)
+        {
+            store.Clear(); Sync();
+            throw new InvalidOperationException("El emparejamiento ya no es válido (revocado). Vuelve a emparejar este puesto.");
+        }
+    });
+
+    // Emparejar: reclama el codigo, espera la aprobacion del administrador (sondeo cada 2 s
+    // mientras el codigo vive) y guarda el token del puesto cifrado con DPAPI.
+    private bool CanPairDevice() => ConnectEnabled;
+    [RelayCommand(CanExecute = nameof(CanPairDevice))]
+    private async Task PairDevice(string code)
+    {
+        if (PairingBusy) return;
+        try
+        {
+            PairingBusy = true; Sync();
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(PairName))
+                throw new ArgumentException("Introduce el código del administrador y un nombre para este puesto.");
+            var uri = ParseEndpoint();
+            using var auth = new AuthClient(uri);
+            var claim = await auth.ClaimAsync(code, PairName);
+            PairingStatus = "Solicitud enviada. Esperando la aprobación del administrador…";
+            for (var attempt = 0; attempt < 150; attempt++)
+            {
+                await Task.Delay(2000);
+                var collect = await auth.CollectAsync(claim.PairingId, claim.PollSecret);
+                if (collect.Status == "denied") { PairingStatus = "Solicitud denegada por el administrador."; return; }
+                if (collect.Status == "approved")
+                {
+                    new DpapiDeviceStore(uri).Save(collect.DeviceToken!);
+                    PairingStatus = $"Puesto emparejado como {collect.Role}/{collect.Station}.";
+                    Sync();
+                    await Run(() => ConnectWithToken(uri, collect.DeviceToken!, isUserSession: false));
+                    return;
+                }
+            }
+            PairingStatus = "La aprobación no llegó a tiempo. Pide un código nuevo.";
+        }
+        catch (Exception error) when (error is ApiError or ArgumentException or InvalidOperationException)
+        { PairingStatus = error is ApiError ? "Código no válido o caducado. Pide uno nuevo." : error.Message; }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        { PairingStatus = "Servidor sin respuesta. Comprueba la dirección y vuelve a solicitar el emparejamiento."; }
+        catch (Exception error) when (error is System.Text.Json.JsonException or KeyNotFoundException or System.Security.Cryptography.CryptographicException or System.IO.IOException)
+        { PairingStatus = "No se pudo completar el emparejamiento en este puesto. Pide un código nuevo."; }
+        finally { PairingBusy = false; Sync(); }
+    }
+
+    private async Task ConnectWithToken(Uri uri, string token, bool isUserSession)
+    {
+        var candidate = new ApiClient(uri, token);
         try
         {
             var identity = await candidate.GetAsync<SessionInfo>("session");
             if (string.IsNullOrEmpty(identity.InstallationId))
                 throw new InvalidOperationException("El servidor no identifica su instalación: actualiza el motor a la misma versión que este cliente.");
             var config = await candidate.GetAsync<Configuration>("configuration");
-            Api = candidate; Session = identity;
+            Api = candidate; Session = identity; sessionToken = isUserSession ? token : null;
             // Cola durable: con la identidad ya autenticada se engancha el almacen cifrado, aislado por
             // instalacion, ambito, rol y ventana. Una orden sin confirmar de otra sesion se restaura y
             // bloquea todo hasta reintentarla identica; una ilegible bloquea hasta conciliar con el servidor.
             candidate.AttachPendingStore(new DpapiPendingStore(identity));
             Pending = candidate.Pending; Blocked = candidate.Blocked;
             Service.ApplyConfiguration(config);
-            await StartRealtime(uri, key);
+            await StartRealtime(uri, token);
             await RefreshAll();
             Status = Blocked is not null
                 ? "Conectado. ORDEN ANTERIOR NO LEGIBLE: no se admiten órdenes nuevas hasta consultarla al servidor o descartarla conservando la evidencia."
                 : Pending is not null
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
-                : $"Conectado al servidor real {identity.ServerVersion} · rol {identity.Role} · {identity.CompanyId}/{identity.LocationId}";
+                : $"Conectado al servidor real {identity.ServerVersion} · {identity.Actor ?? identity.Role} · rol {identity.Role}" +
+                  (identity.Station is null ? "" : $" · estación {identity.Station}") +
+                  $" · {identity.CompanyId}/{identity.LocationId}";
         }
         catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
-    });
+    }
 
     // Fallo del canal = degradacion, no error: el refresco manual sigue siendo el respaldo.
     private async Task StartRealtime(Uri uri, string key)
@@ -157,11 +241,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private void Reset()
     {
-        _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false;
+        if (sessionToken is not null)
+        {
+            var token = sessionToken; sessionToken = null;
+            try { using var auth = new AuthClient(ParseEndpoint()); _ = auth.LogoutAsync(token); } catch (ArgumentException) { }
+        }
+        ResetInternal();
+    }
+
+    private void ResetInternal()
+    {
+        _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false; sessionToken = null;
         RealtimeState = "Tiempo real inactivo.";
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
-        Service.Clear(); Checkout.Clear();
-        Status = "Desconectado. La clave no se guarda en disco.";
+        Service.Clear(); Checkout.Clear(); Devices.Clear();
+        Status = "Desconectado. La contraseña no se guarda en disco.";
         ReadTime = "Sin lectura actual del servidor.";
         Sync();
     }
@@ -174,7 +268,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
     // La clave viaja por code-behind (PasswordBox no es enlazable a proposito); el boton
     // Conectar usa Click + esta habilitacion. No hay comando para no simular uno vacio.
-    public bool ConnectEnabled => !Connected && !Busy;
+    public bool ConnectEnabled => !Connected && !Busy && !PairingBusy;
+    public bool HasPairedDevice
+    {
+        get { try { return new DpapiDeviceStore(ParseEndpoint()).Load() is not null; } catch (ArgumentException) { return false; } }
+    }
 
     private bool CanDisconnect() => Connected && !Busy && Pending is null;
     [RelayCommand(CanExecute = nameof(CanDisconnect))] private void Disconnect() => Reset();
