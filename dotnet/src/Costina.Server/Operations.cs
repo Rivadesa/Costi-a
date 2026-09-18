@@ -2,6 +2,14 @@ using System.Text;
 
 namespace Costina.Server;
 
+// Version unica del paquete (csproj) y commit del build: misma fuente para /health, manifiestos y copias.
+public static class BuildInfo
+{
+    private static readonly string Informational=System.Reflection.CustomAttributeExtensions
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(BuildInfo).Assembly)?.InformationalVersion ?? "0.0.0";
+    public static string Version => Informational.Contains('+') ? Informational[..Informational.IndexOf('+')] : Informational;
+}
+
 // D5.2: salud del publicador del outbox para el diagnostico (solo main). Sin datos de negocio.
 public sealed class PublisherHealth
 {

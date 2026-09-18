@@ -29,6 +29,7 @@ PASSWORD = 'packaging-password-123'
 def clean_env(**extra):
     env = {k: v for k, v in os.environ.items() if not k.startswith('COSTINA_')}
     env['COSTINA_DATA'] = str(DATA)
+    if os.environ.get('COSTINA_PG_BIN'): env['COSTINA_PG_BIN'] = os.environ['COSTINA_PG_BIN']   # pg_dump del mismo major que el servidor
     env.update(extra)
     return env
 
@@ -44,24 +45,24 @@ def psql_as(connection, query):
                         'PGHOST': c['Host'], 'PGPORT': c['Port']}
     return subprocess.run(['psql', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], env=env, text=True, capture_output=True)
 
-def call(path, data=None, token=None):
+def call(path, data=None, token=None, base=None):
     headers = {'Content-Type': 'application/json'}
     if data is not None: headers['Idempotency-Key'] = secrets.token_hex(16)
     if token: headers['Authorization'] = 'Bearer ' + token
-    req = urllib.request.Request(BASE + path, data=json.dumps(data).encode() if data is not None else None, headers=headers)
+    req = urllib.request.Request((base or BASE) + path, data=json.dumps(data).encode() if data is not None else None, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=15) as r: return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e: return e.code, None
 
 class Server:
-    def __init__(self, env): self.env = env
+    def __init__(self, env, base=None): self.env = env; self.base = base or BASE
     def __enter__(self):
         self.log = open('d1-http-server.log', 'a', encoding='utf8')
         self.process = subprocess.Popen(['dotnet', str(SERVER)], env=self.env, stdout=self.log, stderr=subprocess.STDOUT)
         for _ in range(150):
             if self.process.poll() is not None: raise RuntimeError('Server exited; inspect d1-http-server.log')
             try:
-                with urllib.request.urlopen(BASE + '/health', timeout=1) as r:
+                with urllib.request.urlopen(self.base + '/health', timeout=1) as r:
                     if r.status == 200: return self
             except (OSError, urllib.error.URLError): pass
             time.sleep(.1)
@@ -159,6 +160,15 @@ class Packaging(unittest.TestCase):
             self.assertEqual((diagnostics['mode'], diagnostics['runningAsService'], diagnostics['outbox']['pending']), ('installation', False, 0))
             self.assertTrue(diagnostics['publisher']['lastSuccessAt']); self.assertGreater(diagnostics['dataRoot']['freeBytes'], 0)
             self.assertEqual(call('/api/native/v1/diagnostics')[0], 401)
+            # D5.4: sin ninguna copia previa, el propio motor hace la primera de forma desatendida.
+            for _ in range(80):
+                status, diagnostics = call('/api/native/v1/diagnostics', token=login['token'])
+                if diagnostics['backup']['lastSuccessAt'] or diagnostics['backup']['lastError']: break
+                time.sleep(.5)
+            self.assertIsNone(diagnostics['backup']['lastError'])
+            self.assertTrue(diagnostics['backup']['automatic'] and diagnostics['backup']['lastSuccessAt'])
+            self.assertTrue((DATA / 'backups' / diagnostics['backup']['lastFile']).exists())
+            self.assertFalse(diagnostics['backup']['secondDestinationConfigured'])
             self.assertEqual(call('/api/native/v1/auth/logout', {}, token=login['token'])[0], 200)
         logs = list((DATA / 'logs').glob('server-*.log'))
         self.assertEqual(len(logs), 1)
@@ -234,6 +244,63 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(server_before, (tls / 'server.crt').read_text())
         with Server(clean_env()):
             self.assertEqual(health('localhost')[0]['mode'], 'installation')
+
+    def test_06c_backup_restores_the_same_records_on_a_clean_installation(self):
+        """D5.4: a REAL restore, verified by content, on another data root and another empty database."""
+        env = clean_env()
+        with Server(env):                                                     # a few more rows than a lone user
+            _, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
+            self.assertEqual(call('/api/native/v1/auth/pairings', {}, token=login['token'])[0], 200)
+        copies = Path(tempfile.mkdtemp(prefix='costina-second-disk-'))
+        made = cli('backup', env=clean_env(COSTINA_BACKUP_COPY=str(copies)))
+        self.assertEqual(made.returncode, 0, made.stderr)
+        self.assertNotIn(parts(self.config('server.json')['COSTINA_DB'])['Password'], made.stdout + made.stderr)
+        newest = sorted((DATA / 'backups').glob('costina-*.backup'))[-1]
+        manifest = json.loads(Path(str(newest) + '.json').read_text(encoding='utf8'))
+        self.assertEqual((manifest['tenantId'], manifest['tables']['users']['rows'], manifest['tables']['pairings']['rows']), ('d5-tenant', 1, 1))
+        self.assertEqual(oct(newest.stat().st_mode & 0o777), '0o600')
+        self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
+
+        # "Clean machine": another data root and another EMPTY database. Roles are cluster-wide on this single
+        # CI cluster, so its configuration is scaffolded instead of re-running provision (which would re-key them).
+        target = 'costina_restore_d1_test'
+        clean = Path(tempfile.mkdtemp(prefix='costina-clean-')); (clean / 'config').mkdir()
+        self.assertEqual(psql_as(BOOTSTRAP, f'CREATE DATABASE {target} OWNER costina_owner').returncode, 0)
+        self.assertEqual(psql_as(BOOTSTRAP, f'GRANT CONNECT ON DATABASE {target} TO costina_runtime').returncode, 0)
+        for name in ('server.json', 'owner.json'):
+            config = {k: v.replace('Database=' + DATABASE, 'Database=' + target) for k, v in self.config(name).items()}
+            if name == 'server.json': config['COSTINA_PORT'] = '5094'
+            (clean / 'config' / name).write_text(json.dumps(config), encoding='utf8')
+        fresh = clean_env(COSTINA_DATA=str(clean))
+        elsewhere = BOOTSTRAP.replace('Database=' + DATABASE, 'Database=' + target)
+
+        damaged = clean / 'damaged.backup'
+        damaged.write_bytes(newest.read_bytes() + b'x'); Path(str(damaged) + '.json').write_text(json.dumps(manifest), encoding='utf8')
+        refused = cli('restore', str(damaged), env=fresh)
+        self.assertNotEqual(refused.returncode, 0); self.assertIn('checksum', refused.stdout + refused.stderr)
+        foreign = cli('restore', str(newest), env=clean_env(COSTINA_DATA=str(clean), COSTINA_TENANT='otro-tenant'))
+        self.assertNotEqual(foreign.returncode, 0); self.assertIn('scope', foreign.stdout + foreign.stderr)
+        self.assertEqual(psql_as(elsewhere, "SELECT to_regclass('native_d1.users') IS NULL").stdout.strip(), 't')   # nothing touched
+
+        restored = cli('restore', str(newest), env=fresh)
+        self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
+        self.assertIn('Restored and verified', restored.stdout)
+        # Independent comparison, table by table and by content, between the source and the restored database.
+        tables = psql_as(BOOTSTRAP, "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname='native_d1'").stdout.strip().split(',')
+        self.assertGreaterEqual(len(tables), 12)
+        for table in tables:
+            digest = f"SELECT count(*) || ':' || coalesce(md5(string_agg(h, '' ORDER BY h)), '') FROM (SELECT md5(t::text) AS h FROM native_d1.{table} t) s"
+            self.assertEqual(psql_as(BOOTSTRAP, digest).stdout.strip(), psql_as(elsewhere, digest).stdout.strip(), table)
+        self.assertNotEqual(cli('restore', str(newest), env=fresh).returncode, 0)             # never overwrites an installation
+
+        # The restored installation WORKS: same user and password, runtime role still least-privileged.
+        runtime = json.loads((clean / 'config' / 'server.json').read_text(encoding='utf8'))['COSTINA_DB']
+        self.assertIn('permission denied', psql_as(runtime, 'DELETE FROM native_d1.audit').stderr)
+        with Server(fresh, base='http://127.0.0.1:5094'):
+            status, again = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5094')
+            self.assertEqual(status, 200)
+            status, session = call('/api/native/v1/session', token=again['token'], base='http://127.0.0.1:5094')
+            self.assertEqual(session['installationId'], manifest['installationId'])
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')
