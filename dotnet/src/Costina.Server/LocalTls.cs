@@ -104,6 +104,8 @@ public static partial class LocalTls
             if(!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary,UnixFileMode.UserRead|UnixFileMode.UserWrite);
             File.Move(temporary,ServerPfx,overwrite:true);
             File.WriteAllText(ServerCertificate,certificate.ExportCertificatePem());
+            // La huella tambien queda en un fichero junto a la raiz publica: es lo que se compara en cada dispositivo.
+            File.WriteAllText(Path.Combine(Folder,"ca-fingerprint.txt"),"Costina local CA - SHA-256 fingerprint"+Environment.NewLine+Fingerprint(authority)+Environment.NewLine);
             Console.WriteLine($"Local CA SHA-256 fingerprint: {Fingerprint(authority)}");
             Console.WriteLine($"Server certificate for {string.Join(", ",names)} valid until {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}. Install {CaCertificate} on each device and compare the fingerprint. Restart the engine to serve HTTPS.");
         }

@@ -20,6 +20,10 @@ if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(sett
 // D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
 if(args.Length == 1 && args[0] == "install-service") { await ServiceInstaller.InstallAsync(settings); return; }
 if(args.Length == 1 && args[0] == "uninstall-service") { await ServiceInstaller.UninstallAsync(); return; }
+// D5.5: backend del instalador de Windows (toda la logica aqui, probada en CI; el instalador solo copia y llama).
+if(args.Length == 1 && args[0] == "setup-server") { await ServerSetup.InstallAsync(settings); return; }
+if(args.Length == 1 && args[0] == "stop-services") { await ServerSetup.StopServicesAsync(); return; }
+if(args.Length == 1 && args[0] == "remove-server") { await ServerSetup.RemoveAsync(settings); return; }
 // D5.3: CA local y certificado del servidor para HTTPS en la LAN. renew-tls reemite sin tocar los dispositivos.
 if(args.Length == 1 && args[0] is "provision-tls" or "renew-tls") { await LocalTls.ProvisionAsync(settings,args[0] == "renew-tls"); return; }
 var mode = settings.Get("COSTINA_MODE") ?? (settings.Get("COSTINA_LAB_MODE") == "true" ? "laboratory" : null)
@@ -71,6 +75,35 @@ if(args.Length == 3 && args[0] == "create-user")
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
     return;
 }
+// D5.5: alta INTERACTIVA del primer administrador al terminar la instalacion. La contrasena se teclea
+// oculta y dos veces; nunca pasa por argumentos, entorno, ficheros ni el instalador.
+if(args.Length == 1 && args[0] == "first-user")
+{
+    await store.CheckAsync();
+    if(Console.IsInputRedirected) throw new InvalidOperationException("first-user is interactive; scripts use create-user with the password on stdin.");
+    string Hidden(string prompt)
+    {
+        Console.Write(prompt); var typed = new System.Text.StringBuilder();
+        for(var key = Console.ReadKey(true); key.Key != ConsoleKey.Enter; key = Console.ReadKey(true))
+        {
+            if(key.Key == ConsoleKey.Backspace) { if(typed.Length > 0) typed.Length--; }
+            else if(!char.IsControl(key.KeyChar)) typed.Append(key.KeyChar);
+        }
+        Console.WriteLine(); return typed.ToString();
+    }
+    Console.WriteLine("COSTINA - Primer usuario administrador (rol principal). La contrasena necesita 12 caracteres o mas y no se muestra al teclear.");
+    while(true)
+    {
+        Console.Write("Nombre de usuario: "); var name = Console.ReadLine() ?? "";
+        var first = Hidden("Contrasena: "); var second = Hidden("Repite la contrasena: ");
+        if(first != second) { Console.WriteLine("No coinciden. Vuelve a intentarlo."); continue; }
+        try { await new IdentityStore(source,scope).CreateUserAsync(name,first,"main"); }
+        catch(ArgumentException e) { Console.WriteLine("No valido: "+e.Message); continue; }
+        catch(PostgresException e) when (e.SqlState == "23505") { Console.WriteLine("Ese usuario ya existe."); continue; }
+        Console.WriteLine($"Usuario '{name.Trim().ToLowerInvariant()}' creado. Ya puedes entrar desde la aplicacion Costina. Pulsa Intro para cerrar.");
+        Console.ReadLine(); return;
+    }
+}
 // D5.4: copia manual inmediata (la desatendida la hace el propio servicio). Usa el rol de ejecucion.
 if(args.Length == 1 && args[0] == "backup")
 {
@@ -82,7 +115,7 @@ if(args.Length == 1 && args[0] == "backup")
         + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, create-user <username> <role> or normal startup.");
+if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role> or normal startup.");
 // D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
 // instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
 var notices = new List<string>();
