@@ -28,7 +28,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private bool busy;
     [ObservableProperty] private PendingCommand? pending;
     [ObservableProperty] private PendingLoad? blocked;
-    [ObservableProperty] private string status = "Introduce la clave del servidor. La aplicación no almacena la clave en disco.";
+    [ObservableProperty] private string status = "Entra con tu usuario y contraseña o conecta este puesto emparejado. La contraseña no se guarda en disco.";
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
 
@@ -123,7 +123,10 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         var uri = ParseEndpoint();
         using var auth = new AuthClient(uri);
-        var login = await auth.LoginAsync(Username, password);
+        LoginResult login;
+        try { login = await auth.LoginAsync(Username, password); }
+        catch (ApiError error) when (error.Status == 401)
+        { throw new InvalidOperationException("Usuario o contraseña incorrectos."); } // generico: sin pistas
         await ConnectWithToken(uri, login.Token, isUserSession: true);
     });
 
@@ -176,6 +179,10 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         catch (Exception error) when (error is ApiError or ArgumentException or InvalidOperationException)
         { PairingStatus = error is ApiError ? "Código no válido o caducado. Pide uno nuevo." : error.Message; }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        { PairingStatus = "Servidor sin respuesta. Comprueba la dirección y vuelve a solicitar el emparejamiento."; }
+        catch (Exception error) when (error is System.Text.Json.JsonException or KeyNotFoundException or System.Security.Cryptography.CryptographicException or System.IO.IOException)
+        { PairingStatus = "No se pudo completar el emparejamiento en este puesto. Pide un código nuevo."; }
         finally { PairingBusy = false; Sync(); }
     }
 
@@ -185,24 +192,28 @@ public sealed partial class ShellViewModel : ObservableObject
         try
         {
             var identity = await candidate.GetAsync<SessionInfo>("session");
+            if (string.IsNullOrEmpty(identity.InstallationId))
+                throw new InvalidOperationException("El servidor no identifica su instalación: actualiza el motor a la misma versión que este cliente.");
             var config = await candidate.GetAsync<Configuration>("configuration");
             Api = candidate; Session = identity; sessionToken = isUserSession ? token : null;
-            // Cola durable: con el rol ya autenticado se engancha el almacen cifrado y,
-            // si quedo una orden sin confirmar de otra sesion, se restaura y bloquea todo
-            // hasta reintentarla identica (misma Idempotency-Key y mismos bytes).
-            candidate.AttachPendingStore(new DpapiPendingStore(uri, identity.Role));
-            Pending = candidate.Pending;
+            // Cola durable: con la identidad ya autenticada se engancha el almacen cifrado, aislado por
+            // instalacion, ambito, rol y ventana. Una orden sin confirmar de otra sesion se restaura y
+            // bloquea todo hasta reintentarla identica; una ilegible bloquea hasta conciliar con el servidor.
+            candidate.AttachPendingStore(new DpapiPendingStore(identity));
+            Pending = candidate.Pending; Blocked = candidate.Blocked;
             Service.ApplyConfiguration(config);
             await StartRealtime(uri, token);
             await RefreshAll();
-            Status = Pending is not null
+            Status = Blocked is not null
+                ? "Conectado. ORDEN ANTERIOR NO LEGIBLE: no se admiten órdenes nuevas hasta consultarla al servidor o descartarla conservando la evidencia."
+                : Pending is not null
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
-                : $"Conectado · {identity.Actor ?? identity.Role} · rol {identity.Role}" +
+                : $"Conectado al servidor real {identity.ServerVersion} · {identity.Actor ?? identity.Role} · rol {identity.Role}" +
                   (identity.Station is null ? "" : $" · estación {identity.Station}") +
                   $" · {identity.CompanyId}/{identity.LocationId}";
         }
-        catch { if (Api == candidate) ResetInternal(); else candidate.Dispose(); throw; }
+        catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
     }
 
     // Fallo del canal = degradacion, no error: el refresco manual sigue siendo el respaldo.
@@ -244,7 +255,7 @@ public sealed partial class ShellViewModel : ObservableObject
         RealtimeState = "Tiempo real inactivo.";
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
         Service.Clear(); Checkout.Clear(); Devices.Clear();
-        Status = "Desconectado. La clave no se guarda en disco.";
+        Status = "Desconectado. La contraseña no se guarda en disco.";
         ReadTime = "Sin lectura actual del servidor.";
         Sync();
     }
