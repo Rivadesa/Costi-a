@@ -44,6 +44,8 @@ jobs:
         run: dotnet run --project tests/Costina.Acceptance -c Release
       - name: Execute snapshot checks
         run: dotnet run --project tests/Costina.PersistenceChecks -c Release --no-build
+      - name: D5.1 provision roles, explicit init/upgrade and runtime least privilege (exports role connections)
+        run: python3 tests/http/packaging_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Exercise real HTTP PostgreSQL process restart and concurrency
         run: python3 tests/http/native_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Verify endpoint authorization independent of URL casing

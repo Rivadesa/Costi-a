@@ -3,5 +3,6 @@
     <ProjectReference Include="../Costina.Domain/Costina.Domain.csproj" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
     <EmbeddedResource Include="schema.sql" />
+    <EmbeddedResource Include="grants.sql" />
   </ItemGroup>
 </Project>

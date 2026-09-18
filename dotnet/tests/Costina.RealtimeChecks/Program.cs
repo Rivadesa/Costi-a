@@ -34,7 +34,9 @@ var database = new NpgsqlConnectionStringBuilder(connectionString).Database ?? "
 if (!database.EndsWith("_d1_lab", StringComparison.Ordinal) && !database.EndsWith("_d1_test", StringComparison.Ordinal))
     throw new InvalidOperationException("Realtime checks only run against an isolated *_d1_lab/*_d1_test database.");
 await using var source = NpgsqlDataSource.Create(connectionString);
-await new PostgresStore(source).InitializeAsync();
+// D5.1: el esquema lo aplica el rol propietario; el resto de la suite usa la conexion de ejecucion.
+await using (var ownerSource = NpgsqlDataSource.Create(Environment.GetEnvironmentVariable("COSTINA_DB_OWNER") ?? connectionString))
+    await new PostgresStore(ownerSource).InitializeAsync();
 
 async Task InsertEvent(Guid id, string tenant, string type, DateTimeOffset at)
 {

@@ -30,7 +30,7 @@ Evidencia ejecutada sobre el estado integrado hasta D3.3 (todas en verde):
 | WPF desktop en `25d62f9` | https://github.com/Rivadesa/Costi-a/actions/runs/35067731433 |
 | PR #33 (D3.3): D0, D1 y WPF | https://github.com/Rivadesa/Costi-a/actions/runs/35081131708 · 35081131717 · 35081131715 |
 
-Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin instalador de producción ni backups.
+Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin servicio de Windows, instalador de producción ni backups (Hito 4 en curso).
 
 ## Hoja de ruta y pendientes
 
@@ -45,7 +45,11 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, sin i
 
 - D4.3b (issue #26, cierre en código): el WPF entra por usuario+contraseña o como puesto emparejado (token DPAPI), empareja desde la pantalla de conexión y administra puestos (generar código, aprobar con rol y estación, revocar con expulsión inmediata). Ver `docs/native/D4.3b-wpf-login.md` y el CI de su PR.
 
-PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) sigue **abierta y sin integrar** sobre la rama D1.2: su job `windows-installation` terminó cancelado sobre su commit de cabeza y su base no incluye D2/D3. Rebasar o rehacer sobre `develop` dentro de #27.
+- D5.1 (issue #27, corte 1 del Hito 4): roles de PostgreSQL separados (superusuario solo en `provision`, `costina_owner` para `init`/`upgrade`, `costina_runtime` sin DDL ni borrado para el motor), ciclo de vida explícito, modo `installation` que se niega a servir con una conexión sobreprivilegiada, separación programa/datos y configuración por fichero; toda la batería HTTP corre ya con el rol de ejecución. Ver `docs/native/D5.1-packaging-base.md`, ADR-011 y el CI de su PR.
+
+Hito 3 (#26): completo en código con D4.3b (PR #43); **su cierre espera el guion manual del promotor**. Hito 4 (#27) troceado en D5.1 base → D5.2 servicio de Windows → D5.3 HTTPS en LAN (CA local) → D5.4 backup/restauración → D5.5 instalador → D5.6 guion físico.
+
+PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) queda **cerrada como superada**: nunca se integró y su base no incluía D2–D4. Lo aprovechable (roles separados, PostgreSQL 17.11 fijado con hash, NSIS, datos fuera del programa) se rehace sobre `develop` en D5.1–D5.5 bajo ADR-011.
 
 ## Bloqueos antes de piloto operativo (motor nativo)
 

@@ -8,23 +8,49 @@ using Costina.Persistence;
 using Costina.Server;
 using Npgsql;
 
-// Deliberately local-only engineering cut. Installer/user/device authentication are separate D1/D2 work.
-if(Environment.GetEnvironmentVariable("COSTINA_LAB_MODE") != "true")
-    throw new InvalidOperationException("D1.1 is restricted to an explicit laboratory installation.");
-string RequiredEnvironment(string name) => Environment.GetEnvironmentVariable(name)
-    ?? throw new InvalidOperationException($"Missing {name}; no default credentials are provided.");
-var connectionString = RequiredEnvironment("COSTINA_DB");
+// D5.1 (#27, ADR-011): ciclo de vida EXPLICITO. "provision" (superusuario, una vez) crea roles, base
+// y configuracion; "init" crea el esquema en una base vacia; "upgrade" lo actualiza en una existente;
+// "init-lab" anade ademas los fixtures ficticios. Los tres ultimos usan el rol PROPIETARIO. Un
+// arranque normal usa el rol de EJECUCION y jamas migra, siembra ni lee las credenciales del propietario.
+var administrative = args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab";
+var settings = new ServerSettings(administrative);
+if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
+var mode = settings.Get("COSTINA_MODE") ?? (settings.Get("COSTINA_LAB_MODE") == "true" ? "laboratory" : null)
+    ?? throw new InvalidOperationException("Set COSTINA_MODE=installation (provisioned roles) or COSTINA_LAB_MODE=true (engineering laboratory).");
+if(mode is not ("laboratory" or "installation")) throw new InvalidOperationException("COSTINA_MODE must be installation or laboratory.");
+var laboratory = mode == "laboratory";
+var connectionString = settings.Required("COSTINA_DB");
 var db = new NpgsqlConnectionStringBuilder(connectionString).Database ?? "";
-if(!db.EndsWith("_d1_lab",StringComparison.Ordinal) && !db.EndsWith("_d1_test",StringComparison.Ordinal))
+if(laboratory && !db.EndsWith("_d1_lab",StringComparison.Ordinal) && !db.EndsWith("_d1_test",StringComparison.Ordinal))
     throw new InvalidOperationException("Use an isolated database ending in _d1_lab or _d1_test, never the legacy database.");
-var scope = new BusinessScope(RequiredEnvironment("COSTINA_TENANT"),RequiredEnvironment("COSTINA_COMPANY"),RequiredEnvironment("COSTINA_LOCATION"));
+var scope = new BusinessScope(settings.Required("COSTINA_TENANT"),settings.Required("COSTINA_COMPANY"),settings.Required("COSTINA_LOCATION"));
+if(administrative)
+{
+    // En laboratorio de un solo rol el propietario es la misma conexion; una instalacion exige la suya.
+    var ownerConnection = settings.Get("COSTINA_DB_OWNER") ?? (laboratory ? connectionString
+        : throw new InvalidOperationException("Missing COSTINA_DB_OWNER: schema commands never run with the runtime role."));
+    await using var ownerSource = NpgsqlDataSource.Create(ownerConnection);
+    var ownerStore = new PostgresStore(ownerSource);
+    var exists = await ownerStore.SchemaExistsAsync();
+    if(args[0] == "init" && exists)
+    {
+        Console.WriteLine("Schema already present: nothing was changed. Use upgrade after installing new binaries."); return;
+    }
+    if(args[0] == "upgrade" && !exists)
+        throw new InvalidOperationException("There is no schema to upgrade; run init on a new installation.");
+    if(args[0] == "init-lab" && !laboratory)
+        throw new InvalidOperationException("init-lab installs fictitious fixtures and only runs in laboratory mode.");
+    await ownerStore.InitializeAsync();
+    if(args[0] == "init-lab")
+    {
+        await LabConfiguration.Seed(ownerStore,scope);
+        Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
+    }
+    Console.WriteLine(args[0] == "init" ? "Schema initialized. Create the first user with create-user <username> main."
+        : "Schema upgraded in place. Existing data was not reset."); return;
+}
 await using var source = NpgsqlDataSource.Create(connectionString);
 var store = new PostgresStore(source);
-if(args.Length == 1 && args[0] == "init-lab")
-{
-    await store.InitializeAsync(); await LabConfiguration.Seed(store,scope);
-    Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
-}
 // D4.1: alta explicita de usuarios. La contrasena entra por stdin (nunca argumento ni variable
 // de entorno, nunca eco ni log). No hay credenciales por defecto: sin usuarios solo funcionan
 // las claves de laboratorio, que se retiran en D4.3.
@@ -36,8 +62,14 @@ if(args.Length == 3 && args[0] == "create-user")
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Only init-lab, create-user <username> <role> or normal startup is supported.");
+if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, create-user <username> <role> or normal startup.");
 await store.CheckAsync();
+// D5.1: una instalacion se niega a servir con una conexion capaz de DDL o de borrar auditoria.
+if(await store.RuntimeOverprivilegedAsync())
+{
+    if(!laboratory) throw new InvalidOperationException("COSTINA_DB must use the provisioned runtime role: this connection can alter the schema or the audit trail.");
+    Console.WriteLine("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
+}
 var installation = await store.InstallationAsync();
 // Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
 var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
@@ -50,7 +82,7 @@ var serverBuild = plus < 0 ? "" : informational[(plus + 1)..];
 foreach(var legacy in new[]{"COSTINA_KEY_MAIN","COSTINA_KEY_SERVICE","COSTINA_KEY_KITCHEN"})
     if(Environment.GetEnvironmentVariable(legacy) is not null)
         Console.WriteLine($"AVISO: {legacy} ya no se usa desde D4.3; eliminala del entorno.");
-var port = int.Parse(Environment.GetEnvironmentVariable("COSTINA_PORT") ?? "5088");
+var port = int.Parse(settings.Get("COSTINA_PORT") ?? "5088");
 if(port is < 1024 or > 65535) throw new ArgumentException("Invalid laboratory port.");
 var builder=WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(options=>options.ServiceName="Costina D1 Laboratory");
@@ -178,7 +210,7 @@ async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,T
     return Results.Text(response,"application/json");
 }
 const string prefix="/api/native/v1";
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode="local-laboratory",version=serverVersion,build=serverBuild}); });
+app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild}); });
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
     var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
