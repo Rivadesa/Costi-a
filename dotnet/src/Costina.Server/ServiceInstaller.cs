@@ -41,6 +41,7 @@ public static class ServiceInstaller
         await Run("icacls.exe",[ServerSettings.ConfigDirectory,"/inheritance:r","/grant:r",LocalSystem+":(OI)(CI)F",Administrators+":(OI)(CI)F"]);
         await Run("icacls.exe",[ServerSettings.ServerFile,"/grant",Account+":R"]);
         await Run("icacls.exe",[logs,"/grant",Account+":(OI)(CI)M"]);
+        await ProtectTlsAsync();
         Console.WriteLine($"Service {Name} registered as {Account} (delayed automatic start, restart on failure). Start it with: sc start {Name}");
     }
 
@@ -51,7 +52,29 @@ public static class ServiceInstaller
         for(var i=0;i<30 && (await Run("sc.exe",["query",Name],tolerateFailure:true)).Contains("STOP_PENDING",StringComparison.Ordinal);i++)
             await Task.Delay(1000);
         await Run("sc.exe",["delete",Name]);
+        await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+FirewallRule],tolerateFailure:true);
         Console.WriteLine($"Service {Name} removed. The data root {ServerSettings.DataRoot} was not touched.");
+    }
+
+    public const string FirewallRule="Costina-HTTPS-LAN";
+
+    // D5.3: material TLS y apertura de la LAN. tls\ solo para SYSTEM y Administradores; el servicio
+    // lee UNICAMENTE server.pfx (nunca la clave de la CA). La regla de firewall abre solo el puerto
+    // HTTPS y solo en redes privadas o de dominio: jamas en una red publica. Idempotente; se invoca
+    // desde install-service y desde provision-tls/renew-tls, en cualquier orden.
+    public static async Task ProtectTlsAsync()
+    {
+        RequireWindows();
+        if(!File.Exists(LocalTls.ServerPfx)) return;
+        await Run("icacls.exe",[LocalTls.Folder,"/inheritance:r","/grant:r",LocalSystem+":(OI)(CI)F",Administrators+":(OI)(CI)F"]);
+        var registered=true;
+        try { await Run("sc.exe",["query",Name]); } catch(InvalidOperationException) { registered=false; }
+        if(!registered) return;
+        await Run("icacls.exe",[LocalTls.ServerPfx,"/grant",Account+":R"]);
+        var port=new ServerSettings(false).Get("COSTINA_TLS_PORT") ?? "5443";
+        await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+FirewallRule],tolerateFailure:true);
+        await Run("netsh.exe",["advfirewall","firewall","add","rule","name="+FirewallRule,"dir=in","action=allow",
+            "protocol=TCP","localport="+port,"profile=private,domain"]);
     }
 
     private static void RequireWindows()

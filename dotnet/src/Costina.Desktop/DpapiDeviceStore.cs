@@ -12,7 +12,9 @@ public sealed class DpapiDeviceStore(Uri endpoint)
     private static readonly byte[] Entropy = "costina-device-v1"u8.ToArray();
     private readonly string path = System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina",
-        $"device-{endpoint.Port}.bin");
+        // D5.3: un puesto puede emparejarse con servidores de la LAN; el fichero distingue tambien el equipo.
+        endpoint.Host == "127.0.0.1" ? $"device-{endpoint.Port}.bin"
+            : $"device-{new string(endpoint.Host.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_').ToArray())}-{endpoint.Port}.bin");
 
     public void Save(string deviceToken)
     {
