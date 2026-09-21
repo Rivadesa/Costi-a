@@ -32,7 +32,7 @@ function command(ticket: KitchenTicket, action: string, fields: Record<string, u
 }
 const PREPARATION_ACTIONS = [
   { action: 'preparation-start', label: 'Empezar', verb: 'Empezar' },
-  { action: 'preparation-ready', label: 'Lista', verb: 'Marcar lista' },
+  { action: 'preparation-ready', label: 'Marcar lista', verb: 'Marcar lista' },
 ] as const
 function review(ticket: KitchenTicket, preparation: Preparation, decision: string, label: string): void {
   const key = lineKey(ticket, preparation)

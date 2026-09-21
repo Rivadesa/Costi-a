@@ -84,7 +84,9 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await coldPage.getByTestId(id('preparation-start', cold.id)).click()
   await expect(coldPage.getByTestId(id('preparation-ready', cold.id))).toBeVisible({ timeout: 15_000 })
   await coldPage.getByTestId(id('preparation-ready', cold.id)).click()
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`)).toContainText('Lista', { timeout: 15_000 })
+  // La senal es el ESTADO escrito y que el servidor ya no anuncie la accion (no el texto del boton).
+  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· Lista', { timeout: 15_000 })
+  await expect(coldPage.getByTestId(id('preparation-ready', cold.id))).toHaveCount(0)
   await expect(coldPage.getByTestId('pending')).toHaveCount(0)
   expect((await read(request, serviceId)).data.courses[0].preparations.find(p => p.id === cold.id)!.state).toBe('Ready')
 
@@ -130,7 +132,8 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(ready).toBeVisible({ timeout: 15_000 })
   await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
   await ready.click()
-  await expect(passTicket).toContainText('LISTO PARA SERVIR', { timeout: 15_000 })
+  await expect(passTicket.locator('h3')).toContainText('LISTO PARA SERVIR', { timeout: 15_000 })          // el encabezado, no el texto del boton
+  await expect(ready).toHaveCount(0)
   await expect(passPage.getByTestId('pending')).toHaveCount(0)
   expect((await read(request, serviceId)).data.courses[0].state).toBe('Ready')
   await expect(coldTicket).toHaveCount(0, { timeout: 15_000 })                                             // un pase listo ya no es trabajo de la estacion
