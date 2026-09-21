@@ -4,7 +4,7 @@
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.23.0-d6.4 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.24.0-d6.5 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
    <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
@@ -117,8 +117,21 @@
      <TextBlock Text="PUESTOS Y EMPAREJAMIENTO · SOLO ADMINISTRACIÓN" FontSize="20" FontWeight="SemiBold"/>
      <WrapPanel Margin="0,10,0,4">
       <Button Content="Generar código de emparejamiento" Command="{Binding Devices.GenerateCodeCommand}"/>
-      <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo. El QR llegará con la PWA."/>
+      <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo, o usa el QR de abajo con la cámara del dispositivo."/>
      </WrapPanel>
+     <WrapPanel Margin="0,0,0,4">
+      <TextBlock Text="Dirección para los dispositivos " VerticalAlignment="Center"/>
+      <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" Width="330" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se recuerda en este equipo."/>
+     </WrapPanel>
+     <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+      <Border Background="White" Padding="6" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+       <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="220" Height="220" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
+      </Border>
+      <StackPanel Margin="12,0,0,0" MaxWidth="560">
+       <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap"/>
+       <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,6,0,0"/>
+      </StackPanel>
+     </StackPanel>
      <TextBlock Text="{Binding Devices.PairingInfo}" Margin="0,0,0,12" TextWrapping="Wrap"/>
      <TextBlock Text="SOLICITUDES PENDIENTES" FontWeight="Bold"/>
      <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="110" BorderThickness="0"/>

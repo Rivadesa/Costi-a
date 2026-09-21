@@ -96,6 +96,17 @@ class Pwa(unittest.TestCase):
         self.assertEqual((status, headers['Cache-Control']), (200, 'no-cache'))
         self.assertNotIn(b"'/api", worker)                                     # the service worker never caches data
         self.assertEqual(fetch('/app/manifest.webmanifest')[1]['Content-Type'], 'application/manifest+json')
+        # D6.5: instalable en Android e iOS. Cada icono declarado existe, es un PNG real del tamano que dice y lo sirve el motor.
+        manifest = json.loads(fetch('/app/manifest.webmanifest')[2])
+        declared = {(i['sizes'], i['purpose']) for i in manifest['icons'] if i['type'] == 'image/png'}
+        self.assertEqual(declared, {('192x192', 'any'), ('512x512', 'any'), ('512x512', 'maskable')})
+        for icon in [i for i in manifest['icons'] if i['type'] == 'image/png'] + [dict(src='/app/apple-touch-icon.png', sizes='180x180')]:
+            status, headers, data = fetch(icon['src'])
+            self.assertEqual((status, headers['Content-Type'], headers['Cache-Control']), (200, 'image/png', 'no-cache'), icon['src'])
+            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n', icon['src'])
+            width, height = int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+            self.assertEqual(f'{width}x{height}', icon['sizes'], icon['src'])
+        self.assertIn(b'rel="apple-touch-icon" href="/app/apple-touch-icon.png"', body)
 
     def test_04_only_build_files_are_public(self):
         status, headers, _ = fetch('/app')

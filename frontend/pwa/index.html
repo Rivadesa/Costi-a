@@ -4,11 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1f2a37" />
+    <!-- Instalable en pantalla de inicio (D6.5). iOS ignora los iconos del manifiesto y los SVG: necesita su PNG de 180. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Costina" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="application-name" content="Costina" />
+    <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/app/manifest.webmanifest" />
     <link rel="icon" href="/app/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/app/icon.svg" />
+    <link rel="icon" href="/app/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/app/apple-touch-icon.png" sizes="180x180" />
     <title>Costina</title>
   </head>
   <body>

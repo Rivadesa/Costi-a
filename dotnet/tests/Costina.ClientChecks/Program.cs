@@ -27,6 +27,17 @@ foreach(var sample in new[]{"http://127.0.0.1:5088","https://costina-server.loca
     await Check("accept endpoint "+sample,()=>{ApiClient.ValidateEndpoint(new Uri(sample));return Task.CompletedTask;});
 foreach(var sample in new[]{"http://example.com:5088","http://192.168.1.10:5088","http://costina-server.local:5088","https://user@costina-server.local:5443","https://costina-server.local:5443/path","https://costina-server.local:443","ftp://costina-server.local:5443","http://127.0.0.1:5088/path","http://user@127.0.0.1:5088","http://127.0.0.1:5088/?secret=1"})
     await Check("reject endpoint "+sample,()=>Throws<ArgumentException>(()=>{ApiClient.ValidateEndpoint(new Uri(sample));return Task.CompletedTask;}));
+// D6.5: enlace del QR de emparejamiento. Solo https://NOMBRE:PUERTO sirve a un dispositivo; el codigo va en el fragmento.
+await Check("pairing link carries only the code, in the fragment",()=>{
+    var address=PairingLink.ParseDeviceAddress(" https://Costina-Server.local:5443 ");
+    Assert(PairingLink.Build(address,"AbC123_def-456")=="https://costina-server.local:5443/app/#pair=AbC123_def-456");
+    Assert(PairingLink.SuggestDeviceAddress(new Uri("https://costina-server.local:5443"))=="https://costina-server.local:5443");
+    Assert(PairingLink.SuggestDeviceAddress(new Uri("http://127.0.0.1:5088"))=="");
+    return Task.CompletedTask;});
+foreach(var sample in new[]{"","   ","costina-server","http://127.0.0.1:5088","http://192.168.1.10:5088","https://costina-server.local:5443/app","https://user@costina-server.local:5443","https://costina-server.local:443","https://costina-server.local:5443/?x=1"})
+    await Check("reject device address '"+sample+"'",()=>Throws<ArgumentException>(()=>{PairingLink.ParseDeviceAddress(sample);return Task.CompletedTask;}));
+foreach(var sample in new[]{"","corto","con espacio dentro","<img src=x onerror=1>","codigo/con/barras","código-con-acento",new string('a',129)})
+    await Check("reject pairing code '"+sample[..Math.Min(sample.Length,24)]+"'",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample);return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{
     using var client=Client(new Handler((r,_)=>{
         Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/board"); Assert(r.Headers.Authorization?.Scheme=="Bearer");

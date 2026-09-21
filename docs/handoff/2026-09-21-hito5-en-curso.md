@@ -1,5 +1,7 @@
 # Traspaso de sesión — 21-09-2026 — Hito 4 completo en código, Hito 5 (#28, PWA) en curso
 
+> **Sustituido como punto de entrada por `2026-09-21b-hito5-completo-en-codigo.md`.** Se conserva como registro; su prompt (reglas, invariantes y trampas) sigue vigente.
+
 Documento para **retomar el trabajo en otra sesión o en otro equipo**. Todo está en el repositorio: este documento, `tools/agent/`, `docs/STATUS.md`, `dotnet/AGENTS.md` y el doc de cada corte en `docs/native/`. No viajan, a propósito: el laboratorio `.lab/` con sus secretos, los permisos por máquina de la herramienta y el simulador de API usado para las verificaciones visuales (se describe abajo cómo rehacerlo). Sustituye como punto de entrada a `2026-09-18-hito4-en-curso.md`, que se conserva como registro.
 
 ## Estado verificable
