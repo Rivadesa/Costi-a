@@ -102,7 +102,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
   await expect(coldTicket).toContainText('PENDIENTES DE REVISION', { timeout: 15_000 })
   await expect(coldTicket).toContainText('ALERGIA marisco (grave)')
-  await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)
+  await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                               // en NINGUNA mesa: el servidor no se lo anuncia a una estacion
 
   // 5) PASE (otro dispositivo): todo es suyo para mirar, nada de marcar elaboraciones; revisa con nota OBLIGATORIA.
   const passContext = await browser.newContext(CONTEXT); const passPage = await passContext.newPage(); watch(passPage, leaks, violations)
