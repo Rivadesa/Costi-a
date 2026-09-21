@@ -24,7 +24,9 @@ function server(replies: Reply[]) {
     const reply = replies.shift() ?? { status: 500 }
     if (reply === 'network') throw new TypeError('failed to fetch')
     const echo = reply.echo === false ? undefined : typeof reply.echo === 'string' ? reply.echo : headers['Idempotency-Key']
-    return new Response(reply.html ? '<html>proxy</html>' : JSON.stringify(reply.body ?? {}), { status: reply.status, headers: echo ? { 'Idempotency-Key': echo } : {} })
+    const asked = decodeURIComponent(String(url).split('/commands/')[1] ?? '')       // GET /commands/{key}: el motor devuelve la clave consultada
+    const json = JSON.stringify(reply.body ?? {}).replace('"$key"', JSON.stringify(init!.method === 'GET' ? asked : ''))
+    return new Response(reply.html ? '<html>proxy</html>' : json, { status: reply.status, headers: echo ? { 'Idempotency-Key': echo } : {} })
   }
   return { fetcher, seen }
 }
@@ -82,9 +84,11 @@ describe('durable uncertain command', () => {
     expect(second.seen[0].key).toBe(key); expect(parsePending(store.value).kind).toBe('absent')
   })
   it('closes the uncertainty on a DEFINITIVE rejection only: recognisable error, echoed key, not a storage conflict', async () => {
-    const definitive = runner(new MemoryStore(), [{ status: 409, body: { error: 'version_conflict' } }])
+    const definitive = runner(new MemoryStore(), [{ status: 409, body: { error: 'version_conflict' } }, { status: 200, body: { key: '$key', found: false } }])
     expect(await definitive.run.send(...SERVE)).toEqual({ kind: 'rejected', status: 409, code: 'version_conflict' })
     expect(definitive.state.pending).toBeNull(); expect(definitive.state.notice).toContain('Otro puesto')
+    expect(definitive.seen.map(request => request.method)).toEqual(['POST', 'GET'])      // pregunta por la clave ANTES de darla por no aplicada
+    expect(definitive.seen[1].url).toContain('/commands/' + definitive.seen[0].key)
     for (const reply of [
       { status: 409, body: { error: 'storage_conflict' } }, { status: 409, body: { error: 'idempotency_conflict' } },
       { status: 409, body: { error: 'version_conflict' }, echo: false }, { status: 409, body: { error: 'version_conflict' }, echo: 'otra-clave' },
@@ -96,6 +100,28 @@ describe('durable uncertain command', () => {
       expect(kept.state.pending, JSON.stringify(reply)).not.toBeNull()
     }
   })
+  it('a rejection speaks for THIS attempt only: if the server has the key, an earlier attempt WAS applied and it closes as applied', async () => {
+    // Respuesta perdida -> el puesto se re-empareja con otro rol -> el reintento recibe 403 con eco... de una orden que SI se aplico.
+    const store = new MemoryStore()
+    const { run, state, seen } = runner(store, ['network', { status: 403, body: { error: 'forbidden' } }, { status: 200, body: { key: '$key', found: true, response: { version: 5 } } }])
+    await run.send(...SERVE)
+    expect(await run.retry()).toEqual({ kind: 'confirmed', response: { version: 5 } })
+    expect(state.pending).toBeNull(); expect(state.notice).toContain('SI se aplico'); expect(store.log).toEqual(['save', 'clear'])
+    expect(seen.map(request => request.method)).toEqual(['POST', 'POST', 'GET'])
+  })
+  it('a rejection it cannot verify against the server record closes nothing', async () => {
+    for (const lookup of ['network', { status: 500, body: {} }, { status: 401, body: { error: 'unauthorized' } }, { status: 200, html: true },
+      { status: 200, body: { found: false } }, { status: 200, body: { key: 'otra-clave', found: false } }] as Reply[]) {
+      const { run, state } = runner(new MemoryStore(), [{ status: 409, body: { error: 'version_conflict' } }, lookup])
+      expect(await run.send(...SERVE), JSON.stringify(lookup)).toEqual({ kind: 'unconfirmed', reason: 'unverifiable' })
+      expect(state.pending, JSON.stringify(lookup)).not.toBeNull()
+    }
+  })
+  it('an applied-earlier response that carries money is closed and still refused', async () => {
+    const { run, state } = runner(new MemoryStore(), [{ status: 403, body: { error: 'forbidden' } }, { status: 200, body: { key: '$key', found: true, response: { balanceCents: 1 } } }])
+    await expect(run.send(...SERVE)).rejects.toBeInstanceOf(MoneyLeakError)
+    expect(state.pending).toBeNull()
+  })
   it('a 401 does not close it: the first attempt may have been applied before the revocation', async () => {
     const { run, state } = runner(new MemoryStore(), [{ status: 401, body: { error: 'unauthorized' } }])
     expect(await run.send(...SERVE)).toEqual({ kind: 'unauthorized' })
@@ -103,7 +129,7 @@ describe('durable uncertain command', () => {
   })
   it('reconciles by key: found closes it as APPLIED; not found leaves the identical retry available', async () => {
     const store = new MemoryStore()
-    const lost = runner(store, ['network', { status: 200, body: { key: 'k', found: false } }, { status: 200, body: { key: 'k', found: true, response: {} } }])
+    const lost = runner(store, ['network', { status: 200, body: { key: '$key', found: false } }, { status: 200, body: { key: '$key', found: true, response: {} } }])
     await lost.run.send(...SERVE)
     expect(await lost.run.reconcile()).toBe('not_found'); expect(lost.state.pending).not.toBeNull()
     expect(await lost.run.reconcile()).toBe('applied'); expect(lost.state.pending).toBeNull(); expect(lost.state.notice).toContain('SI se aplico')

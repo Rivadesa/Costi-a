@@ -93,6 +93,34 @@ class StationChecks(unittest.TestCase):
         status, _ = request('/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.pase)
         self.assertEqual(200, status)
 
+    def test_06_a_rejected_retry_does_not_prove_the_first_attempt_was_not_applied(self):
+        # D6.6 (revision externa): el permiso se comprueba ANTES de mirar si la clave ya se ejecuto. Un puesto de sala aplica
+        # una orden, pierde la respuesta y se re-empareja como cocina con el MISMO nombre (mismo actor): el reintento identico
+        # recibe 403 con el eco de la clave... de una orden que SI se aplico. Por eso los clientes preguntan por la clave
+        # antes de cerrar un rechazo como "no aplicada".
+        def raw(path, data, token, key):
+            req = urllib.request.Request(h.BASE + '/api/native/v1' + path, data=json.dumps(data).encode(),
+                headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'Idempotency-Key': key})
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r: return r.status, r.headers.get('Idempotency-Key'), json.loads(r.read())
+            except urllib.error.HTTPError as e: return e.code, e.headers.get('Idempotency-Key'), json.loads(e.read() or b'{}')
+        admin = h.KEYS['main']
+        sid = h.open_table('M3'); h.mutate(sid, 'start')
+        waiter = pair_device(admin, 'puesto-cambia-de-rol', 'service', 'sala-1')
+        key, body = secrets.token_hex(16), dict(expectedVersion=h.dining(sid)['version'], reason='salen un momento')
+        status, echoed, _ = raw('/services/' + sid + '/commands/pause', body, waiter, key)
+        self.assertEqual((200, key), (status, echoed))
+        version = h.dining(sid)['version']
+        device = next(d for d in request('/auth/devices', token=admin)[1] if d['name'] == 'puesto-cambia-de-rol' and not d.get('revokedAt'))
+        self.assertEqual(200, request('/auth/devices/' + device['id'] + '/revoke', {}, token=admin)[0])
+        self.assertEqual(401, raw('/services/' + sid + '/commands/pause', body, waiter, key)[0])          # revocado: 401, que ningun cliente toma por cierre
+        cook = pair_device(admin, 'puesto-cambia-de-rol', 'kitchen', 'cold')
+        status, echoed, rejection = raw('/services/' + sid + '/commands/pause', body, cook, key)       # MISMOS bytes y clave
+        self.assertEqual((403, key), (status, echoed)); self.assertIn('error', rejection)
+        self.assertEqual(version, h.dining(sid)['version'])                                              # ni duplicada ni deshecha
+        status, lookup = request('/commands/' + key, token=cook)                                         # mismo actor: el registro manda
+        self.assertEqual(200, status); self.assertTrue(lookup['found']); self.assertEqual(key, lookup['key'])
+
     def test_04_session_users_have_no_station_restriction(self):
         # El chef con sesion (sin estacion) marco arriba una elaboracion 'hot' sin restriccion;
         # el dispositivo de una estacion nunca gana permisos de rol por tener estacion.

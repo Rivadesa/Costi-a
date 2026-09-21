@@ -4,6 +4,7 @@ import { ApiError, getSession, NetworkError, type Session } from './api'
 import { clearCredential, loadCredential, saveCredential, type Credential } from './credentials'
 import { MoneyLeakError } from './money-guard'
 import { indexedDbPendingStore } from './pending'
+import { requestPersistence, type Persistence } from './storage'
 import PairView from './views/PairView.vue'
 import HomeView from './views/HomeView.vue'
 
@@ -13,6 +14,8 @@ const credential = ref<Credential | null>(null)
 const session = ref<Session | null>(null)
 const notice = ref('')
 const pendingDescription = ref('')   // tambien sin conexion: lo no confirmado se ve SIEMPRE
+const persistence = ref<Persistence>('persisted')   // hasta saberlo no se alarma a nadie
+let persistenceAsked = false
 let timer: number | undefined
 
 async function refresh(): Promise<void> {
@@ -22,6 +25,8 @@ async function refresh(): Promise<void> {
   try {
     session.value = await getSession(fetch, credential.value.token)
     state.value = 'ready'
+    // Ya emparejado: lo guardado en este dispositivo (credencial, orden sin confirmar) merece almacenamiento persistente.
+    if (!persistenceAsked) { persistenceAsked = true; persistence.value = await requestPersistence() }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       // Emparejamiento revocado desde el PC principal: la credencial local deja de valer y se borra.
@@ -75,6 +80,6 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
       <p>Este dispositivo esta emparejado, pero el servidor no responde. Comprueba la Wi-Fi. No se muestra ningun dato hasta poder leerlo del servidor.</p>
       <button type="button" @click="refresh">Reintentar</button>
     </section>
-    <HomeView v-else-if="session && credential" :session="session" :credential="credential" @unpair="unpair" @refresh="refresh" />
+    <HomeView v-else-if="session && credential" :session="session" :credential="credential" :persistence="persistence" @unpair="unpair" @refresh="refresh" />
   </main>
 </template>

@@ -154,7 +154,19 @@ public sealed class ApiClient : IDisposable
         // Solo un rechazo reconocible de la aplicacion, con codigo definitivo y que identifica ESTE
         // comando por su clave, resuelve la incertidumbre. Autenticacion, redirecciones, pasarelas,
         // conflictos de almacenamiento y respuestas malformadas conservan el reintento exacto.
-        if ((status is 403 or 404 or 409 or 422) && IsDefinitiveRejection(response, text, command.Key)) Resolve(command);
+        if ((status is 403 or 404 or 409 or 422) && IsDefinitiveRejection(response, text, command.Key))
+        {
+            // D6.6: el rechazo habla de ESTE intento. El servidor comprueba el permiso ANTES de mirar si la clave ya se
+            // ejecuto, asi que un reintento puede recibir 403 de una orden que SI se aplico (puesto re-emparejado con
+            // otro rol). Solo su registro lo dice: consta -> aplicada; no consta -> rechazada; no se sabe -> se conserva.
+            var earlier = await LookupAsync(command.Key);
+            if (earlier is { Found: true })
+            {
+                Resolve(command);
+                return earlier.Response ?? JsonSerializer.Deserialize<JsonElement>("{}", Json);
+            }
+            if (earlier is not null) Resolve(command);
+        }
         if (!response.IsSuccessStatusCode) throw new ApiError(status, ErrorCode(text) ?? "request_failed");
         var data = JsonSerializer.Deserialize<JsonElement>(text, Json);
         if (data.ValueKind != JsonValueKind.Object || (!data.TryGetProperty("version", out _) && !data.TryGetProperty("serviceId", out _)))
@@ -163,6 +175,19 @@ public sealed class ApiClient : IDisposable
         return data;
     }
     private void Resolve(PendingCommand command) { Pending = null; store?.Clear(command.Key); }
+    // GET commands/{key}: solo el mismo actor; nunca ejecuta nada. null = no se pudo saber (red, 5xx, 401, cuerpo raro).
+    private async Task<CommandLookup?> LookupAsync(string key)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "commands/" + Segment(key));
+            using var response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return null;
+            var lookup = JsonSerializer.Deserialize<CommandLookup>(await response.Content.ReadAsStringAsync(), Json);
+            return lookup is not null && string.Equals(lookup.Key, key, StringComparison.Ordinal) ? lookup : null;
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException) { return null; }
+    }
     private static bool IsDefinitiveRejection(HttpResponseMessage response, string body, string key)
     {
         var code = ErrorCode(body);

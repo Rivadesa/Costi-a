@@ -19,6 +19,10 @@ HttpResponseMessage Response(int code,string json) => new((HttpStatusCode)code) 
 HttpResponseMessage Rejection(int code,string json,HttpRequestMessage request) {
     var response=Response(code,json); response.Headers.Add("Idempotency-Key",request.Headers.GetValues("Idempotency-Key").Single()); return response;
 }
+HttpResponseMessage Lookup(HttpRequestMessage request,bool found,string response="{\"version\":9}") {
+    var key=Uri.UnescapeDataString(request.RequestUri!.AbsolutePath.Split("/commands/")[1]);
+    return Response(200,found?"{\"key\":\""+key+"\",\"found\":true,\"response\":"+response+"}":"{\"key\":\""+key+"\",\"found\":false}");
+}
 foreach(var sample in new[]{("9,50",950L),("9.5",950L),("0,01",1L),("150",15000L)})
     await Check("exact money "+sample.Item1,()=>{Assert(Money.Parse(sample.Item1)==sample.Item2);return Task.CompletedTask;});
 foreach(var sample in new[]{"0","-1","1.234","1,234.00","1e3","NaN","9,",",50"})
@@ -64,9 +68,29 @@ await Check("malformed successful response retains command",async()=>{
     await Throws<JsonException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
 await Check("version conflict identified by key resolves rejection without auto-resubmit",async()=>{
-    using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"version_conflict\"}",r))));
+    var methods=new List<string>();
+    using var client=Client(new Handler((r,_)=>{methods.Add(r.Method.Method);return Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r));}));
     await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is null);
+    Assert(methods.SequenceEqual(["POST","GET"]));   // D6.6: pregunta por la clave ANTES de darla por no aplicada, y no reenvia
 });
+// D6.6: un rechazo habla de ESTE intento. Respuesta perdida -> puesto re-emparejado con otro rol -> el reintento recibe 403 con eco.
+await Check("a rejected retry whose key the server has is closed as APPLIED with the stored response",async()=>{
+    var store=new MemoryStore(); var posts=0;
+    using var client=Client(new Handler((r,_)=>{
+        if(r.Method==HttpMethod.Get) return Task.FromResult(Lookup(r,true));
+        return ++posts==1?throw new HttpRequestException("lost response"):Task.FromResult(Rejection(403,"{\"error\":\"forbidden\"}",r));
+    }));
+    client.AttachPendingStore(store);
+    await Throws<HttpRequestException>(async()=>{await client.SendAsync("services/x/commands/pause",new {expectedVersion=1},"Pause");});
+    Assert(client.Pending is not null&&store.Stored is not null);
+    var applied=await client.RetryAsync();
+    Assert(applied.GetProperty("version").GetInt64()==9); Assert(client.Pending is null&&store.Stored is null);
+});
+foreach(var lookup in new Func<HttpRequestMessage,HttpResponseMessage>[]{_=>Response(500,"{}"),_=>Response(401,"{}"),_=>Response(200,"<html>proxy</html>"),_=>Response(200,"{\"key\":\"otra\",\"found\":false}")})
+    await Check("a rejection that cannot be verified against the server record retains the command",async()=>{
+        using var client=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?lookup(r):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
+        await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+    });
 await Check("401 preserves uncertain mutation",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(401,"{}"))));
     await Throws<ApiError>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
@@ -104,7 +128,7 @@ await Check("durable store saves before first attempt and clears only the confir
 });
 await Check("explicit rejection clears the durable command",async()=>{
     var store=new MemoryStore();
-    using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"version_conflict\"}",r))));
+    using var client=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
     client.AttachPendingStore(store);
     await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
     Assert(store.Stored is null&&client.Pending is null);

@@ -1,5 +1,7 @@
 # Traspaso de sesión — 21-09-2026 (tarde) — Hito 5 (#28) completo en código
 
+> **Sustituido como punto de entrada por `2026-09-21c-d66-y-pruebas-locales.md`.** Se conserva como registro.
+
 Documento para **retomar el trabajo en otra sesión o en otro equipo**. Sustituye como punto de entrada a `2026-09-21-hito5-en-curso.md`, que se conserva como registro. Las reglas de trabajo, los invariantes y las trampas del prompt de aquel documento **siguen vigentes**: no se repiten aquí, solo se añade lo aprendido.
 
 ## Estado verificable
