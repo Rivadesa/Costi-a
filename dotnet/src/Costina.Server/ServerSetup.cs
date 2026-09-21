@@ -93,7 +93,12 @@ public static class ServerSetup
                 environment.Remove("COSTINA_DB_BOOTSTRAP");
                 // Equipo nuevo a partir de una copia: en lugar de un esquema vacio, restauracion VERIFICADA (D5.4).
                 if(settings.Get("COSTINA_RESTORE_FILE") is {Length:>0} backupFile) await Child("restore",environment,backupFile);
-                else await Child("init",environment);
+                else
+                {
+                    await Child("init",environment);
+                    // Datos ficticios de demostracion: solo si se pide de forma explicita al instalar.
+                    if(settings.Get("COSTINA_DEMO")=="true") await Child("load-demo",environment);
+                }
                 if(settings.Get("COSTINA_NO_TLS")!="true") await Child("provision-tls",environment);
             }
             else

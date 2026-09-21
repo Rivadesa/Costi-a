@@ -34,6 +34,26 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
         await transaction.CommitAsync(ct);
     }
 
+    // D5.6: instalacion de demostracion = los fixtures ficticios dejaron su orden idempotente en este ambito.
+    // La marca viaja con las copias y no necesita esquema propio.
+    public async Task<bool> IsDemoAsync(BusinessScope scope, CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "SELECT EXISTS (SELECT 1 FROM native_d1.commands WHERE tenant=@tenant AND company=@company AND location=@location AND actor='lab-initializer' AND key='lab-fixtures-v1')");
+        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+        command.Parameters.AddWithValue("location", scope.LocationId);
+        return Equals(await command.ExecuteScalarAsync(ct), true);
+    }
+
+    public async Task<bool> HasConfigurationAsync(BusinessScope scope, CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "SELECT EXISTS (SELECT 1 FROM native_d1.configuration WHERE tenant=@tenant AND company=@company AND location=@location)");
+        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+        command.Parameters.AddWithValue("location", scope.LocationId);
+        return Equals(await command.ExecuteScalarAsync(ct), true);
+    }
+
     // D5.2: cola de avisos sin publicar del ambito, para el diagnostico. Solo cuenta y antiguedad.
     public async Task<(long Pending, DateTimeOffset? OldestAt)> OutboxBacklogAsync(BusinessScope scope, CancellationToken ct = default)
     {

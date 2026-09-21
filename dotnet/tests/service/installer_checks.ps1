@@ -42,7 +42,7 @@ try {
     Assert (-not (Test-Path $dataRoot)) "The runner already has $dataRoot; refusing to reuse it."
 
     Check 'silent full installation: program, services and separate data root' {
-        $code = Run-Setup @('/S', '/MODE=full', '/TENANT=inst-tenant', '/COMPANY=inst-company', '/LOCATION=inst-location')
+        $code = Run-Setup @('/S', '/MODE=full', '/TENANT=inst-tenant', '/COMPANY=inst-company', '/LOCATION=inst-location', '/DEMO=1')
         Assert ($code -eq 0) "Installer exit code $code"
         foreach ($path in "$program\server\Costina.Server.exe", "$program\desktop\Costina.Desktop.exe", "$program\pgsql\bin\postgres.exe",
             "$program\build-manifest.json", "$program\Uninstall.exe", "$dataRoot\config\server.json", "$dataRoot\pg\PG_VERSION", "$dataRoot\tls\ca.crt") {
@@ -59,11 +59,27 @@ try {
         Assert (@($listening | Where-Object { $_.LocalAddress -notin '127.0.0.1', '::1' }).Count -eq 0) 'PostgreSQL must listen on loopback only.'
         $manifest = Get-Content "$program\build-manifest.json" -Raw | ConvertFrom-Json
         Assert ($manifest.version -eq (Invoke-RestMethod "$base/health").version) 'Manifest version differs from the running engine.'
+        Assert ((Invoke-RestMethod "$base/health").demo) 'A /DEMO=1 installation must be flagged as demo.'
+        # D5.6: 'status' resume la instalacion (servicios, salud, certificado, huella, copia) sin secretos.
+        $report = & $engine status | Out-String
+        Assert ($LASTEXITCODE -eq 0) "status reported an unhealthy installation: $report"
+        foreach ($expected in 'Service CostinaPostgres\s+RUNNING', 'Service Costina\s+RUNNING', 'DEMO', 'Local CA fingerprint', 'installation') {
+            Assert ($report -match $expected) "status output lacks '$expected': $report"
+        }
+        Assert ($report -notmatch 'Password=') 'status must never print secrets.'
+        $fingerprint = (Get-Content "$dataRoot\tls\ca-fingerprint.txt")[1]
+        Assert ($report -match [regex]::Escape($fingerprint)) 'status and ca-fingerprint.txt disagree.'
     }
     Check 'first administrator and HTTPS with the local root' {
         $password | & $engine create-user jefa main | Out-Null
         Assert ($LASTEXITCODE -eq 0) 'create-user failed'
-        Assert ((Login).token) 'Login failed after installation.'
+        $token = (Login).token
+        Assert $token 'Login failed after installation.'
+        # Con los datos demo el producto INSTALADO recorre un servicio real: abrir mesa con el rol de ejecucion.
+        $opened = Invoke-RestMethod "$api/services" -Method Post -ContentType 'application/json' -Body (@{tableId = 'M1'; pax = 2; menuId = 'LAB-TASTING' } | ConvertTo-Json) `
+            -Headers @{Authorization = "Bearer $token"; 'Idempotency-Key' = [guid]::NewGuid().ToString('N') }
+        Assert $opened.serviceId 'Could not open a table on the installed product.'
+        $script:serviceId = $opened.serviceId
         Import-Certificate -FilePath "$dataRoot\tls\ca.crt" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
         Assert ((Invoke-RestMethod "https://$($env:COMPUTERNAME.ToLower()):5443/health" -TimeoutSec 10).mode -eq 'installation') 'HTTPS did not validate.'
         Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -like '*Costina Local CA*' } | Remove-Item
@@ -140,6 +156,10 @@ try {
             Assert $token 'The restored installation does not accept the original user.'
             $restored = (Invoke-RestMethod "$api/session" -Headers @{Authorization = "Bearer $token" }).installationId
             Assert ($restored -eq $sourceInstallation) "Installation identity changed: $sourceInstallation -> $restored"
+            # Los MISMOS registros de negocio: la mesa abierta antes de la copia sigue abierta tras restaurar, y la marca demo viaja con los datos.
+            $service = Invoke-RestMethod "$api/services/$($script:serviceId)" -Headers @{Authorization = "Bearer $token" }
+            Assert ($service.data.tableId -eq 'M1') 'The service opened before the backup is missing after the restore.'
+            Assert ((Invoke-RestMethod "$base/health").demo) 'The demo flag must travel with the restored data.'
             # Un ambito distinto debe rechazarse y no dejar una instalacion a medias.
             Assert ((Run-Uninstall) -eq 0) 'Uninstall failed.'
             Remove-Item $dataRoot -Recurse -Force

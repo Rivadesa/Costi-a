@@ -13,13 +13,15 @@ using Npgsql;
 // y configuracion; "init" crea el esquema en una base vacia; "upgrade" lo actualiza en una existente;
 // "init-lab" anade ademas los fixtures ficticios. Los tres ultimos usan el rol PROPIETARIO. Un
 // arranque normal usa el rol de EJECUCION y jamas migra, siembra ni lee las credenciales del propietario.
-var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab")
+var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab" or "load-demo")
     || (args.Length == 2 && args[0] == "restore");
 var settings = new ServerSettings(administrative);
 if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
 // D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
 if(args.Length == 1 && args[0] == "install-service") { await ServiceInstaller.InstallAsync(settings); return; }
 if(args.Length == 1 && args[0] == "uninstall-service") { await ServiceInstaller.UninstallAsync(); return; }
+// D5.6: resumen de solo lectura de la instalacion (guion fisico y soporte). Sin credenciales ni secretos.
+if(args.Length == 1 && args[0] == "status") { await StatusReport.RunAsync(settings); return; }
 // D5.5: backend del instalador de Windows (toda la logica aqui, probada en CI; el instalador solo copia y llama).
 if(args.Length == 1 && args[0] == "setup-server") { await ServerSetup.InstallAsync(settings); return; }
 if(args.Length == 1 && args[0] == "stop-services") { await ServerSetup.StopServicesAsync(); return; }
@@ -51,6 +53,16 @@ if(administrative)
     }
     if(args[0] == "upgrade" && !exists)
         throw new InvalidOperationException("There is no schema to upgrade; run init on a new installation.");
+    // D5.6: datos de DEMOSTRACION en una instalacion, de forma explicita y solo sobre una configuracion vacia.
+    // La instalacion queda marcada como demo (/health, /session, cliente) y no debe reutilizarse con datos reales.
+    if(args[0] == "load-demo")
+    {
+        if(!exists) throw new InvalidOperationException("Run init before load-demo.");
+        if(await ownerStore.HasConfigurationAsync(scope))
+            throw new InvalidOperationException("This installation already has tables, menus or products: demo fixtures are only loaded into an empty configuration.");
+        await LabConfiguration.Seed(ownerStore,scope);
+        Console.WriteLine("Fictitious DEMO fixtures loaded. This installation is now flagged as a demo; never reuse it for real data."); return;
+    }
     if(args[0] == "init-lab" && !laboratory)
         throw new InvalidOperationException("init-lab installs fictitious fixtures and only runs in laboratory mode.");
     await ownerStore.InitializeAsync();
@@ -115,7 +127,7 @@ if(args.Length == 1 && args[0] == "backup")
         + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: provision, init, upgrade, init-lab, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role> or normal startup.");
+if(args.Length != 0) throw new ArgumentException("Supported: status, provision, init, upgrade, init-lab, load-demo, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role> or normal startup.");
 // D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
 // instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
 var notices = new List<string>();
@@ -132,6 +144,7 @@ if(await store.RuntimeOverprivilegedAsync())
     notices.Add("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
 }
 var installation = await store.InstallationAsync();
+var demoState = new DemoState{IsDemo = await store.IsDemoAsync(scope)};
 // Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
 var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
 var plus = informational.IndexOf('+');
@@ -310,7 +323,11 @@ const string prefix="/api/native/v1";
 // SHA-256 con la que muestra el servidor (provision-tls / diagnostico) antes de confiar en ella.
 app.MapGet("/ca.crt",()=>File.Exists(LocalTls.CaCertificate) && tlsCertificate is not null
     ? Results.File(File.ReadAllBytes(LocalTls.CaCertificate),"application/x-x509-ca-cert","costina-ca.crt") : Results.NotFound());
-app.MapGet("/health",async ()=>{ await store.CheckAsync(); return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild}); });
+app.MapGet("/health",async ()=>{
+    await store.CheckAsync();
+    if(!laboratory && !demoState.IsDemo) demoState.IsDemo=await store.IsDemoAsync(scope); // cargar la demo con el servicio en marcha se refleja sin reiniciar
+    return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,demo=!laboratory && demoState.IsDemo});
+});
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
     var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
@@ -421,7 +438,7 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
     return Results.Text(stored is null ? Wire.Encode(new {key,found=false})
         : "{\"key\":"+Wire.Encode(key)+",\"found\":true,\"response\":"+stored+"}","application/json");
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
-app.MapDesktopReadRoutes(source,scope,installation,serverVersion);
+app.MapDesktopReadRoutes(source,scope,installation,serverVersion,()=>!laboratory && demoState.IsDemo);
 // Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
 object Backup()
 {

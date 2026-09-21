@@ -209,7 +209,8 @@ public sealed partial class ShellViewModel : ObservableObject
                 : Pending is not null
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
-                : $"Conectado al servidor real {identity.ServerVersion} · {identity.Actor ?? identity.Role} · rol {identity.Role}" +
+                : (identity.Demo ? "DEMOSTRACIÓN · DATOS FICTICIOS · " : "") +
+                  $"Conectado al servidor real {identity.ServerVersion} · {identity.Actor ?? identity.Role} · rol {identity.Role}" +
                   (identity.Station is null ? "" : $" · estación {identity.Station}") +
                   $" · {identity.CompanyId}/{identity.LocationId}";
         }

@@ -176,6 +176,25 @@ class Packaging(unittest.TestCase):
         for secret in (PASSWORD, login['token'], 'Password='):
             self.assertNotIn(secret, text)
 
+    def test_06a_demo_fixtures_are_explicit_flagged_and_only_for_an_empty_configuration(self):
+        """D5.6: an installation gets fictitious fixtures only on request, and says so everywhere."""
+        env = clean_env()
+        loaded = cli('load-demo', env=env)
+        self.assertEqual(loaded.returncode, 0, loaded.stderr)
+        again = cli('load-demo', env=env)
+        self.assertNotEqual(again.returncode, 0)
+        self.assertIn('empty configuration', again.stdout + again.stderr)
+        with Server(env):
+            with urllib.request.urlopen(BASE + '/health', timeout=5) as r: self.assertTrue(json.loads(r.read())['demo'])
+            _, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
+            status, session = call('/api/native/v1/session', token=login['token'])
+            self.assertTrue(session['demo'])
+            status, configuration = call('/api/native/v1/configuration', token=login['token'])
+            self.assertEqual(len(configuration['tables']), 8)
+            # The engine still runs with the runtime role: a real service through the installed product.
+            status, opened = call('/api/native/v1/services', {'tableId': 'M1', 'pax': 2, 'menuId': 'LAB-TASTING'}, token=login['token'])
+            self.assertEqual(status, 200)
+
     def test_06b_lan_https_with_a_name_constrained_local_ca(self):
         """D5.3: an independent TLS stack (OpenSSL) validates the chain with NO exceptions."""
         env = clean_env(COSTINA_TLS_NAMES='localhost,127.0.0.1')
@@ -218,6 +237,14 @@ class Packaging(unittest.TestCase):
             status, diagnostics = call('/api/native/v1/diagnostics', token=login['token'])
             self.assertTrue(diagnostics['tls']['enabled']); self.assertEqual(diagnostics['tls']['port'], 5443)
             self.assertIn(diagnostics['tls']['caFingerprintSha256'], made.stdout)
+            # D5.6: 'status' resume la instalacion sin credenciales ni secretos.
+            report = cli('status', env=clean_env())
+            self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+            for expected in ('installation', 'DEMO', diagnostics['tls']['caFingerprintSha256'], 'Last backup', 'NOT CONFIGURED'):
+                self.assertIn(expected, report.stdout)
+            self.assertNotIn('Password=', report.stdout)
+        stopped = cli('status', env=clean_env())
+        self.assertEqual(stopped.returncode, 1); self.assertIn('NOT ANSWERING', stopped.stdout)
 
         # The CA is name constrained: even with its key it cannot vouch for a foreign name.
         work = Path(tempfile.mkdtemp(prefix='costina-nc-'))
@@ -258,6 +285,7 @@ class Packaging(unittest.TestCase):
         newest = sorted((DATA / 'backups').glob('costina-*.backup'))[-1]
         manifest = json.loads(Path(str(newest) + '.json').read_text(encoding='utf8'))
         self.assertEqual((manifest['tenantId'], manifest['tables']['users']['rows'], manifest['tables']['pairings']['rows']), ('d5-tenant', 1, 1))
+        self.assertEqual((manifest['tables']['services']['rows'], manifest['tables']['occupancies']['rows'], manifest['tables']['configuration']['rows']), (1, 1, 12))   # D5.6: un servicio real viaja en la copia
         self.assertEqual(oct(newest.stat().st_mode & 0o777), '0o600')
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
 
