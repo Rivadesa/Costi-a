@@ -1,0 +1,2 @@
+# Los scripts de shell deben conservar LF tambien en clones de Windows con autocrlf: con CRLF no se ejecutan.
+*.sh text eol=lf

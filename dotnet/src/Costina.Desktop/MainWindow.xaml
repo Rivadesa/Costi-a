@@ -4,7 +4,7 @@
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.17.0-d5.4 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.18.0-d5.5 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
    <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>

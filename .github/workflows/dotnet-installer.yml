@@ -1,0 +1,43 @@
+name: Native Windows installer
+on:
+  pull_request:
+    paths: ['dotnet/**', 'deploy/windows/**', 'docs/native/D5.5-LEEME.txt', '.github/workflows/dotnet-installer.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@v4
+        with: {global-json-file: dotnet/global.json}
+      - name: Build package (engine, desktop, pinned PostgreSQL) and compile the installer
+        shell: pwsh
+        run: ./deploy/windows/package.ps1
+      - name: D5.5 real installer - install, uninstall keeping data, update with backup, client mode, new machine from backup
+        shell: pwsh
+        working-directory: dotnet
+        run: |
+          $setup = Get-ChildItem ../artifacts -Filter 'Costina-Setup-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Installer was not built' }
+          ./tests/service/installer_checks.ps1 -Setup $setup.FullName
+      - name: Upload exact executed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d5-installer-evidence
+          path: dotnet/artifacts/installer/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload the installer that was tested (unsigned trial build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: costina-windows-installer
+          path: |
+            artifacts/Costina-Setup-*.exe
+            artifacts/Costina-Setup-*.json
+          if-no-files-found: error
+          retention-days: 14

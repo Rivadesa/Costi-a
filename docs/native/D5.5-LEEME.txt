@@ -1,0 +1,42 @@
+COSTINA - Instalacion en Windows
+================================
+
+Este instalador es una build de ensayo SIN FIRMA de editor: Windows puede avisar al abrirlo.
+No instala Docker ni herramientas de desarrollo. No usar todavia con datos reales de clientes.
+
+MODOS
+  Completo ............ servidor del restaurante + aplicacion de puesto en este equipo.
+  Solo servidor ....... el motor (servicio de Windows) y su base de datos PostgreSQL.
+  Puesto adicional .... solo la aplicacion; se conecta por HTTPS al equipo servidor.
+
+DONDE QUEDA CADA COSA
+  Programa ............ C:\Program Files\Costina        (se sustituye al actualizar)
+  Datos ............... C:\ProgramData\Costina          (NUNCA se borran al desinstalar)
+     pg\       base de datos          config\   configuracion (solo administradores)
+     tls\      CA local y certificado backups\  copias de seguridad diarias
+     logs\     registro del motor
+
+EN EL SERVIDOR, AL TERMINAR
+  1. Se abre una ventana para crear el primer usuario administrador (contrasena de 12 o mas
+     caracteres, no se muestra al teclear). Si la cierras: consola de administrador y
+        "C:\Program Files\Costina\server\Costina.Server.exe" first-user
+  2. El motor arranca solo con el equipo, sin iniciar sesion. En este equipo la aplicacion usa
+        http://127.0.0.1:5088
+  3. Los demas equipos y tablets usan   https://NOMBRE-DE-ESTE-EQUIPO.local:5443
+     Antes deben confiar en la CA local: copia C:\ProgramData\Costina\tls\ca.crt en un USB y
+     compara SIEMPRE su huella SHA-256 con la del servidor: C:\ProgramData\Costina\tls\ca-fingerprint.txt
+  4. Copias: cada dia en backups\. Una copia en el mismo disco no sobrevive a perder el disco:
+     define un segundo destino (COSTINA_BACKUP_COPY en config\server.json) en otro disco o NAS.
+     Guarda tambien, una vez, una copia de la carpeta tls\ en lugar seguro.
+
+ACTUALIZAR
+  Ejecuta el instalador nuevo encima. Para los servicios, hace una COPIA DE SEGURIDAD, actualiza
+  el esquema de forma explicita y vuelve a arrancar. Un arranque normal nunca migra datos.
+
+CAMBIAR DE EQUIPO
+  En el equipo nuevo: instalador, modo servidor, MISMOS identificadores de negocio, y elegir el
+  fichero .backup (con su .json al lado). La restauracion se verifica tabla a tabla.
+
+DESINSTALAR
+  Retira programa y servicios. Los datos quedan en C:\ProgramData\Costina. Borrarlos es una
+  decision manual y aparte.
