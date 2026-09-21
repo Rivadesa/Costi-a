@@ -10,7 +10,7 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
 
 <template>
   <section data-testid="home">
-    <h2>{{ ROLES[session.role] ?? session.role }}<span v-if="session.station"> · estacion {{ session.station }}</span></h2>
+    <h2 data-testid="role">{{ ROLES[session.role] ?? session.role }}<span v-if="session.station"> · estacion {{ session.station }}</span></h2>
     <p class="identity"><span data-testid="actor">{{ session.actor }}</span> · servidor {{ session.serverVersion }} · {{ session.companyId }}/{{ session.locationId }}</p>
 
     <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->

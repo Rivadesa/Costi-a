@@ -59,8 +59,8 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
 
   const deviceId = await pairThroughTheUi(page, request, deviceName, 'service', 'sala-1')
   await expect(page.getByTestId('actor')).toHaveText(`device:${deviceName}`)
-  await expect(page.locator('h2')).toContainText('Sala')
-  await expect(page.locator('h2')).toContainText('sala-1')
+  await expect(page.getByTestId('role')).toContainText('Sala')
+  await expect(page.getByTestId('role')).toContainText('sala-1')
   expect(page.url()).not.toContain('pair=')                                         // el codigo usado no queda a la vista
 
   await page.reload()                                                               // la credencial vive en IndexedDB
@@ -96,8 +96,8 @@ test('a kitchen device shows its station and a denied request says so', async ({
   const leaks: string[] = [], violations: string[] = []
   watchResponses(page, leaks, violations)
   await pairThroughTheUi(page, request, `e2e-kds-${RUN}`, 'kitchen', 'cold')
-  await expect(page.locator('h2')).toContainText('Cocina')
-  await expect(page.locator('h2')).toContainText('cold')
+  await expect(page.getByTestId('role')).toContainText('Cocina')
+  await expect(page.getByTestId('role')).toContainText('cold')
   await page.getByRole('button', { name: 'Desvincular este dispositivo' }).click()
   await expect(page.getByTestId('pair')).toBeVisible()
 
