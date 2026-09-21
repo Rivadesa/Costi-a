@@ -1,7 +1,7 @@
 {
   "name": "costina-pwa",
   "private": true,
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "PWA operativa de Costina (comandero y KDS). Sin datos economicos por diseno (ADR-007).",
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@microsoft/signalr": "^10.0.11",
     "vue": "^3.5.43"
   },
   "devDependencies": {

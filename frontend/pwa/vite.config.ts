@@ -7,6 +7,6 @@ export default defineConfig({
   base: '/app/',
   plugins: [vue()],
   build: { outDir: 'dist', emptyOutDir: true, sourcemap: false, target: 'es2022' },
-  server: { proxy: { '/api': 'http://127.0.0.1:5088', '/health': 'http://127.0.0.1:5088' } },
+  server: { proxy: { '/api': { target: 'http://127.0.0.1:5088', ws: true }, '/health': 'http://127.0.0.1:5088' } },
   test: { environment: 'node', include: ['tests/**/*.test.ts'] },
 })
