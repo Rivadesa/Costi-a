@@ -6,6 +6,7 @@
 ; Modos:  Completo (servidor + puesto)  |  Solo servidor  |  Puesto adicional (aplicacion + CA del servidor)
 ; Silencioso: Costina-Setup.exe /S /MODE=full|server|client [/TENANT=.. /COMPANY=.. /LOCATION=..] [/CA=ruta\ca.crt]
 ;             [/RESTORE=ruta\costina-....backup]  (equipo nuevo a partir de una copia; mismo ambito que el original)
+;             [/DEMO=1]  (instalacion nueva con datos FICTICIOS de demostracion; queda marcada como demo)
 Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
@@ -32,6 +33,8 @@ Var Location
 Var CaFile
 Var RestoreFile
 Var FieldRestore
+Var Demo
+Var FieldDemo
 Var Mode
 Var ExistingData
 Var FieldTenant
@@ -73,6 +76,9 @@ Section "Motor del restaurante (servicio de Windows + PostgreSQL)" SecServer
   System::Call 'Kernel32::SetEnvironmentVariable(t "COSTINA_LOCATION", t "$Location")'
   ${If} $RestoreFile != ""
     System::Call 'Kernel32::SetEnvironmentVariable(t "COSTINA_RESTORE_FILE", t "$RestoreFile")'
+  ${EndIf}
+  ${If} $Demo == "1"
+    System::Call 'Kernel32::SetEnvironmentVariable(t "COSTINA_DEMO", t "true")'
   ${EndIf}
   DetailPrint "Configurando el servidor (base de datos, certificado, servicio). Puede tardar un minuto..."
   nsExec::ExecToLog '"$INSTDIR\server\Costina.Server.exe" setup-server'
@@ -140,6 +146,7 @@ Function .onInit
   StrCpy $Location "local-1"
   StrCpy $CaFile ""
   StrCpy $RestoreFile ""
+  StrCpy $Demo "0"
   StrCpy $ExistingData "0"
   SetShellVarContext all   ; $APPDATA = C:\ProgramData
   ${If} ${FileExists} "$APPDATA\Costina\config\server.json"
@@ -171,6 +178,11 @@ Function .onInit
   ${GetOptions} $R0 "/LOCATION=" $R1
   ${IfNot} ${Errors}
     StrCpy $Location $R1
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $R0 "/DEMO=" $R1
+  ${IfNot} ${Errors}
+    StrCpy $Demo $R1
   ${EndIf}
   ClearErrors
   ${GetOptions} $R0 "/RESTORE=" $R1
@@ -213,6 +225,8 @@ Function ScopePage
   Pop $0
   ${NSD_CreateFileRequest} 0 111u 100% 12u "$RestoreFile"
   Pop $FieldRestore
+  ${NSD_CreateCheckbox} 0 128u 100% 12u "Cargar datos FICTICIOS de demostracion (mesas, menu y productos de ensayo)"
+  Pop $FieldDemo
   nsDialogs::Show
 FunctionEnd
 
@@ -221,6 +235,12 @@ Function ScopePageLeave
   ${NSD_GetText} $FieldCompany $Company
   ${NSD_GetText} $FieldLocation $Location
   ${NSD_GetText} $FieldRestore $RestoreFile
+  ${NSD_GetState} $FieldDemo $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $Demo "1"
+  ${Else}
+    StrCpy $Demo "0"
+  ${EndIf}
   ${If} $Tenant == ""
   ${OrIf} $Company == ""
   ${OrIf} $Location == ""

@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-09-18. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-09-21. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -55,7 +55,9 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, insta
 
 - D5.5 (issue #27, corte 5): instalador NSIS de Windows (completo / solo servidor / puesto adicional) con PostgreSQL 17.11 empaquetado como servicio propio en loopback, `setup-server`/`stop-services`/`remove-server`/`first-user` en el motor, actualización con copia previa y `upgrade` explícito, equipo nuevo desde una copia (`/RESTORE=`), CA del servidor para puestos adicionales solo si lleva restricciones de nombre, y datos siempre fuera del programa. CI instala el paquete real en los tres modos. Build sin firma (#12). Ver `docs/native/D5.5-installer.md` y el CI de su PR.
 
-Hito 3 (#26): completo en código con D4.3b (PR #43); **su cierre espera el guion manual del promotor**. Hito 4 (#27) troceado en D5.1 base → D5.2 servicio de Windows → D5.3 HTTPS en LAN (CA local) → D5.4 backup/restauración → D5.5 instalador → D5.6 guion físico.
+- D5.6 (issue #27, corte 6 y último): guion de instalación limpia en Windows físico con tabla de resultados por criterio (`docs/native/D5.6-physical-install.md`), comando `status` de solo lectura para evidencia y soporte, y datos **ficticios de demostración** explícitos (`load-demo`, `/DEMO=1`) que dejan la instalación marcada como demo en `/health`, `/session` y el cliente. Ver el CI de su PR.
+
+Hito 3 (#26): completo en código con D4.3b (PR #43); **su cierre espera el guion manual del promotor**. Hito 4 (#27): **completo en código** con D5.1–D5.6 (PR #44–#48 y la de D5.6); **su cierre espera el guion físico de D5.6 ejecutado por el promotor** y la firma queda en #12. Siguiente hito: #28 (PWA comandero/KDS).
 
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) queda **cerrada como superada**: nunca se integró y su base no incluía D2–D4. Lo aprovechable (roles separados, PostgreSQL 17.11 fijado con hash, NSIS, datos fuera del programa) se rehace sobre `develop` en D5.1–D5.5 bajo ADR-011.
 

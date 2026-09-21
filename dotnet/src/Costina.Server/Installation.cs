@@ -41,7 +41,10 @@ public sealed class ServerSettings
     private void Load(string path)
     {
         if(!File.Exists(path)) return;
-        using var document=JsonDocument.Parse(File.ReadAllText(path));
+        string text;
+        try { text=File.ReadAllText(path); }
+        catch(UnauthorizedAccessException) { throw new InvalidOperationException($"{path} is not readable by this user: run this command from an elevated (administrator) console."); }
+        using var document=JsonDocument.Parse(text);
         foreach(var property in document.RootElement.EnumerateObject())
             if(property.Name.StartsWith("COSTINA_",StringComparison.Ordinal) && property.Value.ValueKind==JsonValueKind.String)
                 file[property.Name]=property.Value.GetString()!;

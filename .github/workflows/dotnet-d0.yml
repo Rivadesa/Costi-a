@@ -45,6 +45,7 @@ jobs:
       - name: Publish executed results and SDK evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: d0-acceptance-${{ matrix.os }}
           path: dotnet/artifacts/d0/

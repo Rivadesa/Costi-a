@@ -6,7 +6,7 @@ namespace Costina.Server;
 // Uses the existing middleware and endpoint access metadata, without changing authentication.
 public static class DesktopReadRoutes
 {
-    public static void MapDesktopReadRoutes(this WebApplication app,NpgsqlDataSource source,BusinessScope scope,Guid installation,string serverVersion)
+    public static void MapDesktopReadRoutes(this WebApplication app,NpgsqlDataSource source,BusinessScope scope,Guid installation,string serverVersion,Func<bool> demo)
     {
         var reads=new DesktopReadRepository(source);
         const string prefix="/api/native/v1";
@@ -17,6 +17,8 @@ public static class DesktopReadRoutes
                 // Identidad estable de la instalacion y version del motor: el cliente aisla por ellas su
                 // orden durable y muestra con que servidor habla. No es autorizacion.
                 installationId=installation.ToString("D"),serverVersion,
+                // D5.6: instalacion con datos ficticios de demostracion; el cliente lo muestra siempre.
+                demo=demo(),
                 // actor: usuario real con sesion (user:nombre) o rol de laboratorio (lab-rol). Auditable en tests.
                 actor=(string)c.Items["actor"]!,
                 // station: solo dispositivos emparejados (D4.2); su aplicacion en permisos llega en D4.3.

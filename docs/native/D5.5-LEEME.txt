@@ -29,6 +29,15 @@ EN EL SERVIDOR, AL TERMINAR
      define un segundo destino (COSTINA_BACKUP_COPY en config\server.json) en otro disco o NAS.
      Guarda tambien, una vez, una copia de la carpeta tls\ en lugar seguro.
 
+COMPROBAR LA INSTALACION (consola de administrador)
+        "C:\Program Files\Costina\server\Costina.Server.exe" status
+  Muestra version, servicios, salud del motor, certificado y huella de la CA, y la ultima copia.
+
+DATOS DE DEMOSTRACION
+  Una instalacion nace SIN mesas ni menus. La casilla "datos ficticios de demostracion" (o /DEMO=1)
+  carga mesas, un menu y productos de ensayo y deja la instalacion MARCADA como demostracion.
+  Una instalacion de demostracion no se reutiliza con datos reales.
+
 ACTUALIZAR
   Ejecuta el instalador nuevo encima. Para los servicios, hace una COPIA DE SEGURIDAD, actualiza
   el esquema de forma explicita y vuelve a arrancar. Un arranque normal nunca migra datos.
