@@ -1,5 +1,7 @@
 # Traspaso de sesión — 18-09-2026 — Hito 4 (#27) en curso
 
+> **Sustituido como punto de entrada por `2026-09-21-hito5-en-curso.md`.** Se conserva como registro de aquella sesión.
+
 > **Actualización 21-09-2026.** La PR #48 (D5.5) quedó en verde tras el único arreglo descrito abajo — instalador real 7/7 en CI — y está **mezclada** (`develop` = `8e8ef35`). El corte siguiente, **D5.6** (`docs/native/D5.6-physical-install.md`: guion físico, `status`, datos demo explícitos), cierra el Hito 4 en código. A partir de ahí el estado vivo está en `docs/STATUS.md`; este documento se conserva como registro de la sesión del día 18 y por sus secciones de reglas, invariantes, trampas y herramientas, que siguen vigentes. Siguiente hito: #28 (PWA).
 
 Documento para **retomar el trabajo en otro equipo o en otra sesión de agente**. Todo lo necesario está en el repositorio: este documento, `tools/agent/` y la documentación de cada corte. Lo único que no viaja (a propósito) es el laboratorio local `.lab/` con sus secretos y los permisos por máquina de la herramienta.

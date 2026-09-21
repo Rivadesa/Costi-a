@@ -14,7 +14,7 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
     <p class="identity"><span data-testid="actor">{{ session.actor }}</span> · servidor {{ session.serverVersion }} · {{ session.companyId }}/{{ session.locationId }}</p>
 
     <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
-    <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" @unauthorized="$emit('refresh')" />
+    <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
     <p v-else data-testid="kitchen-placeholder">Dispositivo de cocina emparejado. La pantalla de cocina por estacion llega en el corte D6.4.</p>
 
     <footer>

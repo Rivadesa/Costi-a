@@ -136,7 +136,9 @@ public static class LocalOperations
         account.Entity.AddCharge(chargeId,product.Name+" · "+product.Presentation,request.Quantity,product.PriceCents,
             new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow));
         await unit.Save(account.Entity,account.Version);
-        return new { version=dining.Version,chargeId,productId=product.Id,quantity=request.Quantity };
+        // D6.3: la referencia viaja como consumptionId. La ruta de sala no lleva vocabulario de caja (ADR-007): la guarda
+        // de la PWA rechaza entera cualquier respuesta con una clave economica, y "charge" lo es.
+        return new { version=dining.Version,consumptionId=chargeId,productId=product.Id,quantity=request.Quantity };
     }
     public static async Task<object> Release(Unit unit,ExecutionIdentity identity,string id,ReleaseCommand request)
     {
