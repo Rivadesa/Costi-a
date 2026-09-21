@@ -45,6 +45,15 @@ const storedOrder = (page: Page) => page.evaluate(() => new Promise<string | nul
   open.onsuccess = () => { const get = open.result.transaction('pending').objectStore('pending').get('uncertain'); get.onsuccess = () => { open.result.close(); resolve(get.result ? String(get.result.description) : null) } }
   open.onerror = () => resolve('error')
 }))
+// RESPUESTA PERDIDA de verdad: el servidor aplica la orden y la respuesta nunca llega. `lost` se resuelve cuando eso YA ocurrio:
+// la orden pendiente se ve ANTES del primer intento (por diseno), asi que sin esperar a `lost` el test podia retirar la ruta
+// con el manejador aun en route.fetch(), y Playwright daba la ruta por gestionada ("Route is already handled").
+async function loseResponses(page: Page, pattern: string): Promise<{ lost: Promise<void> }> {
+  let first: () => void = () => undefined
+  const lost = new Promise<void>(resolve => { first = resolve })
+  await page.route(pattern, async route => { try { await route.fetch(); await route.abort('connectionreset') } finally { first() } })
+  return { lost }
+}
 // Cuantas veces quedo AUDITADA una accion sobre este servicio: la prueba de "un solo efecto".
 const audited = async (request: APIRequestContext, serviceId: string) => (await read(request, serviceId)).version
 
@@ -93,8 +102,9 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await page.locator('[data-testid=actions] details', { hasText: 'Motivo' }).locator('summary').click()
   await page.fill('input[name=reason]', 'los comensales salen un momento')
   const before = await audited(request, serviceId)
-  await page.route('**/commands/pause', async route => { await route.fetch(); await route.abort('connectionreset') })
+  const pauseLost = await loseResponses(page, '**/commands/pause')
   await page.getByTestId('do-pause').click()
+  await pauseLost.lost
   const pending = page.getByTestId('pending')
   await expect(pending).toBeVisible({ timeout: 15_000 })
   await expect(pending).toContainText('ORDEN SIN CONFIRMAR')
@@ -103,7 +113,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   // Nada nuevo mientras tanto. El aviso de tiempo real puede releer y CAMBIAR los botones a mitad: se afirma que ninguno esta habilitado, no uno a uno.
   await expect(page.locator('[data-testid=actions] button:not([disabled])')).toHaveCount(0)
   expect(await storedOrder(page)).toBe('Pausar servicio · M7')                              // persistida en el dispositivo
-  await page.unroute('**/commands/pause')
+  await page.unrouteAll({ behavior: 'wait' })
 
   // 4) Cerrar y reabrir el navegador (recarga): la orden sigue ahi, inequivoca, y se resuelve con la MISMA clave.
   await page.reload()
@@ -116,12 +126,13 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   // 5) Otra respuesta perdida, resuelta PREGUNTANDO al servidor en vez de reintentar.
   await page.getByTestId('table-M7').click()
   const beforeResume = await audited(request, serviceId)
-  await page.route('**/commands/resume', async route => { await route.fetch(); await route.abort('connectionreset') })
+  const resumeLost = await loseResponses(page, '**/commands/resume')
   await page.getByTestId('do-resume').click()
+  await resumeLost.lost
   await expect(page.getByTestId('pending')).toBeVisible({ timeout: 15_000 })
   await page.getByTestId('reconcile').click()                                               // la ruta sigue cortada: solo la consulta por clave llega
   await expect(page.getByTestId('command-notice')).toContainText('SI se aplico', { timeout: 15_000 })
-  await page.unroute('**/commands/resume')
+  await page.unrouteAll({ behavior: 'wait' })
   await expect(page.getByTestId('pending')).toHaveCount(0)
   expect(await audited(request, serviceId)).toBe(beforeResume + 1)
 
