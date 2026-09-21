@@ -69,6 +69,19 @@ describe('live board (D2 contract: the channel only notifies)', () => {
     release(); await flush()
     expect(loads).toBe(base + 2)
   })
+  it('a refresh requested while a read is in flight resolves only AFTER the re-read (a confirmed command never re-enables stale buttons)', async () => {
+    const state = newState(), hub = new FakeHub(), { timers } = manualTimers(); let loads = 0; let release: () => void = () => undefined
+    const live = new LiveBoard(state, { load: () => { loads++; return new Promise(resolve => { release = () => resolve([entry()]) }) }, connect: () => hub, onUnauthorized: () => undefined, timers })
+    const starting = live.start(); await flush(); release(); await starting; await flush(); release(); await flush()
+    const base = loads
+    hub.handlers.event(); await flush()            // lectura en vuelo (pudo empezar ANTES de aplicarse la orden)
+    let settled = false
+    const waiting = live.refresh().then(() => { settled = true })
+    release(); await flush()
+    expect(settled).toBe(false); expect(loads).toBe(base + 2)   // la primera termino, pero falta la relectura pedida
+    release(); await waiting
+    expect(settled).toBe(true)
+  })
   it('degrades to polling when the channel cannot start or closes, says so, and retries the channel', async () => {
     const state = newState(), first = new FakeHub(), second = new FakeHub(), { timers, pending } = manualTimers(); first.failStart = true
     const hubs = [first, second]

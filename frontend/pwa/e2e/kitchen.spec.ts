@@ -82,7 +82,10 @@ test('a station marks only its own work, the pass reviews and validates, and eve
 
   // 2) Marca SU elaboracion: empezar -> lista. El servidor lo refleja.
   await coldPage.getByTestId(id('preparation-start', cold.id)).click()
-  await expect(coldPage.getByTestId(id('preparation-ready', cold.id))).toBeVisible({ timeout: 15_000 })
+  // El motor anuncia "empezar" y "marcar lista" A LA VEZ en una elaboracion enviada: la senal de que la primera orden
+  // se aplico y se releyo es el ESTADO escrito, no que el segundo boton exista (ya existia).
+  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· En preparacion', { timeout: 15_000 })
+  await expect(coldPage.getByTestId(id('preparation-start', cold.id))).toHaveCount(0)
   await coldPage.getByTestId(id('preparation-ready', cold.id)).click()
   // La senal es el ESTADO escrito y que el servidor ya no anuncie la accion (no el texto del boton).
   await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· Lista', { timeout: 15_000 })

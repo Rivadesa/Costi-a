@@ -31,13 +31,17 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     },
   })
 
-  const locked = computed(() => runnerState.busy || runnerState.pending !== null || runnerState.blocked !== null)
+  // `settling`: desde que se pulsa hasta que termina la RELECTURA posterior. Sin el, al confirmarse una orden los botones
+  // volvian a habilitarse con la version anterior y un segundo toque rapido daba un falso version_conflict.
+  const settling = ref(0)
+  const locked = computed(() => settling.value > 0 || runnerState.busy || runnerState.pending !== null || runnerState.blocked !== null)
   const now = ref(Date.now())
   let clock: number | undefined
   const age = computed(() => state.readAt ? Math.max(0, Math.round((now.value - state.readAt.getTime()) / 1000)) : null)
   const stale = computed(() => age.value === null || age.value > 45)
 
   async function resolve(work: Promise<Outcome | null>): Promise<void> {
+    settling.value++
     try {
       const outcome = await work
       if (!outcome) return
@@ -48,7 +52,7 @@ export function useOperations(props: { token: string; session: Session }, onUnau
       // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.
       if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SI se aplico. ${error.message}`; await live.refresh() }
       else if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
-    }
+    } finally { settling.value-- }
   }
   const run = (path: string, body: Record<string, unknown>, description: string) => resolve(runner.send(path, body, description))
   const retry = () => resolve(runner.retry())

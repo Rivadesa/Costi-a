@@ -33,7 +33,7 @@ export interface LiveDeps {
 
 export class LiveBoard {
   private hub: HubLike | null = null
-  private loading = false
+  private current: Promise<void> | null = null
   private queued = false
   private stopped = false
   private pollTimer: unknown
@@ -59,25 +59,29 @@ export class LiveBoard {
   }
 
   // Coalescencia: los avisos que llegan durante una lectura no lanzan otra en paralelo; se relee una vez al terminar.
-  async refresh(): Promise<void> {
-    if (this.stopped) return
-    if (this.loading) { this.queued = true; return }
-    this.loading = true
-    try {
-      do {
-        this.queued = false
-        try {
-          this.state.entries = await this.deps.load()
-          this.state.readAt = new Date(); this.lastRead = Date.now(); this.state.error = ''
-          this.deps.onRead?.()
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 401) { this.deps.onUnauthorized(); return }
-          this.state.error = error instanceof NetworkError ? 'Servidor sin respuesta: los datos en pantalla pueden estar desactualizados.'
-            : error instanceof MoneyLeakError ? error.message
-            : 'No se pudo leer el estado del servidor.'
-        }
-      } while (this.queued && !this.stopped)
-    } finally { this.loading = false }
+  // Quien espera a refresh() espera tambien a esa relectura encolada: al resolverse, lo leido es POSTERIOR a la peticion
+  // (una orden recien confirmada no rehabilita botones con la version anterior).
+  refresh(): Promise<void> {
+    if (this.stopped) return Promise.resolve()
+    if (this.current) { this.queued = true; return this.current }
+    this.current = this.drain().finally(() => { this.current = null })
+    return this.current
+  }
+
+  private async drain(): Promise<void> {
+    do {
+      this.queued = false
+      try {
+        this.state.entries = await this.deps.load()
+        this.state.readAt = new Date(); this.lastRead = Date.now(); this.state.error = ''
+        this.deps.onRead?.()
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) { this.deps.onUnauthorized(); return }
+        this.state.error = error instanceof NetworkError ? 'Servidor sin respuesta: los datos en pantalla pueden estar desactualizados.'
+          : error instanceof MoneyLeakError ? error.message
+          : 'No se pudo leer el estado del servidor.'
+      }
+    } while (this.queued && !this.stopped)
   }
 
   private async tick(): Promise<void> {
