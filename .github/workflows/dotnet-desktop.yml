@@ -44,24 +44,28 @@ jobs:
           git -C .. archive -o artifacts/source.zip HEAD
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: costina-windows-desktop
           path: artifacts/desktop/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       - uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: costina-windows-server
           path: artifacts/server/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       - uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: costina-complete-source
           path: artifacts/source.zip
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         if: always()
         with:
           name: costina-desktop-evidence

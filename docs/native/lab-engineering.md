@@ -8,7 +8,7 @@ Todo vive en una única carpeta (recomendado: `.lab/` dentro del clon, añadida 
 
 1. **PostgreSQL 17.11 portable** (EDB, versión exacta fijada — la misma que D1.3):
    `https://get.enterprisedb.com/postgresql/postgresql-17.11-3-windows-x64-binaries.zip` → descomprimir; queda `pgsql/`.
-2. **Binarios del último run verde de CI** del workflow "Native WPF desktop acceptance" sobre `develop`: artefactos `costina-windows-server` → `server/` y `costina-windows-desktop` → `client/` (hasta D3.3 se llamaban `costina-d1.2-*`). Anotar el run y commit exactos usados (el manifiesto `build-manifest.json` de cada artefacto lleva versión, commit y hashes).
+2. **Binarios del último run verde de CI** del workflow "Native WPF desktop acceptance" sobre `develop`: artefactos `costina-windows-server` → `server/` y `costina-windows-desktop` → `client/` (hasta D3.3 se llamaban `costina-d1.2-*`). Anotar el run y commit exactos usados (el manifiesto `build-manifest.json` de cada artefacto lleva versión, commit y hashes). **Los binarios se conservan solo 3 días (el instalador, 5)**: la cuota de artefactos de GitHub se agotó el 21-09-2026 con retenciones de 14 días. Si ya caducaron, relanzar el workflow a mano (`workflow_dispatch`) sobre la rama deseada.
 
 ## Montaje (una vez)
 

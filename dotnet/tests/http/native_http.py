@@ -198,13 +198,13 @@ class NativeHttp(unittest.TestCase):
             stop_server(); start_server()
 
     def test_08_initialization_does_not_overwrite_catalog_or_services(self):
-        sql("UPDATE native_d1.configuration SET payload=jsonb_set(payload,'{priceCents}','575') WHERE kind='product' AND id='water'")
+        sql("UPDATE native_d1.configuration SET payload=jsonb_set(payload,'{priceCents}','575') WHERE tenant='d1-tenant' AND kind='product' AND id='water'")
         before=sql('SELECT count(*) FROM native_d1.services')
         stop_server()
         subprocess.run(['dotnet',str(SERVER),'init-lab'],env=ENV,check=True)
         start_server()
         self.assertEqual(sql('SELECT count(*) FROM native_d1.services'),before)
-        self.assertEqual(sql("SELECT payload->>'priceCents' FROM native_d1.configuration WHERE kind='product' AND id='water'"),'575')
+        self.assertEqual(sql("SELECT payload->>'priceCents' FROM native_d1.configuration WHERE tenant='d1-tenant' AND kind='product' AND id='water'"),'575')
 
     def test_09_request_validation_and_price_tampering(self):
         self.assertEqual(request('/services',{'tableId':'M7','pax':-1,'menuId':'LAB-TASTING'})[0],422)

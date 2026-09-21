@@ -27,6 +27,7 @@ jobs:
       - name: Upload exact executed evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: d5-installer-evidence
           path: dotnet/artifacts/installer/
@@ -34,10 +35,11 @@ jobs:
           retention-days: 14
       - name: Upload the installer that was tested (unsigned trial build)
         uses: actions/upload-artifact@v4
+        continue-on-error: true   # la cuota de artefactos no decide si el corte pasa: deciden los tests
         with:
           name: costina-windows-installer
           path: |
             artifacts/Costina-Setup-*.exe
             artifacts/Costina-Setup-*.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 5
