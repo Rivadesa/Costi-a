@@ -1,5 +1,7 @@
 # Traspaso de sesión — 21-09-2026 (noche) — Hito 5 completo en código, D6.6 y pruebas .NET en local
 
+> **El punto de entrada es ahora `2026-09-21d-merges-ci-y-siguientes-cortes.md`** (las PR #54 y #55 ya están mezcladas). Este documento sigue siendo de lectura obligatoria por "Preparar un equipo nuevo", "Lo aprendido hoy" y las REGLAS, INVARIANTES y TRAMPAS de su prompt, todas vigentes.
+
 Documento para **retomar el trabajo en otra sesión o en otro equipo**. Todo lo necesario está en el repositorio. Sustituye como punto de entrada a `2026-09-21b-hito5-completo-en-codigo.md` (que se conserva como registro, junto con los anteriores). No viajan, a propósito: el laboratorio `.lab/`, el clúster de pruebas `.lab-test/`, los permisos por máquina de la herramienta y el simulador de API de las verificaciones visuales (abajo se explica cómo rehacer cada cosa).
 
 ## Estado verificable
