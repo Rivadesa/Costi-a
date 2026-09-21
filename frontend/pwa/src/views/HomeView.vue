@@ -2,6 +2,7 @@
 import type { Session } from '../api'
 import type { Credential } from '../credentials'
 import BoardView from './BoardView.vue'
+import KitchenView from './KitchenView.vue'
 
 defineProps<{ session: Session; credential: Credential }>()
 defineEmits<{ unpair: []; refresh: [] }>()
@@ -15,7 +16,8 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
 
     <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
     <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
-    <p v-else data-testid="kitchen-placeholder">Dispositivo de cocina emparejado. La pantalla de cocina por estacion llega en el corte D6.4.</p>
+    <!-- Cocina ve SU pantalla por estacion (D6.4): misma lectura en vivo y misma orden incierta, sin importes. -->
+    <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
 
     <footer>
       <button type="button" class="secondary" @click="$emit('unpair')">Desvincular este dispositivo</button>
