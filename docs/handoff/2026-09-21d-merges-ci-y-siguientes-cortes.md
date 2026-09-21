@@ -1,28 +1,29 @@
-# Traspaso de sesión — 21-09-2026 (cierre) — #54 y #55 mezcladas, corte de CI en PR y tres decisiones pendientes
+# Traspaso de sesión — 21-09-2026 (cierre) — #54, #55 y #56 mezcladas; decisiones pendientes para los dos cortes siguientes
 
 Documento para **retomar el trabajo en otra sesión o en otro equipo**. Sustituye como punto de entrada a `2026-09-21c-d66-y-pruebas-locales.md`, que **sigue siendo de lectura obligatoria**: contiene "Preparar un equipo nuevo", lo aprendido de los E2E y, en su prompt, las REGLAS, los INVARIANTES, la VERIFICACIÓN VISUAL y las TRAMPAS, todas vigentes. Aquí solo va lo que cambió después.
 
 ## Estado verificable
 
-`develop` = `e6e3919`. `main` no se toca. El repositorio es **público** desde el 21-09 y **GitHub Actions corre** (gratis).
+`develop` = `9de6f1b`. `main` no se toca. **No hay PR abiertas.** El repositorio es **público** desde el 21-09 y **GitHub Actions corre** (gratis).
 
 | PR | Merge | Evidencia |
 | --- | --- | --- |
 | **#54 — D6.5** | `d9bac1c` | Los 4 runs de `cc21e1e` eran restos del bloqueo (0 pasos); relanzados, verdes y **leídos**: 55 vitest, dominio 68, ClientChecks 65, 10 suites HTTP + `pwa_http` con Playwright 5/5 (`commands.spec.ts` a la primera, sin `Route is already handled`), Realtime 10, servicio 11/11, instalador 7/7. Árbol del merge idéntico a `cc21e1e`. |
 | **#55 — D6.6** | `e6e3919` | Runs de `6b6d5b8` verdes y **leídos**: 60 vitest, dominio 68, ClientChecks 70, `station_http` 7 tests (incluye `test_06`), Playwright 5/5, Realtime 10, servicio 11/11, instalador 7/7 (`Costina-Setup-0.25.0-d6.6.exe`). Tras mezclar la #54 quedó con solo su diff (23 ficheros). Árbol del merge idéntico a `6b6d5b8`. D0 en `develop`: verde. |
+| **#56 — coste de CI** | `9de6f1b` | Runs de `acaa9ec` verdes y **leídos** (arrancaron los cuatro workflows: los YAML nuevos son válidos): 60 vitest, dominio 68 en ambos sistemas, ClientChecks 70, checks del WPF, 11 suites HTTP, Playwright 5/5, Realtime 10, servicio 11/11, instalador 7/7. Árbol del merge idéntico a `acaa9ec`. **Comprobado tras mezclar: en `develop` arrancan D0 (verde) y *Native Windows installer*; D1 y desktop no.** El run del instalador sobre `9de6f1b` seguía en curso al cerrar la sesión: leer su log (es el instalador de los guiones físicos). |
 
 Hitos 3 (#26), 4 (#27) y 5 (#28): completos en código; **issues ABIERTAS** hasta los guiones del promotor (D4.3b, D5.6, D6.5). Issue #25: **no tocar sin preguntar**.
 
-### PR abierta: #56 — coste de CI y pruebas locales (`chore/ci-lean`, desde `develop`)
+### Qué trajo la #56 — coste de CI y pruebas locales
 
-Sin cambio de producto ni de versión (los binarios son los de `0.25.0-d6.6`). Mensaje de merge: `Merge PR #56: CI mas barato y pruebas locales con el Python de Store`.
+Sin cambio de producto ni de versión (los binarios son los de `0.25.0-d6.6`).
 
 - Los cuatro workflows nativos cancelan el run anterior **de la misma PR** (`concurrency`; los runs de `develop` y los manuales nunca se cancelan) e ignoran cambios solo de Markdown (antes, `dotnet/AGENTS.md` lo relanzaba todo).
 - *Native Windows installer* deja de correr en cada push de PR: en una PR solo si cambia `deploy/windows/**`, `dotnet/tests/service/**` o los ficheros de ciclo de vida del motor que invoca (`ServerSetup`, `ServiceInstaller`, `Installation`, `LocalTls`, `Backup`, `StatusReport`); **siempre al mezclar en `develop`** (ese es el instalador de los guiones físicos: ya no hace falta relanzarlo a mano, salvo que se quiera otro) y a petición.
 - D1 y desktop siguen corriendo solo en PR. Regla nueva (en `dotnet/AGENTS.md`): **antes de empujar un merge a `develop`, `git diff --stat HEAD origin/<rama>` debe salir vacío** (árbol mezclado = punta verificada en CI); si no, se actualiza la PR y se relanza primero.
 - `tools/agent/local-tests.sh` busca el SDK en `COSTINA_DOTNET`, `%LOCALAPPDATA%\Microsoft\dotnet` y `%USERPROFILE%\.dotnet-sdk`, avisa si Python no ve el SDK, mete la ruta en `PATH` en forma POSIX y muestra también el resultado de `security_http`.
 
-**Qué leer en el CI de la #56**: es el primer push con los YAML nuevos (no se validaron en local: no hay parser YAML y no se descargó uno). Deben arrancar los **cuatro** workflows (la PR toca los cuatro `.yml`, y cada uno se incluye a sí mismo en `paths`), sin errores de sintaxis de workflow, y pasar como la #55. Tras mezclar: comprobar que en `develop` arrancan D0 **y el instalador**, y que D1/desktop no.
+Consecuencia práctica: una PR solo de Markdown (como la que actualizó este documento) **no dispara ningún workflow**; se mezcla con la confirmación del promotor y la comprobación del árbol.
 
 ## Lo aprendido hoy (no repetir)
 
@@ -36,7 +37,7 @@ Sin cambio de producto ni de versión (los binarios son los de `0.25.0-d6.6`). M
 
 ## Siguiente trabajo — propuesto y A LA ESPERA de decisiones del promotor
 
-Orden acordado: CI (#56) → Release → generación de recuperación. **No codificar los dos últimos sin su respuesta.**
+Orden acordado: CI (#56, **hecho**) → Release → generación de recuperación. **No codificar los dos últimos sin su respuesta.**
 
 **A. Instalador como Release de GitHub.** Job en *Native Windows installer* que publica una Release **prerelease**, tag `vX.Y.Z-dN.M`, con el `.exe`, su `.sha256` y el manifiesto; `contents: write` solo en ese job; el cuerpo declara "sin firma (#12)". Decisiones: (1) solo a mano por `workflow_dispatch` con un input `publish` [recomendado] o en cada merge a `develop`; (2) con el repo público el `.exe` sin firma sería de **descarga pública** y el repo **no tiene `LICENSE`**: ¿vale así o se decide antes la licencia?
 
@@ -46,26 +47,25 @@ Orden acordado: CI (#56) → Release → generación de recuperación. **No codi
 
 ## Pendiente del promotor
 
-- Confirmar el merge de la **#56** cuando su CI esté verde y leído.
 - Responder a las decisiones A(1), A(2) y B.
 - En *Settings → Actions → General*: **"Require approval for all outside collaborators"** (repo público), si aún no está.
 - En cada equipo: `<clon>/.claude/settings.local.json` y `.claude/launch.json` (ver `2026-09-21c`, requisitos previos). En el equipo del 21-09 faltaban ambos.
-- Guiones: **D4.3b** → #26 · **D5.6** → #27 · **D6.5** → #28. El instalador a usar es el del run de *Native Windows installer* sobre `develop` tras mezclar la #56 (o uno lanzado a mano).
+- Guiones: **D4.3b** → #26 · **D5.6** → #27 · **D6.5** → #28. El instalador a usar es el del último run de *Native Windows installer* sobre `develop` (o uno lanzado a mano); el artefacto caduca a los 5 días.
 
 ## Prompt para la siguiente sesión
 
 ```
 Continúas el proyecto Costi-a / Hospitality OS (repo público Rivadesa/Costi-a; rama de integración develop; main no se toca). Trabajas en un equipo Windows que puede ser nuevo: si no hay clon, git clone https://github.com/Rivadesa/Costi-a.git. No hay gh CLI (usa tools/agent/gh.sh).
 
-ANTES DE NADA: git fetch; git checkout chore/ci-lean (si ya no existe porque se mezcló la PR #56, usa develop); y lee ENTEROS, en este orden: docs/handoff/2026-09-21d-merges-ci-y-siguientes-cortes.md (estado, lo aprendido y las decisiones que te debo) y docs/handoff/2026-09-21c-d66-y-pruebas-locales.md (preparar un equipo nuevo y, en su prompt, las REGLAS, los INVARIANTES, la VERIFICACIÓN VISUAL y las TRAMPAS: siguen TODAS vigentes; síguelas como si te las hubiera escrito yo aquí). Después AGENTS.md, dotnet/AGENTS.md, docs/STATUS.md y los docs/native/ D6.3 a D6.6 (y D5.4, D5.5 y ADR-011 antes de tocar copias, restauración o el instalador).
+ANTES DE NADA: git fetch; git checkout develop; git pull --ff-only; y lee ENTEROS, en este orden: docs/handoff/2026-09-21d-merges-ci-y-siguientes-cortes.md (estado, lo aprendido y las decisiones que te debo) y docs/handoff/2026-09-21c-d66-y-pruebas-locales.md (preparar un equipo nuevo y, en su prompt, las REGLAS, los INVARIANTES, la VERIFICACIÓN VISUAL y las TRAMPAS: siguen TODAS vigentes; síguelas como si te las hubiera escrito yo aquí). Después AGENTS.md, dotnet/AGENTS.md, docs/STATUS.md y los docs/native/ D6.3 a D6.6 (y D5.4, D5.5 y ADR-011 antes de tocar copias, restauración o el instalador).
 
 PREPARA EL EQUIPO si hace falta con la sección "Preparar un equipo nuevo" de 21c. Primero COMPRUEBA lo que depende de mí y dime qué falta, sin suplirlo: Git for Windows con Credential Manager y sesión de GitHub con escritura (`sh tools/agent/gh.sh GET /pulls/56`), identidad de git, Python 3, Node 22+, .claude/settings.local.json (con "Bash(git -C * merge *)", "Bash(git -C * push *)", "Bash(git merge *)", "Bash(git push *)", "Bash(curl *)") y la entrada costina-pwa de .claude/launch.json. Después instala lo que sí puedes, pidiéndome permiso antes de CADA descarga con fichero, origen y tamaño (también npm ci y la restauración de NuGet): SDK .NET 10.0.401 con el script oficial firmado de Microsoft — si `python -c "import sys; print(sys.executable)"` apunta a WindowsApps (Python de Microsoft Store), instálalo en %USERPROFILE%\.dotnet-sdk, porque ese Python no ve %LOCALAPPDATA% — y PostgreSQL 17 (si ya hay uno instalado, PG_BIN="/c/Program Files/PostgreSQL/17/bin" y no descargues nada). Termina con la "Comprobación final" de 21c (dominio 68, ClientChecks 70, 11 suites HTTP, Realtime 10, checks del WPF, 60 vitest + build) y enséñame el resultado.
 
-ESTADO (21-09-2026, cierre). develop = e6e3919: PR #54 (D6.5, merge d9bac1c) y #55 (D6.6, merge e6e3919) MEZCLADAS, con CI verde y leído en logs. Actions corre (repo público). Hitos 3 (#26), 4 (#27) y 5 (#28) completos en código; sus issues siguen ABIERTAS hasta mis guiones (D4.3b, D5.6, D6.5): no las cierres. Issue #25: no tocar sin preguntar. PR abierta: #56 (chore/ci-lean): cancelación del run anterior por PR, Markdown no dispara nada, instalador solo cuando cambia lo que empaqueta o invoca + siempre al mezclar en develop + a petición, y local-tests.sh compatible con el Python de Store. Sin cambio de versión.
+ESTADO (21-09-2026, cierre). develop = 9de6f1b (o posterior si solo entró documentación): PR #54 (D6.5), #55 (D6.6) y #56 (CI más barato y local-tests.sh compatible con el Python de Store) MEZCLADAS, las tres con CI verde y leído en logs; no hay PR abiertas. Actions corre (repo público). Al mezclar en develop arrancan D0 y "Native Windows installer" (no D1 ni desktop: comprobado); una PR solo de Markdown no dispara nada. Hitos 3 (#26), 4 (#27) y 5 (#28) completos en código; sus issues siguen ABIERTAS hasta mis guiones (D4.3b, D5.6, D6.5): no las cierres. Issue #25: no tocar sin preguntar.
 
-PRIMERA TAREA: LEE LOS LOGS del CI de la punta de la #56 (es el primer push de esos YAML: deben arrancar los CUATRO workflows sin error de sintaxis y pasar como la #55); corrige lo que salga sin preguntarme por cada push correctivo; con mi confirmación, mézclala en local ("Merge PR #56: CI mas barato y pruebas locales con el Python de Store"), comprobando ANTES del push que `git diff --stat HEAD origin/chore/ci-lean` sale vacío, y DESPUÉS que en develop arrancan D0 y el instalador (y no D1 ni desktop). Usa comandos git SIMPLES, uno por llamada (`git -C <clon> merge …`, `git -C <clon> push …`): el clasificador de permisos deniega los compuestos con `cd … &&`.
+PRIMERA TAREA: comprueba que el último run de "Native Windows installer" sobre develop terminó en verde y LEE su log (Installer checks 7/7, Costina-Setup-0.25.0-d6.6.exe): es el instalador de mis guiones físicos; si falló, diagnostica y dime. Después pregúntame las decisiones de los cortes A y B (abajo) si no te las he dado, y propónme el alcance antes de codificar. Usa comandos git SIMPLES, uno por llamada (`git -C <clon> merge …`, `git -C <clon> push …`): el clasificador de permisos deniega los compuestos con `cd … &&`; antes de empujar un merge, `git diff --stat HEAD origin/<rama>` debe salir vacío.
 
-DESPUÉS, y solo con mis respuestas (están planteadas en el traspaso 21d, sección "Siguiente trabajo"; pregúntamelas si no te las doy): (A) instalador como Release de GitHub — ¿solo a mano o en cada merge?, ¿descarga pública sin LICENSE?; (B) generación de recuperación — recovery_id UUID nuevo por restore, cambiado DESPUÉS de verificar huellas, en /session, sesiones invalidadas, clientes que tratan un pendiente de otra generación como de otra instalación — ¿puestos tras restaurar: (a) suspendidos hasta revisión, (b) solo aviso, (c) revocar todos? Un corte por PR desde develop, cada uno con su versión, su doc en docs/native/ con guion manual, dotnet/AGENTS.md y docs/STATUS.md. De paso, en el corte que toque tools/: que local-tests.sh no deje un motor huérfano cuando una suite falla en setUpClass.
+LOS DOS CORTES SIGUIENTES, solo con mis respuestas (están planteadas en el traspaso 21d, sección "Siguiente trabajo"; pregúntamelas si no te las doy): (A) instalador como Release de GitHub — ¿solo a mano o en cada merge?, ¿descarga pública sin LICENSE?; (B) generación de recuperación — recovery_id UUID nuevo por restore, cambiado DESPUÉS de verificar huellas, en /session, sesiones invalidadas, clientes que tratan un pendiente de otra generación como de otra instalación — ¿puestos tras restaurar: (a) suspendidos hasta revisión, (b) solo aviso, (c) revocar todos? Un corte por PR desde develop, cada uno con su versión, su doc en docs/native/ con guion manual, dotnet/AGENTS.md y docs/STATUS.md. De paso, en el corte que toque tools/: que local-tests.sh no deje un motor huérfano cuando una suite falla en setUpClass.
 
 CUANDO YO VAYA A HACER UN GUION FÍSICO (D5.6 o D6.5): el instalador es el del último run de "Native Windows installer" sobre develop; si no lo hay o ha caducado el artefacto (5 días), relánzalo a mano (workflow_dispatch).
 
