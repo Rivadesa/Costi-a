@@ -1,0 +1,15 @@
+{
+  "name": "Costina",
+  "short_name": "Costina",
+  "description": "Comandero y cocina. Aplicacion operativa: sin precios, cuentas ni pagos.",
+  "lang": "es",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f5f8",
+  "theme_color": "#1f2a37",
+  "icons": [
+    { "src": "/app/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,21 @@
+/* Hoja unica y local: la CSP del motor no admite estilos en linea ni de terceros. */
+:root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 18px; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f3f5f8; color: #16202c; }
+main { max-width: 44rem; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) 1rem 2rem; }
+header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+h1 { font-size: 1.4rem; letter-spacing: .06em; margin: .5rem 0; }
+h2 { font-size: 1.25rem; margin: 1rem 0 .5rem; }
+label { display: block; margin: 1rem 0 0; font-weight: 600; }
+input { display: block; width: 100%; margin-top: .35rem; padding: .8rem; font-size: 1rem; border: 2px solid #8a97a8; border-radius: .4rem; background: #fff; }
+input:focus-visible, button:focus-visible { outline: 3px solid #1f6feb; outline-offset: 2px; }
+button { margin: 1rem .5rem 0 0; min-height: 3rem; padding: .7rem 1.2rem; font-size: 1rem; font-weight: 600; border: 0; border-radius: .4rem; background: #1f2a37; color: #fff; }
+button.secondary { background: #fff; color: #1f2a37; border: 2px solid #1f2a37; }
+button:disabled { opacity: .55; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1rem; margin: 1rem 0; }
+dt { font-weight: 600; }
+dd { margin: 0; overflow-wrap: anywhere; }
+.notice { padding: .8rem; border-left: .4rem solid #9a6700; background: #fff4d6; }
+.demo { margin: 0; padding: .2rem .6rem; font-weight: 700; border: 2px solid #9a3412; color: #9a3412; border-radius: .3rem; }
+.stale { color: #9a3412; }
+[role="status"] { font-weight: 600; }

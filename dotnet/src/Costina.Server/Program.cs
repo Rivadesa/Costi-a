@@ -213,6 +213,9 @@ if(!await identityStore.AnyUserAsync())
     notices.Add("AVISO: no hay usuarios en este ambito. Crea el primero con: Costina.Server.exe create-user <usuario> main");
 // Los avisos de arranque salen por el logger: consola en laboratorio, fichero cuando es un servicio.
 foreach(var notice in notices) app.Logger.LogWarning("{Notice}",notice);
+// D6.1: la PWA operativa se sirve en /app/ desde este mismo origen (solo si el build la incluye). Va ANTES del
+// control de identidad: son ficheros estaticos publicos; cualquier dato sigue pasando por /api con credencial.
+var pwaHosted = PwaHosting.Map(app);
 app.UseRouting();
 app.Use(async (context,next)=>
 {
@@ -326,7 +329,7 @@ app.MapGet("/ca.crt",()=>File.Exists(LocalTls.CaCertificate) && tlsCertificate i
 app.MapGet("/health",async ()=>{
     await store.CheckAsync();
     if(!laboratory && !demoState.IsDemo) demoState.IsDemo=await store.IsDemoAsync(scope); // cargar la demo con el servicio en marcha se refleja sin reiniciar
-    return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,demo=!laboratory && demoState.IsDemo});
+    return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,demo=!laboratory && demoState.IsDemo,pwa=pwaHosted});
 });
 string Role(HttpContext c)=>(string)c.Items["role"]!;
 app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{

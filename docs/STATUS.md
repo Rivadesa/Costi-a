@@ -57,6 +57,8 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, insta
 
 - D5.6 (issue #27, corte 6 y último): guion de instalación limpia en Windows físico con tabla de resultados por criterio (`docs/native/D5.6-physical-install.md`), comando `status` de solo lectura para evidencia y soporte, y datos **ficticios de demostración** explícitos (`load-demo`, `/DEMO=1`) que dejan la instalación marcada como demo en `/health`, `/session` y el cliente. Ver el CI de su PR.
 
+- D6.1 (issue #28, corte 1 del Hito 5): el motor aloja la PWA operativa en `/app/` (mismo origen, CSP estricta, solo ficheros del build públicos), `GET /catalog` operativo sin precios, y esqueleto Vue/TypeScript que se empareja como dispositivo (token en IndexedDB, borrado ante un 401 por revocación), con guarda que rechaza cualquier respuesta con claves económicas, antigüedad de datos visible y service worker que cachea solo el shell. Probado con vitest, HTTP real y un navegador real (Playwright) contra el motor. Ver `docs/native/D6.1-pwa-base.md` y el CI de su PR.
+
 Hito 3 (#26): completo en código con D4.3b (PR #43); **su cierre espera el guion manual del promotor**. Hito 4 (#27): **completo en código** con D5.1–D5.6 (PR #44–#48 y la de D5.6); **su cierre espera el guion físico de D5.6 ejecutado por el promotor** y la firma queda en #12. Siguiente hito: #28 (PWA comandero/KDS).
 
 PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) queda **cerrada como superada**: nunca se integró y su base no incluía D2–D4. Lo aprovechable (roles separados, PostgreSQL 17.11 fijado con hash, NSIS, datos fuera del programa) se rehace sobre `develop` en D5.1–D5.5 bajo ADR-011.
