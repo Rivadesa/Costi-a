@@ -76,9 +76,9 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
   const cached = await page.evaluate(async () => (await Promise.all((await caches.keys()).map(async name => (await (await caches.open(name)).keys()).map(r => new URL(r.url).pathname)))).flat())
   expect(cached.length).toBeGreaterThan(0)
   expect(cached.filter(path => !path.startsWith('/app/'))).toEqual([])              // nada de /api en cache, nunca
+  // Al volver la red la aplicacion se recupera SOLA (evento 'online'): nadie tiene que pulsar nada.
   await context.setOffline(false)
-  await page.getByRole('button', { name: 'Reintentar' }).click()
-  await expect(page.getByTestId('home')).toBeVisible()
+  await expect(page.getByTestId('home')).toBeVisible({ timeout: 20_000 })
 
   // Revocado en el PC principal: el dispositivo lo descubre, borra su credencial y vuelve a emparejar.
   expect((await asMain(request, `/auth/devices/${deviceId}/revoke`, {})).ok()).toBeTruthy()
