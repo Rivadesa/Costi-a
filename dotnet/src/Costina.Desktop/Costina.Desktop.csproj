@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.23.0-d6.4</Version>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.24.0-d6.5</Version>
     <AssemblyName>Costina.Desktop</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Costina.Client/Costina.Client.csproj" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <!-- D6.5: matriz del QR de emparejamiento (QRCoder, MIT). Se pinta con PngByteQRCode: no se usa System.Drawing. -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 </Project>
