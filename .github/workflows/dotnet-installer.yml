@@ -1,10 +1,31 @@
 name: Native Windows installer
+# Es el workflow mas caro (Windows, ~25 min). En una PR corre SOLO si cambia lo que el instalador empaqueta o invoca:
+# deploy/windows, sus checks y los comandos de ciclo de vida del motor (setup-server, servicio, TLS, copia/restauracion).
+# Todo lo demas lo cubren D0, D1 y desktop; al mezclar en develop se construye y prueba siempre el instalador de esa punta
+# (el que usan los guiones fisicos), y sigue disponible a mano (workflow_dispatch).
 on:
   pull_request:
-    paths: ['dotnet/**', 'frontend/pwa/**', 'deploy/windows/**', 'docs/native/D5.5-LEEME.txt', '.github/workflows/dotnet-installer.yml']
+    paths:
+      - 'deploy/windows/**'
+      - 'docs/native/D5.5-LEEME.txt'
+      - 'dotnet/tests/service/**'
+      - 'dotnet/src/Costina.Server/ServerSetup.cs'
+      - 'dotnet/src/Costina.Server/ServiceInstaller.cs'
+      - 'dotnet/src/Costina.Server/Installation.cs'
+      - 'dotnet/src/Costina.Server/LocalTls.cs'
+      - 'dotnet/src/Costina.Server/Backup.cs'
+      - 'dotnet/src/Costina.Server/StatusReport.cs'
+      - '.github/workflows/dotnet-installer.yml'
+  push:
+    branches: [develop]
+    paths: ['dotnet/**', 'frontend/pwa/**', 'deploy/windows/**', 'docs/native/D5.5-LEEME.txt', '.github/workflows/dotnet-installer.yml', '!**/*.md']
   workflow_dispatch:
 permissions:
   contents: read
+# Un push nuevo a la misma PR cancela el run anterior; en develop y a mano nunca se cancela (cada punta conserva su resultado).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 jobs:
   installer:
     runs-on: windows-latest
