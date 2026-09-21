@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><Version>0.19.0-d5.6</Version></PropertyGroup>
+  <PropertyGroup><Version>0.20.0-d6.1</Version></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Costina.Persistence/Costina.Persistence.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
+  <!-- D6.1: la PWA (frontend/pwa) viaja DENTRO del motor como wwwroot/app cuando su build existe. Sin build, el
+       motor compila y funciona igual, simplemente no aloja /app/. -->
+  <ItemGroup Condition="Exists('../../../frontend/pwa/dist/index.html')">
+    <None Include="../../../frontend/pwa/dist/**" Link="wwwroot/app/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

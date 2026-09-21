@@ -60,6 +60,9 @@ try {
         $manifest = Get-Content "$program\build-manifest.json" -Raw | ConvertFrom-Json
         Assert ($manifest.version -eq (Invoke-RestMethod "$base/health").version) 'Manifest version differs from the running engine.'
         Assert ((Invoke-RestMethod "$base/health").demo) 'A /DEMO=1 installation must be flagged as demo.'
+        # D6.1: el producto INSTALADO aloja la PWA en el mismo origen, con su CSP.
+        $pwa = Invoke-WebRequest "$base/app/" -UseBasicParsing
+        Assert ($pwa.StatusCode -eq 200 -and "$($pwa.Headers['Content-Security-Policy'])" -match "script-src 'self'") 'The installed engine does not host the PWA with its CSP.'
         # D5.6: 'status' resume la instalacion (servicios, salud, certificado, huella, copia) sin secretos.
         $report = & $engine status | Out-String
         Assert ($LASTEXITCODE -eq 0) "status reported an unhealthy installation: $report"

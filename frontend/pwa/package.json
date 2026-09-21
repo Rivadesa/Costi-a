@@ -1,0 +1,26 @@
+{
+  "name": "costina-pwa",
+  "private": true,
+  "version": "0.20.0",
+  "description": "PWA operativa de Costina (comandero y KDS). Sin datos economicos por diseno (ADR-007).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "vue": "^3.5.43"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "vue-tsc": "^3.3.11"
+  }
+}

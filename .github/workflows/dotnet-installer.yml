@@ -1,7 +1,7 @@
 name: Native Windows installer
 on:
   pull_request:
-    paths: ['dotnet/**', 'deploy/windows/**', 'docs/native/D5.5-LEEME.txt', '.github/workflows/dotnet-installer.yml']
+    paths: ['dotnet/**', 'frontend/pwa/**', 'deploy/windows/**', 'docs/native/D5.5-LEEME.txt', '.github/workflows/dotnet-installer.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,7 +14,9 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-dotnet@v4
         with: {global-json-file: dotnet/global.json}
-      - name: Build package (engine, desktop, pinned PostgreSQL) and compile the installer
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/pwa/package-lock.json}
+      - name: Build package (PWA, engine, desktop, pinned PostgreSQL) and compile the installer
         shell: pwsh
         run: ./deploy/windows/package.ps1
       - name: D5.5 real installer - install, uninstall keeping data, update with backup, client mode, new machine from backup

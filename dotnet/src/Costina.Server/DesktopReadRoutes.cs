@@ -31,6 +31,12 @@ public static class DesktopReadRoutes
             tables=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted),
             menus=(await reads.Configuration<MenuDefinition>(scope,"menu",c.RequestAborted)).Select(m=>new {m.Id,m.Name}).ToArray()
         }))).WithMetadata(new RouteAccess("main","service","kitchen"));
+        // D6.1 (#28, ADR-007): catalogo OPERATIVO para el comandero — que se puede anadir, nunca a que precio.
+        // Proyeccion propia: no reutiliza la de caja ni deja pasar un solo campo economico.
+        app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(
+            (await reads.Configuration<ProductDefinition>(scope,"product",c.RequestAborted)).Where(p=>p.Active)
+            .Select(p=>new {p.Id,p.Name,p.Presentation}).ToArray()
+        ))).WithMetadata(new RouteAccess("main","service"));
         app.MapGet(prefix+"/checkout/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(
             (await reads.Configuration<ProductDefinition>(scope,"product",c.RequestAborted)).Where(p=>p.Active)
             .Select(p=>new {p.Id,p.Name,p.Presentation,p.PriceCents}).ToArray()

@@ -1,7 +1,7 @@
 name: Native D1 PostgreSQL and HTTP
 on:
   pull_request:
-    paths: ['dotnet/**', '.github/workflows/dotnet-d1.yml']
+    paths: ['dotnet/**', 'frontend/pwa/**', '.github/workflows/dotnet-d1.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,6 +35,14 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-dotnet@v4
         with: {global-json-file: dotnet/global.json}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/pwa/package-lock.json}
+      - name: D6.1 build and unit-test the PWA BEFORE the engine (the engine embeds frontend/pwa/dist as /app/)
+        working-directory: frontend/pwa
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
       - name: Build real server and restore checks
         run: |
           dotnet --info > d1-sdk.txt
@@ -72,6 +80,11 @@ jobs:
         run: python3 tests/http/pairing_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Verify station matrix and single-use hub tickets over HTTP
         run: python3 tests/http/station_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      - name: D6.1 PWA hosted on the same origin, money-free catalogue and a REAL browser pairing a device
+        env: {COSTINA_E2E: '1'}
+        run: |
+          (cd ../frontend/pwa && npx playwright install --with-deps chromium)
+          python3 tests/http/pwa_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: D2 realtime publisher and SignalR flow with real processes
         run: dotnet run --project tests/Costina.RealtimeChecks -c Release -- src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Upload exact executed evidence

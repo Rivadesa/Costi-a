@@ -13,6 +13,13 @@ $version = ([xml](Get-Content "$root/dotnet/src/Costina.Server/Costina.Server.cs
 $desktopVersion = ([xml](Get-Content "$root/dotnet/src/Costina.Desktop/Costina.Desktop.csproj")).SelectSingleNode('//Version').InnerText
 if ($version -ne $desktopVersion) { throw "Server ($version) and desktop ($desktopVersion) versions differ." }
 
+# D6.1: la PWA se compila ANTES que el motor, que la empaqueta como wwwroot/app (mismo origen, sin CORS).
+Push-Location "$root/frontend/pwa"
+try {
+  npm ci --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+  npm run build; if ($LASTEXITCODE -ne 0) { throw 'PWA build failed' }
+} finally { Pop-Location }
+
 Push-Location "$root/dotnet"
 try {
   foreach ($item in @(@('Costina.Server', 'server'), @('Costina.Desktop', 'desktop'))) {
@@ -52,6 +59,7 @@ if (-not (Test-Path "$package/pgsql/bin/vcruntime140.dll")) {
   if (-not $crt) { throw 'Microsoft app-local runtime source unavailable' }
   Copy-Item "$($crt.FullName)/*.dll" "$package/pgsql/bin/" -Force
 }
+if (-not (Test-Path "$package/server/wwwroot/app/index.html")) { throw 'The published engine does not contain the PWA (wwwroot/app).' }
 & "$package/pgsql/bin/pg_ctl.exe" --version
 if ($LASTEXITCODE -ne 0) { throw 'Bundled PostgreSQL does not run' }
 
