@@ -78,6 +78,12 @@ class Packaging(unittest.TestCase):
 
     def config(self, name): return json.loads((DATA / 'config' / name).read_text(encoding='utf8'))
 
+    def assert_private(self, path):
+        # Unix: 0600. En Windows no hay bits de modo (la proteccion es la ACL, que ejercita el job windows-service con un
+        # servicio real): aqui solo se exige que el fichero exista, para poder correr la suite en un PC de desarrollo.
+        self.assertTrue(path.is_file(), path)
+        if os.name != 'nt': self.assertEqual(oct(path.stat().st_mode & 0o777), '0o600', path)
+
     def test_01_provision_creates_roles_and_private_configuration(self):
         if not DATABASE.endswith('_d1_test'): raise RuntimeError('Use isolated CI test DB')
         env = clean_env(COSTINA_DB_BOOTSTRAP=BOOTSTRAP, COSTINA_DB_NAME=DATABASE, COSTINA_TENANT='d5-tenant',
@@ -91,7 +97,7 @@ class Packaging(unittest.TestCase):
         self.assertNotIn('COSTINA_DB_OWNER', server)
         for secret in (parts(server['COSTINA_DB'])['Password'], parts(owner['COSTINA_DB_OWNER'])['Password']):
             self.assertNotIn(secret, done.stdout + done.stderr)
-        self.assertEqual(oct((DATA / 'config' / 'owner.json').stat().st_mode & 0o777), '0o600')
+        self.assert_private(DATA / 'config' / 'owner.json')
         again = cli('provision', env=env)
         self.assertNotEqual(again.returncode, 0)
         self.assertIn('already provisioned', again.stdout + again.stderr)
@@ -197,6 +203,11 @@ class Packaging(unittest.TestCase):
 
     def test_06b_lan_https_with_a_name_constrained_local_ca(self):
         """D5.3: an independent TLS stack (OpenSSL) validates the chain with NO exceptions."""
+        if os.name == 'nt':
+            # En Windows provision-tls deja tls\ solo para SYSTEM y Administradores (D5.3): un usuario corriente ya no puede ni
+            # leer ca.key, que es lo correcto. Esta historia corre en Linux (aqui) y, como servicio real, en el job windows-service.
+            import ctypes
+            if not ctypes.windll.shell32.IsUserAnAdmin(): self.skipTest('TLS provisioning locks tls/ to administrators on Windows')
         env = clean_env(COSTINA_TLS_NAMES='localhost,127.0.0.1')
         tls = DATA / 'tls'
         self.assertNotEqual(cli('renew-tls', env=env).returncode, 0)          # nothing to renew from yet
@@ -204,7 +215,7 @@ class Packaging(unittest.TestCase):
         self.assertEqual(made.returncode, 0, made.stderr)
         self.assertIn('fingerprint', made.stdout)
         for private in ('ca.key', 'server.pfx'):
-            self.assertEqual(oct((tls / private).stat().st_mode & 0o777), '0o600', private)
+            self.assert_private(tls / private)
         again = cli('provision-tls', env=env)                                  # a trusted CA is never replaced silently
         self.assertNotEqual(again.returncode, 0)
         self.assertIn('renew-tls', again.stdout + again.stderr)
@@ -286,7 +297,7 @@ class Packaging(unittest.TestCase):
         manifest = json.loads(Path(str(newest) + '.json').read_text(encoding='utf8'))
         self.assertEqual((manifest['tenantId'], manifest['tables']['users']['rows'], manifest['tables']['pairings']['rows']), ('d5-tenant', 1, 1))
         self.assertEqual((manifest['tables']['services']['rows'], manifest['tables']['occupancies']['rows'], manifest['tables']['configuration']['rows']), (1, 1, 12))   # D5.6: un servicio real viaja en la copia
-        self.assertEqual(oct(newest.stat().st_mode & 0o777), '0o600')
+        self.assert_private(newest)
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
 
         # "Clean machine": another data root and another EMPTY database. Roles are cluster-wide on this single
