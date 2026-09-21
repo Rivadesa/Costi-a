@@ -3,12 +3,16 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [develop, main]
-    paths: ['dotnet/**', '.github/workflows/dotnet-d0.yml']
+    paths: ['dotnet/**', '.github/workflows/dotnet-d0.yml', '!**/*.md']
   push:
     branches: [develop, main]
-    paths: ['dotnet/**', '.github/workflows/dotnet-d0.yml']
+    paths: ['dotnet/**', '.github/workflows/dotnet-d0.yml', '!**/*.md']
 permissions:
   contents: read
+# Un push nuevo a la misma PR cancela el run anterior; en develop/main y a mano nunca se cancela.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   DOTNET_NOLOGO: '1'

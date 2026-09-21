@@ -3,7 +3,8 @@
 #
 # Requisitos (ninguno necesita administrador):
 #   - SDK .NET de dotnet/global.json en %LOCALAPPDATA%\Microsoft\dotnet  (script oficial firmado: https://dot.net/v1/dotnet-install.ps1
-#     -Version <la de global.json> -InstallDir %LOCALAPPDATA%\Microsoft\dotnet -NoPath)
+#     -Version <la de global.json> -InstallDir %LOCALAPPDATA%\Microsoft\dotnet -NoPath). Con el Python de Microsoft Store,
+#     instalarlo en %USERPROFILE%\.dotnet-sdk (ver abajo); COSTINA_DOTNET=<carpeta> para cualquier otra ubicacion.
 #   - Binarios portables de PostgreSQL 17 en .lab/pgsql/bin (los del laboratorio, docs/native/lab-engineering.md), o PG_BIN=<carpeta bin>
 #   - Python 3 y, para pwa_http, el build de la PWA (npm run build en frontend/pwa) ANTES de compilar el servidor
 #
@@ -18,13 +19,22 @@
 # Playwright (COSTINA_E2E=1 con `npx playwright install chromium`) ni los jobs windows-service e installer (servicio real, NSIS).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 T="$ROOT/.lab-test"; PG_BIN="${PG_BIN:-$ROOT/.lab/pgsql/bin}"
-export DOTNET_ROOT="$LOCALAPPDATA/Microsoft/dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 PYTHONIOENCODING=utf-8
+# SDK: COSTINA_DOTNET=<carpeta>, o %LOCALAPPDATA%\Microsoft\dotnet, o %USERPROFILE%\.dotnet-sdk. La ultima existe porque el Python de
+# Microsoft Store corre con AppData virtualizado y NO VE nada bajo %LOCALAPPDATA%: las suites HTTP caerian al dotnet del sistema.
+# En forma POSIX: una ruta C:\... dentro de PATH se parte por los dos puntos.
+for D in "$COSTINA_DOTNET" "$LOCALAPPDATA/Microsoft/dotnet" "$USERPROFILE/.dotnet-sdk"; do
+  [ -n "$D" ] && [ -x "$D/dotnet.exe" ] && break
+done
+DOTNET_ROOT="$(cygpath -u "$D" 2>/dev/null || printf '%s' "$D")"
+export DOTNET_ROOT DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 PYTHONIOENCODING=utf-8
 export PATH="$DOTNET_ROOT:$PG_BIN:$PATH"
 export PGHOST=127.0.0.1 PGPORT=5434 PGUSER=costina PGPASSWORD=ci-only PGDATABASE=costina_d1_test COSTINA_PG_BIN="$PG_BIN"
 BOOTSTRAP='Host=127.0.0.1;Port=5434;Database=costina_d1_test;Username=costina;Password=ci-only'
 SERVER=src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
 ALL="packaging_http native_http security_http desktop_reads affordances_http restrictions_http checkout_http identity_http pairing_http station_http pwa_http"
 [ -x "$DOTNET_ROOT/dotnet.exe" ] || { echo "Falta el SDK .NET en $DOTNET_ROOT (ver cabecera)"; exit 2; }
+python -c "import os,sys; sys.exit(not os.path.exists(os.path.join(os.environ['DOTNET_ROOT'],'dotnet.exe')))" || {
+  echo "python no ve $DOTNET_ROOT (Python de Microsoft Store?): instala el SDK en %USERPROFILE%\\.dotnet-sdk o indica COSTINA_DOTNET"; exit 2; }
 [ -x "$PG_BIN/pg_ctl.exe" ] || { echo "Faltan los binarios de PostgreSQL en $PG_BIN (ver cabecera)"; exit 2; }
 mkdir -p "$T"; grep -qs '^.lab-test/' "$ROOT/.git/info/exclude" || echo '.lab-test/' >> "$ROOT/.git/info/exclude"
 
@@ -55,7 +65,7 @@ http() {
     fi
     printf '== %s ... ' "$suite"
     if python "tests/http/$suite.py" "$SERVER" > "$T/$suite.log" 2>&1; then
-      grep -E "^(Ran [0-9]+ tests|OK)" "$T/$suite.log" | tr '\n' ' '; echo
+      grep -E "^(Ran [0-9]+ tests|OK)|[0-9]+/[0-9]+ passed" "$T/$suite.log" | tr '\n' ' '; echo
     else
       echo FALLA; FAILED="$FAILED $suite"; grep -E "^(FAIL|ERROR):|AssertionError" "$T/$suite.log" | head -6
     fi

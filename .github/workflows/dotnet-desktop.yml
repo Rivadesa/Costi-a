@@ -1,10 +1,15 @@
 name: Native WPF desktop acceptance
 on:
   pull_request:
-    paths: ['dotnet/**', 'frontend/pwa/**', '.github/workflows/dotnet-desktop.yml']
+    # Una PR que solo toca Markdown no relanza nada (el filtro mira el diff de TODA la PR, no el del ultimo push).
+    paths: ['dotnet/**', 'frontend/pwa/**', '.github/workflows/dotnet-desktop.yml', '!**/*.md']
   workflow_dispatch:
 permissions:
   contents: read
+# Un push nuevo a la misma PR cancela el run anterior; a mano nunca se cancela.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 jobs:
   desktop:
     runs-on: windows-latest
