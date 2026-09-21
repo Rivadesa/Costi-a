@@ -23,6 +23,7 @@ export interface LiveDeps {
   load: () => Promise<BoardEntry[]>
   connect: () => HubLike
   onUnauthorized: () => void
+  onRead?: () => void    // tras CADA lectura autoritativa correcta (p. ej. para reintentar una orden que fallo por red)
   pollMs?: number        // sondeo cuando NO hay tiempo real
   safetyMs?: number      // relectura de seguridad aun con tiempo real (at-least-once no es "siempre")
   reconnectMs?: number   // reintento del canal tras agotarse la reconexion automatica
@@ -68,6 +69,7 @@ export class LiveBoard {
         try {
           this.state.entries = await this.deps.load()
           this.state.readAt = new Date(); this.lastRead = Date.now(); this.state.error = ''
+          this.deps.onRead?.()
         } catch (error) {
           if (error instanceof ApiError && error.status === 401) { this.deps.onUnauthorized(); return }
           this.state.error = error instanceof NetworkError ? 'Servidor sin respuesta: los datos en pantalla pueden estar desactualizados.'

@@ -33,3 +33,11 @@ button.table { display: block; width: 100%; margin: 0; text-align: left; backgro
 .course, .restrictions { margin-top: 1rem; padding: .8rem; background: #fff; border: 1px solid #c5ccd6; border-radius: .4rem; }
 .course li { padding: .5rem 0; border-top: 1px solid #e3e7ed; }
 footer { margin-top: 2rem; }
+
+select { display: block; width: 100%; margin-top: .35rem; padding: .8rem; font-size: 1rem; border: 2px solid #8a97a8; border-radius: .4rem; background: #fff; }
+details { margin-top: 1rem; padding: .6rem .8rem; background: #fff; border: 1px solid #c5ccd6; border-radius: .4rem; }
+summary { font-weight: 700; min-height: 2.2rem; cursor: pointer; }
+.row { display: flex; flex-wrap: wrap; }
+/* La orden sin confirmar no se puede pasar por alto: titulo en mayusculas, borde grueso y texto, no solo color. */
+.pending { margin: 1rem 0; padding: 1rem; border: .35rem solid #9a3412; background: #fff4d6; border-radius: .4rem; }
+.pending h2 { margin-top: 0; color: #9a3412; }
