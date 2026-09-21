@@ -100,7 +100,8 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await expect(pending).toContainText('ORDEN SIN CONFIRMAR')
   await expect(pending).toContainText('Pausar servicio · M7')
   expect((await read(request, serviceId)).data.state).toBe('Paused')                       // el servidor SI la aplico
-  for (const button of await page.locator('[data-testid=actions] button').all()) await expect(button).toBeDisabled()   // nada nuevo mientras tanto
+  // Nada nuevo mientras tanto. El aviso de tiempo real puede releer y CAMBIAR los botones a mitad: se afirma que ninguno esta habilitado, no uno a uno.
+  await expect(page.locator('[data-testid=actions] button:not([disabled])')).toHaveCount(0)
   expect(await storedOrder(page)).toBe('Pausar servicio · M7')                              // persistida en el dispositivo
   await page.unroute('**/commands/pause')
 

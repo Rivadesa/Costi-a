@@ -25,7 +25,9 @@ public static class Affordances
     private static bool StationKeeps(string action, string? station, string prepStation) => station is null
         || (action is "preparation-start" or "preparation-ready"
             ? string.Equals(prepStation, station, StringComparison.Ordinal)
-            : true);
+            // D6.4: review-preparation se anuncia EN LA ELABORACION (AllowedActions) y el comando exige la estacion
+            // 'pase' (LocalOperations.StationAllowed). Sin este filtro una estacion veia un boton que daba wrong_station.
+            : action is not "review-preparation" || string.Equals(station, "pase", StringComparison.Ordinal));
     private static bool PassKeeps(string action, string? station) => station is null
         || (action is "ready" or "review-preparation" ? string.Equals(station, "pase", StringComparison.Ordinal) : true);
 

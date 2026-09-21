@@ -41,3 +41,18 @@ summary { font-weight: 700; min-height: 2.2rem; cursor: pointer; }
 /* La orden sin confirmar no se puede pasar por alto: titulo en mayusculas, borde grueso y texto, no solo color. */
 .pending { margin: 1rem 0; padding: 1rem; border: .35rem solid #9a3412; background: #fff4d6; border-radius: .4rem; }
 .pending h2 { margin-top: 0; color: #9a3412; }
+
+/* Cocina (D6.4): tablet apaisada, manos ocupadas o mojadas. Rejilla de pases, botones grandes y texto siempre. */
+main:has(.kitchen) { max-width: 90rem; }
+.tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 21rem), 1fr)); gap: 1rem; align-items: start; margin-top: .5rem; }
+.ticket { padding: .8rem; background: #fff; border: 2px solid #8a97a8; border-radius: .4rem; }
+.ticket h3 { margin-top: 0; font-size: 1.2rem; }
+.ticket p { margin: .25rem 0; }
+.prep { padding: .6rem 0; border-top: 1px solid #e3e7ed; }
+.prep-title { font-size: 1.05rem; }
+/* Lo de otra estacion se atenua solo en su rotulo y lo dice con texto; un aviso de restriccion nunca se atenua. */
+.prep-title.other { color: #5b6878; }
+button.big { min-height: 4rem; min-width: 8rem; font-size: 1.15rem; margin-top: .6rem; }
+button.big.wide { display: block; width: 100%; margin-right: 0; }
+.review { margin-top: .5rem; padding: .6rem; border: 2px solid #9a3412; border-radius: .4rem; }
+.review label { margin-top: 0; }

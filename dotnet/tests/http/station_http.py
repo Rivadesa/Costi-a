@@ -73,6 +73,26 @@ class StationChecks(unittest.TestCase):
         self.assertIn('ready', request('/services/' + self.sid, token=self.pase)[1]['data']['courses'][0]['actions'])
         self.assertEqual(200, self.act(self.pase, 'ready', courseId='p1')[0])
 
+    def test_05_restriction_review_is_announced_to_the_pass_station_only(self):
+        # D6.4: la accion vive en la ELABORACION; el espejo debe filtrarla por estacion igual que el comando.
+        sid = h.open_table('M2')
+        h.mutate(sid, 'start'); h.mutate(sid, 'fire-next')
+        h.mutate(sid, 'declare-restriction', guestPosition=1, kind='Allergy', substance='marisco', severity='Severe')
+        def announced(token):
+            view = request('/services/' + sid, token=token)[1]['data']
+            return [p['id'] for p in view['courses'][0]['preparations'] if 'review-preparation' in p['actions']]
+        pending = announced(self.pase)
+        self.assertTrue(pending)
+        self.assertEqual([], announced(self.cold))
+        self.assertEqual(pending, announced(h.KEYS['kitchen']))   # el chef con sesion, sin estacion, no tiene restriccion
+        _, board = request('/board', token=self.cold)
+        self.assertEqual([], [a for row in board for c in row['service']['courses'] for p in c['preparations'] for a in p['actions'] if a == 'review-preparation'])
+        fields = dict(courseId='p1', itemId=pending[0], decision='adapt', note='sin marisco')
+        status, body = request('/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.cold)
+        self.assertEqual(409, status); self.assertEqual('wrong_station', body['error'])
+        status, _ = request('/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.pase)
+        self.assertEqual(200, status)
+
     def test_04_session_users_have_no_station_restriction(self):
         # El chef con sesion (sin estacion) marco arriba una elaboracion 'hot' sin restriccion;
         # el dispositivo de una estacion nunca gana permisos de rol por tener estacion.
