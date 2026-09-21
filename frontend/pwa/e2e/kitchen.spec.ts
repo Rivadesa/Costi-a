@@ -60,7 +60,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   expect(MAIN, 'E2E_MAIN_TOKEN is required').not.toBe('')
   const leaks: string[] = [], violations: string[] = []
 
-  // Sala (por API) abre M8, inicia y envia el primer pase: una elaboracion fria (cold) y una caliente (hot).
+  // Sala (por API) abre M8, inicia y envia el primer pase: elaboraciones frias (cold) y calientes (hot), una POR COMENSAL.
   const opened = await (await asMain(request, '/services', { tableId: TABLE, pax: 2, menuId: 'LAB-TASTING' })).json()
   const serviceId: string = opened.serviceId
   await command(request, serviceId, 'start'); await command(request, serviceId, 'fire-next')
@@ -128,10 +128,13 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(passTicket).toContainText('Revisada: adaptada — sin marisco, salsa aparte')
   await expect(coldTicket).toContainText('Revisada: adaptada', { timeout: 15_000 })                         // la estacion lo ve sola
 
-  // 6) La estacion caliente termina (por API). Solo entonces el servidor anuncia VALIDAR, y solo al pase.
-  await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: hot.id })
-  await command(request, serviceId, 'preparation-ready', { courseId: course.id, itemId: hot.id })
+  // 6) El resto de la cocina termina (por API): las elaboraciones son POR COMENSAL, asi que quedan varias de cada estacion.
+  //    Solo cuando TODAS estan listas el servidor anuncia VALIDAR, y solo al pase.
   const ready = passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)
+  await expect(ready).toHaveCount(0)
+  await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: hot.id })
+  for (const preparation of (await read(request, serviceId)).data.courses[0].preparations.filter(p => p.state !== 'Ready'))
+    await command(request, serviceId, 'preparation-ready', { courseId: course.id, itemId: preparation.id })
   await expect(ready).toBeVisible({ timeout: 15_000 })
   await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
   await ready.click()
