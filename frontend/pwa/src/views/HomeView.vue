@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { Session } from '../api'
 import type { Credential } from '../credentials'
+import { PERSISTENCE_HINT, type Persistence } from '../storage'
 import BoardView from './BoardView.vue'
 import KitchenView from './KitchenView.vue'
 
-defineProps<{ session: Session; credential: Credential }>()
+defineProps<{ session: Session; credential: Credential; persistence: Persistence }>()
 defineEmits<{ unpair: []; refresh: [] }>()
 const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitchen: 'Cocina' }
 </script>
@@ -20,6 +21,7 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
     <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
 
     <footer>
+      <p v-if="PERSISTENCE_HINT[persistence]" class="identity" data-testid="persistence-hint">{{ PERSISTENCE_HINT[persistence] }}</p>
       <button type="button" class="secondary" @click="$emit('unpair')">Desvincular este dispositivo</button>
     </footer>
   </section>

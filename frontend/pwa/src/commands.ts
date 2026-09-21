@@ -12,6 +12,10 @@ import type { PendingCommand, PendingStore } from './pending'
 //  5. Un 401 NO la cierra: el primer intento pudo aplicarse antes de la revocacion. Queda guardada y se
 //     concilia cuando el dispositivo vuelva a estar emparejado con el mismo nombre (mismo actor).
 //  6. Una orden de OTRA instalacion o ilegible jamas se reenvia: se informa y solo admite conciliar o descartar.
+//  7. (D6.6) Un rechazo definitivo habla de ESTE intento, no de los anteriores: el servidor comprueba el permiso ANTES
+//     de mirar si la clave ya se ejecuto, asi que un reintento puede recibir 403 de una orden que SI se aplico (p. ej.
+//     puesto re-emparejado con otro rol). Antes de cerrar como "no aplicada" se pregunta por la clave: si consta, se
+//     cierra como APLICADA; si no se puede preguntar, la orden se conserva.
 const PREFIX = '/api/native/v1'
 const INCONCLUSIVE = new Set(['storage_conflict', 'idempotency_conflict', 'operation_unconfirmed'])
 const DEFINITIVE = new Set([403, 404, 409, 422])
@@ -100,17 +104,26 @@ export class CommandRunner {
     if (!key || this.state.busy) return 'unknown'
     this.state.busy = true
     try {
-      const response = await this.http(`${PREFIX}/commands/${encodeURIComponent(key)}`, this.init('GET'))
-      if (!response.ok) return 'unknown'
-      const found = (await response.json() as { found?: boolean }).found === true
-      if (found) {
+      const lookup = await this.lookup(key)
+      if (lookup.kind === 'applied') {
         await this.deps.store.clear(key); this.state.pending = null; this.state.blocked = null
         this.state.notice = 'El servidor confirma que esa orden SI se aplico. No la repitas.'
         return 'applied'
       }
-      this.state.notice = 'Al servidor no le consta esa orden.'
-      return 'not_found'
-    } catch { return 'unknown' } finally { this.state.busy = false }
+      if (lookup.kind === 'absent') this.state.notice = 'Al servidor no le consta esa orden.'
+      return lookup.kind === 'absent' ? 'not_found' : 'unknown'
+    } finally { this.state.busy = false }
+  }
+
+  // GET /commands/{key}: solo el mismo actor; nunca ejecuta nada. 'unknown' = no se pudo saber (red, 5xx, 401, cuerpo raro).
+  private async lookup(key: string): Promise<{ kind: 'applied'; response: unknown } | { kind: 'absent' } | { kind: 'unknown' }> {
+    try {
+      const response = await this.http(`${PREFIX}/commands/${encodeURIComponent(key)}`, this.init('GET'))
+      if (!response.ok) return { kind: 'unknown' }
+      const body = await response.json() as { key?: unknown; found?: unknown; response?: unknown }
+      if (body === null || typeof body !== 'object' || body.key !== key || typeof body.found !== 'boolean') return { kind: 'unknown' }
+      return body.found ? { kind: 'applied', response: body.response ?? null } : { kind: 'absent' }
+    } catch { return { kind: 'unknown' } }
   }
 
   // Solo para lo que NO se puede reenviar (ilegible o de otra instalacion), y siempre por decision de la persona.
@@ -147,7 +160,15 @@ export class CommandRunner {
       }
       const code = payload !== null && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string' ? (payload as { error: string }).error : ''
       if (DEFINITIVE.has(response.status) && echoed && code !== '' && !INCONCLUSIVE.has(code)) {
+        // El rechazo es de ESTE intento. Solo el registro del servidor dice si uno ANTERIOR llego a aplicarse.
+        const earlier = await this.lookup(command.key)
+        if (earlier.kind === 'unknown') return this.keep('unverifiable')
         await this.close(command.key)
+        if (earlier.kind === 'applied') {
+          this.state.notice = 'El servidor confirma que esa orden SI se aplico en un intento anterior. No la repitas.'
+          assertNoMoney(earlier.response)
+          return { kind: 'confirmed', response: earlier.response }
+        }
         this.state.notice = REJECTIONS[code] ?? `El servidor rechazo la orden (${code}). No se ha aplicado.`
         return { kind: 'rejected', status: response.status, code }
       }

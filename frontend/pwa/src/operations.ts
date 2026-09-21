@@ -42,11 +42,13 @@ export function useOperations(props: { token: string; session: Session }, onUnau
 
   async function resolve(work: Promise<Outcome | null>): Promise<void> {
     settling.value++
+    const noticeBefore = runnerState.notice
     try {
       const outcome = await work
       if (!outcome) return
       if (outcome.kind === 'unauthorized') { onUnauthorized(); return }
-      if (outcome.kind === 'confirmed') runnerState.notice = ''
+      // Una confirmacion retira el aviso ANTERIOR, no el que acaba de poner esta misma orden ("se aplico en un intento anterior").
+      if (outcome.kind === 'confirmed' && runnerState.notice === noticeBefore) runnerState.notice = ''
       if (outcome.kind !== 'unconfirmed') await live.refresh()
     } catch (error) {
       // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.

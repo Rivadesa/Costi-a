@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><Version>0.24.0-d6.5</Version></PropertyGroup>
+  <PropertyGroup><Version>0.25.0-d6.6</Version></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Costina.Persistence/Costina.Persistence.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />

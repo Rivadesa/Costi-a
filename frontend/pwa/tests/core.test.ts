@@ -88,3 +88,20 @@ describe('pairing', () => {
     expect(codeFromLocation('')).toBe('')
   })
 })
+
+describe('persistent storage request (D6.6)', () => {
+  it('asks the browser once it matters and reports honestly what it got', async () => {
+    const { requestPersistence } = await import('../src/storage')
+    expect(await requestPersistence(undefined)).toBe('unsupported')
+    expect(await requestPersistence({})).toBe('unsupported')
+    expect(await requestPersistence({ persisted: async () => true, persist: async () => { throw new Error('must not ask again') } })).toBe('persisted')
+    expect(await requestPersistence({ persisted: async () => false, persist: async () => true })).toBe('persisted')
+    expect(await requestPersistence({ persisted: async () => false, persist: async () => false })).toBe('best-effort')
+    expect(await requestPersistence({ persist: async () => { throw new Error('SecurityError') } })).toBe('best-effort')
+  })
+  it('keeps the receiver: navigator.storage.persist() called detached throws Illegal invocation in a browser', async () => {
+    const { requestPersistence } = await import('../src/storage')
+    const strict = { granted: true, async persisted(this: { granted: boolean }) { return false }, async persist(this: { granted: boolean }) { return this.granted } }
+    expect(await requestPersistence(strict)).toBe('persisted')
+  })
+})
