@@ -141,14 +141,19 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   expect((await read(request, serviceId)).data.courses[1].state).toBe('Fired')
 
   // 7) Consumo a mayores desde sala: catalogo SIN precios y respuesta sin importes.
+  await expect(page.getByTestId('table-M7')).toContainText('Enviado a cocina', { timeout: 15_000 })   // tablero al dia tras el reintento: version fresca
   await page.getByTestId('table-M7').click()
   await page.locator('[data-testid=actions] details', { hasText: 'consumo' }).locator('summary').click()
   await expect(page.locator('select[name=product]')).not.toContainText(/€|\d+[.,]\d{2}/)
   await page.selectOption('select[name=product]', 'water')
   await page.getByTestId('do-add-consumption').click()
-  await expect(page.getByTestId('pending')).toHaveCount(0, { timeout: 15_000 })
-  const account = await (await asMain(request, `/checkout/services/${serviceId}`)).json()
-  expect(JSON.stringify(account)).toMatch(/water|Agua/)                                      // el cargo existe... en CAJA, no en la tablet
+  // "pending" a cero ya era cierto ANTES del clic: no es senal de nada. La senal es el cargo en CAJA (nunca en la tablet).
+  const waterCharges = async () => ((await (await asMain(request, `/checkout/services/${serviceId}`)).json()) as { data: { charges: Array<{ description: string }> } })
+    .data.charges.filter(charge => /water|Agua/i.test(charge.description)).length
+  await expect.poll(waterCharges, { timeout: 15_000 }).toBe(1)
+  await expect(page.getByTestId('pending')).toHaveCount(0)
+  await expect(page.getByTestId('command-notice')).toHaveCount(0)                            // confirmada, no rechazada
+  expect(await waterCharges()).toBe(1)                                                       // un solo cargo
 
   expect(leaks, 'the PWA received financial data').toEqual([])
   expect(violations, 'CSP violations in the console').toEqual([])
