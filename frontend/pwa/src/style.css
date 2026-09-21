@@ -19,3 +19,17 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .demo { margin: 0; padding: .2rem .6rem; font-weight: 700; border: 2px solid #9a3412; color: #9a3412; border-radius: .3rem; }
 .stale { color: #9a3412; }
 [role="status"] { font-weight: 600; }
+
+h3 { font-size: 1.05rem; margin: 1rem 0 .3rem; }
+ul { list-style: none; margin: 0; padding: 0; }
+.identity { margin: 0 0 .5rem; color: #3d4a5c; overflow-wrap: anywhere; }
+.link { margin: .5rem 0 0; font-weight: 700; }
+.link.warn { color: #9a3412; }
+.tables li { margin: .6rem 0; }
+button.table { display: block; width: 100%; margin: 0; text-align: left; background: #fff; color: #16202c; border: 2px solid #8a97a8; font-weight: 400; }
+.line { display: block; margin-top: .25rem; }
+/* Un aviso nunca depende solo del color: lleva simbolo y texto; el color y el borde solo refuerzan. */
+.alert { font-weight: 700; color: #9a3412; border-left: .3rem solid #9a3412; padding-left: .5rem; }
+.course, .restrictions { margin-top: 1rem; padding: .8rem; background: #fff; border: 1px solid #c5ccd6; border-radius: .4rem; }
+.course li { padding: .5rem 0; border-top: 1px solid #e3e7ed; }
+footer { margin-top: 2rem; }

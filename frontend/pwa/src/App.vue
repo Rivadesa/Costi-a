@@ -11,14 +11,12 @@ const state = ref<'loading' | 'unpaired' | 'ready' | 'offline'>('loading')
 const credential = ref<Credential | null>(null)
 const session = ref<Session | null>(null)
 const notice = ref('')
-const readAt = ref<Date | null>(null)
 let timer: number | undefined
 
 async function refresh(): Promise<void> {
   if (!credential.value) { state.value = 'unpaired'; return }
   try {
     session.value = await getSession(fetch, credential.value.token)
-    readAt.value = new Date()
     state.value = 'ready'
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
@@ -72,6 +70,6 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
       <p>Este dispositivo esta emparejado, pero el servidor no responde. Comprueba la Wi-Fi. No se muestra ningun dato hasta poder leerlo del servidor.</p>
       <button type="button" @click="refresh">Reintentar</button>
     </section>
-    <HomeView v-else-if="session && credential" :session="session" :credential="credential" :read-at="readAt" @unpair="unpair" @refresh="refresh" />
+    <HomeView v-else-if="session && credential" :session="session" :credential="credential" @unpair="unpair" @refresh="refresh" />
   </main>
 </template>
