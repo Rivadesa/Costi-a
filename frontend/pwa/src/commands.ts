@@ -139,8 +139,10 @@ export class CommandRunner {
       if (response.status === 401) { this.state.lastFailure = null; return { kind: 'unauthorized' } }
       if (response.ok) {
         if (!echoed || payload === null) return this.keep('unverifiable')
-        assertNoMoney(payload)
+        // Exito con eco: la orden CONSTA aplicada y se cierra ya. Si ademas la respuesta trae una clave economica se
+        // rechaza entera (ADR-007) DESPUES de cerrar: dejarla pendiente la reintentaria sin fin contra la misma respuesta.
         await this.close(command.key)
+        assertNoMoney(payload)
         return { kind: 'confirmed', response: payload }
       }
       const code = payload !== null && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string' ? (payload as { error: string }).error : ''

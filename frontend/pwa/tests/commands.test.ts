@@ -120,9 +120,24 @@ describe('durable uncertain command', () => {
     await expect(b.run.send(...SERVE)).rejects.toThrow()
     await b.run.discardBlocked(); expect(b.run.blocksMutations).toBe(false); expect(broken.log).toEqual(['discard'])
   })
-  it('refuses a confirmed response that carries money', async () => {
-    const { run } = runner(new MemoryStore(), [{ status: 200, body: { balanceCents: 100 } }])
+  it('refuses a confirmed response that carries money, but the command IS applied: it is closed, never retried', async () => {
+    const store = new MemoryStore()
+    const { run, seen, state } = runner(store, [{ status: 200, body: { balanceCents: 100 } }])
     await expect(run.send(...SERVE)).rejects.toBeInstanceOf(MoneyLeakError)
+    expect(store.log).toEqual(['save', 'clear']); expect(state.pending).toBeNull(); expect(run.blocksMutations).toBe(false)
+    expect(await run.retry()).toBeNull(); expect(seen).toHaveLength(1)
+  })
+  it('a money-looking key is enough: "chargeId" is refused (regression: the waiter route answers consumptionId)', async () => {
+    const { run } = runner(new MemoryStore(), [{ status: 200, body: { version: 5, chargeId: 'abc', productId: 'water', quantity: 1 } }])
+    await expect(run.send(...SERVE)).rejects.toBeInstanceOf(MoneyLeakError)
+    const clean = runner(new MemoryStore(), [{ status: 200, body: { version: 5, consumptionId: 'abc', productId: 'water', quantity: 1 } }])
+    expect((await clean.run.send(...SERVE)).kind).toBe('confirmed')
+  })
+  it('without the echoed key a money-carrying success closes nothing', async () => {
+    const store = new MemoryStore()
+    const { run, state } = runner(store, [{ status: 200, body: { balanceCents: 100 }, echo: false }])
+    expect(await run.send(...SERVE)).toEqual({ kind: 'unconfirmed', reason: 'unverifiable' })
+    expect(state.pending).not.toBeNull(); expect(store.log).toEqual(['save'])
   })
 })
 

@@ -58,7 +58,8 @@ async function resolve(work: Promise<Outcome | null>): Promise<void> {
     if (outcome.kind === 'confirmed') runnerState.notice = ''
     if (outcome.kind !== 'unconfirmed') await live.refresh()
   } catch (error) {
-    if (error instanceof MoneyLeakError) runnerState.notice = error.message
+    // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.
+    if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SI se aplico. ${error.message}`; await live.refresh() }
     else if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
   }
 }

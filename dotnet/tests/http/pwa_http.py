@@ -65,6 +65,13 @@ class Pwa(unittest.TestCase):
             status, body = h.request(path, role='service')
             self.assertEqual(status, 200, path)
             self.assertEqual(list(money_keys(json.loads(body))), [], path)
+        # D6.3: tampoco lo que RESPONDE una orden de sala. Una clave como 'chargeId' basta para que la guarda de la PWA
+        # rechace la respuesta y la orden quede sin confirmar: la referencia del consumo viaja como consumptionId.
+        status, body = h.request('/services/' + sid + '/commands/add-consumption',
+            dict(expectedVersion=h.dining(sid)['version'], productId='water', quantity=1), role='service')
+        self.assertEqual(status, 200, body)
+        self.assertEqual(set(json.loads(body)), {'version', 'consumptionId', 'productId', 'quantity'})
+        self.assertEqual(list(money_keys(json.loads(body))), [], 'add-consumption')
 
     def test_03_pwa_is_served_anonymously_on_the_same_origin_with_strict_headers(self):
         with urllib.request.urlopen(h.BASE + '/health', timeout=5) as r: self.assertTrue(json.loads(r.read())['pwa'], 'server was built without frontend/pwa/dist')
