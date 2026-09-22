@@ -141,6 +141,18 @@
   <Setter Property="Background" Value="{StaticResource ForestSoft}"/><Setter Property="Foreground" Value="{StaticResource Forest}"/><Setter Property="FontWeight" Value="SemiBold"/>
   <Setter Property="Padding" Value="10,8"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
  </Style>
+ <!-- Barra de menus y barra de estado clasicas (E2): fondo papel, linea inferior/superior, tipografia del tema. -->
+ <Style TargetType="Menu">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
+  <Setter Property="Padding" Value="12,2"/><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+ </Style>
+ <Style TargetType="MenuItem">
+  <Setter Property="Padding" Value="10,6"/><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+ </Style>
+ <Style TargetType="StatusBar">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,1,0,0"/>
+  <Setter Property="Padding" Value="12,2"/><Setter Property="FontSize" Value="12"/>
+ </Style>
  <Style TargetType="TabControl">
   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
  </Style>

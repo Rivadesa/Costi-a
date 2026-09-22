@@ -23,7 +23,28 @@ public partial class MainWindow : Window
     // Los checks del WPF componen la ventana con datos leidos (sin servidor) para renderizarla y capturarla.
     public ShellViewModel Shell => shell;
 
-    public MainWindow() { InitializeComponent(); DataContext = shell; }
+    public MainWindow()
+    {
+        InitializeComponent(); DataContext = shell;
+        // Al conectar (o cambiar de rol) el area de trabajo muestra la primera vista que ese rol puede ver.
+        shell.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.Session)) SelectFirstVisibleView(); };
+    }
+
+    internal void SelectFirstVisibleView()
+    {
+        if (Tabs.SelectedItem is TabItem current && current.Visibility == Visibility.Visible) return;
+        Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().FirstOrDefault(t => t.Visibility == Visibility.Visible);
+    }
+
+    // Menu: cada entrada selecciona una vista del area de trabajo por su nombre (Tag).
+    private void ShowView(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: string name } && FindName(name) is TabItem view) Tabs.SelectedItem = view;
+    }
+    private void ExitClick(object sender, RoutedEventArgs e) => Close();
+    private void AboutClick(object sender, RoutedEventArgs e) => MessageBox.Show(this,
+        $"Costiña · puesto principal\nVersión {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)}\n\nServidor: {shell.Endpoint}\n{shell.ConnectionText}",
+        "Acerca de Costiña", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private async void ConnectClick(object sender, RoutedEventArgs e)
     {

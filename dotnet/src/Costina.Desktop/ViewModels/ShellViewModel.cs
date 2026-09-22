@@ -35,6 +35,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ShellViewModel() { Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); }
 
+    // Cambiar la sesion (conectar, desconectar, otro rol) refresca todas las propiedades derivadas que enlazan menus y vistas.
+    partial void OnSessionChanged(SessionInfo? value) => Sync();
     public bool Connected => Session is not null;
     public bool IsMain => Session?.Role == "main";
     // ADR-012: la pestana de comedor y cocina existe solo si el modulo Dining esta activo en la instalacion.
@@ -45,6 +47,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool HasBlocked => Blocked is not null;
     public bool CanOpen => Session?.Actions?.Contains("open") == true;
     public bool TabsEnabled => Connected && !Busy;
+    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales).
+    public string ConnectionText => Session is null ? "Sin conexión" : $"{Session.Actor ?? Session.Role} · {Session.Role switch { "main" => "puesto principal", "service" => "sala", "kitchen" => "cocina", var r => r }} · {Endpoint}" + (Session.Demo ? " · DEMO" : "");
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     public string PendingText => Pending is null ? "" :
@@ -63,7 +67,7 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(Writable)); OnPropertyChanged(nameof(HasPending));
         OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
-        OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled));
+        OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled)); OnPropertyChanged(nameof(ConnectionText));
         OnPropertyChanged(nameof(IsKitchen)); OnPropertyChanged(nameof(HasPairedDevice));
         ConnectPairedCommand.NotifyCanExecuteChanged(); PairDeviceCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();

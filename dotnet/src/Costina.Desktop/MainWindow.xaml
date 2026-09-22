@@ -3,21 +3,63 @@
  Title="Costiña · Puesto principal" Width="1280" Height="860" MinWidth="1080" MinHeight="720" Background="{StaticResource Cream}" Closing="WindowClosing"
  FontFamily="Segoe UI Variable, Segoe UI" TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
 <Window.Resources><BooleanToVisibilityConverter x:Key="Bool2Vis"/><local:InvertedBool2Vis x:Key="NotBool2Vis"/></Window.Resources>
-<DockPanel Margin="24,20,24,16">
- <!-- Cabecera: identidad, version y conexion. -->
- <StackPanel DockPanel.Dock="Top">
-  <DockPanel Margin="0,0,0,12">
-   <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" HorizontalAlignment="Right">
-    <TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}" TextAlignment="Right"/>
-    <TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}" TextAlignment="Right"/>
-   </StackPanel>
+<Window.InputBindings><KeyBinding Key="F5" Command="{Binding RefreshCommand}"/></Window.InputBindings>
+<DockPanel>
+ <!-- Barra de menus clasica de Windows: es la estructura DEFINITIVA del ERP. Lo que aun no existe va deshabilitado con su corte.
+      Cada entrada muestra una vista del area de trabajo (el TabControl de abajo, sin cabeceras). -->
+ <Menu x:Name="MainMenu" DockPanel.Dock="Top">
+  <MenuItem Header="_Archivo">
+   <MenuItem Header="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}"/>
+   <MenuItem Header="Actualizar" Command="{Binding RefreshCommand}" InputGestureText="F5"/>
+   <MenuItem Header="Desconectar" Command="{Binding DisconnectCommand}"/>
+   <Separator/>
+   <MenuItem Header="Salir" Click="ExitClick" InputGestureText="Alt+F4"/>
+  </MenuItem>
+  <MenuItem Header="_Comedor" x:Name="DiningMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Comedor y cocina" Tag="ServiceTab" Click="ShowView"/>
+  </MenuItem>
+  <MenuItem Header="Ca_ja" x:Name="CheckoutMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView"/>
+   <Separator/>
+   <MenuItem Header="Apertura y cierre de caja" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Arqueo y turnos" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
+   <MenuItem Header="Puestos y emparejamiento" Tag="DevicesTab" Click="ShowView"/>
+   <Separator/>
+   <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Catálogo y tarifas" IsEnabled="False" ToolTip="Llega en E3 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Menús y pases" IsEnabled="False" ToolTip="Llega en E4 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Informes" IsEnabled="False" ToolTip="Tras el Hito 7" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Módulos posteriores" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="_Fiscalidad" x:Name="FiscalMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Series y facturas" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="VERI*FACTU" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="Ay_uda">
+   <MenuItem Header="Acerca de Costiña" Click="AboutClick"/>
+  </MenuItem>
+ </Menu>
+ <!-- Barra de estado: quien esta conectado y contra que servidor, tiempo real y hora de la ultima lectura autoritativa. -->
+ <StatusBar x:Name="MainStatusBar" DockPanel.Dock="Bottom">
+  <StatusBarItem><TextBlock Text="{Binding ConnectionText}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <Separator/>
+  <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <Separator/>
+  <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.28.0-e3 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+ </StatusBar>
+ <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
+  <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
+  <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12" Visibility="{Binding Connected, Converter={StaticResource NotBool2Vis}}">
    <StackPanel>
     <TextBlock Text="COSTIÑA" Style="{StaticResource AppTitle}"/>
-    <TextBlock Text="0.28.0-e3 · Puesto principal · Ensayo con servidor local real · No usar con datos de clientes" Style="{StaticResource Subtle}"/>
-   </StackPanel>
-  </DockPanel>
-  <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12">
-   <StackPanel>
+    <TextBlock Text="Entra con tu usuario y contraseña, o conecta este puesto emparejado. La contraseña no se guarda en disco." Style="{StaticResource Subtle}" Margin="0,2,0,10"/>
     <WrapPanel VerticalAlignment="Bottom">
      <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor" Style="{StaticResource FieldLabel}"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
      <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
@@ -29,7 +71,7 @@
     </WrapPanel>
     <WrapPanel Margin="0,6,0,0" Visibility="{Binding ConnectEnabled, Converter={StaticResource Bool2Vis}}">
      <TextBlock Text="Emparejar este puesto:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
-     <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (pestaña Puestos del PC principal)"/>
+     <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (Configuración › Puestos del PC principal)"/>
      <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. tablet-sala-1)"/>
      <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
      <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
@@ -49,10 +91,12 @@
    <TextBlock Text="{Binding BlockedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
   </DockPanel></Border>
  </StackPanel>
- <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged">
+ <!-- Area de trabajo: una vista por entrada de menu. Las cabeceras de pestana no se pintan (plantilla vacia). -->
+ <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged" Margin="24,0,24,12">
+  <TabControl.ItemContainerStyle><Style TargetType="TabItem"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem"/></Setter.Value></Setter></Style></TabControl.ItemContainerStyle>
   <!-- ═══════════════ Comedor y cocina (modulo Dining) ═══════════════ -->
   <TabItem Header="Comedor y cocina" x:Name="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
-   <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Border Grid.Column="0" Style="{StaticResource Card}">
      <DockPanel>
       <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
@@ -128,7 +172,7 @@
   </TabItem>
   <!-- ═══════════════ Cuenta / Caja (nucleo, solo main) ═══════════════ -->
   <TabItem Header="Cuenta / Caja" x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+   <Border Style="{StaticResource Card}" Margin="0,4,0,0">
     <DockPanel>
      <StackPanel DockPanel.Dock="Top">
       <TextBlock Text="Cuenta / Caja" Style="{StaticResource PanelTitle}"/>
@@ -161,7 +205,7 @@
   </TabItem>
   <!-- ═══════════════ Configuracion (nucleo, E2, solo main) ═══════════════ -->
   <TabItem Header="Configuración" x:Name="OrganizationTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <Grid Margin="0,12,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,10">
      <TextBlock Text="Configuración del negocio" Style="{StaticResource PanelTitle}"/>
      <TextBlock Text="{Binding Organization.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
@@ -232,7 +276,7 @@
   </TabItem>
   <!-- ═══════════════ Puestos (nucleo, solo main) ═══════════════ -->
   <TabItem Header="Puestos" x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+   <Border Style="{StaticResource Card}" Margin="0,4,0,0">
     <DockPanel>
      <StackPanel DockPanel.Dock="Top">
       <TextBlock Text="Puestos y emparejamiento" Style="{StaticResource PanelTitle}"/>
