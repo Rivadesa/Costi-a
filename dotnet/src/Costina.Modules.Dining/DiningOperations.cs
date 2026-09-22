@@ -17,7 +17,7 @@ public static class DiningOperations
 {
     public static async Task<object> Open(Unit unit,ExecutionIdentity identity,OpenRequest request)
     {
-        var table = await unit.Configuration<TableDefinition>("table",Required(request.TableId));
+        var table = await unit.ActiveTable(Required(request.TableId));   // E2: mesa de la organizacion del nucleo, activa
         var menu = await unit.ModuleConfiguration<MenuDefinition>("dining","menu",Required(request.MenuId));   // menus: configuracion del modulo (E1b)
         if(request.Pax < 1 || request.Pax > table.Capacity) throw new ArgumentException("Pax is outside the configured table capacity.");
         var stamp = new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);

@@ -54,8 +54,12 @@ if(administrative)
         : throw new InvalidOperationException("Missing COSTINA_DB_OWNER: schema commands never run with the runtime role."));
     await using var ownerSource = NpgsqlDataSource.Create(ownerConnection);
     // D5.4: restauracion verificada de una copia sobre una instalacion recien aprovisionada (nunca pisa datos).
-    if(args[0] == "restore") { await new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas).RestoreAsync(args[1],ownerConnection,moduleSchemas); return; }
     var ownerStore = new PostgresStore(ownerSource);
+    if(args[0] == "restore")
+    {
+        await new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas).RestoreAsync(args[1],ownerConnection,moduleSchemas);
+        await ownerStore.EnsureOrganizationAsync(scope); return;
+    }
     var exists = await ownerStore.SchemaExistsAsync();
     if(args[0] == "init" && exists)
     {
@@ -76,13 +80,14 @@ if(administrative)
     if(args[0] == "init-lab" && !laboratory)
         throw new InvalidOperationException("init-lab installs fictitious fixtures and only runs in laboratory mode.");
     var upgraded = await ownerStore.InitializeAsync(moduleSchemas);
+    await ownerStore.EnsureOrganizationAsync(scope);   // E2: la estacion de pase de este ambito
     if(args[0] == "init-lab")
     {
         await LabConfiguration.Seed(ownerStore,scope,await ActiveModules(ownerStore));
         Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
     }
     Console.WriteLine(args[0] == "init" ? "Schema initialized. Create the first user with create-user <username> main."
-        : upgraded ? "Schema upgraded from v1 (native_d1) to v2 (core + one schema per module). Existing data was not reset."
+        : upgraded ? $"Schema upgraded to version {PostgresStore.SchemaVersion} (core + one schema per module; organization tables). Existing data was not reset."
         : "Schema upgraded in place. Existing data was not reset."); return;
 }
 await using var source = NpgsqlDataSource.Create(connectionString);
@@ -362,6 +367,9 @@ app.MapPost(prefix+"/auth/pairings/{id}/approve",async (HttpContext c,string id)
     using var reader=new StreamReader(c.Request.Body);
     var request=JsonSerializer.Deserialize<PairingDecisionRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json)
         ?? throw new ArgumentException("Role and station are required.");
+    // E2: la estacion de un puesto es una estacion ACTIVA de la organizacion, elegida de la lista (ya no se teclea libre).
+    if(request.Station is null || !await new DesktopReadRepository(source).StationActive(scope,request.Station.Trim(),c.RequestAborted))
+        throw new ArgumentException("Unknown or inactive station.");
     if(!await deviceStore.DecideAsync(id,true,request.Role,request.Station,(string)c.Items["actor"]!,c.RequestAborted))
         throw new StoreNotFound();
     return Results.Json(new {approved=true});
@@ -427,6 +435,8 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
     return Results.Text(stored is null ? Wire.Encode(new {key,found=false})
         : "{\"key\":"+Wire.Encode(key)+",\"found\":true,\"response\":"+stored+"}","application/json");
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
+// E2: organizacion editable del nucleo (solo puesto principal).
+app.MapOrganizationRoutes(store,source,scope,modules);
 // ADR-012: cada modulo activo registra sus rutas bajo su prefijo (y, durante una version, bajo el anterior como alias).
 var hosted=modules.Select(m=>(Module:m,Host:new ModuleHost(store,source,scope,prefix+"/"+m.Name,prefix))).ToList();
 foreach(var (module,host) in hosted) module.MapRoutes(app,host);

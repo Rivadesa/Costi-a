@@ -152,7 +152,7 @@ class Packaging(unittest.TestCase):
         upgraded = cli('upgrade', env=env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
         self.assertEqual(psql_as(BOOTSTRAP, "SELECT string_agg(nspname || ':' || nspowner::regrole::text, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core:costina_owner,dining:costina_owner')
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '2')
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '3')
 
     def test_04_runtime_role_has_no_ddl_and_cannot_touch_the_audit_trail(self):
         runtime = self.config('server.json')['COSTINA_DB']
@@ -328,7 +328,8 @@ class Packaging(unittest.TestCase):
         self.assertEqual((manifest['format'], manifest['tenantId'], manifest['tables']['core.users']['rows'], manifest['tables']['core.pairings']['rows']), (2, 'd5-tenant', 1, 1))
         # D5.6: un servicio real viaja en la copia. E1b: claves esquema.tabla; los menus ya viven en el esquema del modulo.
         self.assertEqual((manifest['tables']['dining.services']['rows'], manifest['tables']['dining.occupancies']['rows'],
-                          manifest['tables']['core.configuration']['rows'], manifest['tables']['dining.configuration']['rows']), (1, 1, 11, 1))
+                          manifest['tables']['core.configuration']['rows'], manifest['tables']['dining.configuration']['rows']), (1, 1, 3, 1))
+        self.assertEqual((manifest['tables']['core.zones']['rows'], manifest['tables']['core.tables']['rows'], manifest['tables']['core.stations']['rows']), (1, 8, 4))   # E2: organizacion relacional
         self.assert_private(newest)
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
 
@@ -358,7 +359,7 @@ class Packaging(unittest.TestCase):
         self.assertIn('Restored and verified', restored.stdout)
         # Independent comparison, table by table and by content, between the source and the restored database.
         tables = schema_tables(BOOTSTRAP)
-        self.assertGreaterEqual(len(tables), 14)
+        self.assertGreaterEqual(len(tables), 17)
         self.assertEqual(tables, schema_tables(elsewhere))
         for table in tables:
             self.assertEqual(psql_as(BOOTSTRAP, digest(table)).stdout.strip(), psql_as(elsewhere, digest(table)).stdout.strip(), table)
@@ -421,7 +422,9 @@ class Packaging(unittest.TestCase):
         for select, into in (
             ('SELECT id, created_at FROM core.installation', 'native_d1.installation (id, created_at)'),
             ('SELECT tenant,company,location,id,username,password_hash,role,active,created_at FROM core.users', 'native_d1.users (tenant,company,location,id,username,password_hash,role,active,created_at)'),
-            ('SELECT tenant,company,location,kind,id,payload FROM core.configuration UNION ALL SELECT tenant,company,location,kind,id,payload FROM dining.configuration', 'native_d1.configuration'),
+            # En v1 las mesas eran fixtures JSONB de configuration (E2 las llevo a core.tables): se reconstruyen en su forma v1.
+            ("SELECT tenant,company,location,kind,id,payload FROM core.configuration UNION ALL SELECT tenant,company,location,kind,id,payload FROM dining.configuration "
+             "UNION ALL SELECT tenant,company,location,'table',id,jsonb_build_object('id',id,'name',name,'capacity',capacity) FROM core.tables", 'native_d1.configuration'),
             ('SELECT tenant,company,location,id,table_id,state,version,payload_version,payload FROM dining.services', 'native_d1.services'),
             ('SELECT tenant,company,location,id,service_id,table_id,state,version,payload_version,payload FROM dining.occupancies', 'native_d1.occupancies'),
             ('SELECT tenant,company,location,id,service_id,state,version,payload_version,payload FROM core.accounts', 'native_d1.accounts (tenant,company,location,id,service_id,state,version,payload_version,payload)'),
@@ -451,13 +454,18 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
         upgraded = cli('upgrade', env=v1env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
-        self.assertIn('upgraded from v1', upgraded.stdout)
+        self.assertIn('upgraded to version 3', upgraded.stdout)                                           # v1 -> v2 -> v3 encadenadas
         self.assertEqual(psql_as(v1super, "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core,dining')
-        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '2')
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '3')   # v1 -> v2 -> v3
         self.assertEqual(psql_as(v1super, "SELECT string_agg(table_id, ',') FROM core.accounts").stdout.strip(), 'M1')              # the table travelled into the account
         self.assertEqual(psql_as(v1super, "SELECT count(*) FROM core.configuration WHERE kind='menu'").stdout.strip(), '0')
         self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || count(*) FILTER (WHERE kind='menu') FROM dining.configuration").stdout.strip(), '1:1')
-        self.assertEqual(psql_as(v1super, 'SELECT count(*) FROM core.configuration').stdout.strip(), '11')
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(kind, ',') FROM (SELECT DISTINCT kind FROM core.configuration) k").stdout.strip(), 'product')
+        # E2 (v3): las mesas fixture pasan a core.tables dentro de la sala 'sala'; las estaciones de la demo y la de pase existen.
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(id || ':' || name, ',') FROM core.zones").stdout.strip(), 'sala:Sala')
+        self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || string_agg(zone_id, '' ORDER BY id) FILTER (WHERE id='M1') || ':' || max(capacity) FROM core.tables").stdout.strip(), '8:sala:12')
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(id || '=' || kind, ',' ORDER BY sort) FROM core.stations").stdout.strip(), 'pase=pass,cold=kitchen,hot=kitchen,sala-1=room')
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '3')
         self.assertEqual(psql_as(v1super, "SELECT count(*) FROM pg_constraint WHERE conname='accounts_tenant_company_location_service_id_fkey'").stdout.strip(), '0')
         self.assertEqual(psql_as(v1super, 'SELECT id::text FROM core.installation').stdout.strip(), installation)
         again = cli('upgrade', env=v1env)                                                                  # idempotent
@@ -472,6 +480,8 @@ class Packaging(unittest.TestCase):
             self.assertEqual(status, 200)
             status, session = call('/api/native/v1/session', token=login['token'], base='http://127.0.0.1:5095')
             self.assertEqual((session['modules'], session['installationId']), (['dining'], installation))
+            status, configuration = call('/api/native/v1/configuration', token=login['token'], base='http://127.0.0.1:5095')
+            self.assertEqual((status, len(configuration['tables']), configuration['tables'][0]['zoneName']), (200, 8, 'Sala'))   # E2 tras migrar
             status, board = call('/api/native/v1/dining/board', token=login['token'], base='http://127.0.0.1:5095')
             self.assertEqual((status, [row['service']['tableId'] for row in board]), (200, ['M1']))
             status, accounts = call('/api/native/v1/checkout/accounts', token=login['token'], base='http://127.0.0.1:5095')
@@ -481,7 +491,7 @@ class Packaging(unittest.TestCase):
         restore_root, _, restore_super = scaffold('costina_restore_v1_d1_test', 5096)
         restored = cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root)))
         self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
-        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded from v1 to v2', restored.stdout)
+        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 3', restored.stdout)
         tables = schema_tables(v1super)
         self.assertEqual(tables, schema_tables(restore_super))
         for table in tables:                                                                              # same rows as the upgraded original

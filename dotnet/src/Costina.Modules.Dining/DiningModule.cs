@@ -25,6 +25,10 @@ public sealed class DiningModule : IModule
         return new Dictionary<string, object> { ["menus"] = menus.Select(m => new { m.Id, m.Name }).ToArray() };
     }
 
+    // E2: una mesa con ocupacion viva no se puede desactivar; el nucleo pregunta por este contrato.
+    public async Task<bool> TableInUseAsync(Unit unit, string tableId)
+        => (await unit.Rows("SELECT 1 FROM dining.occupancies WHERE " + Unit.ScopeWhere + " AND table_id=@table AND state='Occupied'", [("table", tableId)], r => 1)).Count > 0;
+
     public Task SeedDemoAsync(Unit unit) => unit.SeedModuleConfiguration(Name, "menu", "LAB-TASTING", new MenuDefinition("LAB-TASTING", "Menú de ensayo", 15000,
         [new("p1", "Aperitivos", [new("frio", "Preparación fría", "cold"), new("caliente", "Preparación caliente", "hot")]),
          new("p2", "Segundo pase", [new("principal", "Preparación principal", "hot")])]));

@@ -22,7 +22,7 @@ public sealed record ModuleSchema(string Name, string Schema, string Grants)
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}$")] private static partial Regex SchemaName();
     public static string CheckedSchema(string name)
         => SchemaName().IsMatch(name) && name != "public" ? name : throw new ArgumentException("Invalid schema name: " + name);
@@ -53,6 +53,19 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
             await Run(ModuleSchema.Resource(assembly, "Costina.Core.Persistence.upgrade-v2.sql"));
             upgraded = true;
         }
+        // Migraciones encadenadas: de la version guardada hasta la de estos binarios, una a una (upgrade-v{n}.sql).
+        if (await Exists("core.schema_version"))
+        {
+            int current;
+            await using (var version = new NpgsqlCommand("SELECT version FROM core.schema_version", connection, transaction))
+                current = (int)(await version.ExecuteScalarAsync(ct) ?? throw new InvalidDataException("Schema version row missing."));
+            if (current > SchemaVersion) throw new InvalidDataException($"The database schema is version {current}, newer than these binaries ({SchemaVersion}).");
+            for (var next = current + 1; next <= SchemaVersion; next++)
+            {
+                await Run(ModuleSchema.Resource(assembly, $"Costina.Core.Persistence.upgrade-v{next}.sql"));
+                upgraded = true;
+            }
+        }
         await Run(ModuleSchema.Resource(assembly, "Costina.Core.Persistence.schema.sql"));
         foreach (var module in modules) await Run(module.Schema);
         // D5.1: privilegios minimos del rol de ejecucion, solo si "provision" lo creo. En un laboratorio
@@ -69,6 +82,16 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
             if (!Equals(await version.ExecuteScalarAsync(ct), SchemaVersion)) throw new InvalidDataException("Schema version mismatch after initialization.");
         await transaction.CommitAsync(ct);
         return upgraded;
+    }
+
+    // E2: la estacion de PASE de este ambito existe siempre (validacion y revision de pases, D4.3). Idempotente; rol propietario.
+    public async Task EnsureOrganizationAsync(BusinessScope scope, CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "INSERT INTO core.stations (tenant,company,location,id,name,kind,sort,active) VALUES (@tenant,@company,@location,'pase','Pase','pass',0,true) ON CONFLICT DO NOTHING");
+        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+        command.Parameters.AddWithValue("location", scope.LocationId);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     // D5.6: instalacion de demostracion = los fixtures ficticios dejaron su orden idempotente en este ambito.
