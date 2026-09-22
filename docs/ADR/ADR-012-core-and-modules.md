@@ -1,6 +1,6 @@
 # ADR-012 — Núcleo del ERP y módulos: qué es cada cosa y cómo se enchufan
 
-Fecha: 2026-09-22. Estado: **borrador para decisión del promotor** (Hito 6, corte E1). Desarrolla el §6 de `docs/ARCHITECTURE.md` (monolito modular) y el §5 del plan `docs/plans/2026-09-15-windows-multidevice-erp.md`; no sustituye ningún ADR vigente. ADR-007 (separación operativa/económica), ADR-009 (ciclos de vida independientes) y ADR-011 (instalación y roles) siguen intactos y este ADR los da por supuestos.
+Fecha: 2026-09-22. Estado: **aceptado por el promotor el 2026-09-22** (Hito 6, corte E1). Decisiones tomadas al aceptarlo: esquema PostgreSQL por módulo desde E1b; las rutas de Dining se mueven a `/dining/…` con alias de compatibilidad durante una versión. Desarrolla el §6 de `docs/ARCHITECTURE.md` (monolito modular) y el §5 del plan `docs/plans/2026-09-15-windows-multidevice-erp.md`; no sustituye ningún ADR vigente. ADR-007 (separación operativa/económica), ADR-009 (ciclos de vida independientes) y ADR-011 (instalación y roles) siguen intactos y este ADR los da por supuestos.
 
 ## Contexto
 
