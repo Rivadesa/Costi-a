@@ -220,6 +220,32 @@ await Check("raw identity POST never touches the uncertain command",async()=>{
     _=await client.PostRawAsync("auth/devices/x/revoke",new{});
     Assert(client.Pending is null);
 });
+// E2: organizacion editable. Lectura tipada y comando por la tuberia incierta (Idempotency-Key, orden persistida antes de enviar).
+await Check("organization read decodes zones with tables and stations",async()=>{
+    using var client=Client(new Handler((r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/organization");
+        return Task.FromResult(Response(200,"{\"zones\":[{\"id\":\"sala\",\"name\":\"Sala\",\"sort\":0,\"active\":true,\"tables\":[{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12,\"zoneId\":\"sala\",\"sort\":0,\"active\":true}]}],\"stations\":[{\"id\":\"pase\",\"name\":\"Pase\",\"kind\":\"Pass\",\"sort\":0,\"active\":true}]}"));
+    }));
+    var org=await client.GetAsync<OrganizationDto>("organization");
+    Assert(org.Zones.Single().Tables.Single().Capacity==12&&org.Stations.Single().KindLabel=="Pase"&&org.Zones[0].ToString().Contains("1 mesas activas"));
+});
+await Check("organization command travels with an idempotency key and is persisted before sending",async()=>{
+    var store=new MemoryStore(); string? key=null;
+    using var client=new ApiClient(new Uri("http://127.0.0.1:5088"),new string('a',40),new Handler((r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/organization/commands/table-create"); key=r.Headers.GetValues("Idempotency-Key").Single();
+        Assert(store.LastSavedKey==key);   // durable ANTES del primer intento
+        var ok=Response(200,"{\"id\":\"T1\",\"name\":\"Terraza 1\",\"capacity\":4,\"zoneId\":\"terraza\",\"sort\":0,\"active\":true}"); ok.Headers.Add("Idempotency-Key",key); return Task.FromResult(ok);
+    }));
+    client.AttachPendingStore(store);
+    var result=await client.SendAsync("organization/commands/table-create",new{id="T1",name="Terraza 1",capacity=4,zoneId="terraza",sort=0},"Crear mesa T1");
+    Assert(result.GetProperty("id").GetString()=="T1"&&client.Pending is null&&store.ClearedKeys.Single()==key);
+});
+// E2: la mesa operativa lleva su sala; un servidor anterior sin ese campo sigue decodificando.
+await Check("table choice shows its zone when the server sends it",()=>{
+    var withZone=JsonSerializer.Deserialize<TableChoice>("{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12,\"zoneId\":\"sala\",\"zoneName\":\"Sala\"}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    var legacy=JsonSerializer.Deserialize<TableChoice>("{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Assert(withZone.ToString()=="Sala · Mesa 1"&&legacy.ToString()=="Mesa 1"); return Task.CompletedTask;
+});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;
