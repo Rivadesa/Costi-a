@@ -1,7 +1,6 @@
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Modules.Dining.Domain;
 
-namespace Costina.Server;
+namespace Costina.Modules.Dining;
 
 // Filtro de affordances por ROL. Debe reflejar exactamente lo que el middleware autoriza:
 // un cliente no debe ver como disponible una accion que el servidor rechazaria con 403.

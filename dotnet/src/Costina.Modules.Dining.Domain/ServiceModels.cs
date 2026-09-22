@@ -1,11 +1,11 @@
-namespace Costina.Domain;
+using Costina.Core.Domain;
+
+namespace Costina.Modules.Dining.Domain;
 
 public enum DiningState { Open, InService, Paused, Completed, Cancelled }
 public enum CourseState { Pending, Fired, Preparing, Ready, Served, Skipped }
 public enum PreparationState { Pending, Fired, Preparing, Ready }
 public enum OccupancyState { Occupied, Released }
-public enum AccountState { Open, Closed }
-public enum PaymentCoverage { Unpaid, PartiallyPaid, Paid, Credit }
 
 public sealed record PreparationDefinition(string Id, string Name, string StationId,
     int Quantity = 1, int? GuestPosition = null, bool Mandatory = true);

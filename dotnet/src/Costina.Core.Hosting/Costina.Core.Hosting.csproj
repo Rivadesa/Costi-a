@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Contrato de modulo y tuberia de peticiones del nucleo (ADR-012). Un modulo referencia esto; el nucleo nunca referencia un modulo.</Description></PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Costina.Core.Persistence/Costina.Core.Persistence.csproj" />
+  </ItemGroup>
+</Project>

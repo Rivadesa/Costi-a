@@ -26,7 +26,7 @@ const guests = computed(() => Array.from({ length: service.value.pax }, (_, inde
 
 function command(action: string, fields: Record<string, unknown>, description: string): void {
   problem.value = ''
-  emit('run', `/services/${encodeURIComponent(service.value.id)}/commands/${action}`, { expectedVersion: props.entry.version, ...fields }, `${description} · ${service.value.tableId}`)
+  emit('run', `/dining/services/${encodeURIComponent(service.value.id)}/commands/${action}`, { expectedVersion: props.entry.version, ...fields }, `${description} · ${service.value.tableId}`)
 }
 function withReason(action: string, fields: Record<string, unknown>, description: string): void {
   const text = reason.value.trim()

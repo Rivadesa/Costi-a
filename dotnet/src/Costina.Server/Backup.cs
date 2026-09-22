@@ -2,8 +2,8 @@ using System.Data;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Core.Domain;
+using Costina.Core.Persistence;
 using Npgsql;
 
 namespace Costina.Server;

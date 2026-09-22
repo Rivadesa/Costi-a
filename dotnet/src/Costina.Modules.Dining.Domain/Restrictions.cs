@@ -1,4 +1,6 @@
-namespace Costina.Domain;
+using Costina.Core.Domain;
+
+namespace Costina.Modules.Dining.Domain;
 
 // Restricciones por comensal: datos ESTRUCTURADOS, nunca notas libres (AGENTS).
 // GuestPosition null = toda la mesa. La severidad viaja siempre con la restriccion

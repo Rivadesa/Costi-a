@@ -5,7 +5,7 @@ import native_http as h
 KITCHEN = {'preparation-start', 'preparation-ready', 'ready'}
 
 def free_table():
-    occupied = {b['service']['tableId'] for b in h.ok('/board')}
+    occupied = {b['service']['tableId'] for b in h.ok('/dining/board')}
     return next('M' + str(i) for i in range(1, 9) if 'M' + str(i) not in occupied)
 
 def collect(view):
@@ -27,24 +27,24 @@ class AffordanceChecks(unittest.TestCase):
     def test_01_open_state_actions_per_role(self):
         main = h.dining(self.sid)['data']
         self.assertIn('start', main['actions']); self.assertIn('cancel-unstarted', main['actions'])
-        sala = h.ok('/services/' + self.sid, role='service')['data']
+        sala = h.ok('/dining/services/' + self.sid, role='service')['data']
         self.assertIn('start', sala['actions']); self.assertNotIn('cancel-unstarted', sala['actions'])
-        cocina = h.ok('/services/' + self.sid, role='kitchen')['data']
+        cocina = h.ok('/dining/services/' + self.sid, role='kitchen')['data']
         self.assertEqual(set(), collect(cocina) - KITCHEN)
 
     def test_02_kitchen_flow_actions_are_consistent_with_middleware(self):
         h.mutate(self.sid, 'start'); h.mutate(self.sid, 'fire-next')
-        cocina = h.ok('/services/' + self.sid, role='kitchen')['data']
+        cocina = h.ok('/dining/services/' + self.sid, role='kitchen')['data']
         preps = cocina['courses'][0]['preparations']
         self.assertTrue(all('preparation-start' in p['actions'] for p in preps))
         self.assertEqual(set(), collect(cocina) - KITCHEN)
         for p in h.dining(self.sid)['data']['courses'][0]['preparations']:
             h.mutate(self.sid, 'preparation-ready', courseId='p1', itemId=p['id'])
-        cocina = h.ok('/services/' + self.sid, role='kitchen')['data']
+        cocina = h.ok('/dining/services/' + self.sid, role='kitchen')['data']
         self.assertIn('ready', cocina['courses'][0]['actions'])
         self.assertNotIn('serve', cocina['courses'][0]['actions'])
         h.mutate(self.sid, 'ready', courseId='p1')
-        vista = h.ok('/services/' + self.sid, role='service')['data']
+        vista = h.ok('/dining/services/' + self.sid, role='service')['data']
         self.assertIn('serve', vista['courses'][0]['actions'])
         self.assertNotIn('complete', vista['actions'])
 
@@ -54,11 +54,11 @@ class AffordanceChecks(unittest.TestCase):
             if course['state'] == 'Pending': h.mutate(self.sid, 'skip', courseId=course['id'], reason='affordance test')
         main = h.dining(self.sid)['data']
         self.assertIn('complete', main['actions'])
-        self.assertNotIn('complete', h.ok('/services/' + self.sid, role='service')['data']['actions'])
+        self.assertNotIn('complete', h.ok('/dining/services/' + self.sid, role='service')['data']['actions'])
         h.mutate(self.sid, 'complete')
-        row = next(b for b in h.ok('/board') if b['service']['id'] == self.sid)
+        row = next(b for b in h.ok('/dining/board') if b['service']['id'] == self.sid)
         self.assertIn('release', row['occupancy']['actions'])
-        fila = next(b for b in h.ok('/board', role='service') if b['service']['id'] == self.sid)
+        fila = next(b for b in h.ok('/dining/board', role='service') if b['service']['id'] == self.sid)
         self.assertEqual([], fila['occupancy']['actions'])
 
     def test_04_account_actions_follow_balance(self):
@@ -72,9 +72,9 @@ class AffordanceChecks(unittest.TestCase):
     def test_05_command_responses_stay_action_free(self):
         # Libera la mesa del servicio completado en test_03 usando su propia affordance
         # (no depende de que queden mesas libres en la base compartida del job).
-        row = next(b for b in h.ok('/board') if b['service']['id'] == self.sid)
+        row = next(b for b in h.ok('/dining/board') if b['service']['id'] == self.sid)
         self.assertIn('release', row['occupancy']['actions'])
-        h.ok('/occupancy/' + self.sid + '/release',
+        h.ok('/dining/occupancy/' + self.sid + '/release',
              {'expectedVersion': row['occupancyVersion'], 'reason': 'affordance test'})
         sid = h.open_table(row['service']['tableId'])
         response = h.mutate(sid, 'start')

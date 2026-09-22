@@ -1,12 +1,14 @@
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Core.Domain;
+using Costina.Core.Hosting;
+using Costina.Core.Persistence;
 using Npgsql;
 namespace Costina.Server;
 
-// Uses the existing middleware and endpoint access metadata, without changing authentication.
+// Lecturas del NUCLEO. Uses the existing middleware and endpoint access metadata, without changing authentication.
 public static class DesktopReadRoutes
 {
-    public static void MapDesktopReadRoutes(this WebApplication app,NpgsqlDataSource source,BusinessScope scope,Guid installation,string serverVersion,Func<bool> demo)
+    public static void MapDesktopReadRoutes(this WebApplication app,NpgsqlDataSource source,BusinessScope scope,Guid installation,string serverVersion,Func<bool> demo,
+        IReadOnlyList<(IModule Module,ModuleHost Host)> modules)
     {
         var reads=new DesktopReadRepository(source);
         const string prefix="/api/native/v1";
@@ -21,16 +23,22 @@ public static class DesktopReadRoutes
                 demo=demo(),
                 // actor: usuario real con sesion (user:nombre) o rol de laboratorio (lab-rol). Auditable en tests.
                 actor=(string)c.Items["actor"]!,
-                // station: solo dispositivos emparejados (D4.2); su aplicacion en permisos llega en D4.3.
+                // station: solo dispositivos emparejados (D4.2); acota lo que anuncian los modulos (D4.3).
                 station=c.Items["station"] as string,
-                // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar.
-                // add-consumption: consumo a mayores desde sala sin importes (D3.6); cocina no marca consumos.
-                actions=new[]{"open","add-consumption"}.Where(a=>Affordances.Allows(role,a)).ToArray()
+                // ADR-012: modulos ACTIVOS en esta instalacion. Los clientes montan solo sus superficies.
+                modules=modules.Select(m=>m.Module.Name).ToArray(),
+                // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar, por modulo.
+                actions=modules.SelectMany(m=>m.Module.SessionActions(role)).Distinct(StringComparer.Ordinal).ToArray()
             });})).WithMetadata(new RouteAccess("main","service","kitchen"));
-        app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(new {
-            tables=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted),
-            menus=(await reads.Configuration<MenuDefinition>(scope,"menu",c.RequestAborted)).Select(m=>new {m.Id,m.Name}).ToArray()
-        }))).WithMetadata(new RouteAccess("main","service","kitchen"));
+        // Configuracion operativa: el nucleo aporta la organizacion (mesas); cada modulo anade sus claves (p. ej. menus).
+        app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>{
+            var configuration=new Dictionary<string,object>(StringComparer.Ordinal){
+                ["tables"]=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted)};
+            foreach(var (module,host) in modules)
+                foreach(var (key,value) in await module.ConfigurationAsync(host,c.RequestAborted))
+                    if(!configuration.TryAdd(key,value)) throw new InvalidOperationException($"Configuration key {key} is claimed twice.");
+            return Results.Json(configuration);
+        })).WithMetadata(new RouteAccess("main","service","kitchen"));
         // D6.1 (#28, ADR-007): catalogo OPERATIVO para el comandero — que se puede anadir, nunca a que precio.
         // Proyeccion propia: no reutiliza la de caja ni deja pasar un solo campo economico.
         app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(

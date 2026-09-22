@@ -1,3 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="../Costina.Domain/Costina.Domain.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Costina.Core.Domain/Costina.Core.Domain.csproj" />
+    <ProjectReference Include="../Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" />
+  </ItemGroup>
 </Project>

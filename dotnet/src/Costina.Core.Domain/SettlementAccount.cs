@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Costina.Domain;
+namespace Costina.Core.Domain;
 
 public sealed record ChargeLine(string Id, string Description, int Quantity, long UnitPriceCents,
     bool Voided = false, string? VoidReason = null)

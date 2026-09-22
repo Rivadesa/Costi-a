@@ -45,7 +45,7 @@ class StationChecks(unittest.TestCase):
                 [p['id'] for p in preps if p['stationId'] == 'hot'])
 
     def act(self, token, action, **fields):
-        return request('/services/' + self.sid + '/commands/' + action,
+        return request('/dining/services/' + self.sid + '/commands/' + action,
                        dict(expectedVersion=h.dining(self.sid)['version'], **fields), token=token)
 
     def test_01_device_marks_only_its_own_station(self):
@@ -55,7 +55,7 @@ class StationChecks(unittest.TestCase):
         self.assertEqual(200, self.act(self.cold, 'preparation-ready', courseId='p1', itemId=cold_ids[0])[0])
 
     def test_02_affordances_mirror_the_station(self):
-        _, view = request('/services/' + self.sid, token=self.cold)
+        _, view = request('/dining/services/' + self.sid, token=self.cold)
         for p in view['data']['courses'][0]['preparations']:
             if p['stationId'] == 'cold' and p['state'] in ('Fired', 'Preparing'):
                 self.assertIn('preparation-ready', p['actions'])
@@ -69,8 +69,8 @@ class StationChecks(unittest.TestCase):
             self.act(token, 'preparation-ready', courseId='p1', itemId=pid)
         status, body = self.act(self.cold, 'ready', courseId='p1')
         self.assertEqual(409, status); self.assertEqual('wrong_station', body['error'])
-        self.assertNotIn('ready', request('/services/' + self.sid, token=self.cold)[1]['data']['courses'][0]['actions'])
-        self.assertIn('ready', request('/services/' + self.sid, token=self.pase)[1]['data']['courses'][0]['actions'])
+        self.assertNotIn('ready', request('/dining/services/' + self.sid, token=self.cold)[1]['data']['courses'][0]['actions'])
+        self.assertIn('ready', request('/dining/services/' + self.sid, token=self.pase)[1]['data']['courses'][0]['actions'])
         self.assertEqual(200, self.act(self.pase, 'ready', courseId='p1')[0])
 
     def test_05_restriction_review_is_announced_to_the_pass_station_only(self):
@@ -79,18 +79,18 @@ class StationChecks(unittest.TestCase):
         h.mutate(sid, 'start'); h.mutate(sid, 'fire-next')
         h.mutate(sid, 'declare-restriction', guestPosition=1, kind='Allergy', substance='marisco', severity='Severe')
         def announced(token):
-            view = request('/services/' + sid, token=token)[1]['data']
+            view = request('/dining/services/' + sid, token=token)[1]['data']
             return [p['id'] for p in view['courses'][0]['preparations'] if 'review-preparation' in p['actions']]
         pending = announced(self.pase)
         self.assertTrue(pending)
         self.assertEqual([], announced(self.cold))
         self.assertEqual(pending, announced(h.KEYS['kitchen']))   # el chef con sesion, sin estacion, no tiene restriccion
-        _, board = request('/board', token=self.cold)
+        _, board = request('/dining/board', token=self.cold)
         self.assertEqual([], [a for row in board for c in row['service']['courses'] for p in c['preparations'] for a in p['actions'] if a == 'review-preparation'])
         fields = dict(courseId='p1', itemId=pending[0], decision='adapt', note='sin marisco')
-        status, body = request('/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.cold)
+        status, body = request('/dining/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.cold)
         self.assertEqual(409, status); self.assertEqual('wrong_station', body['error'])
-        status, _ = request('/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.pase)
+        status, _ = request('/dining/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], **fields), token=self.pase)
         self.assertEqual(200, status)
 
     def test_06_a_rejected_retry_does_not_prove_the_first_attempt_was_not_applied(self):
@@ -108,14 +108,14 @@ class StationChecks(unittest.TestCase):
         sid = h.open_table('M3'); h.mutate(sid, 'start')
         waiter = pair_device(admin, 'puesto-cambia-de-rol', 'service', 'sala-1')
         key, body = secrets.token_hex(16), dict(expectedVersion=h.dining(sid)['version'], reason='salen un momento')
-        status, echoed, _ = raw('/services/' + sid + '/commands/pause', body, waiter, key)
+        status, echoed, _ = raw('/dining/services/' + sid + '/commands/pause', body, waiter, key)
         self.assertEqual((200, key), (status, echoed))
         version = h.dining(sid)['version']
         device = next(d for d in request('/auth/devices', token=admin)[1] if d['name'] == 'puesto-cambia-de-rol' and not d.get('revokedAt'))
         self.assertEqual(200, request('/auth/devices/' + device['id'] + '/revoke', {}, token=admin)[0])
-        self.assertEqual(401, raw('/services/' + sid + '/commands/pause', body, waiter, key)[0])          # revocado: 401, que ningun cliente toma por cierre
+        self.assertEqual(401, raw('/dining/services/' + sid + '/commands/pause', body, waiter, key)[0])          # revocado: 401, que ningun cliente toma por cierre
         cook = pair_device(admin, 'puesto-cambia-de-rol', 'kitchen', 'cold')
-        status, echoed, rejection = raw('/services/' + sid + '/commands/pause', body, cook, key)       # MISMOS bytes y clave
+        status, echoed, rejection = raw('/dining/services/' + sid + '/commands/pause', body, cook, key)       # MISMOS bytes y clave
         self.assertEqual((403, key), (status, echoed)); self.assertIn('error', rejection)
         self.assertEqual(version, h.dining(sid)['version'])                                              # ni duplicada ni deshecha
         status, lookup = request('/commands/' + key, token=cook)                                         # mismo actor: el registro manda

@@ -79,7 +79,7 @@ try {
         $token = (Login).token
         Assert $token 'Login failed after installation.'
         # Con los datos demo el producto INSTALADO recorre un servicio real: abrir mesa con el rol de ejecucion.
-        $opened = Invoke-RestMethod "$api/services" -Method Post -ContentType 'application/json' -Body (@{tableId = 'M1'; pax = 2; menuId = 'LAB-TASTING' } | ConvertTo-Json) `
+        $opened = Invoke-RestMethod "$api/dining/services" -Method Post -ContentType 'application/json' -Body (@{tableId = 'M1'; pax = 2; menuId = 'LAB-TASTING' } | ConvertTo-Json) `
             -Headers @{Authorization = "Bearer $token"; 'Idempotency-Key' = [guid]::NewGuid().ToString('N') }
         Assert $opened.serviceId 'Could not open a table on the installed product.'
         $script:serviceId = $opened.serviceId
@@ -160,7 +160,7 @@ try {
             $restored = (Invoke-RestMethod "$api/session" -Headers @{Authorization = "Bearer $token" }).installationId
             Assert ($restored -eq $sourceInstallation) "Installation identity changed: $sourceInstallation -> $restored"
             # Los MISMOS registros de negocio: la mesa abierta antes de la copia sigue abierta tras restaurar, y la marca demo viaja con los datos.
-            $service = Invoke-RestMethod "$api/services/$($script:serviceId)" -Headers @{Authorization = "Bearer $token" }
+            $service = Invoke-RestMethod "$api/dining/services/$($script:serviceId)" -Headers @{Authorization = "Bearer $token" }
             Assert ($service.data.tableId -eq 'M1') 'The service opened before the backup is missing after the restore.'
             Assert ((Invoke-RestMethod "$base/health").demo) 'The demo flag must travel with the restored data.'
             # Un ambito distinto debe rechazarse y no dejar una instalacion a medias.

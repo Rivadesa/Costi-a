@@ -61,12 +61,12 @@ def ok(path, data=None, **kw):
     return json.loads(body)
 
 def open_table(table='M1'):
-    return ok('/services', {'tableId': table, 'pax': 2, 'menuId': 'LAB-TASTING'})['serviceId']
+    return ok('/dining/services', {'tableId': table, 'pax': 2, 'menuId': 'LAB-TASTING'})['serviceId']
 
-def dining(id): return ok('/services/' + id)
+def dining(id): return ok('/dining/services/' + id)
 def account(id): return ok('/checkout/services/' + id)
 def mutate(id, action, **fields):
-    return ok('/services/' + id + '/commands/' + action,
+    return ok('/dining/services/' + id + '/commands/' + action,
               dict(expectedVersion=dining(id)['version'], **fields))
 def charge(id, action, **fields):
     return ok('/checkout/services/' + id + '/commands/' + action,
@@ -117,7 +117,7 @@ class NativeHttp(unittest.TestCase):
         stop_server(); start_server()
         self.assertEqual(dining(id), initial)
         self.assertEqual(account(id)['data']['paidCents'], 30000)
-        status, _ = request('/services/'+id+'/commands/ready', {'expectedVersion':initial['version'], 'courseId':'p1'})
+        status, _ = request('/dining/services/'+id+'/commands/ready', {'expectedVersion':initial['version'], 'courseId':'p1'})
         self.assertEqual(status,409)
         for course in ('p1','p2'):
             if course=='p2': mutate(id,'fire-next')
@@ -129,7 +129,7 @@ class NativeHttp(unittest.TestCase):
         charge(id,'add-product',productId='water',quantity=1)
         self.assertEqual(account(id)['data']['balanceCents'],400)
         mutate(id,'complete')
-        ok('/occupancy/'+id+'/release',{'expectedVersion':1,'reason':'salida de prueba'})
+        ok('/dining/occupancy/'+id+'/release',{'expectedVersion':1,'reason':'salida de prueba'})
         self.assertEqual(account(id)['data']['state'],'Open')
         self.assertEqual(account(id)['data']['balanceCents'],400)
         second=open_table('M1')
@@ -140,18 +140,18 @@ class NativeHttp(unittest.TestCase):
     def test_02_persistent_idempotency_and_no_duplicate_audit(self):
         key=secrets.token_hex(16)
         data={'tableId':'M2','pax':2,'menuId':'LAB-TASTING'}
-        first=request('/services',data,key=key)
+        first=request('/dining/services',data,key=key)
         before=sql('SELECT count(*) FROM native_d1.audit')
         stop_server(); start_server()
-        self.assertEqual(request('/services',data,key=key),first)
+        self.assertEqual(request('/dining/services',data,key=key),first)
         self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),before)
-        self.assertEqual(request('/services',data|{'pax':3},key=key)[0],409)
+        self.assertEqual(request('/dining/services',data|{'pax':3},key=key)[0],409)
         self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),before)
 
     def test_03_concurrent_open_same_table_has_one_winner(self):
         before=int(sql('SELECT count(*) FROM native_d1.services'))
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            results=list(pool.map(lambda _:request('/services',{'tableId':'M3','pax':2,'menuId':'LAB-TASTING'}),range(2)))
+            results=list(pool.map(lambda _:request('/dining/services',{'tableId':'M3','pax':2,'menuId':'LAB-TASTING'}),range(2)))
         self.assertEqual(sorted(s for s,_ in results),[200,409])
         self.assertEqual(int(sql('SELECT count(*) FROM native_d1.services')),before+1)
         self.assertEqual(sql("SELECT count(*) FROM native_d1.occupancies WHERE table_id='M3' AND state='Occupied'"),'1')
@@ -167,32 +167,32 @@ class NativeHttp(unittest.TestCase):
     def test_05_stale_version_and_failed_command_roll_back(self):
         id=open_table('M5'); mutate(id,'start')
         before=sql('SELECT count(*) FROM native_d1.outbox')
-        self.assertEqual(request('/services/'+id+'/commands/fire-next',{'expectedVersion':1})[0],409)
+        self.assertEqual(request('/dining/services/'+id+'/commands/fire-next',{'expectedVersion':1})[0],409)
         self.assertEqual(sql('SELECT count(*) FROM native_d1.outbox'),before)
         before=sql('SELECT count(*) FROM native_d1.commands')
-        self.assertEqual(request('/services/'+id+'/commands/complete',{'expectedVersion':2})[0],409)
+        self.assertEqual(request('/dining/services/'+id+'/commands/complete',{'expectedVersion':2})[0],409)
         self.assertEqual(sql('SELECT count(*) FROM native_d1.commands'),before)
         self.assertEqual(dining(id)['version'],2)
 
     def test_06_authorization_financial_boundaries_and_scope_headers(self):
-        self.assertEqual(request('/board',role='unknown')[0],401)
+        self.assertEqual(request('/dining/board',role='unknown')[0],401)
         id=open_table('M6')
         for role in ('service','kitchen'):
             self.assertEqual(request('/checkout/services/'+id,role=role)[0],403)
             self.assertEqual(request('/checkout/services/'+id,role=role,headers={'X-Terminal-Mode':'main'})[0],403)
-            board=ok('/board',role=role)
+            board=ok('/dining/board',role=role)
             text=json.dumps(board).lower()
             for field in ('pricecents','paidcents','balancecents','payments','charges','account'):
                 self.assertNotIn(field,text)
-        self.assertEqual(request('/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING'},role='kitchen')[0],403)
-        self.assertEqual(request('/services/'+id,headers={'X-Company-Id':'other'})[0],422)
+        self.assertEqual(request('/dining/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING'},role='kitchen')[0],403)
+        self.assertEqual(request('/dining/services/'+id,headers={'X-Company-Id':'other'})[0],422)
 
     def test_07_other_scope_cannot_read_existing_services(self):
-        id=ok('/board')[0]['service']['id']
+        id=ok('/dining/board')[0]['service']['id']
         stop_server(); start_server({'COSTINA_COMPANY':'another-company'})
         try:
-            self.assertEqual(ok('/board'),[])
-            self.assertEqual(request('/services/'+id)[0],404)
+            self.assertEqual(ok('/dining/board'),[])
+            self.assertEqual(request('/dining/services/'+id)[0],404)
             self.assertEqual(request('/checkout/services/'+id)[0],404)
         finally:
             stop_server(); start_server()
@@ -207,10 +207,10 @@ class NativeHttp(unittest.TestCase):
         self.assertEqual(sql("SELECT payload->>'priceCents' FROM native_d1.configuration WHERE tenant='d1-tenant' AND kind='product' AND id='water'"),'575')
 
     def test_09_request_validation_and_price_tampering(self):
-        self.assertEqual(request('/services',{'tableId':'M7','pax':-1,'menuId':'LAB-TASTING'})[0],422)
-        self.assertEqual(request('/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING','unitPriceCents':1})[0],422)
-        self.assertEqual(request('/services',raw=b'not-json')[0],422)
-        self.assertEqual(request('/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING'},headers={'Idempotency-Key':''})[0],422)
+        self.assertEqual(request('/dining/services',{'tableId':'M7','pax':-1,'menuId':'LAB-TASTING'})[0],422)
+        self.assertEqual(request('/dining/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING','unitPriceCents':1})[0],422)
+        self.assertEqual(request('/dining/services',raw=b'not-json')[0],422)
+        self.assertEqual(request('/dining/services',{'tableId':'M7','pax':1,'menuId':'LAB-TASTING'},headers={'Idempotency-Key':''})[0],422)
 
     def test_10_failure_after_state_write_rolls_back_everything(self):
         id=open_table('M8'); mutate(id,'start')
@@ -222,14 +222,14 @@ class NativeHttp(unittest.TestCase):
         key=secrets.token_hex(16)
         payload={'expectedVersion':before['version'],'reason':'test rollback'}
         try:
-            self.assertEqual(request('/services/'+id+'/commands/pause',payload,key=key)[0],503)
+            self.assertEqual(request('/dining/services/'+id+'/commands/pause',payload,key=key)[0],503)
             self.assertEqual(dining(id),before)
             self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),audit)
             self.assertEqual(sql('SELECT count(*) FROM native_d1.commands'),commands)
         finally:
             sql('DROP TRIGGER fail_pause ON native_d1.outbox')
             sql('DROP FUNCTION native_d1.reject_pause()')
-        self.assertEqual(ok('/services/'+id+'/commands/pause',payload,key=key)['data']['state'],'Paused')
+        self.assertEqual(ok('/dining/services/'+id+'/commands/pause',payload,key=key)['data']['state'],'Paused')
 
     def test_11_outbox_and_audit_are_one_to_one(self):
         self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),sql('SELECT count(*) FROM native_d1.outbox'))

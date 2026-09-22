@@ -1,8 +1,8 @@
 using System.Data;
-using Costina.Domain;
+using Costina.Core.Domain;
 using Npgsql;
 
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed class PostgresStore(NpgsqlDataSource dataSource)
@@ -13,7 +13,7 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
         await using var transaction = await connection.BeginTransactionAsync(ct);
         await using (var gate = new NpgsqlCommand("SELECT pg_advisory_xact_lock(748215091501)", connection, transaction))
             await gate.ExecuteNonQueryAsync(ct);
-        using var stream = typeof(PostgresStore).Assembly.GetManifestResourceStream("Costina.Persistence.schema.sql")
+        using var stream = typeof(PostgresStore).Assembly.GetManifestResourceStream("Costina.Core.Persistence.schema.sql")
             ?? throw new InvalidOperationException("Schema resource missing.");
         using var reader = new StreamReader(stream);
         await using var command = new NpgsqlCommand(await reader.ReadToEndAsync(ct), connection, transaction);
@@ -25,7 +25,7 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
             runtimeRole = await role.ExecuteScalarAsync(ct) is not null;
         if (runtimeRole)
         {
-            using var grantsStream = typeof(PostgresStore).Assembly.GetManifestResourceStream("Costina.Persistence.grants.sql")
+            using var grantsStream = typeof(PostgresStore).Assembly.GetManifestResourceStream("Costina.Core.Persistence.grants.sql")
                 ?? throw new InvalidOperationException("Grants resource missing.");
             using var grantsReader = new StreamReader(grantsStream);
             await using var grants = new NpgsqlCommand(await grantsReader.ReadToEndAsync(ct), connection, transaction);
@@ -145,15 +145,12 @@ public sealed class PostgresStore(NpgsqlDataSource dataSource)
     }
 }
 
-public sealed record BoardRow(long Version, DiningView Service, OccupancyView Occupancy, long OccupancyVersion);
-public sealed record StoredDining(long Version, DiningService Entity);
 public sealed record StoredAccount(long Version, SettlementAccount Entity);
-public sealed record StoredOccupancy(long Version, TableOccupancy Entity);
 
 public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transaction,
     ExecutionIdentity identity, string key, CancellationToken ct)
 {
-    internal const string ScopeWhere = "tenant=@tenant AND company=@company AND location=@location";
+    public const string ScopeWhere = "tenant=@tenant AND company=@company AND location=@location";
     private readonly BusinessScope scope = identity.Scope;
 
     private NpgsqlCommand Command(string sql, (string Name, object Value)[] values)
@@ -165,28 +162,18 @@ public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transact
         foreach (var (name, value) in values) command.Parameters.AddWithValue(name, value);
         return command;
     }
-    internal async Task<int> Sql(string sql, (string Name, object Value)[] values)
+    public async Task<int> Sql(string sql, (string Name, object Value)[] values)
     {
         await using var command = Command(sql, values);
         return await command.ExecuteNonQueryAsync(ct);
     }
-    internal async Task<List<T>> Rows<T>(string sql, (string Name, object Value)[] values, Func<NpgsqlDataReader,T> project)
+    public async Task<List<T>> Rows<T>(string sql, (string Name, object Value)[] values, Func<NpgsqlDataReader,T> project)
     {
         await using var command = Command(sql, values);
         await using var reader = await command.ExecuteReaderAsync(ct);
         var result = new List<T>();
         while (await reader.ReadAsync(ct)) result.Add(project(reader));
         return result;
-    }
-    public async Task<StoredDining> Dining(string id)
-    {
-        var rows = await Rows("SELECT version,state,payload::text,payload_version FROM native_d1.services WHERE " + ScopeWhere + " AND id=@id",
-            [("id",id)], r => (r.GetInt64(0),r.GetString(1),r.GetString(2),r.GetInt32(3)));
-        if (rows.Count == 0) throw new StoreNotFound();
-        var (version,state,payload,payloadVersion) = rows[0];
-        var entity = DiningService.Restore(Wire.Decode<DiningSnapshot>(payload));
-        ValidateStored(entity, id, state, entity.State.ToString(), payloadVersion);
-        return new(version,entity);
     }
     public async Task<StoredAccount> Account(string serviceId)
     {
@@ -199,48 +186,22 @@ public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transact
         if (entity.ServiceId != serviceId) throw new InvalidDataException("Account reference mismatch.");
         return new(version,entity);
     }
-    public async Task<StoredOccupancy> Occupancy(string serviceId)
-    {
-        var rows = await Rows("SELECT id,version,state,payload::text,payload_version,table_id FROM native_d1.occupancies WHERE " + ScopeWhere + " AND service_id=@id",
-            [("id",serviceId)], r => (r.GetString(0),r.GetInt64(1),r.GetString(2),r.GetString(3),r.GetInt32(4),r.GetString(5)));
-        if (rows.Count == 0) throw new StoreNotFound();
-        var (id,version,state,payload,payloadVersion,tableId) = rows[0];
-        var entity = TableOccupancy.Restore(Wire.Decode<OccupancySnapshot>(payload));
-        ValidateStored(entity, id, state, entity.State.ToString(), payloadVersion);
-        if (entity.ServiceId != serviceId || entity.TableId != tableId) throw new InvalidDataException("Occupancy reference mismatch.");
-        return new(version,entity);
-    }
-    private void ValidateStored(Aggregate entity,string id,string storedState,string actualState,int payloadVersion)
+    public void ValidateStored(Aggregate entity,string id,string storedState,string actualState,int payloadVersion)
     {
         if (payloadVersion != 1 || entity.Scope != scope || entity.Id != id || storedState != actualState)
             throw new InvalidDataException("Persisted identity, state or payload version mismatch.");
     }
-    public async Task Save(DiningService entity,long? expectedVersion)
-    {
-        await SaveCore("services",entity,entity.State.ToString(),Wire.Encode(entity.Snapshot()),expectedVersion,
-            "table_id",entity.TableId);
-    }
     public async Task Save(SettlementAccount entity,long? expectedVersion)
     {
-        await SaveCore("accounts",entity,entity.State.ToString(),Wire.Encode(entity.Snapshot()),expectedVersion,
+        await SaveAggregate("accounts",entity,entity.State.ToString(),Wire.Encode(entity.Snapshot()),expectedVersion,
             "service_id",entity.ServiceId);
     }
-    public async Task Save(TableOccupancy entity,long? expectedVersion)
-    {
-        if (expectedVersion is null)
-        {
-            RequireScope(entity);
-            await Sql("INSERT INTO native_d1.occupancies (tenant,company,location,id,service_id,table_id,state,version,payload) VALUES (@tenant,@company,@location,@id,@service,@table,@state,1,@payload::jsonb)",
-                [("id",entity.Id),("service",entity.ServiceId),("table",entity.TableId),("state",entity.State.ToString()),("payload",Wire.Encode(entity.Snapshot()))]);
-            await Events(entity.PendingEvents);
-        }
-        else await SaveCore("occupancies",entity,entity.State.ToString(),Wire.Encode(entity.Snapshot()),expectedVersion,"service_id",entity.ServiceId);
-    }
-    private void RequireScope(Aggregate entity)
+    public void RequireScope(Aggregate entity)
     {
         if (entity.Scope != scope) throw new RuleViolation("scope_mismatch","Wrong persistence scope.");
     }
-    private async Task SaveCore(string table,Aggregate entity,string state,string payload,long? expectedVersion,string referenceColumn,string reference)
+    // Guardado generico de un agregado en una tabla del nucleo o de un modulo (ADR-012): misma guarda de ambito y version.
+    public async Task SaveAggregate(string table,Aggregate entity,string state,string payload,long? expectedVersion,string referenceColumn,string reference)
     {
         RequireScope(entity);
         int count;
@@ -284,16 +245,4 @@ public sealed class Unit(NpgsqlConnection connection, NpgsqlTransaction transact
     public Task<int> SeedConfiguration<T>(string kind,string id,T value) => Sql(
         "INSERT INTO native_d1.configuration (tenant,company,location,kind,id,payload) VALUES (@tenant,@company,@location,@kind,@id,@payload::jsonb) ON CONFLICT DO NOTHING",
         [("kind",kind),("id",id),("payload",Wire.Encode(value))]);
-    public async Task<IReadOnlyList<BoardRow>> Board()
-    {
-        var ids = await Rows("SELECT service_id FROM native_d1.occupancies WHERE " + ScopeWhere + " AND state='Occupied' ORDER BY table_id LIMIT 200",[],r => r.GetString(0));
-        var result = new List<BoardRow>();
-        foreach (var id in ids)
-        {
-            var d = await Dining(id); var o = await Occupancy(id);
-            // Affordances calculadas al leer; el servidor las filtra por rol antes de responder.
-            result.Add(new(d.Version, d.Entity.View(true), o.Entity.View(d.Entity), o.Version));
-        }
-        return result;
-    }
 }

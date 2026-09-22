@@ -1,7 +1,7 @@
-using Costina.Domain;
+using Costina.Core.Domain;
 using Npgsql;
 
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 // Notificacion fina: identidad del evento, nunca su payload. El estado autoritativo
 // se relee siempre por HTTP; ningun consumidor debe reconstruir estado desde el canal.

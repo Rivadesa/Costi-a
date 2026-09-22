@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Modulo Dining (ADR-012): servicio gastronomico por pases. Rutas bajo /api/native/v1/dining, esquema propio desde E1b.</Description></PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Costina.Core.Hosting/Costina.Core.Hosting.csproj" />
+    <ProjectReference Include="../Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" />
+  </ItemGroup>
+</Project>

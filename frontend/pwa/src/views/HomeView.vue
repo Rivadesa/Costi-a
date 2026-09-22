@@ -15,10 +15,14 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
     <h2 data-testid="role">{{ ROLES[session.role] ?? session.role }}<span v-if="session.station"> · estacion {{ session.station }}</span></h2>
     <p class="identity"><span data-testid="actor">{{ session.actor }}</span> · servidor {{ session.serverVersion }} · {{ session.companyId }}/{{ session.locationId }}</p>
 
-    <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
-    <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
-    <!-- Cocina ve SU pantalla por estacion (D6.4): misma lectura en vivo y misma orden incierta, sin importes. -->
-    <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
+    <!-- ADR-012: cada vista pertenece a un modulo y solo se monta si la instalacion lo tiene activo. -->
+    <template v-if="session.modules.includes('dining')">
+      <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
+      <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
+      <!-- Cocina ve SU pantalla por estacion (D6.4): misma lectura en vivo y misma orden incierta, sin importes. -->
+      <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
+    </template>
+    <p v-else data-testid="no-modules">Esta instalacion no tiene activo ningun modulo con pantalla para este dispositivo.</p>
 
     <footer>
       <p v-if="PERSISTENCE_HINT[persistence]" class="identity" data-testid="persistence-hint">{{ PERSISTENCE_HINT[persistence] }}</p>

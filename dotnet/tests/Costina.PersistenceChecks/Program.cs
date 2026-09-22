@@ -1,5 +1,6 @@
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Core.Domain;
+using Costina.Core.Persistence;
+using Costina.Modules.Dining.Domain;
 
 var scope=new BusinessScope("tenant","company","location");
 var stamp=new CommandStamp(scope,"actor",DateTimeOffset.UtcNow);

@@ -22,6 +22,7 @@ export interface Session {
   serverVersion: string
   demo: boolean
   actions: string[]
+  modules: string[]   // ADR-012: modulos activos; las vistas se montan solo para ellos
 }
 export interface CatalogItem { id: string; name: string; presentation: string }
 

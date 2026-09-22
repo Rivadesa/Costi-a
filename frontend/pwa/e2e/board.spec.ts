@@ -34,8 +34,8 @@ async function pair(page: Page, request: APIRequestContext, deviceName: string):
 }
 
 const command = async (request: APIRequestContext, serviceId: string, action: string, fields: Record<string, unknown> = {}) => {
-  const current = await (await asMain(request, `/services/${serviceId}`)).json()
-  const response = await asMain(request, `/services/${serviceId}/commands/${action}`, { expectedVersion: current.version, ...fields })
+  const current = await (await asMain(request, `/dining/services/${serviceId}`)).json()
+  const response = await asMain(request, `/dining/services/${serviceId}/commands/${action}`, { expectedVersion: current.version, ...fields })
   expect(response.ok(), `${action} -> ${response.status()}`).toBeTruthy()
 }
 
@@ -57,7 +57,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   expect(sockets.every(url => url.includes('access_token=') && !url.includes('dev.'))).toBeTruthy()
 
   // 1) Otro actor abre una mesa: aparece SOLA, sin recargar ni pulsar nada.
-  const opened = await (await asMain(request, '/services', { tableId: 'M6', pax: 3, menuId: 'LAB-TASTING' })).json()
+  const opened = await (await asMain(request, '/dining/services', { tableId: 'M6', pax: 3, menuId: 'LAB-TASTING' })).json()
   const tile = page.getByTestId('table-M6')
   await expect(tile).toBeVisible({ timeout: 10_000 })
   await expect(tile).toContainText('3 personas')
@@ -79,7 +79,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await expect(detail).toContainText('estacion cold')
 
   // 4) El detalle abierto tambien vive: cocina marca una elaboracion y se ve sin tocar nada.
-  const read = await (await asMain(request, `/services/${opened.serviceId}`)).json()
+  const read = await (await asMain(request, `/dining/services/${opened.serviceId}`)).json()
   const course = read.data.courses[0] as { id: string; preparations: Array<{ id: string; stationId: string }> }
   const hot = course.preparations.find(p => p.stationId === 'hot')!, cold = course.preparations.find(p => p.stationId === 'cold')!
   await expect(detail).not.toContainText('En preparacion')

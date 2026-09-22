@@ -44,9 +44,9 @@ foreach(var sample in new[]{"","corto","con espacio dentro","<img src=x onerror=
     await Check("reject pairing code '"+sample[..Math.Min(sample.Length,24)]+"'",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample);return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{
     using var client=Client(new Handler((r,_)=>{
-        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/board"); Assert(r.Headers.Authorization?.Scheme=="Bearer");
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/dining/board"); Assert(r.Headers.Authorization?.Scheme=="Bearer");
         return Task.FromResult(Response(200,"[]"));
-    })); Assert((await client.GetAsync<BoardEntry[]>("board")).Length==0);
+    })); Assert((await client.GetAsync<BoardEntry[]>("dining/board")).Length==0);
 });
 await Check("503 retains command and identical replay",async()=>{
     var bodies=new List<string>();var keys=new List<string>();
@@ -54,23 +54,23 @@ await Check("503 retains command and identical replay",async()=>{
         bodies.Add(await r.Content!.ReadAsStringAsync());keys.Add(r.Headers.GetValues("Idempotency-Key").Single());
         return keys.Count==1?Response(503,"{\"error\":\"operation_unconfirmed\"}"):Response(200,"{\"version\":2}");
     }));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});
     Assert(client.Pending is not null);
-    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Other");});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Other");});
     await client.RetryAsync();Assert(client.Pending is null);Assert(bodies[0]==bodies[1]&&keys[0]==keys[1]&&keys.Count==2);
 });
 await Check("transport failure is not confirmation",async()=>{
     using var client=Client(new Handler((_,_)=>throw new HttpRequestException("simulated")));
-    await Throws<HttpRequestException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
+    await Throws<HttpRequestException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
 await Check("malformed successful response retains command",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{}"))));
-    await Throws<JsonException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
+    await Throws<JsonException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
 await Check("version conflict identified by key resolves rejection without auto-resubmit",async()=>{
     var methods=new List<string>();
     using var client=Client(new Handler((r,_)=>{methods.Add(r.Method.Method);return Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r));}));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is null);
     Assert(methods.SequenceEqual(["POST","GET"]));   // D6.6: pregunta por la clave ANTES de darla por no aplicada, y no reenvia
 });
 // D6.6: un rechazo habla de ESTE intento. Respuesta perdida -> puesto re-emparejado con otro rol -> el reintento recibe 403 con eco.
@@ -81,7 +81,7 @@ await Check("a rejected retry whose key the server has is closed as APPLIED with
         return ++posts==1?throw new HttpRequestException("lost response"):Task.FromResult(Rejection(403,"{\"error\":\"forbidden\"}",r));
     }));
     client.AttachPendingStore(store);
-    await Throws<HttpRequestException>(async()=>{await client.SendAsync("services/x/commands/pause",new {expectedVersion=1},"Pause");});
+    await Throws<HttpRequestException>(async()=>{await client.SendAsync("dining/services/x/commands/pause",new {expectedVersion=1},"Pause");});
     Assert(client.Pending is not null&&store.Stored is not null);
     var applied=await client.RetryAsync();
     Assert(applied.GetProperty("version").GetInt64()==9); Assert(client.Pending is null&&store.Stored is null);
@@ -89,29 +89,29 @@ await Check("a rejected retry whose key the server has is closed as APPLIED with
 foreach(var lookup in new Func<HttpRequestMessage,HttpResponseMessage>[]{_=>Response(500,"{}"),_=>Response(401,"{}"),_=>Response(200,"<html>proxy</html>"),_=>Response(200,"{\"key\":\"otra\",\"found\":false}")})
     await Check("a rejection that cannot be verified against the server record retains the command",async()=>{
         using var client=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?lookup(r):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
-        await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+        await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/x/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
     });
 await Check("401 preserves uncertain mutation",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(401,"{}"))));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});Assert(client.Pending is not null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
 // D3.4 (F04): solo un rechazo definitivo reconocible, que identifica ESTE comando, cierra la incertidumbre.
 await Check("409 without echoed key retains the command",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(409,"{\"error\":\"version_conflict\"}"))));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
 });
 await Check("409 echoing another key retains the command",async()=>{
     using var client=Client(new Handler((_,_)=>{var r=Response(409,"{\"error\":\"version_conflict\"}");r.Headers.Add("Idempotency-Key","otra");return Task.FromResult(r);}));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
 });
 await Check("transient storage_conflict retains the command",async()=>{
     using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(409,"{\"error\":\"storage_conflict\"}",r))));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
 });
 await Check("non-JSON 403 retains the command",async()=>{
     using var client=Client(new Handler((r,_)=>{var html=new HttpResponseMessage(HttpStatusCode.Forbidden){Content=new StringContent("<html>forbidden</html>",Encoding.UTF8,"text/html")};
         html.Headers.Add("Idempotency-Key",r.Headers.GetValues("Idempotency-Key").Single());return Task.FromResult(html);}));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
 });
 await Check("operational DTO excludes financial fields",()=>{
     var types=new[]{typeof(DiningDto),typeof(CourseDto),typeof(PreparationDto),typeof(BoardEntry)};
@@ -122,7 +122,7 @@ await Check("durable store saves before first attempt and clears only the confir
     var store=new MemoryStore();var calls=0;
     using var client=Client(new Handler((_,_)=>Task.FromResult(++calls==1?Response(503,"{\"error\":\"operation_unconfirmed\"}"):Response(200,"{\"version\":2}"))));
     client.AttachPendingStore(store);
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/x/commands/start",new {expectedVersion=1},"Start");});
     Assert(store.Stored is not null&&store.Stored.Body==client.Pending!.Body&&store.Stored.Key==client.Pending.Key);
     await client.RetryAsync();Assert(store.Stored is null&&client.Pending is null&&store.ClearedKeys.Single()==store.LastSavedKey);
 });
@@ -130,11 +130,11 @@ await Check("explicit rejection clears the durable command",async()=>{
     var store=new MemoryStore();
     using var client=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
     client.AttachPendingStore(store);
-    await Throws<ApiError>(async()=>{await client.SendAsync("services/x/commands/start",new {expectedVersion=1},"Start");});
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/x/commands/start",new {expectedVersion=1},"Start");});
     Assert(store.Stored is null&&client.Pending is null);
 });
 await Check("restored command from a previous process replays identical bytes and key",async()=>{
-    var store=new MemoryStore{Stored=new PendingCommand("key-abc","services/x/commands/start","{\"expectedVersion\":7}","Start")};
+    var store=new MemoryStore{Stored=new PendingCommand("key-abc","dining/services/x/commands/start","{\"expectedVersion\":7}","Start")};
     string? sentBody=null,sentKey=null;
     using var client=Client(new Handler(async(r,_)=>{
         sentBody=await r.Content!.ReadAsStringAsync();sentKey=r.Headers.GetValues("Idempotency-Key").Single();
@@ -142,13 +142,13 @@ await Check("restored command from a previous process replays identical bytes an
     }));
     client.AttachPendingStore(store);
     Assert(client.Pending is {Key:"key-abc"});
-    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Otra");});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Otra");});
     await client.RetryAsync();
     Assert(sentBody=="{\"expectedVersion\":7}"&&sentKey=="key-abc"&&store.Stored is null);
 });
 await Check("attaching a store with a live pending persists it",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(503,"{}"))));
-    await Throws<ApiError>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    await Throws<ApiError>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});
     var store=new MemoryStore();client.AttachPendingStore(store);
     Assert(store.Stored is not null&&store.Stored.Key==client.Pending!.Key);
 });
@@ -161,7 +161,7 @@ await Check("unreadable durable file blocks mutations and server confirmation li
     }));
     client.AttachPendingStore(store);
     Assert(client.Blocked is {Outcome:PendingOutcome.Unreadable,Key:"k9"}&&client.Pending is null);
-    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});
     Assert(!store.Discarded);
     await Throws<InvalidOperationException>(()=>{client.DiscardBlocked();return Task.CompletedTask;});   // sin consultar no se descarta
     Assert(await client.ReconcileAsync()=="confirmed"&&client.Blocked is null&&store.Discarded&&store.ClearedKeys.Count==0);
@@ -171,7 +171,7 @@ await Check("unknown reconciliation keeps the block until an explicit discard th
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"key\":\"k10\",\"found\":false}"))));
     client.AttachPendingStore(store);
     Assert(await client.ReconcileAsync()=="unknown"&&client.Blocked is not null);
-    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});
     client.DiscardBlocked();
     Assert(client.Blocked is null&&store.Discarded);
 });
@@ -179,7 +179,7 @@ await Check("unavailable durable file blocks and cannot be discarded",async()=>{
     var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.Unavailable,null,null,"bloqueado")};
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{\"version\":1}"))));
     client.AttachPendingStore(store);
-    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("services",new {pax=2},"Open");});
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});
     await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
     await Throws<InvalidOperationException>(()=>{client.DiscardBlocked();return Task.CompletedTask;});
     Assert(client.Blocked is not null&&!store.Discarded);

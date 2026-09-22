@@ -19,7 +19,7 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   })
   let lastAutoRetry = 0
   const live = new LiveBoard(state, {
-    load: () => call<BoardEntry[]>(fetch, '/board', { token: props.token }),
+    load: () => call<BoardEntry[]>(fetch, '/dining/board', { token: props.token }),
     connect: () => connectHub(fetch, props.token),
     onUnauthorized,
     // El servidor vuelve a responder y la ultima tentativa fallo por RED: se reintenta la MISMA orden (misma clave,

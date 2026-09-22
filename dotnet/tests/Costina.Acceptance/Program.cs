@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
-using Costina.Domain;
+using Costina.Core.Domain;
+using Costina.Modules.Dining.Domain;
 using Costina.Migration;
 
 namespace Costina.Acceptance;

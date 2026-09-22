@@ -61,13 +61,13 @@ class Pwa(unittest.TestCase):
 
     def test_02_what_a_waiter_device_can_read_never_carries_money(self):
         sid = h.open_table('M2')
-        for path in ('/session', '/configuration', '/board', '/services/' + sid, '/catalog'):
+        for path in ('/session', '/configuration', '/dining/board', '/dining/services/' + sid, '/catalog'):
             status, body = h.request(path, role='service')
             self.assertEqual(status, 200, path)
             self.assertEqual(list(money_keys(json.loads(body))), [], path)
         # D6.3: tampoco lo que RESPONDE una orden de sala. Una clave como 'chargeId' basta para que la guarda de la PWA
         # rechace la respuesta y la orden quede sin confirmar: la referencia del consumo viaja como consumptionId.
-        status, body = h.request('/services/' + sid + '/commands/add-consumption',
+        status, body = h.request('/dining/services/' + sid + '/commands/add-consumption',
             dict(expectedVersion=h.dining(sid)['version'], productId='water', quantity=1), role='service')
         self.assertEqual(status, 200, body)
         self.assertEqual(set(json.loads(body)), {'version', 'consumptionId', 'productId', 'quantity'})

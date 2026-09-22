@@ -4,7 +4,7 @@
 <DockPanel Margin="22">
  <StackPanel DockPanel.Dock="Top">
   <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.25.0-d6.6 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
+  <TextBlock Text="0.26.0-e1 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
   <WrapPanel>
    <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
    <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
@@ -39,7 +39,7 @@
   <TextBlock Text="{Binding ReadTime}"/>
  </StackPanel>
  <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged">
-  <TabItem Header="  Comedor y cocina  " x:Name="ServiceTab">
+  <TabItem Header="  Comedor y cocina  " x:Name="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="14"><Grid.ColumnDefinitions><ColumnDefinition Width="245"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <DockPanel Grid.Column="0">
      <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">

@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using Costina.Domain;
+using Costina.Core.Domain;
 using Npgsql;
 
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 // Identidad relacional (D4.1, #26/F06). Solo se guardan hashes: PBKDF2 de la contrasena y
 // SHA-256 del token de sesion. Nada de esto entra en payloads JSONB ni en logs.

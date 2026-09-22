@@ -1,6 +1,6 @@
-using Costina.Domain;
+using Costina.Core.Domain;
 using Npgsql;
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 public sealed record AccountListing(string ServiceId,string TableId,string State);
 

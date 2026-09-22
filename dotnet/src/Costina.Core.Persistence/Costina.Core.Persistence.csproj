@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="../Costina.Domain/Costina.Domain.csproj" />
+    <ProjectReference Include="../Costina.Core.Domain/Costina.Core.Domain.csproj" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
     <EmbeddedResource Include="schema.sql" />
     <EmbeddedResource Include="grants.sql" />
