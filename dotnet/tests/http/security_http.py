@@ -6,7 +6,7 @@ import native_http as h
 results=[]
 try:
     h.start_server()
-    id=h.ok('/board')[0]['service']['id']
+    id=h.ok('/dining/board')[0]['service']['id']
     cases=[
         ('uppercase_checkout_read', '/CHECKOUT/SERVICES/'+id, None, 'service', 403),
         ('mixedcase_checkout_read', '/CheckOut/Services/'+id, None, 'kitchen', 403),
@@ -18,7 +18,7 @@ try:
         status,body=h.request(path,data,role=role)
         assert status==expected,(name,status,body)
         results.append({'name':name,'passed':True})
-    status,body=h.request('/services',raw=b'null')
+    status,body=h.request('/dining/services',raw=b'null')
     assert status==422,('null_command',status,body)
     results.append({'name':'null_command','passed':True})
     print('HTTP authorization/validation: 6/6 passed')

@@ -4,7 +4,9 @@ This directory recovers the C# domain source and acceptance runner delivered in 
 
 ## Scope
 
-- `Costina.Domain`: independent dining, occupancy and settlement state; courses and station preparation; operational read models with no money fields.
+- `Costina.Core.Domain`: settlement account, business scope, command stamps, domain events (the ERP core, ADR-012).
+- `Costina.Modules.Dining.Domain`: independent dining and occupancy state; courses and station preparation; operational read models with no money fields (the Dining module).
+- `Costina.Core.Persistence`, `Costina.Core.Hosting`, `Costina.Modules.Dining`, `Costina.Server`: PostgreSQL persistence and the idempotent unit of work, the module contract (`IModule`, `RouteAccess`, `Requests`), the Dining module (operations, affordances, routes under `/api/native/v1/dining`) and the host that composes them.
 - `Costina.Migration`: read-only planner for ambiguous legacy states. No database writes or imports.
 - `Costina.Acceptance`: 37 named scenarios plus 15 legacy-mapping fixtures. Custom executable runner with nonzero exit on failure and JSON/JUnit reports; not `dotnet test`.
 

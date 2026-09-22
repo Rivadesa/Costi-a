@@ -45,9 +45,9 @@ async function pairKitchen(page: Page, request: APIRequestContext, deviceName: s
 }
 
 type Service = { version: number; data: { courses: Array<{ id: string; state: string; preparations: Array<{ id: string; stationId: string; state: string; reviewPending?: boolean }> }> } }
-const read = async (request: APIRequestContext, serviceId: string) => (await asMain(request, `/services/${serviceId}`)).json() as Promise<Service>
+const read = async (request: APIRequestContext, serviceId: string) => (await asMain(request, `/dining/services/${serviceId}`)).json() as Promise<Service>
 const command = async (request: APIRequestContext, serviceId: string, action: string, fields: Record<string, unknown> = {}) => {
-  const response = await asMain(request, `/services/${serviceId}/commands/${action}`, { expectedVersion: (await read(request, serviceId)).version, ...fields })
+  const response = await asMain(request, `/dining/services/${serviceId}/commands/${action}`, { expectedVersion: (await read(request, serviceId)).version, ...fields })
   expect(response.ok(), `${action} -> ${response.status()}`).toBeTruthy()
 }
 const deviceToken = (page: Page) => page.evaluate(() => new Promise<string>(resolve => {
@@ -61,7 +61,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   const leaks: string[] = [], violations: string[] = []
 
   // Sala (por API) abre M8, inicia y envia el primer pase: elaboraciones frias (cold) y calientes (hot), una POR COMENSAL.
-  const opened = await (await asMain(request, '/services', { tableId: TABLE, pax: 2, menuId: 'LAB-TASTING' })).json()
+  const opened = await (await asMain(request, '/dining/services', { tableId: TABLE, pax: 2, menuId: 'LAB-TASTING' })).json()
   const serviceId: string = opened.serviceId
   await command(request, serviceId, 'start'); await command(request, serviceId, 'fire-next')
   const course = (await read(request, serviceId)).data.courses[0]
@@ -96,9 +96,9 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   // 3) La frontera es el SERVIDOR, no la pantalla: con el token de este dispositivo, marcar lo de otra estacion es un rechazo wrong_station.
   const token = await deviceToken(coldPage)
   expect(token.startsWith('dev.')).toBeTruthy()
-  const foreign = await post(request, token, `/services/${serviceId}/commands/preparation-start`, { expectedVersion: (await read(request, serviceId)).version, courseId: course.id, itemId: hot.id })
+  const foreign = await post(request, token, `/dining/services/${serviceId}/commands/preparation-start`, { expectedVersion: (await read(request, serviceId)).version, courseId: course.id, itemId: hot.id })
   expect(foreign.status()).toBe(409); expect((await foreign.json()).error).toBe('wrong_station')
-  const validate = await post(request, token, `/services/${serviceId}/commands/ready`, { expectedVersion: (await read(request, serviceId)).version, courseId: course.id })
+  const validate = await post(request, token, `/dining/services/${serviceId}/commands/ready`, { expectedVersion: (await read(request, serviceId)).version, courseId: course.id })
   expect(validate.status()).toBe(409); expect((await validate.json()).error).toBe('wrong_station')
 
   // 4) Sala declara una alergia grave con el pase enviado: la estacion lo ve ESCRITO (tipo, sustancia, severidad), sin botones de revision.

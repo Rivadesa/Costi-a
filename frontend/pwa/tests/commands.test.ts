@@ -34,7 +34,7 @@ const runner = (store: PendingStore, replies: Reply[], state = newState()) => {
   const { fetcher, seen } = server(replies)
   return { run: new CommandRunner(state, { fetcher, store, token: () => 'dev.a.b', identity: IDENTITY }), seen, state }
 }
-const SERVE = ['/services/s1/commands/serve', { expectedVersion: 4, courseId: 'p1' }, 'Servir Aperitivos · M1'] as const
+const SERVE = ['/dining/services/s1/commands/serve', { expectedVersion: 4, courseId: 'p1' }, 'Servir Aperitivos · M1'] as const
 
 describe('durable uncertain command', () => {
   it('is persisted BEFORE the first attempt and cleared only on a confirmed success', async () => {
@@ -66,7 +66,7 @@ describe('durable uncertain command', () => {
     const { run, seen, state } = runner(store, ['network', { status: 200, body: { version: 5 } }])
     expect(await run.send(...SERVE)).toEqual({ kind: 'unconfirmed', reason: 'network' })
     expect(state.pending?.description).toBe('Servir Aperitivos · M1'); expect(run.blocksMutations).toBe(true)
-    await expect(run.send('/services/s1/commands/pause', { expectedVersion: 4 }, 'otra')).rejects.toThrow('sin resolver')
+    await expect(run.send('/dining/services/s1/commands/pause', { expectedVersion: 4 }, 'otra')).rejects.toThrow('sin resolver')
     expect((await run.retry())?.kind).toBe('confirmed')
     expect(seen).toHaveLength(2)
     expect(seen[1].key).toBe(seen[0].key); expect(seen[1].body).toBe(seen[0].body); expect(seen[1].body).toBe('{"expectedVersion":4,"courseId":"p1"}')
@@ -136,7 +136,7 @@ describe('durable uncertain command', () => {
     expect(lost.seen[1].url).toContain('/commands/' + lost.seen[0].key); expect(lost.seen[1].method).toBe('GET')
   })
   it('never resends a command from ANOTHER installation or an unreadable one; they block until an explicit decision', async () => {
-    const foreign = new MemoryStore(); foreign.value = { key: 'k-foreign', path: '/services/x/commands/serve', body: '{}', description: 'vieja', createdAt: '', installationId: 'inst-OTRA', actor: IDENTITY.actor }
+    const foreign = new MemoryStore(); foreign.value = { key: 'k-foreign', path: '/dining/services/x/commands/serve', body: '{}', description: 'vieja', createdAt: '', installationId: 'inst-OTRA', actor: IDENTITY.actor }
     const a = runner(foreign, [{ status: 200 }]); await a.run.restore()
     expect(a.state.blocked).toEqual({ key: 'k-foreign', reason: 'foreign' }); expect(a.run.blocksMutations).toBe(true)
     expect(await a.run.retry()).toBeNull(); expect(a.seen).toHaveLength(0)
@@ -168,7 +168,7 @@ describe('durable uncertain command', () => {
 })
 
 describe('IndexedDB pending store', () => {
-  const command: PendingCommand = { key: 'k1', path: '/services/s1/commands/serve', body: '{"expectedVersion":4}', description: 'Servir', createdAt: '2026-09-21T10:00:00Z', ...IDENTITY }
+  const command: PendingCommand = { key: 'k1', path: '/dining/services/s1/commands/serve', body: '{"expectedVersion":4}', description: 'Servir', createdAt: '2026-09-21T10:00:00Z', ...IDENTITY }
   it('round-trips, and clear(key) only removes the command carrying that key', async () => {
     expect(await indexedDbPendingStore.load()).toEqual({ kind: 'absent' })
     await indexedDbPendingStore.save(command)

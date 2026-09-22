@@ -33,10 +33,10 @@ async function pair(page: Page, request: APIRequestContext, deviceName: string):
   await expect(page.getByTestId('board')).toBeVisible({ timeout: 15_000 })
 }
 
-const read = async (request: APIRequestContext, serviceId: string) => (await asMain(request, `/services/${serviceId}`)).json() as Promise<{ version: number; data: { state: string; courses: Array<{ id: string; state: string; preparations: Array<{ id: string }> }> } }>
+const read = async (request: APIRequestContext, serviceId: string) => (await asMain(request, `/dining/services/${serviceId}`)).json() as Promise<{ version: number; data: { state: string; courses: Array<{ id: string; state: string; preparations: Array<{ id: string }> }> } }>
 const asKitchen = async (request: APIRequestContext, serviceId: string, action: string, fields: Record<string, unknown>) => {
   const current = await read(request, serviceId)
-  const response = await asMain(request, `/services/${serviceId}/commands/${action}`, { expectedVersion: current.version, ...fields })
+  const response = await asMain(request, `/dining/services/${serviceId}/commands/${action}`, { expectedVersion: current.version, ...fields })
   expect(response.ok(), `${action} -> ${response.status()}`).toBeTruthy()
 }
 // Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB), no lo que pinta la pantalla.
@@ -76,7 +76,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   const tile = page.getByTestId('table-M7')
   await expect(tile).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('pending')).toHaveCount(0)
-  const board = await (await asMain(request, '/board')).json() as Array<{ service: { id: string; tableId: string } }>
+  const board = await (await asMain(request, '/dining/board')).json() as Array<{ service: { id: string; tableId: string } }>
   const serviceId = board.find(entry => entry.service.tableId === 'M7')!.service.id
   await tile.click()
   await page.getByTestId('do-start').click()

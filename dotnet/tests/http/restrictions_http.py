@@ -3,11 +3,11 @@ import unittest
 import native_http as h
 
 def act(sid, action, role='main', **fields):
-    return h.ok('/services/' + sid + '/commands/' + action,
+    return h.ok('/dining/services/' + sid + '/commands/' + action,
                 dict(expectedVersion=h.dining(sid)['version'], **fields), role=role)
 
 def preps(sid, role='main'):
-    return h.ok('/services/' + sid, role=role)['data']['courses'][0]['preparations']
+    return h.ok('/dining/services/' + sid, role=role)['data']['courses'][0]['preparations']
 
 class RestrictionChecks(unittest.TestCase):
     @classmethod
@@ -29,7 +29,7 @@ class RestrictionChecks(unittest.TestCase):
         r = data['restrictions'][0]
         self.assertEqual(['Allergy', 1, 'marisco', 'Severe'],
                          [r['kind'], r['guestPosition'], r['substance'], r['severity']])
-        status, _ = h.request('/services/' + self.sid + '/commands/declare-restriction',
+        status, _ = h.request('/dining/services/' + self.sid + '/commands/declare-restriction',
             dict(expectedVersion=h.dining(self.sid)['version'], guestPosition=1, kind='allergy',
                  substance='MARISCO', severity='mild'))
         self.assertEqual(409, status)  # duplicado, insensible a mayusculas
@@ -54,15 +54,15 @@ class RestrictionChecks(unittest.TestCase):
         self.assertTrue(all(p['reviewPending'] and 'review-preparation' in p['actions'] for p in pending))
         for p in pending:
             act(self.sid, 'preparation-ready', role='kitchen', courseId='p1', itemId=p['id'])
-        status, body = h.request('/services/' + self.sid + '/commands/ready',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/ready',
             dict(expectedVersion=h.dining(self.sid)['version'], courseId='p1'), role='kitchen')
         self.assertEqual(409, status)
         self.assertIn(b'restrictions_unreviewed', body)
-        status, _ = h.request('/services/' + self.sid + '/commands/review-preparation',
+        status, _ = h.request('/dining/services/' + self.sid + '/commands/review-preparation',
             dict(expectedVersion=h.dining(self.sid)['version'], courseId='p1', itemId=pending[0]['id'],
                  decision='unaffected', note='sin lacteos'), role='service')
         self.assertEqual(403, status)  # sala no decide por cocina
-        status, _ = h.request('/services/' + self.sid + '/commands/review-preparation',
+        status, _ = h.request('/dining/services/' + self.sid + '/commands/review-preparation',
             dict(expectedVersion=h.dining(self.sid)['version'], courseId='p1', itemId=pending[0]['id'],
                  decision='unaffected', note=''), role='kitchen')
         self.assertEqual(422, status)  # la nota es obligatoria
@@ -82,12 +82,12 @@ class RestrictionChecks(unittest.TestCase):
         self.assertEqual('Ready', course['state']); self.assertNotIn('serve', course['actions'])
         affected = [p for p in course['preparations'] if p['reviewPending']]
         self.assertTrue(affected); self.assertTrue(all(p.get('guestPosition') in (None, 2) for p in affected))
-        status, body = h.request('/services/' + self.sid + '/commands/serve',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/serve',
             dict(expectedVersion=h.dining(self.sid)['version'], courseId='p1'))
         self.assertEqual(409, status); self.assertIn(b'restrictions_unreviewed', body)
         for p in affected:
             act(self.sid, 'review-preparation', role='kitchen', courseId='p1', itemId=p['id'], decision='remake', note='sin frutos secos')
-        course = h.ok('/services/' + self.sid, role='kitchen')['data']['courses'][0]
+        course = h.ok('/dining/services/' + self.sid, role='kitchen')['data']['courses'][0]
         self.assertEqual('Preparing', course['state']); self.assertIsNone(course['readyAt'])
         for p in course['preparations']:
             if p['id'] in {a['id'] for a in affected}:

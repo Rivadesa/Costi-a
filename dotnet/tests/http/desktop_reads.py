@@ -6,15 +6,15 @@ import urllib.request
 import native_http as h
 
 def free_table():
-    occupied={b['service']['tableId'] for b in h.ok('/board')}
+    occupied={b['service']['tableId'] for b in h.ok('/dining/board')}
     return next('M'+str(i) for i in range(1,9) if 'M'+str(i) not in occupied)
 
 def finish_and_release(sid):
     for course in h.dining(sid)['data']['courses']:
         h.mutate(sid,'skip',courseId=course['id'],reason='read-model test')
     h.mutate(sid,'start');h.mutate(sid,'complete')
-    entry=next(b for b in h.ok('/board') if b['service']['id']==sid)
-    h.ok('/occupancy/'+sid+'/release',{'expectedVersion':entry['occupancyVersion'],'reason':'read-model test'})
+    entry=next(b for b in h.ok('/dining/board') if b['service']['id']==sid)
+    h.ok('/dining/occupancy/'+sid+'/release',{'expectedVersion':entry['occupancyVersion'],'reason':'read-model test'})
 
 class DesktopReadChecks(unittest.TestCase):
     @classmethod
@@ -35,7 +35,8 @@ class DesktopReadChecks(unittest.TestCase):
             self.assertRegex(data['installationId'],r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
             ids.add(data['installationId'])
             # Formato de version del corte, no valor exacto: fijarlo rompia el test en cada bump.
-            self.assertRegex(data['serverVersion'], r'^\d+\.\d+\.\d+-d\d', data['serverVersion'])
+            # Version de corte: N.N.N-<letra de hito><numero> (d5.6, d6.3, e1...). Una letra por hito, nunca una release sin sufijo aqui.
+            self.assertRegex(data['serverVersion'], r'^\d+\.\d+\.\d+-[a-z]\d', data['serverVersion'])
         self.assertEqual(1,len(ids))
         h.stop_server();h.start_server()
         self.assertEqual(ids.pop(),h.ok('/session')['installationId'])
@@ -45,7 +46,7 @@ class DesktopReadChecks(unittest.TestCase):
         # D3.4 (F02/F04): toda respuesta a un comando lleva su Idempotency-Key; la consulta de una clave
         # devuelve la respuesta guardada solo al mismo actor, y nunca ejecuta nada.
         key=secrets.token_hex(16)
-        status,body=h.request('/services',{'tableId':free_table(),'pax':2,'menuId':'LAB-TASTING'},key=key)
+        status,body=h.request('/dining/services',{'tableId':free_table(),'pax':2,'menuId':'LAB-TASTING'},key=key)
         self.assertEqual(200,status); self.assertEqual(key,h.LAST_HEADERS.get('Idempotency-Key'))
         sid=json.loads(body)['serviceId']
         found=h.ok('/commands/'+key)
@@ -54,7 +55,7 @@ class DesktopReadChecks(unittest.TestCase):
         self.assertFalse(h.ok('/commands/'+secrets.token_hex(16))['found'])
         self.assertEqual(422,h.request('/commands/'+'k'*129)[0])
         self.assertEqual(401,h.request('/commands/'+key,role='unknown')[0])
-        rejected=h.request('/services/'+sid+'/commands/fire-next',{'expectedVersion':99},key=key+'x')
+        rejected=h.request('/dining/services/'+sid+'/commands/fire-next',{'expectedVersion':99},key=key+'x')
         self.assertEqual(409,rejected[0]); self.assertEqual(key+'x',h.LAST_HEADERS.get('Idempotency-Key'))
         self.assertFalse(h.ok('/commands/'+key+'x')['found'])   # un rechazo no deja rastro de comando aplicado
         finish_and_release(sid)
@@ -74,6 +75,22 @@ class DesktopReadChecks(unittest.TestCase):
         sid=h.open_table(free_table())
         finish_and_release(sid)
         self.assertIn(sid,[a['serviceId'] for a in h.ok('/checkout/accounts')])
+    def test_dining_routes_live_under_the_module_prefix_with_a_compatibility_alias(self):
+        # ADR-012 (E1a): /dining/... es la ruta del modulo; la anterior sigue respondiendo IGUAL durante una version
+        # (un dispositivo con la PWA en cache no debe romperse). Misma autorizacion: cocina no abre mesas por ningun alias.
+        sid=h.open_table(free_table())
+        for new,old in (('/dining/board','/board'),('/dining/services/'+sid,'/services/'+sid)):
+            self.assertEqual(h.ok(new),h.ok(old),new)
+        self.assertTrue(any(r['service']['id']==sid for r in h.ok('/dining/board')))
+        for path in ('/dining/services','/services'):
+            self.assertEqual(403,h.request(path,{'tableId':'M1','pax':2,'menuId':'LAB-TASTING'},role='kitchen')[0],path)
+        finish_and_release(sid)
+    def test_session_lists_active_modules_and_their_actions(self):
+        # ADR-012: los clientes montan solo las superficies de los modulos activos; las acciones de sesion vienen por modulo.
+        for role,actions in (('main',['open','add-consumption']),('service',['open','add-consumption']),('kitchen',[])):
+            data=h.ok('/session',role=role)
+            self.assertEqual(['dining'],data['modules'],role); self.assertEqual(actions,data['actions'],role)
+        self.assertIn('menus',h.ok('/configuration'))   # clave aportada por el modulo Dining a la configuracion del nucleo
     def test_anonymous_read_is_denied(self):
         for path in ('/configuration','/session','/checkout/catalog','/checkout/accounts'):
             self.assertEqual(401,h.request(path,role='unknown')[0])

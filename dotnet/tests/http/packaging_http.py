@@ -198,7 +198,7 @@ class Packaging(unittest.TestCase):
             status, configuration = call('/api/native/v1/configuration', token=login['token'])
             self.assertEqual(len(configuration['tables']), 8)
             # The engine still runs with the runtime role: a real service through the installed product.
-            status, opened = call('/api/native/v1/services', {'tableId': 'M1', 'pax': 2, 'menuId': 'LAB-TASTING'}, token=login['token'])
+            status, opened = call('/api/native/v1/dining/services', {'tableId': 'M1', 'pax': 2, 'menuId': 'LAB-TASTING'}, token=login['token'])
             self.assertEqual(status, 200)
 
     def test_06b_lan_https_with_a_name_constrained_local_ca(self):

@@ -25,7 +25,7 @@ const can = (action: string) => props.session.actions.includes(action)
 
 function open(): void {
   if (!openTable.value || !openMenu.value || !Number.isInteger(openPax.value) || openPax.value < 1 || openPax.value > 40) { runnerState.notice = 'Elige mesa, menu y comensales (1 a 40).'; return }
-  void run('/services', { tableId: openTable.value, pax: openPax.value, menuId: openMenu.value }, `Abrir mesa ${openTable.value} para ${openPax.value}`)
+  void run('/dining/services', { tableId: openTable.value, pax: openPax.value, menuId: openMenu.value }, `Abrir mesa ${openTable.value} para ${openPax.value}`)
   openTable.value = ''
 }
 

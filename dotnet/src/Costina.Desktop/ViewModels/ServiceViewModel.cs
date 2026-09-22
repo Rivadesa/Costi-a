@@ -66,7 +66,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     internal void ApplyConfiguration(Configuration config)
     {
         rendering = true;
-        try { Tables = config.Tables; SelectedTable = Tables.FirstOrDefault(); Menus = config.Menus; SelectedMenu = Menus.FirstOrDefault(); }
+        try { Tables = config.Tables; SelectedTable = Tables.FirstOrDefault(); Menus = config.Menus ?? []; SelectedMenu = Menus.FirstOrDefault(); }
         finally { rendering = false; }
     }
 
@@ -105,10 +105,10 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (Dining is not null && Dining.Data.Id != target) Invalidate();
         try
         {
-            var fresh = await shell.Api.GetAsync<BoardEntry[]>("board");
+            var fresh = await shell.Api.GetAsync<BoardEntry[]>("dining/board");
             if (!fresh.Any(b => b.Service.Id == target)) target = fresh.FirstOrDefault()?.Service.Id;
             var current = target is null ? null
-                : await shell.Api.GetAsync<Versioned<DiningDto>>("services/" + ApiClient.Segment(target));
+                : await shell.Api.GetAsync<Versioned<DiningDto>>("dining/services/" + ApiClient.Segment(target));
             if (attempt != generation) return;   // otra lectura mas reciente manda
             if (current is not null && current.Data.Id != target)
                 throw new InvalidOperationException("El servidor devolvió una mesa distinta de la solicitada; lectura descartada.");
@@ -174,7 +174,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (action is "pause" or "skip" && string.IsNullOrWhiteSpace(Reason))
             throw new ArgumentException("Introduce el motivo.");
         await shell.Api!.SendAsync(
-            "services/" + ApiClient.Segment(context.Data.Id) + "/commands/" + action,
+            "dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/" + action,
             new { expectedVersion = context.Version, courseId = SelectedCourse?.Id, itemId = SelectedPreparation?.Id, reason = Reason },
             action + " · " + context.Data.TableId);
         await shell.RefreshAll();
@@ -186,7 +186,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private Task Open() => shell.Run(async () =>
     {
         if (!int.TryParse(Pax, out var people)) throw new ArgumentException("Introduce un número de personas.");
-        var result = await shell.Api!.SendAsync("services",
+        var result = await shell.Api!.SendAsync("dining/services",
             new { tableId = SelectedTable!.Id, pax = people, menuId = SelectedMenu!.Id }, "Abrir " + SelectedTable.Name);
         serviceId = result.GetProperty("serviceId").GetString();
         await shell.RefreshAll();
@@ -205,7 +205,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             if (!int.TryParse(RestrictionGuest, out var position)) throw new ArgumentException("Comensal no válido (vacío = toda la mesa).");
             guest = position;
         }
-        await shell.Api!.SendAsync("services/" + ApiClient.Segment(context.Data.Id) + "/commands/declare-restriction",
+        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/declare-restriction",
             new { expectedVersion = context.Version, guestPosition = guest, kind = RestrictionKind,
                   substance = RestrictionSubstance.Trim(), severity = RestrictionSeverity },
             "Declarar restricción de comensal · " + context.Data.TableId);
@@ -220,7 +220,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     {
         var context = Require();
         if (string.IsNullOrWhiteSpace(Reason)) throw new ArgumentException("Introduce el motivo de la retirada.");
-        await shell.Api!.SendAsync("services/" + ApiClient.Segment(context.Data.Id) + "/commands/remove-restriction",
+        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/remove-restriction",
             new { expectedVersion = context.Version, restrictionId = SelectedRestriction!.Id, reason = Reason },
             "Retirar restricción con motivo · " + context.Data.TableId);
         await shell.RefreshAll();
@@ -235,7 +235,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         var context = Require();
         var preparation = SelectedPreparation ?? throw new InvalidOperationException("Selecciona la elaboración a revisar.");
         if (string.IsNullOrWhiteSpace(ReviewNote)) throw new ArgumentException("Indica qué se ha revisado o cambiado (nota obligatoria).");
-        await shell.Api!.SendAsync("services/" + ApiClient.Segment(context.Data.Id) + "/commands/review-preparation",
+        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/review-preparation",
             new { expectedVersion = context.Version, courseId = SelectedCourse?.Id, itemId = preparation.Id, decision, note = ReviewNote.Trim() },
             "Revisión de cocina (" + decision + ") · " + preparation.Name + " · " + context.Data.TableId);
         ReviewNote = "";
@@ -250,7 +250,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         var context = Require();
         if (string.IsNullOrWhiteSpace(Reason)) throw new ArgumentException("Introduce el motivo de liberación.");
         var entry = SelectedEntry!;   // Context garantiza que es la misma mesa que el detalle leido
-        await shell.Api!.SendAsync("occupancy/" + ApiClient.Segment(context.Data.Id) + "/release",
+        await shell.Api!.SendAsync("dining/occupancy/" + ApiClient.Segment(context.Data.Id) + "/release",
             new { expectedVersion = entry.OccupancyVersion, reason = Reason }, "Liberar mesa sin cambiar su cuenta · " + context.Data.TableId);
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: liberar mesa";

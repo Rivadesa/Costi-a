@@ -36,6 +36,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool Connected => Session is not null;
     public bool IsMain => Session?.Role == "main";
+    // ADR-012: la pestana de comedor y cocina existe solo si el modulo Dining esta activo en la instalacion.
+    public bool HasDining => Session?.Modules?.Contains("dining", StringComparer.Ordinal) == true;
     // Fallo cerrado: con una orden sin confirmar o una orden anterior ilegible no se admite nada nuevo.
     public bool Writable => Connected && !Busy && Pending is null && Blocked is null;
     public bool HasPending => Pending is not null;
@@ -56,7 +58,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     internal void Sync()
     {
-        OnPropertyChanged(nameof(Connected)); OnPropertyChanged(nameof(IsMain));
+        OnPropertyChanged(nameof(Connected)); OnPropertyChanged(nameof(IsMain)); OnPropertyChanged(nameof(HasDining));
         OnPropertyChanged(nameof(Writable)); OnPropertyChanged(nameof(HasPending));
         OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
@@ -105,7 +107,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     internal async Task RefreshAll()
     {
-        await Service.LoadAsync();
+        if (HasDining) await Service.LoadAsync();
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
         if (IsMain && Devices.Visible) await Devices.LoadAsync();
         ReadTime = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
@@ -287,7 +289,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         var path = Api!.Pending!.Path;
         var result = await Api.RetryAsync();
-        if (path == "services") Service.SelectService(result.GetProperty("serviceId").GetString());
+        if (path == "dining/services") Service.SelectService(result.GetProperty("serviceId").GetString());
         await RefreshAll();
         Status = "Reintento confirmado con el mismo identificador.";
     });

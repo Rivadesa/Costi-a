@@ -18,7 +18,11 @@ internal static class Program
         // D3.1: la habilitacion es un mapeo puro de las affordances del servidor, sin reglas locales.
         // D3.4 (F01): ademas, solo hay contexto accionable cuando la fila seleccionada coincide con la entidad leida.
         var shell=new Costina.Desktop.ViewModels.ShellViewModel();
-        shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4");
+        shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
+        if(!shell.HasDining) throw new Exception("The dining tab exists only when the server lists the dining module.");
+        shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:[]);
+        if(shell.HasDining) throw new Exception("Without the dining module there is no dining tab.");   // ADR-012
+        shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start","review-preparation"],null,true);
         var dto=new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]);
         var entry=new Costina.Client.BoardEntry(3,dto,new("o1","M1","s1","Occupied",null,["release"]),1);

@@ -27,7 +27,7 @@ const can = (actions: string[] | undefined, action: string) => actions?.includes
 
 function command(ticket: KitchenTicket, action: string, fields: Record<string, unknown>, description: string): void {
   const service = ticket.entry.service
-  void run(`/services/${encodeURIComponent(service.id)}/commands/${action}`, { expectedVersion: ticket.entry.version, courseId: ticket.course.id, ...fields },
+  void run(`/dining/services/${encodeURIComponent(service.id)}/commands/${action}`, { expectedVersion: ticket.entry.version, courseId: ticket.course.id, ...fields },
     `${description} · ${ticket.course.name} · ${service.tableId}`)
 }
 const PREPARATION_ACTIONS = [

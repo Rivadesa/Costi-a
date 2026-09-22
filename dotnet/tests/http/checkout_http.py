@@ -26,7 +26,7 @@ class CheckoutChecks(unittest.TestCase):
         self.assertEqual('Closed', data['state']); self.assertEqual(['reopen'], data['actions'])
         status, body = account_cmd(self.sid, 'add-product', productId='water', quantity=1)
         self.assertEqual(409, status); self.assertIn(b'account_closed', body)
-        status, body = h.request('/services/' + self.sid + '/commands/add-consumption',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/add-consumption',
             dict(expectedVersion=h.dining(self.sid)['version'], productId='water', quantity=1), role='service')
         self.assertEqual(409, status); self.assertIn(b'account_closed', body)   # el comandero recibe rechazo explicito
         self.assertEqual(403, account_cmd(self.sid, 'reopen', role='service', reason='x')[0])   # sala no gestiona la cuenta
@@ -40,10 +40,10 @@ class CheckoutChecks(unittest.TestCase):
         self.assertIn('add-consumption', h.ok('/session', role='service')['actions'])
         self.assertNotIn('add-consumption', h.ok('/session', role='kitchen')['actions'])
         version = h.dining(self.sid)['version']
-        status, body = h.request('/services/' + self.sid + '/commands/add-consumption',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/add-consumption',
             dict(expectedVersion=version, productId='water', quantity=2), role='kitchen')
         self.assertEqual(403, status)   # cocina no marca consumos
-        status, body = h.request('/services/' + self.sid + '/commands/add-consumption',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/add-consumption',
             dict(expectedVersion=version, productId='water', quantity=2), role='service')
         self.assertEqual(200, status, body)
         response = json.loads(body)
@@ -51,10 +51,10 @@ class CheckoutChecks(unittest.TestCase):
         for field in MONEY: self.assertNotIn(field, body.decode().lower())
         self.assertEqual(version, response['version'])   # el contexto operativo no cambia por un consumo
         self.assertEqual(800, h.account(self.sid)['data']['balanceCents'])   # 2 x 400 fijados por el catalogo
-        status, body = h.request('/services/' + self.sid + '/commands/add-consumption',
+        status, body = h.request('/dining/services/' + self.sid + '/commands/add-consumption',
             dict(expectedVersion=version, productId='water', quantity=1, unitPriceCents=1), role='service')
         self.assertEqual(422, status)   # ningun precio libre desde un comandero
-        self.assertEqual(404, h.request('/services/' + self.sid + '/commands/add-consumption',
+        self.assertEqual(404, h.request('/dining/services/' + self.sid + '/commands/add-consumption',
             dict(expectedVersion=version, productId='no-existe', quantity=1), role='service')[0])
 
     def test_03_overpayment_credit_is_refunded_before_an_honest_close(self):

@@ -5,7 +5,9 @@ namespace Costina.Client;
 public sealed record Versioned<T>(long Version, T Data);
 public sealed record SessionInfo(string Role, string TenantId, string CompanyId, string LocationId,
     string[]? Actions = null, string? InstallationId = null, string? ServerVersion = null,
-    string? Actor = null, string? Station = null, bool Demo = false);
+    string? Actor = null, string? Station = null, bool Demo = false,
+    // ADR-012: modulos activos en la instalacion; las pestanas se montan solo para ellos.
+    string[]? Modules = null);
 // Administracion de puestos (D4.2/D4.3b, solo main): espejo de las filas que devuelve el servidor.
 public sealed record PairingPendingDto(string PairingId, string DeviceName, DateTimeOffset ClaimedAt)
 { public override string ToString() => $"{DeviceName} · solicitado a las {ClaimedAt.ToLocalTime():HH:mm:ss}"; }
@@ -19,7 +21,7 @@ public sealed record DeviceRowDto(string Id, string Name, string Role, string St
 public sealed record CommandLookup(string Key, bool Found, JsonElement? Response = null);
 public sealed record TableChoice(string Id, string Name, int Capacity) { public override string ToString() => Name; }
 public sealed record MenuChoice(string Id, string Name) { public override string ToString() => Name; }
-public sealed record Configuration(TableChoice[] Tables, MenuChoice[] Menus);
+public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null);   // menus: solo con el modulo Dining
 public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents)
 { public override string ToString() => $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }
 public sealed record AccountChoice(string ServiceId, string TableId, string State)
