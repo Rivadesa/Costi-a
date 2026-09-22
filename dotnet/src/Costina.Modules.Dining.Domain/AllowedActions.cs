@@ -1,4 +1,6 @@
-namespace Costina.Domain;
+using Costina.Core.Domain;
+
+namespace Costina.Modules.Dining.Domain;
 
 // Affordances: el dominio es la unica fuente de que acciones admite cada agregado AHORA.
 // Los clientes solo mapean accion->control; no reconstruyen reglas. El filtro por ROL es
@@ -64,24 +66,5 @@ public sealed partial class TableOccupancy
         if (State == OccupancyState.Occupied && service.Id == ServiceId
             && service.State is DiningState.Completed or DiningState.Cancelled) actions.Add("release");
         return View() with { Actions = actions.AsReadOnly() };
-    }
-}
-
-public sealed partial class SettlementAccount
-{
-    public AccountView ViewWithActions()
-    {
-        var actions = new List<string>();
-        var voidable = new List<string>();
-        if (State == AccountState.Open)
-        {
-            actions.Add("add-product"); actions.Add("payment");
-            voidable.AddRange(charges.Where(c => !c.Voided).Select(c => c.Id));
-            if (voidable.Count > 0) actions.Add("void-charge");
-            if (CreditCents > 0) actions.Add("refund");
-            if (BalanceCents == 0 && CreditCents == 0) actions.Add("close");
-        }
-        else actions.Add("reopen");   // cerrada != intocable: reapertura auditada con motivo (D3.6)
-        return View() with { Actions = actions.AsReadOnly(), VoidableChargeIds = voidable.AsReadOnly() };
     }
 }

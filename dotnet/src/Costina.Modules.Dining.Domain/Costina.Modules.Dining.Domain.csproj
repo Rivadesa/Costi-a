@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><ProjectReference Include="../Costina.Core.Domain/Costina.Core.Domain.csproj" /></ItemGroup>
+</Project>

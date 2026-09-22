@@ -1,4 +1,5 @@
-using Costina.Domain;
+using Costina.Core.Domain;
+using Costina.Modules.Dining.Domain;
 
 namespace Costina.Migration;
 

@@ -1,4 +1,6 @@
-namespace Costina.Domain;
+using Costina.Core.Domain;
+
+namespace Costina.Modules.Dining.Domain;
 
 public sealed partial class TableOccupancy : Aggregate
 {

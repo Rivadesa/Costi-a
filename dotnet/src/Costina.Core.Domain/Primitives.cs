@@ -1,6 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 
-namespace Costina.Domain;
+// El modulo Dining usa las mismas guardas que el nucleo (ADR-012): visibilidad explicita, no duplicacion.
+[assembly: InternalsVisibleTo("Costina.Modules.Dining.Domain")]
+
+namespace Costina.Core.Domain;
 
 public sealed class RuleViolation(string code, string message) : Exception(message)
 {

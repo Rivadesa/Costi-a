@@ -1,4 +1,6 @@
-namespace Costina.Domain;
+using Costina.Core.Domain;
+
+namespace Costina.Modules.Dining.Domain;
 
 // Only DiningService can invoke mutations. Callers receive immutable snapshots.
 internal sealed partial class CourseExecution
