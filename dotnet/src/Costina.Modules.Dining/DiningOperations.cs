@@ -18,18 +18,18 @@ public static class DiningOperations
     public static async Task<object> Open(Unit unit,ExecutionIdentity identity,OpenRequest request)
     {
         var table = await unit.Configuration<TableDefinition>("table",Required(request.TableId));
-        var menu = await unit.Configuration<MenuDefinition>("menu",Required(request.MenuId));
+        var menu = await unit.ModuleConfiguration<MenuDefinition>("dining","menu",Required(request.MenuId));   // menus: configuracion del modulo (E1b)
         if(request.Pax < 1 || request.Pax > table.Capacity) throw new ArgumentException("Pax is outside the configured table capacity.");
         var stamp = new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         var id = Guid.NewGuid().ToString("N");
         var courses = menu.Courses.Select(c => c with { Preparations = c.Preparations.SelectMany(p =>
             Enumerable.Range(1,request.Pax).Select(n => p with { Id=p.Id+"-"+n,GuestPosition=n })).ToArray() }).ToArray();
         var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses);
-        // La cuenta es del NUCLEO (ventas): el modulo la abre y le apunta el menu por el contrato de la Unit, en la misma transaccion.
+        // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu por el contrato de la Unit, en la misma transaccion.
         var account = new SettlementAccount(Guid.NewGuid().ToString("N"),identity.Scope,id);
         var occupancy = new TableOccupancy(Guid.NewGuid().ToString("N"),identity.Scope,table.Id,id);
         account.AddCharge(Guid.NewGuid().ToString("N"),menu.Name,request.Pax,menu.UnitPriceCents,stamp);
-        await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null);
+        await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
             new DomainEvent(Guid.NewGuid(),"service.created",id,identity.Scope,identity.ActorId,stamp.At,
                 new Dictionary<string,string>{{"table_id",table.Id}}),

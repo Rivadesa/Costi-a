@@ -4,5 +4,6 @@
     <PackageReference Include="Npgsql" Version="10.0.1" />
     <EmbeddedResource Include="schema.sql" />
     <EmbeddedResource Include="grants.sql" />
+    <EmbeddedResource Include="upgrade-v2.sql" />
   </ItemGroup>
 </Project>

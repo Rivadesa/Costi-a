@@ -13,17 +13,19 @@ namespace Costina.Modules.Dining;
 public sealed class DiningModule : IModule
 {
     public string Name => "dining";
+    // E1b: esquema "dining" (services, occupancies, configuration de menus) y sus concesiones, embebidos en este ensamblado.
+    public ModuleSchema Schema() => ModuleSchema.FromAssembly(typeof(DiningModule).Assembly, Name);
 
     // open: abrir mesa; add-consumption: consumo a mayores desde sala sin importes (D3.6); cocina no hace ninguna de las dos.
     public IReadOnlyList<string> SessionActions(string role) => new[] { "open", "add-consumption" }.Where(a => Affordances.Allows(role, a)).ToArray();
 
     public async Task<IReadOnlyDictionary<string, object>> ConfigurationAsync(ModuleHost host, CancellationToken ct)
     {
-        var menus = await new DesktopReadRepository(host.Source).Configuration<MenuDefinition>(host.Scope, "menu", ct);
+        var menus = await new DesktopReadRepository(host.Source).ModuleConfiguration<MenuDefinition>(host.Scope, Name, "menu", ct);
         return new Dictionary<string, object> { ["menus"] = menus.Select(m => new { m.Id, m.Name }).ToArray() };
     }
 
-    public Task SeedDemoAsync(Unit unit) => unit.SeedConfiguration("menu", "LAB-TASTING", new MenuDefinition("LAB-TASTING", "Menú de ensayo", 15000,
+    public Task SeedDemoAsync(Unit unit) => unit.SeedModuleConfiguration(Name, "menu", "LAB-TASTING", new MenuDefinition("LAB-TASTING", "Menú de ensayo", 15000,
         [new("p1", "Aperitivos", [new("frio", "Preparación fría", "cold"), new("caliente", "Preparación caliente", "hot")]),
          new("p2", "Segundo pase", [new("principal", "Preparación principal", "hot")])]));
 

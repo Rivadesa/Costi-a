@@ -95,9 +95,10 @@ public static partial class Provisioner
         var target=new NpgsqlConnectionStringBuilder(bootstrap.ConnectionString){Database=database};
         await using(var inside=NpgsqlDataSource.Create(target.ConnectionString))
         {
-            var schemaOwner=await Scalar(inside,"SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname='native_d1'") as string;
+            // E1b: el esquema del nucleo es "core" (v2); "native_d1" es una base v1 aun sin upgrade. Ninguno se adopta si es de otro.
+            var schemaOwner=await Scalar(inside,"SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname IN ('core','native_d1') ORDER BY nspname LIMIT 1") as string;
             if(schemaOwner is not null && schemaOwner!=OwnerRole)
-                throw new InvalidOperationException($"Database {database} already holds a native_d1 schema owned by {schemaOwner}; provision never takes over existing data.");
+                throw new InvalidOperationException($"Database {database} already holds a Costina schema owned by {schemaOwner}; provision never takes over existing data.");
             await Execute(inside,$"ALTER DATABASE {database} OWNER TO {OwnerRole}");
             await Execute(inside,$"REVOKE ALL ON DATABASE {database} FROM PUBLIC");
             await Execute(inside,$"GRANT CONNECT ON DATABASE {database} TO {RuntimeRole}");

@@ -60,7 +60,7 @@ class PairingChecks(unittest.TestCase):
         request('/auth/pairings/claim', {'code': code, 'deviceName': 'primera'})
         self.assertEqual(401, request('/auth/pairings/claim', {'code': code, 'deviceName': 'segunda'})[0])
         _, issued = request('/auth/pairings', {}, token=self.admin)
-        h.sql("UPDATE native_d1.pairings SET expires_at = now() - interval '1 second' "
+        h.sql("UPDATE core.pairings SET expires_at = now() - interval '1 second' "
               "WHERE tenant='d4-pairing' AND status='issued'")
         self.assertEqual(401, request('/auth/pairings/claim', {'code': issued['code'], 'deviceName': 'tarde'})[0])
         self.assertEqual(401, request('/auth/pairings/claim', {'code': 'codigo-inventado', 'deviceName': 'x'})[0])
@@ -77,7 +77,7 @@ class PairingChecks(unittest.TestCase):
         request(f"/auth/pairings/{claimed['pairingId']}/deny", {}, token=self.admin)
         status, out = request(f"/auth/pairings/{claimed['pairingId']}/collect", {'pollSecret': claimed['pollSecret']})
         self.assertEqual(403, status); self.assertEqual('denied', out['status'])
-        self.assertEqual('0', h.sql("SELECT count(*) FROM native_d1.devices WHERE tenant='d4-pairing' AND name='rechazada'"))
+        self.assertEqual('0', h.sql("SELECT count(*) FROM core.devices WHERE tenant='d4-pairing' AND name='rechazada'"))
 
     def test_06_revocation_cuts_access_immediately(self):
         status, _ = request(f"/auth/devices/{self.device['deviceId']}/revoke", {}, token=self.admin)
@@ -89,10 +89,10 @@ class PairingChecks(unittest.TestCase):
 
     def test_07_only_hashes_at_rest(self):
         secret = self.device['deviceToken'].split('.')[2]
-        stored = h.sql("SELECT string_agg(secret_hash, ',') FROM native_d1.devices WHERE tenant='d4-pairing'")
+        stored = h.sql("SELECT string_agg(secret_hash, ',') FROM core.devices WHERE tenant='d4-pairing'")
         self.assertNotIn(secret, stored)
         codes = h.sql("SELECT string_agg(code_hash, ',') || ',' || string_agg(coalesce(poll_secret_hash,''), ',') "
-                      "FROM native_d1.pairings WHERE tenant='d4-pairing'")
+                      "FROM core.pairings WHERE tenant='d4-pairing'")
         self.assertTrue(all(len(x) in (0, 64) for x in codes.split(',')))
 
 if __name__ == '__main__': unittest.main()

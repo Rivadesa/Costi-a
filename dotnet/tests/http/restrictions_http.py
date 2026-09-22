@@ -110,9 +110,9 @@ class RestrictionChecks(unittest.TestCase):
         self.assertFalse(h.dining(self.sid)['data']['restrictionsPendingAck'])
 
     def test_06_events_flow_to_outbox_for_realtime(self):
-        rows = h.sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d3-restrictions' AND type LIKE 'restriction.%'")
+        rows = h.sql("SELECT count(*) FROM core.outbox WHERE tenant='d3-restrictions' AND type LIKE 'restriction.%'")
         self.assertGreaterEqual(int(rows), 8)
-        reviewed = h.sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d3-restrictions' AND type='restriction.reviewed'")
+        reviewed = h.sql("SELECT count(*) FROM core.outbox WHERE tenant='d3-restrictions' AND type='restriction.reviewed'")
         self.assertGreaterEqual(int(reviewed), 4)
 
 if __name__ == '__main__': unittest.main()

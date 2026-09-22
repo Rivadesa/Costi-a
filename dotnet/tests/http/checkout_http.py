@@ -76,8 +76,8 @@ class CheckoutChecks(unittest.TestCase):
 
     def test_04_history_and_events_are_audited(self):
         for kind in ('account.reopened', 'payment.refunded'):
-            self.assertEqual('1', h.sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d3-checkout' AND type='" + kind + "'"))
-        self.assertEqual('1', h.sql("SELECT count(*) FROM native_d1.audit WHERE tenant='d3-checkout' AND action='account.reopened' AND payload->'data'->>'reason'='bebida pedida tras cerrar'"))
+            self.assertEqual('1', h.sql("SELECT count(*) FROM core.outbox WHERE tenant='d3-checkout' AND type='" + kind + "'"))
+        self.assertEqual('1', h.sql("SELECT count(*) FROM core.audit WHERE tenant='d3-checkout' AND action='account.reopened' AND payload->'data'->>'reason'='bebida pedida tras cerrar'"))
         for role in ('service', 'kitchen'):
             self.assertEqual(403, h.request('/checkout/services/' + self.sid, role=role)[0])
 

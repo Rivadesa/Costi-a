@@ -35,13 +35,14 @@ if (!database.EndsWith("_d1_lab", StringComparison.Ordinal) && !database.EndsWit
     throw new InvalidOperationException("Realtime checks only run against an isolated *_d1_lab/*_d1_test database.");
 await using var source = NpgsqlDataSource.Create(connectionString);
 // D5.1: el esquema lo aplica el rol propietario; el resto de la suite usa la conexion de ejecucion.
+// E1b: solo el nucleo (core.outbox): estas comprobaciones no cargan ningun modulo.
 await using (var ownerSource = NpgsqlDataSource.Create(Environment.GetEnvironmentVariable("COSTINA_DB_OWNER") ?? connectionString))
-    await new PostgresStore(ownerSource).InitializeAsync();
+    await new PostgresStore(ownerSource).InitializeAsync([]);
 
 async Task InsertEvent(Guid id, string tenant, string type, DateTimeOffset at)
 {
     await using var command = source.CreateCommand(
-        "INSERT INTO native_d1.outbox (id,tenant,company,location,aggregate_id,type,occurred_at,payload) " +
+        "INSERT INTO core.outbox (id,tenant,company,location,aggregate_id,type,occurred_at,payload) " +
         "VALUES (@id,@tenant,'rt-company','rt-location','rt-aggregate',@type,@at,'{}'::jsonb)");
     command.Parameters.AddWithValue("id", id); command.Parameters.AddWithValue("tenant", tenant);
     command.Parameters.AddWithValue("type", type); command.Parameters.AddWithValue("at", at);
@@ -50,7 +51,7 @@ async Task InsertEvent(Guid id, string tenant, string type, DateTimeOffset at)
 async Task<int> Unpublished(IEnumerable<Guid> ids)
 {
     await using var command = source.CreateCommand(
-        "SELECT count(*) FROM native_d1.outbox WHERE published_at IS NULL AND id = ANY(@ids)");
+        "SELECT count(*) FROM core.outbox WHERE published_at IS NULL AND id = ANY(@ids)");
     command.Parameters.AddWithValue("ids", ids.ToArray());
     return Convert.ToInt32(await command.ExecuteScalarAsync());
 }
@@ -228,7 +229,7 @@ try
     await Check("B3 every outbox event of this scope ends marked as published", async () =>
     {
         await WaitUntil(() => {
-            using var command = source.CreateCommand("SELECT count(*) FROM native_d1.outbox WHERE tenant='rt-tenant' AND published_at IS NULL");
+            using var command = source.CreateCommand("SELECT count(*) FROM core.outbox WHERE tenant='rt-tenant' AND published_at IS NULL");
             return Convert.ToInt32(command.ExecuteScalar()) == 0;
         }, 15, "outbox drained for rt-tenant");
     });

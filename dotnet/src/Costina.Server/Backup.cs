@@ -9,13 +9,15 @@ using Npgsql;
 namespace Costina.Server;
 
 // D5.4 (#27, ADR-011): copia de seguridad automatizada con RESTAURACION VERIFICABLE.
-//  - Copia: pg_dump (formato custom) del esquema native_d1 con el rol de ejecucion, dentro de una
+//  - Copia: pg_dump (formato custom) de los esquemas core y de cada modulo compilado (E1b) con el rol de ejecucion, dentro de una
 //    instantanea exportada; en esa MISMA instantanea se calcula la huella de cada tabla y se guarda
 //    en un manifiesto junto al SHA-256 del fichero. El archivo se comprueba legible (pg_restore --list).
 //  - Restauracion: solo sobre una instalacion recien aprovisionada (nunca pisa datos), con el rol
 //    propietario; despues recalcula las huellas y exige que coincidan con el manifiesto.
 // Una copia en el mismo disco no protege de perder el disco: COSTINA_BACKUP_COPY replica cada copia
 // en un segundo destino. Las copias contienen datos del negocio y hashes de credenciales: sensibles.
+// Manifiesto: Format 2 (E1b) con claves "esquema.tabla"; Format 1 (un solo esquema native_d1, claves "tabla") sigue
+// restaurandose: se verifica con su propia forma y despues upgrade lleva la base a v2.
 public sealed record BackupManifest(int Format, DateTimeOffset CreatedAt, string ServerVersion, string InstallationId,
     string TenantId, string CompanyId, string LocationId, string File, long SizeBytes, string Sha256,
     SortedDictionary<string, TableDigest> Tables);
@@ -29,8 +31,9 @@ public sealed class BackupHealth
     public void Failed(string error) { lock (gate) lastError = error; }
 }
 
-public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, string serverVersion)
+public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, string serverVersion, IReadOnlyList<string> schemas)
 {
+    public const int ManifestFormat = 2;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     public static string Folder => Path.Combine(ServerSettings.DataRoot, "backups");
     public string? CopyFolder => settings.Get("COSTINA_BACKUP_COPY");
@@ -80,18 +83,18 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
                 string snapshot;
                 await using (var export = new NpgsqlCommand("SELECT pg_export_snapshot()", connection, transaction))
                     snapshot = (string)(await export.ExecuteScalarAsync(ct))!;
-                await using (var identity = new NpgsqlCommand("SELECT id::text FROM native_d1.installation", connection, transaction))
+                await using (var identity = new NpgsqlCommand("SELECT id::text FROM core.installation", connection, transaction))
                     installation = (string)(await identity.ExecuteScalarAsync(ct))!;
-                tables = await BackupDigest.ComputeAsync(connection, transaction, ct);
+                tables = await BackupDigest.ComputeAsync(connection, transaction, schemas, ct: ct);
                 // La transaccion sigue abierta mientras pg_dump copia: la copia y las huellas ven exactamente lo mismo.
-                await RunTool("pg_dump", builder, ["--format=custom", "--schema=native_d1", "--snapshot=" + snapshot, "--no-password", "--file=" + temporary], ct);
+                await RunTool("pg_dump", builder, ["--format=custom", ..schemas.Select(s => "--schema=" + PostgresStore.CheckedSchema(s)), "--snapshot=" + snapshot, "--no-password", "--file=" + temporary], ct);
                 await transaction.CommitAsync(ct);
             }
             await RunTool("pg_restore", builder, ["--list", temporary], ct); // el archivo es legible de principio a fin
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             string sha;
             await using (var stream = File.OpenRead(temporary)) sha = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant();
-            var manifest = new BackupManifest(1, createdAt, serverVersion, installation, scope.TenantId, scope.CompanyId, scope.LocationId,
+            var manifest = new BackupManifest(ManifestFormat, createdAt, serverVersion, installation, scope.TenantId, scope.CompanyId, scope.LocationId,
                 name, new FileInfo(temporary).Length, sha, tables);
             var final = Path.Combine(Folder, name);
             File.Move(temporary, final);
@@ -134,13 +137,14 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
     }
 
     // Restauracion explicita con el rol PROPIETARIO sobre una instalacion recien aprovisionada.
-    public async Task RestoreAsync(string backupFile, string ownerConnection, CancellationToken ct = default)
+    public async Task RestoreAsync(string backupFile, string ownerConnection, IReadOnlyList<ModuleSchema> modules, CancellationToken ct = default)
     {
         backupFile = Path.GetFullPath(backupFile);
         if (!File.Exists(backupFile) || !File.Exists(backupFile + ".json"))
             throw new InvalidOperationException("Backup file or its .json manifest not found; both are required.");
         var manifest = JsonSerializer.Deserialize<BackupManifest>(await File.ReadAllTextAsync(backupFile + ".json", ct), Json)
             ?? throw new InvalidDataException("Unreadable backup manifest.");
+        if (manifest.Format is not (1 or ManifestFormat)) throw new InvalidDataException($"Unsupported backup manifest format {manifest.Format}. Nothing was restored.");
         await using (var stream = File.OpenRead(backupFile))
             if (Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant() != manifest.Sha256)
                 throw new InvalidDataException("Backup checksum mismatch: the file is damaged or was altered. Nothing was restored.");
@@ -152,17 +156,22 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
             throw new InvalidOperationException("This installation already has data. Restore only runs on a freshly provisioned installation and never overwrites. Nothing was restored.");
         await RunTool("pg_restore", new NpgsqlConnectionStringBuilder(ownerConnection),
             ["--dbname=" + new NpgsqlConnectionStringBuilder(ownerConnection).Database, "--no-owner", "--no-acl", "--single-transaction", "--exit-on-error", "--no-password", backupFile], ct);
+        // Las huellas se recalculan con la forma del manifiesto: v1 = un solo esquema native_d1 y claves sin cualificar;
+        // v2 = los esquemas que el propio manifiesto nombra. Se verifica ANTES de tocar nada (upgrade viene despues).
+        var legacy = manifest.Format == 1;
+        var restoredSchemas = legacy ? ["native_d1"] : manifest.Tables.Keys.Select(k => k.Split('.')[0]).Distinct(StringComparer.Ordinal).ToList();
         SortedDictionary<string, TableDigest> restored;
         await using (var connection = await source.OpenConnectionAsync(ct))
         await using (var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct))
-            restored = await BackupDigest.ComputeAsync(connection, transaction, ct);
+            restored = await BackupDigest.ComputeAsync(connection, transaction, restoredSchemas, qualify: !legacy, ct: ct);
         var differences = manifest.Tables.Keys.Union(restored.Keys).Where(table =>
             !manifest.Tables.TryGetValue(table, out var expected) || !restored.TryGetValue(table, out var actual) || expected != actual).ToArray();
         if (differences.Length > 0)
             throw new InvalidDataException("Restored data does NOT match the backup manifest in: " + string.Join(", ", differences) + ". Do not operate this installation.");
-        // Privilegios del rol de ejecucion y, si los binarios son mas nuevos que la copia, esquema al dia.
-        await store.InitializeAsync(ct);
-        Console.WriteLine($"Restored and verified {manifest.Tables.Count} tables ({manifest.Tables.Values.Sum(t => t.Rows)} rows) from {manifest.File} taken at {manifest.CreatedAt:O}. Installation identity {manifest.InstallationId} preserved.");
+        // Privilegios del rol de ejecucion y, si los binarios son mas nuevos que la copia, esquema al dia (una copia v1 se migra aqui a v2).
+        var upgraded = await store.InitializeAsync(modules, ct);
+        Console.WriteLine($"Restored and verified {manifest.Tables.Count} tables ({manifest.Tables.Values.Sum(t => t.Rows)} rows) from {manifest.File} taken at {manifest.CreatedAt:O}. Installation identity {manifest.InstallationId} preserved."
+            + (upgraded ? " Schema upgraded from v1 to v2 after verification." : ""));
     }
 }
 
