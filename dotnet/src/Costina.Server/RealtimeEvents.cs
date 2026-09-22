@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Costina.Persistence;
+using Costina.Core.Persistence;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Costina.Server;

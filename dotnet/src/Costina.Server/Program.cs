@@ -4,9 +4,12 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Core.Domain;
+using Costina.Core.Hosting;
+using Costina.Core.Persistence;
+using Costina.Modules.Dining;
 using Costina.Server;
+using static Costina.Core.Hosting.Requests;
 using Npgsql;
 
 // D5.1 (#27, ADR-011): ciclo de vida EXPLICITO. "provision" (superusuario, una vez) crea roles, base
@@ -16,6 +19,8 @@ using Npgsql;
 var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab" or "load-demo")
     || (args.Length == 2 && args[0] == "restore");
 var settings = new ServerSettings(administrative);
+// ADR-012: modulos compilados en este binario y, de ellos, los ACTIVOS (COSTINA_MODULES acota; E1b lo lleva a la base).
+var modules = ModuleRegistry.Activate([new DiningModule()], settings.Get("COSTINA_MODULES"));
 if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
 // D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
 if(args.Length == 1 && args[0] == "install-service") { await ServiceInstaller.InstallAsync(settings); return; }
@@ -60,7 +65,7 @@ if(administrative)
         if(!exists) throw new InvalidOperationException("Run init before load-demo.");
         if(await ownerStore.HasConfigurationAsync(scope))
             throw new InvalidOperationException("This installation already has tables, menus or products: demo fixtures are only loaded into an empty configuration.");
-        await LabConfiguration.Seed(ownerStore,scope);
+        await LabConfiguration.Seed(ownerStore,scope,modules);
         Console.WriteLine("Fictitious DEMO fixtures loaded. This installation is now flagged as a demo; never reuse it for real data."); return;
     }
     if(args[0] == "init-lab" && !laboratory)
@@ -68,7 +73,7 @@ if(administrative)
     await ownerStore.InitializeAsync();
     if(args[0] == "init-lab")
     {
-        await LabConfiguration.Seed(ownerStore,scope);
+        await LabConfiguration.Seed(ownerStore,scope,modules);
         Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
     }
     Console.WriteLine(args[0] == "init" ? "Schema initialized. Create the first user with create-user <username> main."
@@ -280,11 +285,9 @@ app.Use(async (context,next)=>
         var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
         var action=context.Request.RouteValues["action"]?.ToString();
         bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
-        // La restriccion de cocina aplica a los comandos de comedor ({action} presente).
-        // Un POST sin action con metadatos que admiten kitchen (negociacion del hub) no es un comando.
-        if (role=="kitchen" && HttpMethods.IsPost(context.Request.Method) && action is not null)
-            allowed &= action is "preparation-start" or "preparation-ready" or "ready" or "review-preparation";
-        if (role=="service" && action is "complete" or "cancel-unstarted" or "review-preparation") allowed=false;
+        // ADR-012: la matriz rol x accion la declara el modulo en su ruta (ActionPolicy) y es la MISMA que filtra sus
+        // affordances. Un POST sin {action} (negociacion del hub, identidad) no es un comando y no pasa por ella.
+        if (allowed && action is not null && access!.ActionPolicy is { } policy) allowed = policy(role,action);
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
         await next();
     }
@@ -305,22 +308,6 @@ app.Use(async (context,next)=>
         await context.Response.WriteAsJsonAsync(new {error="operation_unconfirmed",message="Reload state and retry with the same key."});
     }
 });
-ExecutionIdentity Identity(HttpContext context)=>new(scope,(string)context.Items["actor"]!,context.Items["station"] as string);
-string? Station(HttpContext c)=>c.Items["station"] as string;
-IResult Json(object value)=>Results.Text(Wire.Encode(value),"application/json");
-async Task<IResult> Write<T>(HttpContext context,Func<Unit,ExecutionIdentity,T,Task<object>> work)
-{
-    using var reader=new StreamReader(context.Request.Body);
-    var body=await reader.ReadToEndAsync(context.RequestAborted);
-    if(body.Length>32768) throw new ArgumentException("Request too large.");
-    var request=JsonSerializer.Deserialize<T>(body,Wire.Json);
-    if(request is null) throw new ArgumentException("Empty command.");
-    var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context.Request.Method+"\n"+context.Request.Path+"\n"+body)));
-    var identity=Identity(context);
-    var response=await store.ExecuteAsync(identity,context.Request.Headers["Idempotency-Key"].ToString(),fingerprint,
-        unit=>work(unit,identity,request),context.RequestAborted);
-    return Results.Text(response,"application/json");
-}
 const string prefix="/api/native/v1";
 // D5.3: la raiz PUBLICA de la CA local, para instalarla en los dispositivos. Se compara su huella
 // SHA-256 con la que muestra el servidor (provision-tls / diagnostico) antes de confiar en ella.
@@ -331,14 +318,9 @@ app.MapGet("/health",async ()=>{
     if(!laboratory && !demoState.IsDemo) demoState.IsDemo=await store.IsDemoAsync(scope); // cargar la demo con el servicio en marcha se refleja sin reiniciar
     return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,demo=!laboratory && demoState.IsDemo,pwa=pwaHosted});
 });
-string Role(HttpContext c)=>(string)c.Items["role"]!;
-app.MapGet(prefix+"/board",(Func<HttpContext,Task<IResult>>)(async c=>{
-    var rows=await store.ReadAsync(Identity(c),u=>u.Board(),c.RequestAborted);
-    return Json(rows.Select(r=>Affordances.Filter(r,Role(c),Station(c))).ToArray());})).WithMetadata(new RouteAccess("main","service","kitchen"));
-app.MapGet(prefix+"/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
-    {var d=await u.Dining(id); return new Versioned<DiningView>(d.Version,Affordances.Filter(d.Entity.View(true),Role(c),Station(c)));},c.RequestAborted))).WithMetadata(new RouteAccess("main","service","kitchen"));
-app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c),async u=>
+app.MapGet(prefix+"/checkout/services/{id}",async (HttpContext c,string id)=>Json(await store.ReadAsync(Identity(c,scope),async u=>
     {var a=await u.Account(id); return new Versioned<AccountView>(a.Version,a.Entity.ViewWithActions());},c.RequestAborted))).WithMetadata(new RouteAccess("main"));
+// (Las rutas del modulo Dining — tablero, servicios, comandos, liberacion — las registra el propio modulo mas abajo.)
 app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
     using var reader=new StreamReader(c.Request.Body);
     var request=JsonSerializer.Deserialize<LoginRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json);
@@ -426,22 +408,19 @@ app.MapPost(prefix+"/auth/logout",(Func<HttpContext,Task<IResult>>)(async c=>{
     if(sessionId is not null) await identityStore.RevokeSessionAsync(sessionId,c.RequestAborted);
     return Results.Json(new {loggedOut=sessionId is not null});
 })).WithMetadata(new RouteAccess("main","service","kitchen"));
-app.MapPost(prefix+"/services",(Func<HttpContext,Task<IResult>>)(c=>Write<OpenRequest>(c,LocalOperations.Open))).WithMetadata(new RouteAccess("main","service"));
-app.MapPost(prefix+"/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
-    Write<DiningCommand>(c,(u,i,r)=>action=="add-consumption" ? LocalOperations.Consumption(u,i,id,r) : LocalOperations.Dining(u,i,id,action,r)))
-    .WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>
-    Write<AccountCommand>(c,(u,i,r)=>LocalOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
-app.MapPost(prefix+"/occupancy/{id}/release",(HttpContext c,string id)=>
-    Write<ReleaseCommand>(c,(u,i,r)=>LocalOperations.Release(u,i,id,r))).WithMetadata(new RouteAccess("main"));
+    Write<AccountCommand>(c,store,scope,(u,i,r)=>CheckoutOperations.Account(u,i,id,action,r))).WithMetadata(new RouteAccess("main"));
 // Conciliacion de una orden cuyo resultado el cliente no pudo conservar: devuelve la respuesta
 // guardada de ESA clave para el mismo actor, o found=false. Nunca ejecuta ni reintenta nada.
 app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
-    var stored=await store.ReadAsync(Identity(c),u=>u.CommandResponse(key),c.RequestAborted);
+    var stored=await store.ReadAsync(Identity(c,scope),u=>u.CommandResponse(key),c.RequestAborted);
     return Results.Text(stored is null ? Wire.Encode(new {key,found=false})
         : "{\"key\":"+Wire.Encode(key)+",\"found\":true,\"response\":"+stored+"}","application/json");
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
-app.MapDesktopReadRoutes(source,scope,installation,serverVersion,()=>!laboratory && demoState.IsDemo);
+// ADR-012: cada modulo activo registra sus rutas bajo su prefijo (y, durante una version, bajo el anterior como alias).
+var hosted=modules.Select(m=>(Module:m,Host:new ModuleHost(store,source,scope,prefix+"/"+m.Name,prefix))).ToList();
+foreach(var (module,host) in hosted) module.MapRoutes(app,host);
+app.MapDesktopReadRoutes(source,scope,installation,serverVersion,()=>!laboratory && demoState.IsDemo,hosted);
 // Canal de notificaciones finas. El estado autoritativo se lee siempre en los GET anteriores.
 object Backup()
 {

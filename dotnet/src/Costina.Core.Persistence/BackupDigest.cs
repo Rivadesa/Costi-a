@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Npgsql;
 
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 public sealed record TableDigest(long Rows, string Md5);
 

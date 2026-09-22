@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using Costina.Domain;
+using Costina.Core.Domain;
 using Npgsql;
 
-namespace Costina.Persistence;
+namespace Costina.Core.Persistence;
 
 // Emparejamiento y dispositivos (D4.2, #26/F06). Codigo de UN solo uso con caducidad corta,
 // aprobado por un administrador con rol y estacion. El secreto del dispositivo viaja una unica

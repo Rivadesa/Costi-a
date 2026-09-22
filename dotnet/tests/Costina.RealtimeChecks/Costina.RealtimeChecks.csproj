@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Costina.Persistence/Costina.Persistence.csproj" />
+    <ProjectReference Include="../../src/Costina.Core.Persistence/Costina.Core.Persistence.csproj" />
     <ProjectReference Include="../../src/Costina.Client/Costina.Client.csproj" />
   </ItemGroup>
 </Project>

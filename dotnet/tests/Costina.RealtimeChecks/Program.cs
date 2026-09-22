@@ -7,8 +7,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Costina.Client;
-using Costina.Domain;
-using Costina.Persistence;
+using Costina.Core.Domain;
+using Costina.Core.Persistence;
 using Npgsql;
 
 // Comprobaciones D2: publicador del outbox contra PostgreSQL real (parte A) y flujo
@@ -299,8 +299,8 @@ return failed == 0 ? 0 : 1;
 sealed class FakeSink : IEventSink
 {
     public Guid? FailOnId;
-    public List<(string Audience, Costina.Persistence.EventNotice Notice)> Published { get; } = [];
-    public Task PublishAsync(string audience, Costina.Persistence.EventNotice notice, CancellationToken ct)
+    public List<(string Audience, Costina.Core.Persistence.EventNotice Notice)> Published { get; } = [];
+    public Task PublishAsync(string audience, Costina.Core.Persistence.EventNotice notice, CancellationToken ct)
     {
         if (notice.Id == FailOnId) throw new Exception("injected sink failure");
         Published.Add((audience, notice));
