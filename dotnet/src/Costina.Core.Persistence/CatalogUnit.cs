@@ -185,7 +185,8 @@ public static class CatalogReads
         "LEFT JOIN core.categories c ON c.tenant=p.tenant AND c.company=p.company AND c.location=p.location AND c.id=p.category_id " +
         "JOIN LATERAL (SELECT price_cents FROM core.prices x WHERE x.tenant=p.tenant AND x.company=p.company AND x.location=p.location AND x.tariff_id='general' " +
         " AND x.product_id=p.id AND x.presentation_id=s.id AND x.valid_from<=@today ORDER BY x.valid_from DESC LIMIT 1) x ON true " +
-        "WHERE p.tenant=@tenant AND p.company=@company AND p.location=@location AND p.active ORDER BY c.sort,c.id,p.sort,p.id,s.sort,s.id LIMIT 5000";
+        // E4a: los productos-menu (categoria 'menus') se venden abriendo la mesa con su oferta, no como consumo suelto.
+        "WHERE p.tenant=@tenant AND p.company=@company AND p.location=@location AND p.active AND coalesce(p.category_id,'')<>'menus' ORDER BY c.sort,c.id,p.sort,p.id,s.sort,s.id LIMIT 5000";
     public static Task<List<SellableView>> Sellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
         => reads.Query(scope, SellableSql, r => new SellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)), ct, ("today", today));
     public static Task<List<PricedSellableView>> PricedSellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)

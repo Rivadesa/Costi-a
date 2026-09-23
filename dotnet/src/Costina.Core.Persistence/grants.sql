@@ -10,6 +10,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA core TO costina_runtime;
 GRANT INSERT, UPDATE ON core.accounts TO costina_runtime;
 GRANT INSERT, UPDATE ON core.zones, core.tables, core.stations TO costina_runtime;
 GRANT INSERT, UPDATE ON core.taxes, core.categories, core.products, core.presentations, core.tariffs, core.prices TO costina_runtime;
+GRANT INSERT, UPDATE ON core.offers, core.offer_courses, core.offer_dishes TO costina_runtime;
 GRANT INSERT, UPDATE ON core.sessions, core.devices, core.pairings TO costina_runtime;
 GRANT INSERT ON core.commands, core.audit, core.outbox, core.users TO costina_runtime;
 GRANT UPDATE (published_at) ON core.outbox TO costina_runtime

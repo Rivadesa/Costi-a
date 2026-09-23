@@ -26,7 +26,7 @@ public sealed partial class DiningService
             actions.Add("remove-restriction");
         return new(Id, TableId, Pax, State,
             Array.AsReadOnly(courses.Select(c => c.ViewWithActions(State, restrictions)).ToArray()),
-            actions.AsReadOnly(), restrictions.AsReadOnly(), pending);
+            actions.AsReadOnly(), restrictions.AsReadOnly(), pending, OfferId);
     }
 }
 
@@ -43,6 +43,9 @@ internal sealed partial class CourseExecution
         if (kitchenActive && !ReviewPending && State == CourseState.Ready) actions.Add("serve");
         if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
             && State == CourseState.Pending) actions.Add("skip");
+        // E4a: mientras el pase de menu cerrado no se dispara, los comensales eligen (y pueden cambiar) su plato.
+        if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
+            && State == CourseState.Pending && ChoiceRequired) actions.Add("choose");
         var items = preparations.Select(p =>
         {
             var itemActions = new List<string>();

@@ -8,7 +8,7 @@ namespace Costina.Modules.Dining.Domain;
 public sealed record DiningSnapshot(string Id, BusinessScope Scope, string TableId, int Pax,
     DiningState State, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
     IReadOnlyList<CourseView> Courses,
-    IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false);
+    IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false, string? OfferId = null);
 public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string TableId,
     string ServiceId, OccupancyState State, DateTimeOffset? ReleasedAt);
 
@@ -16,7 +16,7 @@ public sealed partial class DiningService
 {
     public DiningSnapshot Snapshot() => new(Id, Scope, TableId, Pax, State, StartedAt,
         CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        restrictions.AsReadOnly(), RestrictionsPendingAck);
+        restrictions.AsReadOnly(), RestrictionsPendingAck, OfferId);
 
     public static DiningService Restore(DiningSnapshot value)
     {
@@ -25,7 +25,7 @@ public sealed partial class DiningService
         var result = new DiningService(value.Id, value.Scope, value.TableId, value.Pax,
             value.Courses.Select(c => new CourseDefinition(c.Id, c.Name,
                 c.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
-                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray())).ToArray());
+                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), c.ChoiceRequired)).ToArray(), value.OfferId);
         result.courses.Clear();
         result.courses.AddRange(value.Courses.Select(c => CourseExecution.Restore(c, value.Pax)));
         Guard.Rule(result.courses.Count(c => c.Active) <= 1, "invalid_snapshot", "Multiple active courses.");
@@ -72,7 +72,7 @@ internal sealed partial class CourseExecution
         Guard.Rule(Enum.IsDefined(value.State), "invalid_snapshot", "Unknown course state.");
         var result = new CourseExecution(new CourseDefinition(value.Id, value.Name,
             value.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
-                p.Quantity, p.GuestPosition, p.Mandatory)).ToArray()), pax);
+                p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), value.ChoiceRequired), pax);
         var fired = value.State is CourseState.Fired or CourseState.Preparing or CourseState.Ready or CourseState.Served;
         foreach (var item in value.Preparations)
         {

@@ -165,6 +165,41 @@ internal static class Program
             Equal("el-rapolao-2023", Catalog.Slug("El Rapolao 2023"));
             Equal("anada-cinco-x", Catalog.Slug("Añada · cinco (x)"));
         });
+        // E4a: menu cerrado = pase con eleccion por comensal antes de disparar; ofertas vigentes por fecha, dia y servicio.
+        Test("a set-menu course needs a choice per guest before it fires and closes once fired", () => {
+            var service = new DiningService("s", Scope, "M1", 2, [new("primeros", "Primeros", [], ChoiceRequired: true), new("postre", "Postre", [new("tarta", "Tarta", "pastry")])], "LAB-DAILY");
+            Equal("LAB-DAILY", service.OfferId);
+            True(service.View(true).Courses[0].Actions!.Contains("choose") && !service.View(true).Courses[1].Actions!.Contains("choose"));
+            service.Start(Stamp);
+            Rule("choice_missing", () => service.FireNext(Stamp));
+            service.Choose("primeros", 1, new("sopa", "Sopa", "hot"), Stamp);
+            Rule("choice_missing", () => service.FireNext(Stamp));
+            Rule("invalid_guest", () => service.Choose("primeros", 3, new("sopa", "Sopa", "hot"), Stamp));
+            Rule("no_choice", () => service.Choose("postre", 1, new("sopa", "Sopa", "hot"), Stamp));
+            service.Choose("primeros", 1, new("ensalada", "Ensalada", "cold"), Stamp);   // cambia de idea: sustituye
+            service.Choose("primeros", 2, new("sopa", "Sopa", "hot"), Stamp);
+            var chosen = service.View().Courses[0].Preparations.Select(p => (p.Id, p.GuestPosition, p.StationId)).OrderBy(x => x.Id).ToArray();
+            Equal("ensalada-1,cold,1;sopa-2,hot,2", string.Join(";", chosen.Select(x => $"{x.Id},{x.StationId},{x.GuestPosition}")));
+            Equal("primeros", service.FireNext(Stamp));
+            Rule("course_not_pending", () => service.Choose("primeros", 1, new("sopa", "Sopa", "hot"), Stamp));
+            var restored = DiningService.Restore(service.Snapshot());
+            True(restored.View().Courses[0].ChoiceRequired && restored.OfferId == "LAB-DAILY" && restored.View().Courses[0].Preparations.Count == 2);
+        });
+        Test("offers are available by dates, weekdays and lunch or dinner service", () => {
+            var always = Offers.Offer("T", "Degustación", OfferKind.Tasting, "menu-t", OfferService.Any, null, null, null, 0);
+            True(Offers.Available(always, new DateTime(2026, 9, 23, 13, 0, 0)) && Offers.Available(always, new DateTime(2026, 9, 27, 21, 0, 0)));
+            var weekendDinner = Offers.Offer("W", "Cena", OfferKind.SetMenu, "menu-w", OfferService.Dinner, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), 96, 0);
+            True(Offers.Available(weekendDinner, new DateTime(2026, 10, 3, 21, 0, 0)));     // sabado noche de octubre
+            True(!Offers.Available(weekendDinner, new DateTime(2026, 10, 3, 13, 0, 0)));    // mediodia
+            True(!Offers.Available(weekendDinner, new DateTime(2026, 10, 5, 21, 0, 0)));    // lunes
+            True(!Offers.Available(weekendDinner, new DateTime(2026, 11, 7, 21, 0, 0)));    // fuera de fechas
+            True(!Offers.Available(weekendDinner with { Active = false }, new DateTime(2026, 10, 3, 21, 0, 0)));
+            Rule("product_required", () => Offers.Offer("X", "x", OfferKind.Tasting, null, OfferService.Any, null, null, null, 0));
+            Rule("kind_unsupported", () => Offers.Offer("X", "x", OfferKind.ALaCarte, null, OfferService.Any, null, null, null, 0));
+            Rule("invalid_weekdays", () => Offers.Offer("X", "x", OfferKind.Tasting, "p", OfferService.Any, null, null, 0, 0));
+            Rule("invalid_validity", () => Offers.Offer("X", "x", OfferKind.Tasting, "p", OfferService.Any, new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1), null, 0));
+            Equal(1, Offers.WeekdayBit(DayOfWeek.Monday)); Equal(64, Offers.WeekdayBit(DayOfWeek.Sunday));
+        });
         Test("the pass station is reserved: always kind pass and never deactivated", () => {
             Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Kitchen, 0));
             Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Pass, 0, active: false));

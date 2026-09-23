@@ -9,7 +9,8 @@ public enum OccupancyState { Occupied, Released }
 
 public sealed record PreparationDefinition(string Id, string Name, string StationId,
     int Quantity = 1, int? GuestPosition = null, bool Mandatory = true);
-public sealed record CourseDefinition(string Id, string Name, IReadOnlyList<PreparationDefinition> Preparations);
+// E4a: ChoiceRequired = pase de menu cerrado: cada comensal elige su plato (Choose) antes de poder dispararlo.
+public sealed record CourseDefinition(string Id, string Name, IReadOnlyList<PreparationDefinition> Preparations, bool ChoiceRequired = false);
 
 // Actions: affordances calculadas por el dominio en el momento de la lectura, NUNCA persistidas.
 // Con valor null la propiedad no se serializa: los payloads de snapshot quedan identicos a D1.
@@ -29,7 +30,9 @@ public sealed record CourseView(string Id, string Name, CourseState State,
     DateTimeOffset? FiredAt, DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt,
     string? SkipReason, IReadOnlyList<PreparationView> Preparations,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? Actions = null);
+    IReadOnlyList<string>? Actions = null,
+    // E4a (aditivo, SI persiste): el pase exige una eleccion por comensal; un payload anterior restaura con false.
+    bool ChoiceRequired = false);
 
 // These DTOs contain no account, payment, price, balance or fiscal fields.
 // Restrictions/RestrictionsPendingAck son ESTADO del servicio (no affordances) y viajan siempre.
@@ -38,7 +41,10 @@ public sealed record DiningView(string Id, string TableId, int Pax, DiningState 
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? Actions = null,
     IReadOnlyList<GuestRestriction>? Restrictions = null,
-    bool RestrictionsPendingAck = false);
+    bool RestrictionsPendingAck = false,
+    // E4a: oferta del nucleo con la que se abrio la mesa (null en servicios anteriores).
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? OfferId = null);
 public sealed record OccupancyView(string Id, string TableId, string ServiceId,
     OccupancyState State, DateTimeOffset? ReleasedAt,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
