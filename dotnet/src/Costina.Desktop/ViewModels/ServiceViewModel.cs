@@ -23,8 +23,13 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private PreparationDto? selectedPreparation;
     [ObservableProperty] private TableChoice[] tables = [];
     [ObservableProperty] private TableChoice? selectedTable;
-    [ObservableProperty] private MenuChoice[] menus = [];
-    [ObservableProperty] private MenuChoice? selectedMenu;
+    [ObservableProperty] private OfferChoice[] offers = [];
+    [ObservableProperty] private OfferChoice? selectedOffer;
+    // E4a: eleccion de plato por comensal en un pase de menu cerrado (solo cuando el servidor anuncia 'choose' en el pase).
+    [ObservableProperty] private string choiceGuest = "1";
+    [ObservableProperty] private OfferDishChoice[] choiceDishes = [];
+    [ObservableProperty] private OfferDishChoice? selectedChoiceDish;
+    [ObservableProperty] private string choicesText = "";
     [ObservableProperty] private string pax = "2";
     [ObservableProperty] private string reason = "";
     [ObservableProperty] private GuestRestrictionDto[] restrictions = [];
@@ -48,7 +53,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         "start" or "fire-next" or "pause" or "resume" or "complete" or "cancel-unstarted"
         or "declare-restriction" or "remove-restriction"
             => Context?.Data.Actions?.Contains(action) == true,
-        "ready" or "serve" or "skip" => Context is not null && SelectedCourse?.Actions?.Contains(action) == true,
+        "ready" or "serve" or "skip" or "choose" => Context is not null && SelectedCourse?.Actions?.Contains(action) == true,
         "preparation-start" or "preparation-ready" or "review-preparation"
             => Context is not null && SelectedPreparation?.Actions?.Contains(action) == true,
         "release" => Context is not null && SelectedEntry?.Occupancy.Actions?.Contains(action) == true,
@@ -60,13 +65,20 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     {
         ActCommand.NotifyCanExecuteChanged(); OpenCommand.NotifyCanExecuteChanged();
         ReleaseCommand.NotifyCanExecuteChanged(); DeclareRestrictionCommand.NotifyCanExecuteChanged();
-        RemoveRestrictionCommand.NotifyCanExecuteChanged(); ReviewCommand.NotifyCanExecuteChanged();
+        RemoveRestrictionCommand.NotifyCanExecuteChanged(); ReviewCommand.NotifyCanExecuteChanged(); ChooseCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanChoose));
     }
 
-    internal void ApplyConfiguration(Configuration config)
+    public void ApplyConfiguration(Configuration config)
     {
         rendering = true;
-        try { Tables = config.Tables; SelectedTable = Tables.FirstOrDefault(); Menus = config.Menus ?? []; SelectedMenu = Menus.FirstOrDefault(); }
+        try
+        {
+            Tables = config.Tables; SelectedTable = Tables.FirstOrDefault();
+            // Servidor anterior a E4a: solo 'menus' (id, name); se muestran como ofertas sin pases.
+            Offers = config.Offers ?? (config.Menus ?? []).Select(m => new OfferChoice(m.Id, m.Name, "tasting", [])).ToArray();
+            SelectedOffer = Offers.FirstOrDefault();
+        }
         finally { rendering = false; }
     }
 
@@ -77,7 +89,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
-            Board = []; SelectedEntry = null; Tables = []; Menus = []; serviceId = null; Reason = "";
+            Board = []; SelectedEntry = null; Tables = []; Offers = []; serviceId = null; Reason = "";
             Invalidate(); ServiceTitle = "Selecciona una mesa";
         }
         finally { rendering = false; }
@@ -151,7 +163,26 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         Preparations = SelectedCourse?.Preparations ?? [];
         SelectedPreparation = Preparations.FirstOrDefault(p => p.Id == previous)
             ?? Preparations.FirstOrDefault(p => p.State is "Fired" or "Preparing") ?? Preparations.FirstOrDefault();
+        // E4a: platos elegibles del pase (de la oferta con la que se abrio la mesa) y resumen de las elecciones hechas.
+        var course = Dining?.Data.OfferId is { } offerId ? Offers.FirstOrDefault(o => o.Id == offerId)?.Courses.FirstOrDefault(c => c.Id == SelectedCourse?.Id) : null;
+        ChoiceDishes = course?.Dishes ?? []; SelectedChoiceDish = ChoiceDishes.FirstOrDefault();
+        var pax = Dining?.Data.Pax ?? 0;
+        ChoicesText = SelectedCourse?.ChoiceRequired != true ? ""
+            : string.Join(" · ", Enumerable.Range(1, pax).Select(g => $"{g}: " + (Preparations.FirstOrDefault(p => p.GuestPosition == g)?.Name ?? "sin elegir")));
     }
+    public bool CanChoose => shell.Writable && Allowed("choose");
+    private bool CanChooseDish() => CanChoose && SelectedChoiceDish is not null;
+    [RelayCommand(CanExecute = nameof(CanChooseDish))]
+    private Task Choose() => shell.Run(async () =>
+    {
+        var context = Require();
+        if (!int.TryParse(ChoiceGuest, out var guest) || guest < 1 || guest > context.Data.Pax) throw new ArgumentException("Comensal: un número entre 1 y " + context.Data.Pax + ".");
+        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/choose",
+            new { expectedVersion = context.Version, courseId = SelectedCourse!.Id, guestPosition = guest, dishId = SelectedChoiceDish!.Id },
+            $"Elegir {SelectedChoiceDish.Name} para el comensal {guest} · {context.Data.TableId}");
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: elección registrada.";
+    });
 
     partial void OnSelectedEntryChanged(BoardEntry? value)
     {
@@ -181,13 +212,13 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         shell.Status = "Operación confirmada por el servidor: " + action;
     });
 
-    private bool CanOpenTable() => shell.Writable && shell.CanOpen && SelectedTable is not null && SelectedMenu is not null;
+    private bool CanOpenTable() => shell.Writable && shell.CanOpen && SelectedTable is not null && SelectedOffer is not null;
     [RelayCommand(CanExecute = nameof(CanOpenTable))]
     private Task Open() => shell.Run(async () =>
     {
         if (!int.TryParse(Pax, out var people)) throw new ArgumentException("Introduce un número de personas.");
         var result = await shell.Api!.SendAsync("dining/services",
-            new { tableId = SelectedTable!.Id, pax = people, menuId = SelectedMenu!.Id }, "Abrir " + SelectedTable.Name);
+            new { tableId = SelectedTable!.Id, pax = people, offerId = SelectedOffer!.Id, menuId = SelectedOffer.Id }, "Abrir " + SelectedTable.Name);   // menuId: alias para un servidor anterior
         serviceId = result.GetProperty("serviceId").GetString();
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: abrir " + SelectedTable.Name;

@@ -59,6 +59,7 @@ public partial class MainWindow : Window
         shell.Devices.Visible = tabs.SelectedItem == DevicesTab;
         shell.Organization.Visible = tabs.SelectedItem == OrganizationTab;
         shell.Catalog.Visible = tabs.SelectedItem == CatalogTab;
+        shell.Offers.Visible = tabs.SelectedItem == OffersTab;
         if (shell.Checkout.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Checkout.LoadAsync);
         else if (shell.Devices.Visible && shell.IsMain && !shell.Busy)
@@ -67,6 +68,8 @@ public partial class MainWindow : Window
             await shell.Run(shell.Organization.LoadAsync);
         else if (shell.Catalog.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Catalog.LoadAsync);
+        else if (shell.Offers.Visible && shell.IsMain && !shell.Busy)
+            await shell.Run(shell.Offers.LoadAsync);
     }
 
     private void WindowClosing(object? sender, CancelEventArgs e)
