@@ -57,7 +57,7 @@ class Catalog(unittest.TestCase):
         c = catalog()
         self.assertEqual([t['id'] for t in c['taxes']], ['iva-21', 'iva-10', 'iva-4', 'iva-0'])           # lo que existe siempre
         self.assertEqual([t['id'] for t in c['tariffs']], ['general'])
-        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('bebidas', None), ('vinos', 'bebidas')])
+        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('bebidas', None), ('vinos', 'bebidas'), ('menus', None)])   # E4a: categoria de los productos-menu
         wine = product('wine')
         self.assertEqual((wine['categoryId'], wine['taxId'], wine['reference']), ('vinos', 'iva-21', '3754'))
         self.assertEqual({(p['id'], p['prices'][0]['tariffId'], p['prices'][0]['priceCents']) for p in wine['presentations']}, {('glass', 'general', 950), ('bottle', 'general', 4200)})

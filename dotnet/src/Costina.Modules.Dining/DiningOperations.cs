@@ -5,30 +5,38 @@ using static Costina.Core.Persistence.CommandGuards;
 
 namespace Costina.Modules.Dining;
 
-public sealed record OpenRequest(string TableId,int Pax,string MenuId);
+// E4a: la mesa se abre con una OFERTA del nucleo (offerId); menuId sigue aceptado una version como alias.
+public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null);
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
-    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null);
+    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null,string? DishId=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
-// Menu por pases: configuracion del modulo (las mesas y los productos son del nucleo).
-public sealed record MenuDefinition(string Id,string Name,long UnitPriceCents,CourseDefinition[] Courses);
 
 public static class DiningOperations
 {
     public static async Task<object> Open(Unit unit,ExecutionIdentity identity,OpenRequest request)
     {
         var table = await unit.ActiveTable(Required(request.TableId));   // E2: mesa de la organizacion del nucleo, activa
-        var menu = await unit.ModuleConfiguration<MenuDefinition>("dining","menu",Required(request.MenuId));   // menus: configuracion del modulo (E1b)
+        // E4a: OFERTA del nucleo, vigente ahora, con sus pases y platos activos. Degustacion: un plato por comensal en cada pase;
+        // menu cerrado: pases con eleccion pendiente (cada comensal elige con 'choose' antes de disparar).
+        var (offer,offerCourses) = await unit.AvailableOffer(Required(request.OfferId??request.MenuId),DateTime.Now);
         if(request.Pax < 1 || request.Pax > table.Capacity) throw new ArgumentException("Pax is outside the configured table capacity.");
         var stamp = new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         var id = Guid.NewGuid().ToString("N");
-        var courses = menu.Courses.Select(c => c with { Preparations = c.Preparations.SelectMany(p =>
-            Enumerable.Range(1,request.Pax).Select(n => p with { Id=p.Id+"-"+n,GuestPosition=n })).ToArray() }).ToArray();
-        var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses);
-        // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu por el contrato de la Unit, en la misma transaccion.
+        var choice = offer.Kind == OfferKind.SetMenu;
+        var courses = offerCourses.Select(c => new CourseDefinition(c.Id,c.Name,choice ? [] : c.Dishes.SelectMany(d =>
+            Enumerable.Range(1,request.Pax).Select(n => new PreparationDefinition(d.Id+"-"+n,d.Name,d.StationId,1,n))).ToArray(),choice)).ToArray();
+        var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses,offer.Id);
+        // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu (producto del catalogo, por persona, a la
+        // tarifa de la sala; E3) por el contrato de la Unit, en la misma transaccion. El precio queda congelado con su origen.
         var account = new SettlementAccount(Guid.NewGuid().ToString("N"),identity.Scope,id);
         var occupancy = new TableOccupancy(Guid.NewGuid().ToString("N"),identity.Scope,table.Id,id);
-        account.AddCharge(Guid.NewGuid().ToString("N"),menu.Name,request.Pax,menu.UnitPriceCents,stamp);
+        var (product,presentation) = await unit.Sellable(offer.ProductId ?? throw new RuleViolation("offer_unpriced","This offer has no menu product."),Offers.PersonPresentation);
+        var zone = await unit.Zone(table.ZoneId);
+        long cents; string tariff;
+        try { (cents,tariff) = await unit.PriceFor(zone.Active && zone.TariffId is not null ? zone.TariffId : Catalog.GeneralTariff,product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now)); }
+        catch(RuleViolation e) when(e.Code=="price_missing") { throw new RuleViolation("offer_unpriced","Set the menu price in the catalog before opening tables with this offer."); }
+        account.AddCharge(Guid.NewGuid().ToString("N"),offer.Name+" · "+presentation.Name,request.Pax,cents,stamp,product.Id,presentation.Id,tariff);
         await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
             new DomainEvent(Guid.NewGuid(),"service.created",id,identity.Scope,identity.ActorId,stamp.At,
@@ -72,6 +80,14 @@ public static class DiningOperations
             case "ready": entity.ValidateReady(Required(request.CourseId),stamp); break;
             case "serve": entity.Serve(Required(request.CourseId),stamp); break;
             case "skip": entity.Skip(Required(request.CourseId),Required(request.Reason),stamp); break;
+            case "choose":
+            {
+                // E4a: el plato tiene que ser uno de los ACTIVOS del pase en la oferta con la que se abrio la mesa (nucleo, misma transaccion).
+                var dish = (await unit.OfferDish(entity.OfferId ?? throw new RuleViolation("no_choice","This service was not opened with an offer."),Required(request.CourseId),Required(request.DishId)));
+                if(!dish.Active) throw new RuleViolation("dish_unavailable","This dish is deactivated.");
+                entity.Choose(dish.CourseId,request.GuestPosition ?? throw new ArgumentException("guestPosition is required."),new PreparationDefinition(dish.Id,dish.Name,dish.StationId),stamp);
+                break;
+            }
             case "pause": entity.Pause(Required(request.Reason),stamp); break;
             case "resume": entity.Resume(stamp); break;
             case "complete": entity.Complete(stamp); break;
