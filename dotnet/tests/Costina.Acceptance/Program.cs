@@ -185,6 +185,27 @@ internal static class Program
             var restored = DiningService.Restore(service.Snapshot());
             True(restored.View().Courses[0].ChoiceRequired && restored.OfferId == "LAB-DAILY" && restored.View().Courses[0].Preparations.Count == 2);
         });
+        // E4b: grupo de carta libre: vacio y opcional; los platos se anaden mientras esta pendiente; vacio no se dispara, se omite.
+        Test("an a la carte group takes dishes while pending, never fires empty and can be skipped", () => {
+            var service = new DiningService("s", Scope, "M1", 2, [new("entrantes", "Entrantes", [], Optional: true), new("postres", "Postres", [], Optional: true)], "LAB-CARTA");
+            True(service.View(true).Courses[0].Actions!.Contains("add-dish") && !service.View(true).Courses[0].Actions!.Contains("choose"));
+            service.Start(Stamp);
+            Rule("course_empty", () => service.FireNext(Stamp));
+            service.AddDish("entrantes", new("croquetas-unit-1", "Croquetas", "cold", 2, 1), Stamp);
+            Rule("duplicate_preparation", () => service.AddDish("entrantes", new("croquetas-unit-1", "Croquetas", "cold"), Stamp));
+            Rule("invalid_guest", () => service.AddDish("entrantes", new("x", "x", "cold", 1, 5), Stamp));
+            Equal("entrantes", service.FireNext(Stamp));
+            Rule("course_not_pending", () => service.AddDish("entrantes", new("croquetas-unit-2", "Croquetas", "cold"), Stamp));
+            ServeCurrent(service, "entrantes");
+            Rule("course_empty", () => service.FireNext(Stamp));
+            service.Skip("postres", "no quieren postre", Stamp);
+            service.Complete(Stamp);
+            var restored = DiningService.Restore(service.Snapshot());
+            True(restored.View().Courses[0].Optional && restored.View().Courses[0].Preparations.Single().Quantity == 2);
+            Rule("no_dishes", () => Service().AddDish("course-1", new("x", "x", "cold"), Stamp));
+            Rule("product_not_allowed", () => Offers.Offer("C", "Carta", OfferKind.ALaCarte, "menu-c", OfferService.Any, null, null, null, 0));
+            Equal(null, Offers.Offer("C", "Carta", OfferKind.ALaCarte, null, OfferService.Any, null, null, null, 0).ProductId);
+        });
         Test("offers are available by dates, weekdays and lunch or dinner service", () => {
             var always = Offers.Offer("T", "Degustación", OfferKind.Tasting, "menu-t", OfferService.Any, null, null, null, 0);
             True(Offers.Available(always, new DateTime(2026, 9, 23, 13, 0, 0)) && Offers.Available(always, new DateTime(2026, 9, 27, 21, 0, 0)));
@@ -195,7 +216,6 @@ internal static class Program
             True(!Offers.Available(weekendDinner, new DateTime(2026, 11, 7, 21, 0, 0)));    // fuera de fechas
             True(!Offers.Available(weekendDinner with { Active = false }, new DateTime(2026, 10, 3, 21, 0, 0)));
             Rule("product_required", () => Offers.Offer("X", "x", OfferKind.Tasting, null, OfferService.Any, null, null, null, 0));
-            Rule("kind_unsupported", () => Offers.Offer("X", "x", OfferKind.ALaCarte, null, OfferService.Any, null, null, null, 0));
             Rule("invalid_weekdays", () => Offers.Offer("X", "x", OfferKind.Tasting, "p", OfferService.Any, null, null, 0, 0));
             Rule("invalid_validity", () => Offers.Offer("X", "x", OfferKind.Tasting, "p", OfferService.Any, new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1), null, 0));
             Equal(1, Offers.WeekdayBit(DayOfWeek.Monday)); Equal(64, Offers.WeekdayBit(DayOfWeek.Sunday));

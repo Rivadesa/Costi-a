@@ -8,12 +8,12 @@ namespace Costina.Core.Persistence;
 public static class CatalogUnit
 {
     public const string TaxColumns = "id,name,rate,active", CategoryColumns = "id,name,parent_id,color,sort,active",
-        ProductColumns = "id,name,category_id,tax_id,reference,sort,active", PresentationColumns = "product_id,id,name,sort,active",
+        ProductColumns = "id,name,category_id,tax_id,reference,sort,active,station_id", PresentationColumns = "product_id,id,name,sort,active",
         TariffColumns = "id,name,sort,active", PriceColumns = "tariff_id,product_id,presentation_id,valid_from,price_cents";
     private static string? Text(NpgsqlDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
     public static TaxDefinition TaxRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetDecimal(2), r.GetBoolean(3));
     public static CategoryDefinition CategoryRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), Text(r, 2), Text(r, 3), r.GetInt32(4), r.GetBoolean(5));
-    public static ProductDefinition ProductRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), Text(r, 2), r.GetString(3), Text(r, 4), r.GetInt32(5), r.GetBoolean(6));
+    public static ProductDefinition ProductRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), Text(r, 2), r.GetString(3), Text(r, 4), r.GetInt32(5), r.GetBoolean(6), Text(r, 7));
     public static PresentationDefinition PresentationRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetBoolean(4));
     public static TariffDefinition TariffRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetBoolean(3));
     public static PriceDefinition PriceRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetString(2), r.GetFieldValue<DateOnly>(3), r.GetInt64(4));
@@ -101,14 +101,14 @@ public static class CatalogUnit
         catch (PostgresException e) when (e.SqlState == "23503") { throw new StoreNotFound(); }
     }
     public static Task InsertProduct(this Unit unit, ProductDefinition p) => Insert(unit,
-        "INSERT INTO core.products (tenant,company,location,id,name,category_id,tax_id,reference,sort,active) VALUES (@tenant,@company,@location,@id,@name,@category,@tax,@reference,@sort,@active)",
-        [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active)], p.Id);
+        "INSERT INTO core.products (tenant,company,location,id,name,category_id,tax_id,reference,sort,active,station_id) VALUES (@tenant,@company,@location,@id,@name,@category,@tax,@reference,@sort,@active,@station)",
+        [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active), ("station", Db(p.StationId))], p.Id);
     public static async Task UpdateProduct(this Unit unit, ProductDefinition p)
     {
         try
         {
-            await Exactly(unit.Sql($"UPDATE core.products SET name=@name,category_id=@category,tax_id=@tax,reference=@reference,sort=@sort,active=@active WHERE {Unit.ScopeWhere} AND id=@id",
-                [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active)]));
+            await Exactly(unit.Sql($"UPDATE core.products SET name=@name,category_id=@category,tax_id=@tax,reference=@reference,sort=@sort,active=@active,station_id=@station WHERE {Unit.ScopeWhere} AND id=@id",
+                [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active), ("station", Db(p.StationId))]));
         }
         catch (PostgresException e) when (e.SqlState == "23503") { throw new StoreNotFound(); }
     }
@@ -140,8 +140,8 @@ public static class CatalogUnit
         "INSERT INTO core.categories (tenant,company,location,id,name,parent_id,color,sort,active) VALUES (@tenant,@company,@location,@id,@name,@parent,@color,@sort,@active) ON CONFLICT DO NOTHING",
         [("id", c.Id), ("name", c.Name), ("parent", Db(c.ParentId)), ("color", Db(c.Color)), ("sort", c.Sort), ("active", c.Active)]);
     public static Task<int> SeedProduct(this Unit unit, ProductDefinition p) => unit.Sql(
-        "INSERT INTO core.products (tenant,company,location,id,name,category_id,tax_id,reference,sort,active) VALUES (@tenant,@company,@location,@id,@name,@category,@tax,@reference,@sort,@active) ON CONFLICT DO NOTHING",
-        [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active)]);
+        "INSERT INTO core.products (tenant,company,location,id,name,category_id,tax_id,reference,sort,active,station_id) VALUES (@tenant,@company,@location,@id,@name,@category,@tax,@reference,@sort,@active,@station) ON CONFLICT DO NOTHING",
+        [("id", p.Id), ("name", p.Name), ("category", Db(p.CategoryId)), ("tax", p.TaxId), ("reference", Db(p.Reference)), ("sort", p.Sort), ("active", p.Active), ("station", Db(p.StationId))]);
     public static Task<int> SeedPresentation(this Unit unit, PresentationDefinition p) => unit.Sql(
         "INSERT INTO core.presentations (tenant,company,location,product_id,id,name,sort,active) VALUES (@tenant,@company,@location,@product,@id,@name,@sort,@active) ON CONFLICT DO NOTHING",
         [("product", p.ProductId), ("id", p.Id), ("name", p.Name), ("sort", p.Sort), ("active", p.Active)]);
@@ -153,7 +153,7 @@ public static class CatalogUnit
 // Lecturas del catalogo para el puesto principal (edicion) y para los catalogos operativos de los clientes.
 public sealed record PriceView(string TariffId, string ValidFrom, long PriceCents);
 public sealed record PresentationView(string Id, string Name, int Sort, bool Active, PriceView[] Prices);
-public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations);
+public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations, string? StationId = null);
 public sealed record CatalogView(TaxDefinition[] Taxes, CategoryDefinition[] Categories, ProductView[] Products, TariffDefinition[] Tariffs, string Today);
 // Vendible tal como lo ven los clientes: sala sin dinero (SellableView); caja con el precio de la tarifa general (PricedSellableView).
 public sealed record SellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName);
@@ -174,7 +174,7 @@ public static class CatalogReads
         var byPresentation = prices.ToLookup(p => (p.ProductId, p.PresentationId));
         return new(taxes.ToArray(), categories.ToArray(), products.Select(p => new ProductView(p.Id, p.Name, p.CategoryId, p.TaxId, p.Reference, p.Sort, p.Active,
             byProduct[p.Id].Select(s => new PresentationView(s.Id, s.Name, s.Sort, s.Active,
-                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray())).ToArray())).ToArray(),
+                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray())).ToArray(), p.StationId)).ToArray(),
             tariffs.ToArray(), today.ToString("yyyy-MM-dd"));
     }
 

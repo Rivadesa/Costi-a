@@ -25,7 +25,7 @@ public sealed partial class DiningService
         var result = new DiningService(value.Id, value.Scope, value.TableId, value.Pax,
             value.Courses.Select(c => new CourseDefinition(c.Id, c.Name,
                 c.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
-                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), c.ChoiceRequired)).ToArray(), value.OfferId);
+                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), c.ChoiceRequired, c.Optional)).ToArray(), value.OfferId);
         result.courses.Clear();
         result.courses.AddRange(value.Courses.Select(c => CourseExecution.Restore(c, value.Pax)));
         Guard.Rule(result.courses.Count(c => c.Active) <= 1, "invalid_snapshot", "Multiple active courses.");
@@ -72,7 +72,7 @@ internal sealed partial class CourseExecution
         Guard.Rule(Enum.IsDefined(value.State), "invalid_snapshot", "Unknown course state.");
         var result = new CourseExecution(new CourseDefinition(value.Id, value.Name,
             value.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
-                p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), value.ChoiceRequired), pax);
+                p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), value.ChoiceRequired, value.Optional), pax);
         var fired = value.State is CourseState.Fired or CourseState.Preparing or CourseState.Ready or CourseState.Served;
         foreach (var item in value.Preparations)
         {

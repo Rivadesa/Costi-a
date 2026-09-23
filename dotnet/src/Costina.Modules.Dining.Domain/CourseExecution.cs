@@ -21,6 +21,8 @@ internal sealed partial class CourseExecution
     public string Id { get; }
     // E4a: pase de menu cerrado; las elaboraciones nacen vacias y cada comensal elige la suya (Choose) antes de disparar.
     public bool ChoiceRequired { get; }
+    // E4b: grupo de carta libre; los platos se anaden al pedir (AddDish) y un grupo vacio no se dispara.
+    public bool Optional { get; }
     public string Name { get; }
     public CourseState State { get; private set; } = CourseState.Pending;
     public DateTimeOffset? FiredAt { get; private set; }
@@ -36,7 +38,7 @@ internal sealed partial class CourseExecution
         ArgumentNullException.ThrowIfNull(definition);
         Id = Guard.Text(definition.Id, nameof(definition.Id));
         Name = Guard.Text(definition.Name, nameof(definition.Name));
-        ChoiceRequired = definition.ChoiceRequired; this.pax = pax;
+        ChoiceRequired = definition.ChoiceRequired; Optional = definition.Optional; this.pax = pax;
         ArgumentNullException.ThrowIfNull(definition.Preparations);
         preparations = [];
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -67,10 +69,22 @@ internal sealed partial class CourseExecution
             StationId = Guard.Text(dish.StationId, nameof(dish.StationId)), GuestPosition = guest, Quantity = 1 }));
     }
 
+    internal void AddDish(PreparationDefinition dish)
+    {
+        Guard.Rule(Optional, "no_dishes", "Dishes are added only to the groups of an a la carte offer.");
+        Guard.Rule(State == CourseState.Pending, "course_not_pending", "Dishes are added while the course is pending; fire the next one.");
+        Guard.Rule(dish.GuestPosition is null || (dish.GuestPosition >= 1 && dish.GuestPosition <= pax), "invalid_guest", "Guest outside this service.");
+        Guard.Rule(dish.Quantity > 0, "invalid_quantity", "Quantity must be positive.");
+        var id = Guard.Text(dish.Id, nameof(dish.Id));
+        Guard.Rule(preparations.All(p => p.Definition.Id != id), "duplicate_preparation", "Preparation IDs must be unique within a course.");
+        preparations.Add(new Preparation(dish with { Id = id, Name = Guard.Text(dish.Name, nameof(dish.Name)), StationId = Guard.Text(dish.StationId, nameof(dish.StationId)) }));
+    }
+
     public void Fire(CommandStamp stamp)
     {
         Guard.Rule(State == CourseState.Pending, "course_not_pending", "Only pending courses can be fired.");
         Guard.Rule(MissingChoices().Count == 0, "choice_missing", "Every guest must choose a dish before this course is fired.");
+        Guard.Rule(!Optional || preparations.Count > 0, "course_empty", "This group has no dishes: add some or skip it.");
         State = CourseState.Fired;
         FiredAt = stamp.At;
         foreach (var p in preparations) p.State = PreparationState.Fired;
@@ -147,7 +161,7 @@ internal sealed partial class CourseExecution
     }
 
     public CourseView View() => new(Id, Name, State, FiredAt, ReadyAt, ServedAt, SkipReason,
-        Array.AsReadOnly(preparations.Select(p => p.View()).ToArray()), ChoiceRequired: ChoiceRequired);
+        Array.AsReadOnly(preparations.Select(p => p.View()).ToArray()), ChoiceRequired: ChoiceRequired, Optional: Optional);
     private Preparation Find(string id) => preparations.FirstOrDefault(p => p.Definition.Id == id)
         ?? throw new RuleViolation("preparation_not_found", "Preparation not found.");
     private void EnsurePreparing() => Guard.Rule(State is CourseState.Fired or CourseState.Preparing,
