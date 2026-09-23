@@ -92,6 +92,28 @@ internal static class Program
     }
     private static void Register()
     {
+        // E2: organizacion del nucleo. Codigos estables sin espacios ni acentos; aforo acotado; la estacion de pase es intocable.
+        Test("organization accepts stable codes and printable names", () => {
+            var table = Organization.Table(" M1 ", " Mesa 1 ", 12, "sala", null);
+            Equal(("M1", "Mesa 1", 12, "sala", 0, true), (table.Id, table.Name, table.Capacity, table.ZoneId, table.Sort, table.Active));
+            Equal(StationKind.Room, Organization.Station("sala-1", "Sala 1", StationKind.Room, 3).Kind);
+        });
+        Test("organization rejects bad codes, names, capacity and sort", () => {
+            Rule("invalid_code", () => Organization.Zone("con espacio", "x", 0));
+            Rule("invalid_code", () => Organization.Zone("ñ", "x", 0));
+            Rule("invalid_code", () => Organization.Zone(new string('a', 33), "x", 0));
+            Throws<ArgumentException>(() => Organization.Zone("", "x", 0));
+            Rule("invalid_name", () => Organization.Zone("z", new string('a', 61), 0));
+            Rule("invalid_name", () => Organization.Zone("z", "con\tcontrol", 0));
+            Rule("invalid_capacity", () => Organization.Table("M1", "x", 0, "sala", 0));
+            Rule("invalid_capacity", () => Organization.Table("M1", "x", 61, "sala", 0));
+            Rule("invalid_sort", () => Organization.Zone("z", "x", 10000));
+        });
+        Test("the pass station is reserved: always kind pass and never deactivated", () => {
+            Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Kitchen, 0));
+            Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Pass, 0, active: false));
+            True(Organization.Station(Organization.PassStation, "Pase", StationKind.Pass, 0).Active);
+        });
         Test("full prepayment before arrival does not start or finish dining", () => {
             var service = Service(); var account = Account(); account.RecordPayment("p", "card", 30000, Stamp);
             Equal(DiningState.Open, service.State); service.Start(Stamp); Equal("course-1", service.FireNext(Stamp));

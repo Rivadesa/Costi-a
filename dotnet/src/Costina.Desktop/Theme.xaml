@@ -1,0 +1,180 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- E2: tema visual del puesto principal (docs/plans/2026-09-22-e2-organizacion-editable.md, decision 5).
+      Paleta de alta cocina: verde bosque (principal), crema (fondo), cobre (accion principal), rojo solo para alergias y
+      peligro, ambar para avisos. Rejilla de 8 px. Los avisos de alergia llevan SIEMPRE texto: el color solo acompaña. -->
+ <Color x:Key="ForestColor">#1F4D3A</Color>
+ <SolidColorBrush x:Key="Forest" Color="#1F4D3A"/>
+ <SolidColorBrush x:Key="ForestDark" Color="#163A2B"/>
+ <SolidColorBrush x:Key="ForestSoft" Color="#E3EDE7"/>
+ <SolidColorBrush x:Key="Cream" Color="#F6F1E7"/>
+ <SolidColorBrush x:Key="Paper" Color="#FFFDF9"/>
+ <SolidColorBrush x:Key="Copper" Color="#B5673A"/>
+ <SolidColorBrush x:Key="CopperDark" Color="#94502A"/>
+ <SolidColorBrush x:Key="Ink" Color="#22231F"/>
+ <SolidColorBrush x:Key="InkSoft" Color="#6B6A62"/>
+ <SolidColorBrush x:Key="Line" Color="#DED7C8"/>
+ <SolidColorBrush x:Key="Danger" Color="#8C1D1D"/>
+ <SolidColorBrush x:Key="DangerSoft" Color="#F6DEDE"/>
+ <SolidColorBrush x:Key="Warn" Color="#C98A1B"/>
+ <SolidColorBrush x:Key="WarnSoft" Color="#FBEFD4"/>
+ <SolidColorBrush x:Key="Disabled" Color="#C9C4B8"/>
+
+ <Style x:Key="AppTitle" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="24"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Forest}"/>
+ </Style>
+ <Style x:Key="Subtle" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="TextWrapping" Value="Wrap"/>
+ </Style>
+ <Style x:Key="Section" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Forest}"/>
+  <Setter Property="Typography.Capitals" Value="AllSmallCaps"/><Setter Property="Margin" Value="0,0,0,8"/>
+ </Style>
+ <Style x:Key="PanelTitle" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="20"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+ </Style>
+ <Style x:Key="FieldLabel" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="Margin" Value="0,0,0,4"/>
+ </Style>
+ <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="14"/></Style>
+
+ <Style x:Key="Card" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+  <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="16"/>
+  <Setter Property="Effect"><Setter.Value><DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.08" Color="#000000"/></Setter.Value></Setter>
+ </Style>
+ <Style x:Key="Banner" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource ForestSoft}"/><Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="12,10"/>
+ </Style>
+ <Style x:Key="WarnBanner" TargetType="Border" BasedOn="{StaticResource Banner}">
+  <Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource Warn}"/><Setter Property="BorderThickness" Value="1"/>
+ </Style>
+ <Style x:Key="DangerBanner" TargetType="Border" BasedOn="{StaticResource Banner}">
+  <Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="BorderBrush" Value="{StaticResource Danger}"/><Setter Property="BorderThickness" Value="1"/>
+ </Style>
+ <Style x:Key="AllergyBanner" TargetType="Border" BasedOn="{StaticResource Banner}">
+  <Setter Property="Background" Value="{StaticResource Danger}"/>
+ </Style>
+
+ <!-- Botones: secundario por defecto (borde verde), Primary en cobre para la accion principal, Danger para lo irreversible. -->
+ <Style TargetType="Button">
+  <Setter Property="Margin" Value="0,4,8,4"/><Setter Property="Padding" Value="14,8"/><Setter Property="MinHeight" Value="38"/>
+  <Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="Foreground" Value="{StaticResource Forest}"/>
+  <Setter Property="BorderBrush" Value="{StaticResource Forest}"/><Setter Property="BorderThickness" Value="1.5"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="Button">
+     <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{StaticResource ForestSoft}"/></Trigger>
+      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Opacity" Value="0.85"/></Trigger>
+      <Trigger Property="IsEnabled" Value="False">
+       <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Cream}"/><Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Disabled}"/>
+       <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+      </Trigger>
+      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Copper}"/><Setter TargetName="Chrome" Property="BorderThickness" Value="2"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="Background" Value="{StaticResource Copper}"/><Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="{StaticResource Copper}"/>
+  <Style.Triggers>
+   <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource CopperDark}"/><Setter Property="BorderBrush" Value="{StaticResource CopperDark}"/></Trigger>
+   <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource Disabled}"/></Trigger>
+  </Style.Triggers>
+ </Style>
+ <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="Foreground" Value="{StaticResource Danger}"/><Setter Property="BorderBrush" Value="{StaticResource Danger}"/>
+  <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource DangerSoft}"/></Trigger></Style.Triggers>
+ </Style>
+ <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Background" Value="Transparent"/>
+ </Style>
+
+ <Style TargetType="TextBox">
+  <Setter Property="Padding" Value="8,7"/><Setter Property="MinHeight" Value="36"/><Setter Property="FontSize" Value="14"/>
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+  <Setter Property="VerticalContentAlignment" Value="Center"/>
+  <Style.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Forest}"/></Trigger></Style.Triggers>
+ </Style>
+ <Style TargetType="PasswordBox">
+  <Setter Property="Padding" Value="8,7"/><Setter Property="MinHeight" Value="36"/><Setter Property="FontSize" Value="14"/>
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+ </Style>
+ <Style TargetType="ComboBox">
+  <Setter Property="Padding" Value="8,6"/><Setter Property="MinHeight" Value="36"/><Setter Property="FontSize" Value="14"/><Setter Property="Background" Value="{StaticResource Paper}"/>
+ </Style>
+ <Style TargetType="ListBox">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="Padding" Value="4"/><Setter Property="FontSize" Value="14"/>
+  <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+  <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+ </Style>
+ <Style TargetType="ListBoxItem">
+  <Setter Property="Padding" Value="10,8"/><Setter Property="Margin" Value="0,1"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="ListBoxItem">
+     <Border x:Name="Row" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
+      <ContentPresenter><ContentPresenter.Resources><Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style></ContentPresenter.Resources></ContentPresenter>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource Cream}"/></Trigger>
+      <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource ForestSoft}"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style TargetType="DataGrid">
+  <Setter Property="IsReadOnly" Value="True"/><Setter Property="CanUserAddRows" Value="False"/><Setter Property="RowHeight" Value="38"/>
+  <Setter Property="HeadersVisibility" Value="Column"/><Setter Property="AutoGenerateColumns" Value="False"/>
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="GridLinesVisibility" Value="Horizontal"/><Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Line}"/>
+  <Setter Property="RowBackground" Value="{StaticResource Paper}"/><Setter Property="AlternatingRowBackground" Value="#FBF8F1"/><Setter Property="FontSize" Value="14"/>
+ </Style>
+ <Style TargetType="DataGridColumnHeader">
+  <Setter Property="Background" Value="{StaticResource ForestSoft}"/><Setter Property="Foreground" Value="{StaticResource Forest}"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="Padding" Value="10,8"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
+ </Style>
+ <!-- Barra de menus y barra de estado clasicas (E2): fondo papel, linea inferior/superior, tipografia del tema. -->
+ <Style TargetType="Menu">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
+  <Setter Property="Padding" Value="12,2"/><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+ </Style>
+ <Style TargetType="MenuItem">
+  <Setter Property="Padding" Value="10,6"/><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+ </Style>
+ <Style TargetType="StatusBar">
+  <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,1,0,0"/>
+  <Setter Property="Padding" Value="12,2"/><Setter Property="FontSize" Value="12"/>
+ </Style>
+ <Style TargetType="TabControl">
+  <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
+ </Style>
+ <Style TargetType="TabItem">
+  <Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="TabItem">
+     <Border x:Name="Head" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,3" Padding="16,10" Margin="0,0,4,0">
+      <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsSelected" Value="True"><Setter TargetName="Head" Property="BorderBrush" Value="{StaticResource Copper}"/><Setter Property="Foreground" Value="{StaticResource Forest}"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Head" Property="Background" Value="{StaticResource ForestSoft}"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <!-- Chip de estado (texto siempre): activo en verde suave, desactivado en gris; nunca solo color. -->
+ <Style x:Key="Chip" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource ForestSoft}"/><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="8,2"/>
+  <Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="Margin" Value="0,0,6,0"/>
+ </Style>
+</ResourceDictionary>

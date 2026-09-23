@@ -20,6 +20,8 @@ public interface IModule
     Task<IReadOnlyDictionary<string, object>> ConfigurationAsync(ModuleHost host, CancellationToken ct);
     // Fixtures ficticios del modulo (init-lab / load-demo), dentro del mismo comando idempotente que los del nucleo.
     Task SeedDemoAsync(Unit unit);
+    // E2: true si el modulo tiene algo vivo sobre esa mesa (el nucleo no desactiva una mesa en uso). Nunca lee tablas ajenas.
+    Task<bool> TableInUseAsync(Unit unit, string tableId);
     // Rutas del modulo. host.Prefix es el suyo; host.LegacyPrefix permite alias de compatibilidad durante una version.
     void MapRoutes(IEndpointRouteBuilder app, ModuleHost host);
 }

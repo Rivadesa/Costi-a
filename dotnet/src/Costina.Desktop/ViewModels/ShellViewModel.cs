@@ -17,6 +17,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public ServiceViewModel Service { get; }
     public CheckoutViewModel Checkout { get; }
     public DevicesViewModel Devices { get; }
+    public OrganizationViewModel Organization { get; }   // E2: Configuracion (solo main)
 
     [ObservableProperty] private string endpoint = "http://127.0.0.1:5088";
     [ObservableProperty] private string username = "";
@@ -32,8 +33,10 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
 
-    public ShellViewModel() { Service = new(this); Checkout = new(this); Devices = new(this); }
+    public ShellViewModel() { Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); }
 
+    // Cambiar la sesion (conectar, desconectar, otro rol) refresca todas las propiedades derivadas que enlazan menus y vistas.
+    partial void OnSessionChanged(SessionInfo? value) => Sync();
     public bool Connected => Session is not null;
     public bool IsMain => Session?.Role == "main";
     // ADR-012: la pestana de comedor y cocina existe solo si el modulo Dining esta activo en la instalacion.
@@ -44,6 +47,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool HasBlocked => Blocked is not null;
     public bool CanOpen => Session?.Actions?.Contains("open") == true;
     public bool TabsEnabled => Connected && !Busy;
+    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales).
+    public string ConnectionText => Session is null ? "Sin conexión" : $"{Session.Actor ?? Session.Role} · {Session.Role switch { "main" => "puesto principal", "service" => "sala", "kitchen" => "cocina", var r => r }} · {Endpoint}" + (Session.Demo ? " · DEMO" : "");
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     public string PendingText => Pending is null ? "" :
@@ -62,13 +67,13 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(Writable)); OnPropertyChanged(nameof(HasPending));
         OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
-        OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled));
+        OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled)); OnPropertyChanged(nameof(ConnectionText));
         OnPropertyChanged(nameof(IsKitchen)); OnPropertyChanged(nameof(HasPairedDevice));
         ConnectPairedCommand.NotifyCanExecuteChanged(); PairDeviceCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged(); RetryCommand.NotifyCanExecuteChanged();
         ReconcileCommand.NotifyCanExecuteChanged(); DiscardCommand.NotifyCanExecuteChanged();
-        Service.Sync(); Checkout.Sync(); Devices.Sync();
+        Service.Sync(); Checkout.Sync(); Devices.Sync(); Organization.Sync();
     }
 
     // Coalescencia: los avisos que llegan durante una operacion no la interrumpen; se relee al terminar.
@@ -110,6 +115,7 @@ public sealed partial class ShellViewModel : ObservableObject
         if (HasDining) await Service.LoadAsync();
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
         if (IsMain && Devices.Visible) await Devices.LoadAsync();
+        if (IsMain && Organization.Visible) await Organization.LoadAsync();
         ReadTime = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
     }
 
@@ -257,7 +263,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false; sessionToken = null;
         RealtimeState = "Tiempo real inactivo.";
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
-        Service.Clear(); Checkout.Clear(); Devices.Clear();
+        Service.Clear(); Checkout.Clear(); Devices.Clear(); Organization.Clear();
         Status = "Desconectado. La contraseña no se guarda en disco.";
         ReadTime = "Sin lectura actual del servidor.";
         Sync();

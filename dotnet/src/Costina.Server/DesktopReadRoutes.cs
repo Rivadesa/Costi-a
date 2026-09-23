@@ -30,10 +30,10 @@ public static class DesktopReadRoutes
                 // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar, por modulo.
                 actions=modules.SelectMany(m=>m.Module.SessionActions(role)).Distinct(StringComparer.Ordinal).ToArray()
             });})).WithMetadata(new RouteAccess("main","service","kitchen"));
-        // Configuracion operativa: el nucleo aporta la organizacion (mesas); cada modulo anade sus claves (p. ej. menus).
+        // Configuracion operativa: el nucleo aporta la organizacion (mesas ACTIVAS con su sala, E2); cada modulo anade sus claves (p. ej. menus).
         app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>{
             var configuration=new Dictionary<string,object>(StringComparer.Ordinal){
-                ["tables"]=await reads.Configuration<TableDefinition>(scope,"table",c.RequestAborted)};
+                ["tables"]=await reads.ActiveTables(scope,c.RequestAborted)};
             foreach(var (module,host) in modules)
                 foreach(var (key,value) in await module.ConfigurationAsync(host,c.RequestAborted))
                     if(!configuration.TryAdd(key,value)) throw new InvalidOperationException($"Configuration key {key} is claimed twice.");

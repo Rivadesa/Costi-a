@@ -1,9 +1,28 @@
--- Esquema del NUCLEO, version 2 (E1b, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v2. Una base en v1 (native_d1) la transforma antes upgrade-v2.sql, en la misma transaccion.
--- Nunca toca las tablas heredadas de "public".
+-- Esquema del NUCLEO, version 3 (E1b/E2, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v3. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- upgrade-v2.sql (native_d1 -> core + dining) y upgrade-v3.sql (organizacion relacional). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 2));
-INSERT INTO core.schema_version VALUES (2) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 3));
+INSERT INTO core.schema_version VALUES (3) ON CONFLICT DO NOTHING;
+-- E2: ORGANIZACION editable (salas, mesas, estaciones): datos maestros relacionales; nunca se borran, se desactivan.
+CREATE TABLE IF NOT EXISTS core.zones (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.tables (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, capacity integer NOT NULL CHECK (capacity BETWEEN 1 AND 60), zone_id text NOT NULL,
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, zone_id) REFERENCES core.zones (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.stations (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, kind text NOT NULL CHECK (kind IN ('kitchen','pass','bar','room')),
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id)
+);
 -- Cuenta (ventas): agregado del NUCLEO. service_id es la referencia OPACA que el modulo que la abrio le dio (nunca una
 -- clave foranea a una tabla de modulo: el nucleo no depende de ningun modulo); table_id es la mesa (organizacion, nucleo)
 -- en la que se abrio, o '' si el origen no tiene mesa. Con ella el puesto principal lista las cuentas sin leer al modulo.
@@ -34,10 +53,10 @@ CREATE TABLE IF NOT EXISTS core.audit (
  actor text NOT NULL, aggregate_id text NOT NULL, action text NOT NULL,
  command_key text NOT NULL, occurred_at timestamptz NOT NULL, payload jsonb NOT NULL
 );
--- Configuracion del nucleo: organizacion (mesas) y catalogo (productos). Los menus son del modulo Dining (dining.configuration).
+-- Configuracion del nucleo: catalogo (productos) hasta E3. Las mesas viven en core.tables (E2); los menus en dining.configuration.
 CREATE TABLE IF NOT EXISTS core.configuration (
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
- kind text NOT NULL CHECK (kind IN ('table','product')), id text NOT NULL, payload jsonb NOT NULL,
+ kind text NOT NULL CHECK (kind IN ('product')), id text NOT NULL, payload jsonb NOT NULL,
  PRIMARY KEY (tenant,company,location,kind,id)
 );
 -- D3.4: identidad estable de la instalacion (una sola fila, creada una vez). El cliente separa por

@@ -28,6 +28,16 @@ public sealed class DesktopReadRepository(NpgsqlDataSource source)
         while(await reader.ReadAsync(ct)) result.Add(new(reader.GetString(0),reader.GetString(1),reader.GetString(2)));
         return result;
     }
+    // Consulta de solo lectura acotada al ambito (E2: organizacion). El SQL es constante; los valores van como parametros.
+    public async Task<List<T>> Query<T>(BusinessScope scope,string sql,Func<NpgsqlDataReader,T> project,CancellationToken ct,params (string Name,object Value)[] values)
+    {
+        await using var command=source.CreateCommand(sql);
+        Bind(command,scope); foreach(var (name,value) in values) command.Parameters.AddWithValue(name,value);
+        await using var reader=await command.ExecuteReaderAsync(ct);
+        var result=new List<T>();
+        while(await reader.ReadAsync(ct)) result.Add(project(reader));
+        return result;
+    }
     private static void Bind(NpgsqlCommand command,BusinessScope scope)
     {
         command.Parameters.AddWithValue("tenant",scope.TenantId);

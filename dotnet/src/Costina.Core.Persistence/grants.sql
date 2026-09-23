@@ -8,6 +8,7 @@ REVOKE ALL ON ALL TABLES IN SCHEMA core FROM costina_runtime;
 GRANT USAGE ON SCHEMA core TO costina_runtime;
 GRANT SELECT ON ALL TABLES IN SCHEMA core TO costina_runtime;
 GRANT INSERT, UPDATE ON core.accounts TO costina_runtime;
+GRANT INSERT, UPDATE ON core.zones, core.tables, core.stations TO costina_runtime;
 GRANT INSERT, UPDATE ON core.sessions, core.devices, core.pairings TO costina_runtime;
 GRANT INSERT ON core.commands, core.audit, core.outbox, core.users TO costina_runtime;
 GRANT UPDATE (published_at) ON core.outbox TO costina_runtime

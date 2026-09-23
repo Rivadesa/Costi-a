@@ -20,6 +20,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private PairingPendingDto? selectedPending;
     [ObservableProperty] private string approveRole = "service";
     [ObservableProperty] private string approveStation = "";
+    // E2: la estacion se elige entre las ACTIVAS de la organizacion (ya no se teclea libre).
+    [ObservableProperty] private StationDto[] stations = [];
     [ObservableProperty] private DeviceRowDto[] devices = [];
     [ObservableProperty] private DeviceRowDto? selectedDevice;
 
@@ -49,7 +51,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
-            PairingCode = ""; Pending = []; SelectedPending = null; Devices = []; SelectedDevice = null; ApproveStation = "";
+            PairingCode = ""; Pending = []; SelectedPending = null; Devices = []; SelectedDevice = null; ApproveStation = ""; Stations = [];
             codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
         }
         finally { rendering = false; }
@@ -67,6 +69,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         }
         var pendingRows = await shell.Api.GetAsync<PairingPendingDto[]>("auth/pairings/pending");
         var deviceRows = await shell.Api.GetAsync<DeviceRowDto[]>("auth/devices");
+        var organization = await shell.Api.GetAsync<OrganizationDto>("organization");
         rendering = true;
         try
         {
@@ -74,6 +77,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             Pending = pendingRows; SelectedPending = pendingRows.FirstOrDefault(p => p.PairingId == previous) ?? pendingRows.FirstOrDefault();
             var device = SelectedDevice?.Id;
             Devices = deviceRows; SelectedDevice = deviceRows.FirstOrDefault(d => d.Id == device);
+            Stations = organization.Stations.Where(s => s.Active).ToArray();
+            if (Stations.All(s => s.Id != ApproveStation)) ApproveStation = Stations.FirstOrDefault()?.Id ?? "";
         }
         finally { rendering = false; }
         Sync();
@@ -142,7 +147,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanApprove))]
     private Task Approve() => shell.Run(async () =>
     {
-        if (string.IsNullOrWhiteSpace(ApproveStation)) throw new ArgumentException("Indica la estación del puesto (p. ej. sala-1, cold, pase).");
+        if (string.IsNullOrWhiteSpace(ApproveStation)) throw new ArgumentException("Elige la estación del puesto entre las estaciones activas (pestaña Configuración).");
         await shell.Api!.PostRawAsync("auth/pairings/" + ApiClient.Segment(SelectedPending!.PairingId) + "/approve",
             new { role = ApproveRole, station = ApproveStation.Trim() });
         shell.Status = $"Puesto \"{SelectedPending.DeviceName}\" aprobado como {ApproveRole}/{ApproveStation.Trim()}.";

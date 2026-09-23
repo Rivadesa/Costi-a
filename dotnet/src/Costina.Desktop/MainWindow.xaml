@@ -1,184 +1,322 @@
 <Window x:Class="Costina.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Costiña · Windows nativo · D4.3" Width="1240" Height="840" MinWidth="1040" MinHeight="700" Background="#F4F5F7" Closing="WindowClosing">
-<Window.Resources><BooleanToVisibilityConverter x:Key="Bool2Vis"/></Window.Resources>
-<DockPanel Margin="22">
- <StackPanel DockPanel.Dock="Top">
-  <TextBlock Text="COSTIÑA  /  CONTROL DEL RESTAURANTE" FontSize="24" FontWeight="SemiBold"/>
-  <TextBlock Text="0.27.0-e2 · WPF MVVM · Ensayo con servidor local real · No usar con datos de clientes" Margin="0,5,0,14"/>
-  <WrapPanel>
-   <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor de ensayo"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
-   <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
-   <StackPanel Margin="0,0,8,0"><TextBlock Text="Contraseña"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="180" Height="36" Padding="8"/></StackPanel>
-   <Button x:Name="ConnectButton" Content="Entrar" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
-   <Button Content="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}" VerticalAlignment="Bottom"/>
-   <Button x:Name="DisconnectButton" Content="Desconectar" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
-   <Button x:Name="RefreshButton" Content="Actualizar" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
-  </WrapPanel>
-  <WrapPanel Margin="0,6,0,0" Visibility="{Binding ConnectEnabled, Converter={StaticResource Bool2Vis}}">
-   <TextBlock Text="Emparejar este puesto:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-   <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (pestaña Puestos del PC principal)"/>
-   <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. tablet-sala-1)"/>
-   <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
-   <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
-  </WrapPanel>
-  <Border Background="#E6EBF1" Padding="10" Margin="0,10,0,6"><TextBlock Text="{Binding Status}" TextWrapping="Wrap"/></Border>
-  <Border Background="#FFF0CE" Padding="8" Margin="0,0,0,8" Visibility="{Binding HasPending, Converter={StaticResource Bool2Vis}}"><DockPanel>
-   <Button DockPanel.Dock="Right" Content="Reintentar la misma orden" Command="{Binding RetryCommand}"/>
+ xmlns:local="clr-namespace:Costina.Desktop"
+ Title="Costiña · Puesto principal" Width="1280" Height="860" MinWidth="1080" MinHeight="720" Background="{StaticResource Cream}" Closing="WindowClosing"
+ FontFamily="Segoe UI Variable, Segoe UI" TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+<Window.Resources><BooleanToVisibilityConverter x:Key="Bool2Vis"/><local:InvertedBool2Vis x:Key="NotBool2Vis"/></Window.Resources>
+<Window.InputBindings><KeyBinding Key="F5" Command="{Binding RefreshCommand}"/></Window.InputBindings>
+<DockPanel>
+ <!-- Barra de menus clasica de Windows: es la estructura DEFINITIVA del ERP. Lo que aun no existe va deshabilitado con su corte.
+      Cada entrada muestra una vista del area de trabajo (el TabControl de abajo, sin cabeceras). -->
+ <Menu x:Name="MainMenu" DockPanel.Dock="Top">
+  <MenuItem Header="_Archivo">
+   <MenuItem Header="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}"/>
+   <MenuItem Header="Actualizar" Command="{Binding RefreshCommand}" InputGestureText="F5"/>
+   <MenuItem Header="Desconectar" Command="{Binding DisconnectCommand}"/>
+   <Separator/>
+   <MenuItem Header="Salir" Click="ExitClick" InputGestureText="Alt+F4"/>
+  </MenuItem>
+  <MenuItem Header="_Comedor" x:Name="DiningMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Comedor y cocina" Tag="ServiceTab" Click="ShowView"/>
+  </MenuItem>
+  <MenuItem Header="Ca_ja" x:Name="CheckoutMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView"/>
+   <Separator/>
+   <MenuItem Header="Apertura y cierre de caja" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Arqueo y turnos" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
+   <MenuItem Header="Puestos y emparejamiento" Tag="DevicesTab" Click="ShowView"/>
+   <Separator/>
+   <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Catálogo y tarifas" IsEnabled="False" ToolTip="Llega en E3 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Menús y pases" IsEnabled="False" ToolTip="Llega en E4 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Informes" IsEnabled="False" ToolTip="Tras el Hito 7" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Módulos posteriores" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="_Fiscalidad" x:Name="FiscalMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <MenuItem Header="Series y facturas" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="VERI*FACTU" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
+  </MenuItem>
+  <MenuItem Header="Ay_uda">
+   <MenuItem Header="Acerca de Costiña" Click="AboutClick"/>
+  </MenuItem>
+ </Menu>
+ <!-- Barra de estado: quien esta conectado y contra que servidor, tiempo real y hora de la ultima lectura autoritativa. -->
+ <StatusBar x:Name="MainStatusBar" DockPanel.Dock="Bottom">
+  <StatusBarItem><TextBlock Text="{Binding ConnectionText}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <Separator/>
+  <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <Separator/>
+  <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.28.0-e3 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+ </StatusBar>
+ <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
+  <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
+  <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12" Visibility="{Binding Connected, Converter={StaticResource NotBool2Vis}}">
+   <StackPanel>
+    <TextBlock Text="COSTIÑA" Style="{StaticResource AppTitle}"/>
+    <TextBlock Text="Entra con tu usuario y contraseña, o conecta este puesto emparejado. La contraseña no se guarda en disco." Style="{StaticResource Subtle}" Margin="0,2,0,10"/>
+    <WrapPanel VerticalAlignment="Bottom">
+     <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor" Style="{StaticResource FieldLabel}"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
+     <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
+     <StackPanel Margin="0,0,12,0"><TextBlock Text="Contraseña" Style="{StaticResource FieldLabel}"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="180"/></StackPanel>
+     <Button x:Name="ConnectButton" Content="Entrar" Style="{StaticResource Primary}" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
+     <Button Content="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}" VerticalAlignment="Bottom"/>
+     <Button x:Name="DisconnectButton" Content="Desconectar" Style="{StaticResource Ghost}" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
+     <Button x:Name="RefreshButton" Content="Actualizar" Style="{StaticResource Ghost}" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
+    </WrapPanel>
+    <WrapPanel Margin="0,6,0,0" Visibility="{Binding ConnectEnabled, Converter={StaticResource Bool2Vis}}">
+     <TextBlock Text="Emparejar este puesto:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
+     <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (Configuración › Puestos del PC principal)"/>
+     <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. tablet-sala-1)"/>
+     <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
+     <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
+    </WrapPanel>
+   </StackPanel>
+  </Border>
+  <Border Style="{StaticResource Banner}" Margin="0,0,0,8"><TextBlock Text="{Binding Status}" TextWrapping="Wrap"/></Border>
+  <Border Style="{StaticResource WarnBanner}" Margin="0,0,0,8" Visibility="{Binding HasPending, Converter={StaticResource Bool2Vis}}"><DockPanel>
+   <Button DockPanel.Dock="Right" Content="Reintentar la misma orden" Style="{StaticResource Primary}" Command="{Binding RetryCommand}"/>
    <TextBlock Text="{Binding PendingText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
   </DockPanel></Border>
-  <Border Background="#F6D5D5" Padding="8" Margin="0,0,0,8" Visibility="{Binding HasBlocked, Converter={StaticResource Bool2Vis}}"><DockPanel>
+  <Border Style="{StaticResource DangerBanner}" Margin="0,0,0,8" Visibility="{Binding HasBlocked, Converter={StaticResource Bool2Vis}}"><DockPanel>
    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
     <Button Content="Consultar al servidor" Command="{Binding ReconcileCommand}"/>
-    <Button Content="Descartar conservando evidencia" Command="{Binding DiscardCommand}"/>
+    <Button Content="Descartar conservando evidencia" Style="{StaticResource DangerButton}" Command="{Binding DiscardCommand}"/>
    </StackPanel>
    <TextBlock Text="{Binding BlockedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
   </DockPanel></Border>
  </StackPanel>
- <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-  <TextBlock Text="{Binding RealtimeState}"/>
-  <TextBlock Text="{Binding ReadTime}"/>
- </StackPanel>
- <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged">
-  <TabItem Header="  Comedor y cocina  " x:Name="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
-   <Grid Margin="14"><Grid.ColumnDefinitions><ColumnDefinition Width="245"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <DockPanel Grid.Column="0">
-     <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
-      <TextBlock Text="ABRIR MESA" FontWeight="Bold" Margin="0,0,0,8"/>
-      <ComboBox ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" Margin="0,0,0,6"/>
-      <ComboBox ItemsSource="{Binding Service.Menus}" SelectedItem="{Binding Service.SelectedMenu}" Margin="0,0,0,6"/>
-      <WrapPanel><TextBlock Text="Personas " VerticalAlignment="Center"/><TextBox Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
-       <Button Content="Abrir" Command="{Binding Service.OpenCommand}"/></WrapPanel>
-      <TextBlock Text="MESAS OCUPADAS" Margin="0,18,0,8" FontWeight="Bold"/>
-     </StackPanel>
-     <ListBox ItemsSource="{Binding Service.Board}" SelectedItem="{Binding Service.SelectedEntry}" BorderThickness="0"/>
-    </DockPanel>
-    <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <StackPanel Grid.Row="0"><TextBlock Text="{Binding Service.ServiceTitle}" FontSize="20" FontWeight="SemiBold"/>
-      <TextBlock Text="Seguimiento operativo. Sin precios, cuenta ni pagos." Margin="0,5,0,8"/></StackPanel>
-     <StackPanel Grid.Row="1" Margin="0,0,0,6">
-      <Border Background="#7A1F1F" Padding="8" Margin="0,0,0,6" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}">
-       <TextBlock Foreground="White" FontWeight="Bold" TextWrapping="Wrap"
-        Text="⚠ CAMBIO DE RESTRICCIONES SIN REVISAR POR COCINA — cada elaboración marcada PENDIENTE DE REVISIÓN exige una decisión (no afecta / adaptar / rehacer) antes de validar, servir o disparar."/>
-      </Border>
-      <WrapPanel>
-       <TextBlock Text="RESTRICCIONES" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-       <ListBox ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}"
-        BorderThickness="0" MaxHeight="52" MinWidth="330"/>
-       <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" Width="44" ToolTip="Comensal (vacío = toda la mesa)"/>
-       <ComboBox Width="120" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}">
-        <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
-       </ComboBox>
-       <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}" Width="140" ToolTip="Sustancia o preferencia"/>
-       <ComboBox Width="105" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}">
-        <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
-       </ComboBox>
-       <Button Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}"/>
-       <Button Content="Retirar con motivo" Command="{Binding Service.RemoveRestrictionCommand}"/>
+ <!-- Area de trabajo: una vista por entrada de menu. Las cabeceras de pestana no se pintan (plantilla vacia). -->
+ <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged" Margin="24,0,24,12">
+  <TabControl.ItemContainerStyle><Style TargetType="TabItem"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem"/></Setter.Value></Setter></Style></TabControl.ItemContainerStyle>
+  <!-- ═══════════════ Comedor y cocina (modulo Dining) ═══════════════ -->
+  <TabItem Header="Comedor y cocina" x:Name="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
+   <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Border Grid.Column="0" Style="{StaticResource Card}">
+     <DockPanel>
+      <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
+       <TextBlock Text="Abrir mesa" Style="{StaticResource Section}"/>
+       <ComboBox ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" Margin="0,0,0,6"/>
+       <ComboBox ItemsSource="{Binding Service.Menus}" SelectedItem="{Binding Service.SelectedMenu}" Margin="0,0,0,6"/>
+       <DockPanel><Button DockPanel.Dock="Right" Content="Abrir" Style="{StaticResource Primary}" Command="{Binding Service.OpenCommand}"/>
+        <StackPanel Orientation="Horizontal"><TextBlock Text="Personas" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="60"/></StackPanel></DockPanel>
+       <TextBlock Text="Mesas ocupadas" Style="{StaticResource Section}" Margin="0,16,0,8"/>
+      </StackPanel>
+      <ListBox ItemsSource="{Binding Service.Board}" SelectedItem="{Binding Service.SelectedEntry}" BorderThickness="0" Background="Transparent"/>
+     </DockPanel>
+    </Border>
+    <Border Grid.Column="2" Style="{StaticResource Card}">
+     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <StackPanel Grid.Row="0"><TextBlock Text="{Binding Service.ServiceTitle}" Style="{StaticResource PanelTitle}"/>
+       <TextBlock Text="Seguimiento operativo. Sin precios, cuenta ni pagos." Style="{StaticResource Subtle}" Margin="0,4,0,10"/></StackPanel>
+      <StackPanel Grid.Row="1" Margin="0,0,0,6">
+       <Border Style="{StaticResource AllergyBanner}" Margin="0,0,0,8" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}">
+        <TextBlock Foreground="White" FontWeight="Bold" TextWrapping="Wrap"
+         Text="⚠ CAMBIO DE RESTRICCIONES SIN REVISAR POR COCINA — cada elaboración marcada PENDIENTE DE REVISIÓN exige una decisión (no afecta / adaptar / rehacer) antes de validar, servir o disparar."/>
+       </Border>
+       <TextBlock Text="Restricciones" Style="{StaticResource Section}"/>
+       <WrapPanel>
+        <ListBox ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" MaxHeight="56" MinWidth="330" Margin="0,0,8,0"/>
+        <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" Width="48" ToolTip="Comensal (vacío = toda la mesa)"/>
+        <ComboBox Width="120" Margin="6,0,0,0" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}">
+         <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
+        </ComboBox>
+        <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="6,0,0,0" ToolTip="Sustancia o preferencia"/>
+        <ComboBox Width="110" Margin="6,0,6,0" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}">
+         <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
+        </ComboBox>
+        <Button Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}"/>
+        <Button Content="Retirar con motivo" Style="{StaticResource DangerButton}" Command="{Binding Service.RemoveRestrictionCommand}"/>
+       </WrapPanel>
+      </StackPanel>
+      <WrapPanel Grid.Row="2">
+       <Button Content="Iniciar servicio" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="start"/>
+       <Button Content="Enviar siguiente pase" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="fire-next"/>
+       <Button Content="Marcar servido" Command="{Binding Service.ActCommand}" CommandParameter="serve"/>
+       <Button Content="Pausar" Command="{Binding Service.ActCommand}" CommandParameter="pause"/>
+       <Button Content="Reanudar" Command="{Binding Service.ActCommand}" CommandParameter="resume"/>
       </WrapPanel>
+      <DataGrid Grid.Row="3" ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}" Margin="0,4,0,8"><DataGrid.Columns>
+       <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="145"/>
+       <DataGridTextColumn Header="Servido" Binding="{Binding ServedAt, StringFormat=HH:mm:ss}" Width="115"/>
+      </DataGrid.Columns></DataGrid>
+      <WrapPanel Grid.Row="4" Visibility="{Binding IsKitchen, Converter={StaticResource Bool2Vis}}">
+       <TextBlock Text="Cocina / pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+       <Button Content="Iniciar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
+       <Button Content="Elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
+       <Button Content="Validar pase listo" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="ready"/>
+       <TextBlock Text="Revisión:" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="14,0,6,0"/>
+       <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="0,0,6,0" ToolTip="Nota obligatoria: qué se ha revisado o cambiado"/>
+       <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected"/>
+       <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt"/>
+       <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake"/>
+      </WrapPanel>
+      <DataGrid Grid.Row="5" ItemsSource="{Binding Service.Preparations}" SelectedItem="{Binding Service.SelectedPreparation}" Margin="0,4,0,0"><DataGrid.Columns>
+       <DataGridTextColumn Header="Preparación" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estación" Binding="{Binding StationId}" Width="90"/>
+       <DataGridTextColumn Header="Comensal" Binding="{Binding GuestPosition}" Width="80"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="115"/><DataGridTextColumn Header="Restricciones" Binding="{Binding RestrictionsText}" Width="220"/>
+       <DataGridTextColumn Header="Revisión" Binding="{Binding ReviewText}" Width="200"/>
+      </DataGrid.Columns></DataGrid>
+      <StackPanel Grid.Row="6"><TextBox Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" ToolTip="Motivo para pausa, omisión o liberación" Margin="0,8,0,0"/>
+       <WrapPanel><Button Content="Omitir pase con motivo" Command="{Binding Service.ActCommand}" CommandParameter="skip"/>
+        <Button Content="Terminar servicio" Command="{Binding Service.ActCommand}" CommandParameter="complete"/>
+        <Button Content="Liberar mesa" Style="{StaticResource DangerButton}" Command="{Binding Service.ReleaseCommand}"/></WrapPanel>
+      </StackPanel>
+     </Grid>
+    </Border>
+   </Grid>
+  </TabItem>
+  <!-- ═══════════════ Cuenta / Caja (nucleo, solo main) ═══════════════ -->
+  <TabItem Header="Cuenta / Caja" x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <Border Style="{StaticResource Card}" Margin="0,4,0,0">
+    <DockPanel>
+     <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="Cuenta / Caja" Style="{StaticResource PanelTitle}"/>
+      <TextBlock Text="Registro operativo de ensayo: no emite facturas ni realiza cargos bancarios. Solo el puesto principal." Style="{StaticResource Subtle}" Margin="0,4,0,12"/>
+      <TextBlock Text="Cuenta" Style="{StaticResource FieldLabel}"/>
+      <ComboBox ItemsSource="{Binding Checkout.Accounts}" SelectedItem="{Binding Checkout.SelectedAccount}" Margin="0,0,0,8" MaxWidth="520" HorizontalAlignment="Left" MinWidth="360"/>
+      <TextBlock Text="{Binding Checkout.Totals}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource Forest}" Margin="0,4,0,10"/>
+      <WrapPanel><ComboBox ItemsSource="{Binding Checkout.Products}" SelectedItem="{Binding Checkout.SelectedProduct}" Width="340"/>
+       <TextBox Text="{Binding Checkout.Quantity, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="10,0,10,0"/>
+       <Button Content="Añadir del catálogo" Style="{StaticResource Primary}" Command="{Binding Checkout.AddCommand}"/></WrapPanel>
      </StackPanel>
-     <WrapPanel Grid.Row="2">
-      <Button Content="Iniciar servicio" Command="{Binding Service.ActCommand}" CommandParameter="start"/>
-      <Button Content="Enviar siguiente pase" Command="{Binding Service.ActCommand}" CommandParameter="fire-next"/>
-      <Button Content="Marcar servido" Command="{Binding Service.ActCommand}" CommandParameter="serve"/>
-      <Button Content="Pausar" Command="{Binding Service.ActCommand}" CommandParameter="pause"/>
-      <Button Content="Reanudar" Command="{Binding Service.ActCommand}" CommandParameter="resume"/>
-     </WrapPanel>
-     <DataGrid Grid.Row="3" IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}"><DataGrid.Columns>
-      <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="145"/>
-      <DataGridTextColumn Header="Servido" Binding="{Binding ServedAt, StringFormat=HH:mm:ss}" Width="115"/>
-     </DataGrid.Columns></DataGrid>
-     <WrapPanel Grid.Row="4" Visibility="{Binding IsKitchen, Converter={StaticResource Bool2Vis}}">
-      <TextBlock Text="COCINA / PASE" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0"/>
-      <Button Content="Iniciar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
-      <Button Content="Elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
-      <Button Content="Validar pase listo" Command="{Binding Service.ActCommand}" CommandParameter="ready"/>
-      <TextBlock Text="  REVISIÓN:" VerticalAlignment="Center" FontWeight="Bold" Margin="14,0,6,0"/>
-      <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" Width="200" ToolTip="Nota obligatoria: qué se ha revisado o cambiado"/>
-      <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected"/>
-      <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt"/>
-      <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake"/>
-     </WrapPanel>
-     <DataGrid Grid.Row="5" IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Service.Preparations}" SelectedItem="{Binding Service.SelectedPreparation}"><DataGrid.Columns>
-      <DataGridTextColumn Header="Preparación" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estación" Binding="{Binding StationId}" Width="90"/>
-      <DataGridTextColumn Header="Comensal" Binding="{Binding GuestPosition}" Width="80"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="115"/><DataGridTextColumn Header="Restricciones" Binding="{Binding RestrictionsText}" Width="220"/>
-      <DataGridTextColumn Header="Revisión" Binding="{Binding ReviewText}" Width="200"/>
-     </DataGrid.Columns></DataGrid>
-     <StackPanel Grid.Row="6"><TextBox Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" ToolTip="Motivo para pausa, omisión o liberación" Margin="0,8,0,0"/>
-      <WrapPanel><Button Content="Omitir pase con motivo" Command="{Binding Service.ActCommand}" CommandParameter="skip"/>
-       <Button Content="Terminar servicio" Command="{Binding Service.ActCommand}" CommandParameter="complete"/>
-       <Button Content="Liberar mesa" Command="{Binding Service.ReleaseCommand}"/></WrapPanel>
+     <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+      <WrapPanel><TextBox Text="{Binding Checkout.Amount, UpdateSourceTrigger=PropertyChanged}" Width="140" ToolTip="Importe del pago en euros" Margin="0,0,10,0"/>
+       <ComboBox Width="140" SelectedValuePath="Tag" SelectedValue="{Binding Checkout.Method}"><ComboBoxItem Tag="card" IsSelected="True">Tarjeta</ComboBoxItem><ComboBoxItem Tag="cash">Efectivo</ComboBoxItem><ComboBoxItem Tag="other">Otro</ComboBoxItem></ComboBox>
+       <Button Content="Registrar pago de prueba" Style="{StaticResource Primary}" Command="{Binding Checkout.PayCommand}"/>
+       <Button Content="Cerrar cuenta saldada" Command="{Binding Checkout.CloseAccountCommand}"/>
+      </WrapPanel>
+      <WrapPanel Margin="0,6,0,0"><TextBox Text="{Binding Checkout.Note, UpdateSourceTrigger=PropertyChanged}" Width="300" ToolTip="Motivo obligatorio para reabrir o devolver" Margin="0,0,10,0"/>
+       <Button Content="Devolver crédito (importe y motivo)" Style="{StaticResource DangerButton}" Command="{Binding Checkout.RefundCommand}"/>
+       <Button Content="Reabrir cuenta con motivo" Command="{Binding Checkout.ReopenCommand}"/>
+      </WrapPanel>
+      <TextBlock Text="{Binding Checkout.AccountState}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
      </StackPanel>
+     <DataGrid ItemsSource="{Binding Checkout.Charges}" Margin="0,8,0,0"><DataGrid.Columns>
+      <DataGridTextColumn Header="Concepto" Binding="{Binding Description}" Width="*"/><DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity}" Width="100"/>
+      <DataGridTextColumn Header="Importe" Binding="{Binding Amount}" Width="120"/><DataGridCheckBoxColumn Header="Anulado" Binding="{Binding Voided}" Width="90"/>
+     </DataGrid.Columns></DataGrid>
+    </DockPanel>
+   </Border>
+  </TabItem>
+  <!-- ═══════════════ Configuracion (nucleo, E2, solo main) ═══════════════ -->
+  <TabItem Header="Configuración" x:Name="OrganizationTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+     <TextBlock Text="Configuración del negocio" Style="{StaticResource PanelTitle}"/>
+     <TextBlock Text="{Binding Organization.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+     <TextBlock Text="Nada se borra: una sala, mesa o estación se desactiva y conserva su historia; se puede reactivar cuando haga falta." Style="{StaticResource Subtle}"/>
+    </StackPanel>
+    <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="5*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+     <!-- Salas y mesas -->
+     <Border Grid.Column="0" Style="{StaticResource Card}">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
+       <DockPanel Grid.Column="0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Sala" Command="{Binding Organization.StartZoneCommand}" Margin="0"/><TextBlock Text="Salas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <TextBlock DockPanel.Dock="Bottom" Text="Aún no hay salas. Crea la primera con «＋ Sala»." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Organization.HasZones, Converter={StaticResource NotBool2Vis}}"/>
+        <ListBox x:Name="ZoneList" ItemsSource="{Binding Organization.Zones}" SelectedItem="{Binding Organization.SelectedZone}"/>
+       </DockPanel>
+       <DockPanel Grid.Column="2">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Mesa" Command="{Binding Organization.StartTableCommand}" Margin="0"/><TextBlock Text="Mesas de la sala" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <ListBox x:Name="TableList" ItemsSource="{Binding Organization.Tables}" SelectedItem="{Binding Organization.SelectedTable}"/>
+       </DockPanel>
+       <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
+        <Border Style="{StaticResource Banner}" Margin="0,0,0,10"><StackPanel>
+         <TextBlock Text="{Binding Organization.ZoneFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}"/>
+         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}"/>
+         <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" Width="80" HorizontalAlignment="Left"/>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar sala" Style="{StaticResource Primary}" Command="{Binding Organization.SaveZoneCommand}"/>
+          <Button x:Name="ToggleZoneButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleZoneCommand}"/></WrapPanel>
+        </StackPanel></Border>
+        <Border Style="{StaticResource Banner}"><StackPanel>
+         <TextBlock Text="{Binding Organization.TableFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}"/>
+         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.TableName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}"/>
+         <WrapPanel Margin="0,6,0,0">
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Aforo" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
+         </WrapPanel>
+         <TextBlock Text="Sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+         <ComboBox ItemsSource="{Binding Organization.ActiveZones}" SelectedValuePath="Id" SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}"/>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar mesa" Style="{StaticResource Primary}" Command="{Binding Organization.SaveTableCommand}"/>
+          <Button x:Name="ToggleTableButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleTableCommand}"/></WrapPanel>
+        </StackPanel></Border>
+       </StackPanel></ScrollViewer>
+      </Grid>
+     </Border>
+     <!-- Estaciones -->
+     <Border Grid.Column="2" Style="{StaticResource Card}">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="230"/></Grid.ColumnDefinitions>
+       <DockPanel Grid.Column="0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Estación" Command="{Binding Organization.StartStationCommand}" Margin="0"/><TextBlock Text="Estaciones" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <TextBlock DockPanel.Dock="Bottom" Text="Cocina, pase, barra o sala. Los puestos emparejados se asignan a una estación activa. La estación «pase» existe siempre." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
+        <ListBox x:Name="StationList" ItemsSource="{Binding Organization.Stations}" SelectedItem="{Binding Organization.SelectedStation}"/>
+       </DockPanel>
+       <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><Border Style="{StaticResource Banner}" VerticalAlignment="Top" Margin="0,0,4,0"><StackPanel>
+        <TextBlock Text="{Binding Organization.StationFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}"/>
+        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.StationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}"/>
+        <TextBlock Text="Tipo" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+        <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Organization.StationKind}" IsEnabled="{Binding Organization.StationEditable}">
+         <ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="pass">Pase</ComboBoxItem><ComboBoxItem Tag="bar">Barra</ComboBoxItem><ComboBoxItem Tag="room">Sala</ComboBoxItem>
+        </ComboBox>
+        <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.StationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" Width="70" HorizontalAlignment="Left"/>
+        <WrapPanel Margin="0,8,0,0"><Button Content="Guardar estación" Style="{StaticResource Primary}" Command="{Binding Organization.SaveStationCommand}"/>
+         <Button x:Name="ToggleStationButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleStationCommand}"/></WrapPanel>
+       </StackPanel></Border></ScrollViewer>
+      </Grid>
+     </Border>
     </Grid>
    </Grid>
   </TabItem>
-  <TabItem Header="  Puestos  " x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <DockPanel Margin="18">
-    <StackPanel DockPanel.Dock="Top">
-     <TextBlock Text="PUESTOS Y EMPAREJAMIENTO · SOLO ADMINISTRACIÓN" FontSize="20" FontWeight="SemiBold"/>
-     <WrapPanel Margin="0,10,0,4">
-      <Button Content="Generar código de emparejamiento" Command="{Binding Devices.GenerateCodeCommand}"/>
-      <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo, o usa el QR de abajo con la cámara del dispositivo."/>
-     </WrapPanel>
-     <WrapPanel Margin="0,0,0,4">
-      <TextBlock Text="Dirección para los dispositivos " VerticalAlignment="Center"/>
-      <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" Width="330" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se recuerda en este equipo."/>
-     </WrapPanel>
-     <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
-      <Border Background="White" Padding="6" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
-       <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="220" Height="220" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
-      </Border>
-      <StackPanel Margin="12,0,0,0" MaxWidth="560">
-       <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap"/>
-       <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,6,0,0"/>
+  <!-- ═══════════════ Puestos (nucleo, solo main) ═══════════════ -->
+  <TabItem Header="Puestos" x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <Border Style="{StaticResource Card}" Margin="0,4,0,0">
+    <DockPanel>
+     <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="Puestos y emparejamiento" Style="{StaticResource PanelTitle}"/>
+      <TextBlock Text="Solo administración. Un código sirve una vez y caduca en cinco minutos." Style="{StaticResource Subtle}" Margin="0,4,0,10"/>
+      <WrapPanel Margin="0,0,0,4">
+       <Button Content="Generar código de emparejamiento" Style="{StaticResource Primary}" Command="{Binding Devices.GenerateCodeCommand}"/>
+       <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo, o usa el QR de abajo con la cámara del dispositivo."/>
+      </WrapPanel>
+      <WrapPanel Margin="0,0,0,4">
+       <TextBlock Text="Dirección para los dispositivos" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
+       <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" Width="330" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se recuerda en este equipo."/>
+      </WrapPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+       <Border Background="White" Padding="6" CornerRadius="6" BorderBrush="{StaticResource Line}" BorderThickness="1" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+        <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="176" Height="176" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
+       </Border>
+       <StackPanel Margin="12,0,0,0" MaxWidth="560">
+        <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap"/>
+        <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,6,0,0"/>
+       </StackPanel>
       </StackPanel>
+      <TextBlock Text="{Binding Devices.PairingInfo}" Margin="0,0,0,12" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+      <TextBlock Text="Solicitudes pendientes" Style="{StaticResource Section}"/>
+      <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="110"/>
+      <WrapPanel Margin="0,6,0,14">
+       <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Devices.ApproveRole}">
+        <ComboBoxItem Tag="service" IsSelected="True">Sala</ComboBoxItem><ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="main">Principal</ComboBoxItem>
+       </ComboBox>
+       <ComboBox x:Name="ApproveStationBox" Width="220" Margin="8,0,8,0" ItemsSource="{Binding Devices.Stations}" SelectedValuePath="Id" SelectedValue="{Binding Devices.ApproveStation}" ToolTip="Estación activa de la organización (pestaña Configuración)"/>
+       <Button Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}"/>
+       <Button Content="Denegar" Style="{StaticResource DangerButton}" Command="{Binding Devices.DenyCommand}"/>
+      </WrapPanel>
+      <TextBlock Text="Puestos emparejados" Style="{StaticResource Section}"/>
      </StackPanel>
-     <TextBlock Text="{Binding Devices.PairingInfo}" Margin="0,0,0,12" TextWrapping="Wrap"/>
-     <TextBlock Text="SOLICITUDES PENDIENTES" FontWeight="Bold"/>
-     <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="110" BorderThickness="0"/>
-     <WrapPanel Margin="0,6,0,14">
-      <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Devices.ApproveRole}">
-       <ComboBoxItem Tag="service" IsSelected="True">Sala</ComboBoxItem><ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="main">Principal</ComboBoxItem>
-      </ComboBox>
-      <TextBox Text="{Binding Devices.ApproveStation, UpdateSourceTrigger=PropertyChanged}" Width="140" Margin="8,0,8,0" ToolTip="Estación (p. ej. sala-1, cold, hot, pase)"/>
-      <Button Content="Aprobar" Command="{Binding Devices.ApproveCommand}"/>
-      <Button Content="Denegar" Command="{Binding Devices.DenyCommand}"/>
-     </WrapPanel>
-     <TextBlock Text="PUESTOS EMPAREJADOS" FontWeight="Bold"/>
-    </StackPanel>
-    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-     <Button Content="Revocar puesto seleccionado (expulsión inmediata)" Command="{Binding Devices.RevokeCommand}" HorizontalAlignment="Left"/>
-    </StackPanel>
-    <ListBox ItemsSource="{Binding Devices.Devices}" SelectedItem="{Binding Devices.SelectedDevice}" BorderThickness="0"/>
-   </DockPanel>
-  </TabItem>
-  <TabItem Header="  Cuenta / Caja  " x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <DockPanel Margin="18">
-    <StackPanel DockPanel.Dock="Top">
-     <TextBlock Text="CUENTA / CAJA · SOLO PUESTO AUTORIZADO" FontSize="20" FontWeight="SemiBold"/>
-     <TextBlock Text="Registro operativo de ensayo: no emite facturas ni realiza cargos bancarios." Margin="0,8,0,14"/>
-     <ComboBox ItemsSource="{Binding Checkout.Accounts}" SelectedItem="{Binding Checkout.SelectedAccount}" Margin="0,0,0,8"/>
-     <TextBlock Text="{Binding Checkout.Totals}" FontSize="18" Margin="0,6,0,10"/>
-     <WrapPanel><ComboBox ItemsSource="{Binding Checkout.Products}" SelectedItem="{Binding Checkout.SelectedProduct}" Width="340"/>
-      <TextBox Text="{Binding Checkout.Quantity, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="10,0,10,0"/>
-      <Button Content="Añadir del catálogo" Command="{Binding Checkout.AddCommand}"/></WrapPanel>
-    </StackPanel>
-    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-     <WrapPanel><TextBox Text="{Binding Checkout.Amount, UpdateSourceTrigger=PropertyChanged}" Width="140" ToolTip="Importe del pago en euros" Margin="0,0,10,0"/>
-      <ComboBox Width="140" SelectedValuePath="Tag" SelectedValue="{Binding Checkout.Method}"><ComboBoxItem Tag="card" IsSelected="True">Tarjeta</ComboBoxItem><ComboBoxItem Tag="cash">Efectivo</ComboBoxItem><ComboBoxItem Tag="other">Otro</ComboBoxItem></ComboBox>
-      <Button Content="Registrar pago de prueba" Command="{Binding Checkout.PayCommand}"/>
-      <Button Content="Cerrar cuenta saldada" Command="{Binding Checkout.CloseAccountCommand}"/>
-     </WrapPanel>
-     <WrapPanel Margin="0,6,0,0"><TextBox Text="{Binding Checkout.Note, UpdateSourceTrigger=PropertyChanged}" Width="300" ToolTip="Motivo obligatorio para reabrir o devolver" Margin="0,0,10,0"/>
-      <Button Content="Devolver crédito (importe y motivo)" Command="{Binding Checkout.RefundCommand}"/>
-      <Button Content="Reabrir cuenta con motivo" Command="{Binding Checkout.ReopenCommand}"/>
-     </WrapPanel>
-     <TextBlock Text="{Binding Checkout.AccountState}" TextWrapping="Wrap"/>
-    </StackPanel>
-    <DataGrid IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding Checkout.Charges}"><DataGrid.Columns>
-     <DataGridTextColumn Header="Concepto" Binding="{Binding Description}" Width="*"/><DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity}" Width="100"/>
-     <DataGridTextColumn Header="Importe" Binding="{Binding Amount}" Width="120"/><DataGridCheckBoxColumn Header="Anulado" Binding="{Binding Voided}" Width="90"/>
-    </DataGrid.Columns></DataGrid>
-   </DockPanel>
+     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+      <Button Content="Revocar puesto seleccionado (expulsión inmediata)" Style="{StaticResource DangerButton}" Command="{Binding Devices.RevokeCommand}" HorizontalAlignment="Left"/>
+     </StackPanel>
+     <ListBox ItemsSource="{Binding Devices.Devices}" SelectedItem="{Binding Devices.SelectedDevice}"/>
+    </DockPanel>
+   </Border>
   </TabItem>
  </TabControl>
 </DockPanel></Window>

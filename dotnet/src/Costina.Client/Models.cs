@@ -19,8 +19,22 @@ public sealed record DeviceRowDto(string Id, string Name, string Role, string St
 }
 // Resultado de conciliar una clave de idempotencia: si el servidor la aplico, devuelve su respuesta guardada.
 public sealed record CommandLookup(string Key, bool Found, JsonElement? Response = null);
-public sealed record TableChoice(string Id, string Name, int Capacity) { public override string ToString() => Name; }
+// E2: la mesa operativa lleva su sala (ZoneId/ZoneName son opcionales: un servidor anterior no los envia).
+public sealed record TableChoice(string Id, string Name, int Capacity, string? ZoneId = null, string? ZoneName = null)
+{ public override string ToString() => ZoneName is { Length: > 0 } ? $"{ZoneName} · {Name}" : Name; }
 public sealed record MenuChoice(string Id, string Name) { public override string ToString() => Name; }
+// E2: organizacion editable (solo main): espejo de GET /organization. Kind viene como texto (Kitchen, Pass, Bar, Room).
+public sealed record TableDto(string Id, string Name, int Capacity, string ZoneId, int Sort, bool Active)
+{ public string StateLabel => Active ? "activa" : "desactivada"; public override string ToString() => $"{Id} · {Name} · {Capacity} pax · {StateLabel}"; }
+public sealed record ZoneDto(string Id, string Name, int Sort, bool Active, TableDto[] Tables)
+{ public string StateLabel => Active ? "activa" : "desactivada"; public override string ToString() => $"{Name} · {Tables.Count(t => t.Active)} mesas activas · {StateLabel}"; }
+public sealed record StationDto(string Id, string Name, string Kind, int Sort, bool Active)
+{
+    public string KindLabel => Kind switch { "Kitchen" => "Cocina", "Pass" => "Pase", "Bar" => "Barra", "Room" => "Sala", _ => Kind };
+    public string StateLabel => Active ? "activa" : "desactivada";
+    public override string ToString() => $"{Name} ({Id}) · {KindLabel} · {StateLabel}";
+}
+public sealed record OrganizationDto(ZoneDto[] Zones, StationDto[] Stations);
 public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null);   // menus: solo con el modulo Dining
 public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents)
 { public override string ToString() => $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }

@@ -169,7 +169,10 @@ public sealed class ApiClient : IDisposable
         }
         if (!response.IsSuccessStatusCode) throw new ApiError(status, ErrorCode(text) ?? "request_failed");
         var data = JsonSerializer.Deserialize<JsonElement>(text, Json);
-        if (data.ValueKind != JsonValueKind.Object || (!data.TryGetProperty("version", out _) && !data.TryGetProperty("serviceId", out _)))
+        // Exito reconocible: un objeto que habla de ESTE comando, por el eco de su clave (todo el servidor la devuelve,
+        // D3.4) o, para servidores anteriores, por la version o el identificador de servicio que devuelven los comandos de dominio.
+        var echoed = response.Headers.TryGetValues("Idempotency-Key", out var keys) && keys.Contains(command.Key, StringComparer.Ordinal);
+        if (data.ValueKind != JsonValueKind.Object || (!echoed && !data.TryGetProperty("version", out _) && !data.TryGetProperty("serviceId", out _)))
             throw new JsonException("Respuesta de comando no reconocida; conserva el mismo reintento.");
         Resolve(command);
         return data;

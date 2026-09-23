@@ -171,7 +171,7 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
         // Privilegios del rol de ejecucion y, si los binarios son mas nuevos que la copia, esquema al dia (una copia v1 se migra aqui a v2).
         var upgraded = await store.InitializeAsync(modules, ct);
         Console.WriteLine($"Restored and verified {manifest.Tables.Count} tables ({manifest.Tables.Values.Sum(t => t.Rows)} rows) from {manifest.File} taken at {manifest.CreatedAt:O}. Installation identity {manifest.InstallationId} preserved."
-            + (upgraded ? " Schema upgraded from v1 to v2 after verification." : ""));
+            + (upgraded ? $" Schema upgraded to version {PostgresStore.SchemaVersion} after verification." : ""));
     }
 }
 

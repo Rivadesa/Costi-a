@@ -13,7 +13,12 @@ public static class LabConfiguration
     {
         await store.ExecuteAsync(new(scope,"lab-initializer"),"lab-fixtures-v1","lab-fixtures-v1",async unit =>
         {
-            for (var i=1;i<=8;i++) await unit.SeedConfiguration("table","M"+i,new TableDefinition("M"+i,"Mesa "+i,12));
+            // E2: organizacion relacional (salas, mesas, estaciones); la estacion de pase existe siempre (init la garantiza).
+            await unit.SeedZone(new ZoneDefinition("sala","Sala",0,true));
+            for (var i=1;i<=8;i++) await unit.SeedTable(new TableDefinition("M"+i,"Mesa "+i,12,"sala",i-1,true));
+            foreach(var station in new StationDefinition[] { new("pase","Pase",StationKind.Pass,0,true), new("cold","Cocina fría",StationKind.Kitchen,1,true),
+                new("hot","Cocina caliente",StationKind.Kitchen,2,true), new("sala-1","Sala 1",StationKind.Room,3,true) })
+                await unit.SeedStation(station);
             foreach(var product in new ProductDefinition[] {
                 new("water","Agua mineral","Botella",400,true),new("wine-glass","Vino de ensayo","Copa",950,true),
                 new("wine-bottle","Vino de ensayo","Botella",4200,true)})

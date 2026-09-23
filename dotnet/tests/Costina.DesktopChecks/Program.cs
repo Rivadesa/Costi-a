@@ -14,6 +14,14 @@ internal static class Program
         var window=new MainWindow(); window.Show(); window.UpdateLayout();
         if(!((Button)window.FindName("ConnectButton")).IsEnabled) throw new Exception("Connection button must be available.");
         if(((TabItem)window.FindName("CheckoutTab")).Visibility!=Visibility.Collapsed) throw new Exception("Checkout visible without authenticated role.");
+        if(((TabItem)window.FindName("OrganizationTab")).Visibility!=Visibility.Collapsed) throw new Exception("Configuration visible without authenticated role.");   // E2
+        // E2: barra de menus clasica. Estructura definitiva; lo que no existe va deshabilitado; sin cabeceras de pestana.
+        var menu=(Menu)window.FindName("MainMenu");
+        var headers=menu.Items.OfType<MenuItem>().Select(m=>m.Header?.ToString()?.Replace("_","")).ToArray();
+        if(!headers.SequenceEqual(new[]{"Archivo","Comedor","Caja","Configuración","ERP","Fiscalidad","Ayuda"})) throw new Exception("Menu bar structure: "+string.Join(",",headers));
+        if(((MenuItem)window.FindName("ErpMenu")).Items.OfType<MenuItem>().Any(m=>m.IsEnabled)) throw new Exception("ERP entries that do not exist yet must be disabled.");
+        if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Collapsed||((MenuItem)window.FindName("DiningMenu")).Visibility!=Visibility.Collapsed) throw new Exception("Role menus are hidden without a session.");
+        if(((TabItem)window.FindName("ServiceTab")).ActualHeight!=0) throw new Exception("Tab headers must not be painted: the menu selects the view.");
         if(((TabControl)window.FindName("Tabs")).IsEnabled) throw new Exception("Unauthenticated operations enabled.");
         // D3.1: la habilitacion es un mapeo puro de las affordances del servidor, sin reglas locales.
         // D3.4 (F01): ademas, solo hay contexto accionable cuando la fila seleccionada coincide con la entidad leida.
@@ -126,6 +134,58 @@ internal static class Program
         var lan=new Costina.Desktop.ViewModels.ShellViewModel(); lan.Devices.MemoryFolder=qrFolder; lan.Endpoint="https://otro-servidor.local:5443"; lan.Devices.SuggestAddress();
         if(lan.Devices.DeviceAddress!="https://otro-servidor.local:5443") throw new Exception("A client already on the LAN proposes its own server address.");
         Directory.Delete(qrFolder,true);
+        // E2: pestana Configuracion (solo main). La pantalla se compone SOLO de lo leido; los comandos siguen la misma tuberia y
+        // se habilitan por rol y por estado (ocupado, orden pendiente): nunca por reglas de negocio locales.
+        var sampleOrganization=new Costina.Client.OrganizationDto(
+            [new("sala","Sala",0,true,[new("M1","Mesa 1",12,"sala",0,true),new("M2","Mesa 2",4,"sala",1,true),new("M3","Mesa 3 (junto a la ventana)",6,"sala",2,false)]),
+             new("terraza","Terraza",1,true,[new("T1","Terraza 1",4,"terraza",0,true)])],
+            [new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true),new("hot","Cocina caliente","Kitchen",2,true),new("sala-1","Sala 1","Room",3,false)]);
+        var organization=window.Shell.Organization;
+        organization.Render(sampleOrganization);
+        if(organization.SaveZoneCommand.CanExecute(null)||organization.StartTableCommand.CanExecute(null)) throw new Exception("Disconnected must gate every organization command.");
+        window.Shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
+        if(organization.SaveZoneCommand.CanExecute(null)||organization.StartStationCommand.CanExecute(null)) throw new Exception("Only the main desk edits the organization.");
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
+        window.UpdateLayout();
+        if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("FiscalMenu")).Visibility!=Visibility.Visible) throw new Exception("The main desk sees every menu.");
+        if(!window.Shell.ConnectionText.Contains("puesto principal")) throw new Exception("The status bar states who is connected.");
+        if(organization.SelectedZone?.Id!="sala"||organization.ZoneName!="Sala"||organization.Tables.Length!=3) throw new Exception("Rendering must select the first zone and fill its form and tables.");
+        if(!organization.SaveZoneCommand.CanExecute(null)||!organization.ToggleZoneCommand.CanExecute(null)) throw new Exception("A selected zone is editable by the main desk.");
+        organization.SelectedTable=organization.Tables[2];
+        if(organization.TableName!="Mesa 3 (junto a la ventana)"||organization.TableCapacity!="6"||organization.TableZoneId!="sala"||organization.SelectedTable.StateLabel!="desactivada") throw new Exception("Selecting a table fills its form and states its status in text.");
+        organization.StartTableCommand.Execute(null);
+        if(!organization.NewTable||organization.TableId!=""||organization.TableZoneId!="sala"||organization.TableFormTitle!="Nueva mesa") throw new Exception("A new table starts empty inside the selected zone.");
+        organization.SelectedStation=organization.Stations[0];
+        if(organization.ToggleStationCommand.CanExecute(null)) throw new Exception("The reserved pass station can never be deactivated from the screen.");
+        organization.SelectedStation=organization.Stations[3];
+        if(!organization.ToggleStationCommand.CanExecute(null)||organization.StationKind!="room") throw new Exception("Other stations toggle and their kind fills the form.");
+        window.Shell.Busy=true;
+        if(organization.SaveZoneCommand.CanExecute(null)||organization.ToggleStationCommand.CanExecute(null)) throw new Exception("Busy must gate every organization command.");
+        window.Shell.Busy=false;
+        // Capturas del tema visual (E2): cada pestana del puesto principal compuesta con datos leidos.
+        var tabs=(TabControl)window.FindName("Tabs");
+        window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);
+        window.Shell.Service.Tables=[new("M1","Mesa 1",12,"sala","Sala"),new("M2","Mesa 2",4,"sala","Sala")]; window.Shell.Service.SelectedTable=window.Shell.Service.Tables[0];
+        window.Shell.Service.Courses=[new Costina.Client.CourseDto("c1","Aperitivos","Ready",null,null,null,null,[prep],["serve"])]; window.Shell.Service.SelectedCourse=window.Shell.Service.Courses[0];
+        window.Shell.Service.Preparations=[prep]; window.Shell.Service.ServiceTitle="Mesa M1 · 2 personas · En servicio";
+        window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400)]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
+        window.Shell.Checkout.Accounts=[new Costina.Client.AccountChoice("s1","M1","Open")]; window.Shell.Checkout.SelectedAccount=window.Shell.Checkout.Accounts[0];
+        window.Shell.Checkout.Charges=[new("ch1","Menú de ensayo",2,15000,false,null,30000),new("ch2","Agua mineral · Botella",1,400,false,null,400)];
+        window.Shell.Checkout.Totals="Total 304,00 € · Pagado 0,00 € · Pendiente 304,00 €";
+        window.Shell.Status="Datos leídos del servidor. Las acciones se habilitan según lo que el servidor anuncia.";
+        window.Shell.Devices.DeviceAddress="https://costina-server.local:5443"; window.Shell.Devices.PairingCode="AbC123_def-456";
+        window.Shell.Devices.Stations=sampleOrganization.Stations; window.Shell.Devices.ApproveStation="cold";
+        window.Shell.Devices.Devices=[new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null)];
+        foreach(var (tab,file) in new[]{("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("DevicesTab","devices.png")})
+        {
+            tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout();
+            // Las columnas "*" del DataGrid se reparten en una pasada diferida: se vacia la cola del despachador antes de capturar.
+            window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var shot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); shot.Render(window);
+            var shotEncoder=new PngBitmapEncoder(); shotEncoder.Frames.Add(BitmapFrame.Create(shot));
+            using var shotFile=File.Create("artifacts/desktop/"+file); shotEncoder.Save(shotFile);
+        }
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.Shell.Session=null; window.UpdateLayout();
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
