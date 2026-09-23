@@ -8,7 +8,7 @@ namespace Costina.Modules.Dining;
 public sealed record OpenRequest(string TableId,int Pax,string MenuId);
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
-    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1);
+    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
 // Menu por pases: configuracion del modulo (las mesas y los productos son del nucleo).
 public sealed record MenuDefinition(string Id,string Name,long UnitPriceCents,CourseDefinition[] Courses);
@@ -95,15 +95,17 @@ public static class DiningOperations
         var dining=await unit.Dining(id); Version(dining.Version,request.ExpectedVersion);
         if(dining.Entity.State==DiningState.Cancelled) throw new RuleViolation("service_finished","A cancelled service takes no consumptions.");
         var account=await unit.Account(id);
-        var product=await unit.Configuration<ProductDefinition>("product",Required(request.ProductId));
-        if(!product.Active) throw new RuleViolation("product_unavailable","Product unavailable.");
+        // E3: vendible del catalogo del nucleo (producto + presentacion activos) al precio vigente de la tarifa de la sala de la
+        // cuenta (o la general); el cargo congela importe, producto, presentacion y tarifa.
+        var (product,presentation)=await unit.Sellable(Required(request.ProductId),request.PresentationId);
+        var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
         var chargeId=Guid.NewGuid().ToString("N");
-        account.Entity.AddCharge(chargeId,product.Name+" · "+product.Presentation,request.Quantity,product.PriceCents,
-            new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow));
+        account.Entity.AddCharge(chargeId,product.Name+" · "+presentation.Name,request.Quantity,cents,
+            new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow),product.Id,presentation.Id,tariff);
         await unit.Save(account.Entity,account.Version);
         // D6.3: la referencia viaja como consumptionId. La ruta de sala no lleva vocabulario de caja (ADR-007): la guarda
-        // de la PWA rechaza entera cualquier respuesta con una clave economica, y "charge" lo es.
-        return new { version=dining.Version,consumptionId=chargeId,productId=product.Id,quantity=request.Quantity };
+        // de la PWA rechaza entera cualquier respuesta con una clave economica, y "charge" (o "tariff") lo es.
+        return new { version=dining.Version,consumptionId=chargeId,productId=product.Id,presentationId=presentation.Id,quantity=request.Quantity };
     }
     public static async Task<object> Release(Unit unit,ExecutionIdentity identity,string id,ReleaseCommand request)
     {

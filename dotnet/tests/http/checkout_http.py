@@ -47,7 +47,7 @@ class CheckoutChecks(unittest.TestCase):
             dict(expectedVersion=version, productId='water', quantity=2), role='service')
         self.assertEqual(200, status, body)
         response = json.loads(body)
-        self.assertEqual({'version', 'consumptionId', 'productId', 'quantity'}, set(response))
+        self.assertEqual({'version', 'consumptionId', 'productId', 'presentationId', 'quantity'}, set(response))   # E3: presentacion vendida
         for field in MONEY: self.assertNotIn(field, body.decode().lower())
         self.assertEqual(version, response['version'])   # el contexto operativo no cambia por un consumo
         self.assertEqual(800, h.account(self.sid)['data']['balanceCents'])   # 2 x 400 fijados por el catalogo

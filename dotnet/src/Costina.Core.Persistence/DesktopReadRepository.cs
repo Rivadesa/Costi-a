@@ -7,8 +7,7 @@ public sealed record AccountListing(string ServiceId,string TableId,string State
 // Read models only, scoped by the authenticated server. No SQL identifiers come from clients.
 public sealed class DesktopReadRepository(NpgsqlDataSource source)
 {
-    // Configuracion del nucleo (core.configuration) o de un modulo (<modulo>.configuration): misma forma.
-    public Task<List<T>> Configuration<T>(BusinessScope scope,string kind,CancellationToken ct) => Read<T>("core",scope,kind,ct);
+    // Configuracion JSONB de un modulo (<modulo>.configuration). El catalogo del nucleo es relacional (CatalogReads, E3).
     public Task<List<T>> ModuleConfiguration<T>(BusinessScope scope,string module,string kind,CancellationToken ct) => Read<T>(PostgresStore.CheckedSchema(module),scope,kind,ct);
     private async Task<List<T>> Read<T>(string schema,BusinessScope scope,string kind,CancellationToken ct)
     {

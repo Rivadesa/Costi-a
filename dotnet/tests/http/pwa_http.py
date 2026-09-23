@@ -51,8 +51,9 @@ class Pwa(unittest.TestCase):
             status, body = h.request('/catalog', role=role)
             self.assertEqual(status, 200, role)
             items = json.loads(body)
-            self.assertEqual(sorted(i['id'] for i in items), ['water', 'wine-bottle', 'wine-glass'])
-            self.assertEqual(set(items[0]), {'id', 'name', 'presentation'})
+            # E3: un vendible por presentacion (water/bottle, wine/glass, wine/bottle); categoria sin dinero; nunca 'tariff'.
+            self.assertEqual(sorted((i['id'], i['presentationId']) for i in items), [('water', 'bottle'), ('wine', 'bottle'), ('wine', 'glass')])
+            self.assertEqual(set(items[0]), {'id', 'presentationId', 'name', 'presentation', 'categoryId', 'categoryName'})
             self.assertEqual(list(money_keys(items)), [])
         self.assertEqual(h.request('/catalog', role='kitchen')[0], 403)
         self.assertEqual(fetch('/api/native/v1/catalog')[0], 401)
@@ -70,7 +71,7 @@ class Pwa(unittest.TestCase):
         status, body = h.request('/dining/services/' + sid + '/commands/add-consumption',
             dict(expectedVersion=h.dining(sid)['version'], productId='water', quantity=1), role='service')
         self.assertEqual(status, 200, body)
-        self.assertEqual(set(json.loads(body)), {'version', 'consumptionId', 'productId', 'quantity'})
+        self.assertEqual(set(json.loads(body)), {'version', 'consumptionId', 'productId', 'presentationId', 'quantity'})
         self.assertEqual(list(money_keys(json.loads(body))), [], 'add-consumption')
 
     def test_03_pwa_is_served_anonymously_on_the_same_origin_with_strict_headers(self):

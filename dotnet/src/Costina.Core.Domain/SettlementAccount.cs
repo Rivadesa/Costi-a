@@ -2,8 +2,10 @@ using System.Globalization;
 
 namespace Costina.Core.Domain;
 
+// E3: el cargo CONGELA su origen (producto, presentacion y tarifa aplicada) ademas del importe; los tres son opcionales
+// porque los cargos anteriores a E3 y los de menu no los tienen. Un cargo nunca vuelve a leer el catalogo.
 public sealed record ChargeLine(string Id, string Description, int Quantity, long UnitPriceCents,
-    bool Voided = false, string? VoidReason = null)
+    bool Voided = false, string? VoidReason = null, string? ProductId = null, string? PresentationId = null, string? TariffId = null)
 {
     public long TotalCents => Voided ? 0 : checked(Quantity * UnitPriceCents);
 }
@@ -41,14 +43,15 @@ public sealed partial class SettlementAccount : Aggregate
 
     // Prices here are already authorized snapshots, not raw input from a waiter or browser.
     // The future catalog application service must be the only public path to normal charges.
-    public void AddCharge(string lineId, string description, int quantity, long unitPriceCents, CommandStamp stamp)
+    public void AddCharge(string lineId, string description, int quantity, long unitPriceCents, CommandStamp stamp,
+        string? productId = null, string? presentationId = null, string? tariffId = null)
     {
         Mutable(stamp);
         lineId = Guard.Text(lineId, nameof(lineId));
         description = Guard.Text(description, nameof(description));
         Guard.Rule(quantity > 0 && unitPriceCents >= 0, "invalid_charge", "Invalid quantity or price.");
         Guard.Rule(charges.All(c => c.Id != lineId), "duplicate_charge", "This charge ID already exists.");
-        var line = new ChargeLine(lineId, description, quantity, unitPriceCents);
+        var line = new ChargeLine(lineId, description, quantity, unitPriceCents, ProductId: productId, PresentationId: presentationId, TariffId: tariffId);
         _ = checked(TotalCents + line.TotalCents);
         charges.Add(line);
         Emit("account.charge_added", stamp, ("charge_id", lineId),

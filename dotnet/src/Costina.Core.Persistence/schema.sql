@@ -1,14 +1,59 @@
--- Esquema del NUCLEO, version 3 (E1b/E2, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v3. Una base anterior la transforman antes, encadenados y en la misma transaccion,
--- upgrade-v2.sql (native_d1 -> core + dining) y upgrade-v3.sql (organizacion relacional). Nunca toca las tablas de "public".
+-- Esquema del NUCLEO, version 4 (E1b/E2/E3, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v4. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion relacional) y upgrade-v4.sql (catalogo y
+-- tarifas relacionales). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 3));
-INSERT INTO core.schema_version VALUES (3) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 4));
+INSERT INTO core.schema_version VALUES (4) ON CONFLICT DO NOTHING;
+-- E3: CATALOGO Y TARIFAS (impuestos, categorias jerarquicas, productos, presentaciones vendibles, tarifas, precios con
+-- vigencia): datos maestros relacionales; nunca se borran, se desactivan. Precios con impuestos incluidos (PVP).
+CREATE TABLE IF NOT EXISTS core.taxes (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, rate numeric(5,2) NOT NULL CHECK (rate BETWEEN 0 AND 100), active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.categories (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, parent_id text NULL, color text NULL CHECK (color ~ '^#[0-9A-F]{6}$'),
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, parent_id) REFERENCES core.categories (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.products (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, category_id text NULL, tax_id text NOT NULL, reference text NULL,
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, category_id) REFERENCES core.categories (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, tax_id) REFERENCES core.taxes (tenant, company, location, id)
+);
+CREATE INDEX IF NOT EXISTS products_reference ON core.products (tenant, company, location, reference) WHERE reference IS NOT NULL;
+CREATE TABLE IF NOT EXISTS core.presentations (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, product_id text NOT NULL, id text NOT NULL,
+ name text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, product_id, id),
+ FOREIGN KEY (tenant, company, location, product_id) REFERENCES core.products (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.tariffs (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.prices (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
+ tariff_id text NOT NULL, product_id text NOT NULL, presentation_id text NOT NULL,
+ valid_from date NOT NULL, price_cents bigint NOT NULL CHECK (price_cents BETWEEN 0 AND 99999999),
+ PRIMARY KEY (tenant, company, location, tariff_id, product_id, presentation_id, valid_from),
+ FOREIGN KEY (tenant, company, location, tariff_id) REFERENCES core.tariffs (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, product_id, presentation_id) REFERENCES core.presentations (tenant, company, location, product_id, id)
+);
 -- E2: ORGANIZACION editable (salas, mesas, estaciones): datos maestros relacionales; nunca se borran, se desactivan.
 CREATE TABLE IF NOT EXISTS core.zones (
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
  name text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
- PRIMARY KEY (tenant, company, location, id)
+ tariff_id text NULL,
+ PRIMARY KEY (tenant, company, location, id),
+ CONSTRAINT zones_tariff_fkey FOREIGN KEY (tenant, company, location, tariff_id) REFERENCES core.tariffs (tenant, company, location, id)
 );
 CREATE TABLE IF NOT EXISTS core.tables (
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
@@ -52,12 +97,6 @@ CREATE TABLE IF NOT EXISTS core.audit (
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
  actor text NOT NULL, aggregate_id text NOT NULL, action text NOT NULL,
  command_key text NOT NULL, occurred_at timestamptz NOT NULL, payload jsonb NOT NULL
-);
--- Configuracion del nucleo: catalogo (productos) hasta E3. Las mesas viven en core.tables (E2); los menus en dining.configuration.
-CREATE TABLE IF NOT EXISTS core.configuration (
- tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
- kind text NOT NULL CHECK (kind IN ('product')), id text NOT NULL, payload jsonb NOT NULL,
- PRIMARY KEY (tenant,company,location,kind,id)
 );
 -- D3.4: identidad estable de la instalacion (una sola fila, creada una vez). El cliente separa por
 -- ella su orden durable: un pendiente de otra instalacion en el mismo puerto nunca se reenvia.
