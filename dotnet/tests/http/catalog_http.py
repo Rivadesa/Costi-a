@@ -57,7 +57,7 @@ class Catalog(unittest.TestCase):
         c = catalog()
         self.assertEqual([t['id'] for t in c['taxes']], ['iva-21', 'iva-10', 'iva-4', 'iva-0'])           # lo que existe siempre
         self.assertEqual([t['id'] for t in c['tariffs']], ['general'])
-        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('bebidas', None), ('vinos', 'bebidas'), ('menus', None)])   # E4a: categoria de los productos-menu
+        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('bebidas', None), ('vinos', 'bebidas'), ('comida', None), ('menus', None)])   # E4a/E4b: menus y platos de la carta de ensayo
         wine = product('wine')
         self.assertEqual((wine['categoryId'], wine['taxId'], wine['reference']), ('vinos', 'iva-21', '3754'))
         self.assertEqual({(p['id'], p['prices'][0]['tariffId'], p['prices'][0]['priceCents']) for p in wine['presentations']}, {('glass', 'general', 950), ('bottle', 'general', 4200)})
@@ -69,29 +69,29 @@ class Catalog(unittest.TestCase):
         status, body = request('/catalog', role='service')
         items = json.loads(body)
         self.assertEqual(status, 200)
-        self.assertEqual([(i['id'], i['presentationId'], i['categoryName']) for i in items], [('water', 'bottle', 'Bebidas'), ('wine', 'glass', 'Vinos'), ('wine', 'bottle', 'Vinos')])
+        self.assertEqual([(i['id'], i['presentationId'], i['categoryName']) for i in items], [('water', 'bottle', 'Bebidas'), ('wine', 'glass', 'Vinos'), ('wine', 'bottle', 'Vinos'), ('croquetas', 'unit', 'Comida'), ('lubina', 'unit', 'Comida'), ('tarta', 'unit', 'Comida')])
         self.assertEqual(list(money_keys(items)), [])
         # Caja: lo mismo con el precio de la tarifa general como referencia.
         priced = ok('/checkout/catalog')
-        self.assertEqual([(i['id'], i['presentationId'], i['priceCents'], i['tariffId']) for i in priced], [('water', 'bottle', 400, 'general'), ('wine', 'glass', 950, 'general'), ('wine', 'bottle', 4200, 'general')])
+        self.assertEqual([(i['id'], i['presentationId'], i['priceCents'], i['tariffId']) for i in priced], [('water', 'bottle', 400, 'general'), ('wine', 'glass', 950, 'general'), ('wine', 'bottle', 4200, 'general'), ('croquetas', 'unit', 800, 'general'), ('lubina', 'unit', 2400, 'general'), ('tarta', 'unit', 600, 'general')])
 
     def test_02_taxes_categories_products_and_presentations_are_edited_and_never_deleted(self):
         self.assertEqual(command('tax-create', id='iva-x', name='IVA especial', rate=10.5)[0], 200)
         self.assertEqual(command('tax-create', id='iva-x', name='Otro', rate=1)[0], 409)                    # codigo unico
         for bad in (dict(id='t2', name='x', rate=100.5), dict(id='t2', name='x', rate=10.123), dict(id='t2', name='x'), dict(id='con espacio', name='x', rate=1)):
             self.assertIn(command('tax-create', **bad)[0], (409, 422), bad)
-        self.assertEqual(command('category-create', id='comida', name='Comida', color='#b5673a', sort=2)[0], 200)
-        self.assertEqual(command('category-create', id='tapas', name='Tapas', parentId='comida')[0], 200)
+        self.assertEqual(command('category-create', id='cocina', name='Comida', color='#b5673a', sort=2)[0], 200)
+        self.assertEqual(command('category-create', id='tapas', name='Tapas', parentId='cocina')[0], 200)
         self.assertEqual(command('category-create', id='tapas', name='Otra')[0], 409)
         self.assertEqual(command('category-create', id='x1', name='x', parentId='no-existe')[0], 404)
         self.assertEqual(command('category-create', id='x1', name='x', color='rojo')[0], 409)              # invalid_color
-        status, body = command('category-update', id='comida', parentId='tapas')                            # ciclo
+        status, body = command('category-update', id='cocina', parentId='tapas')                            # ciclo
         self.assertEqual((status, json.loads(body)['error']), (409, 'category_cycle'))
         self.assertEqual(command('category-create', id='n3', name='n3', parentId='tapas')[0], 200)
         self.assertEqual(command('category-create', id='n4', name='n4', parentId='n3')[0], 200)
         self.assertEqual(json.loads(command('category-create', id='n5', name='n5', parentId='n4')[1])['error'], 'category_depth')
         # Producto: nace con la presentacion 'unit' y sin precio; hasta fijarlo no es vendible.
-        status, body = command('product-create', id='coffee', name='Café', categoryId='comida', taxId='iva-10', reference='C-1')
+        status, body = command('product-create', id='coffee', name='Café', categoryId='cocina', taxId='iva-10', reference='C-1')
         self.assertEqual((status, json.loads(body)['presentationId']), (200, 'unit'), body)
         self.assertEqual(command('product-create', id='coffee', name='Otro')[0], 409)
         self.assertEqual(command('product-create', id='p2', name='x', taxId='no-existe')[0], 404)
@@ -122,7 +122,7 @@ class Catalog(unittest.TestCase):
         self.assertEqual(command('presentation-deactivate', productId='coffee', id='double')[0], 200)
         self.assertEqual([i['presentationId'] for i in ok('/catalog') if i['id'] == 'coffee'], ['unit'])
         # Lo que esta en uso no se desactiva: categoria con productos activos, impuesto con productos activos, tarifa general nunca.
-        self.assertEqual(json.loads(command('category-deactivate', id='comida')[1])['error'], 'category_in_use')
+        self.assertEqual(json.loads(command('category-deactivate', id='cocina')[1])['error'], 'category_in_use')
         self.assertEqual(json.loads(command('tax-deactivate', id='iva-10')[1])['error'], 'tax_in_use')
         self.assertEqual(json.loads(command('tariff-deactivate', id='general')[1])['error'], 'reserved_tariff')
         self.assertEqual(command('tax-deactivate', id='iva-x')[0], 200)
