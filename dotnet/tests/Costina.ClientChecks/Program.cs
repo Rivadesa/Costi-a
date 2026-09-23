@@ -240,6 +240,31 @@ await Check("organization command travels with an idempotency key and is persist
     var result=await client.SendAsync("organization/commands/table-create",new{id="T1",name="Terraza 1",capacity=4,zoneId="terraza",sort=0},"Crear mesa T1");
     Assert(result.GetProperty("id").GetString()=="T1"&&client.Pending is null&&store.ClearedKeys.Single()==key);
 });
+// E3: catalogo y tarifas. Lectura tipada (precios por tarifa con vigencia) y price-set por la tuberia incierta.
+await Check("catalog read decodes taxes, categories, products with presentations and prices, and tariffs",async()=>{
+    using var client=Client(new Handler((r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/erp/catalog");
+        return Task.FromResult(Response(200,"{\"taxes\":[{\"id\":\"iva-10\",\"name\":\"IVA 10 %\",\"rate\":10.00,\"active\":true}],\"categories\":[{\"id\":\"vinos\",\"name\":\"Vinos\",\"parentId\":\"bebidas\",\"color\":\"#8C1D1D\",\"sort\":1,\"active\":true}],"
+            +"\"products\":[{\"id\":\"wine\",\"name\":\"Vino\",\"categoryId\":\"vinos\",\"taxId\":\"iva-21\",\"reference\":\"3754\",\"sort\":0,\"active\":true,\"presentations\":[{\"id\":\"glass\",\"name\":\"Copa\",\"sort\":0,\"active\":true,\"prices\":[{\"tariffId\":\"general\",\"validFrom\":\"1970-01-01\",\"priceCents\":950}]}]}],"
+            +"\"tariffs\":[{\"id\":\"general\",\"name\":\"General\",\"sort\":0,\"active\":true}],\"today\":\"2026-09-23\"}"));
+    }));
+    var catalog=await client.GetAsync<CatalogDto>("erp/catalog");
+    Assert(catalog.Taxes.Single().Rate==10m&&catalog.Products.Single().Presentations.Single().Prices.Single().PriceCents==950&&catalog.Tariffs.Single().ToString().Contains("activa")&&catalog.Today=="2026-09-23");
+});
+await Check("price-set travels with an idempotency key, is persisted before sending and closes on the echoed key",async()=>{
+    var store=new MemoryStore(); string? key=null;
+    using var client=new ApiClient(new Uri("http://127.0.0.1:5088"),new string('a',40),new Handler((r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/erp/catalog/commands/price-set"); key=r.Headers.GetValues("Idempotency-Key").Single();
+        Assert(store.LastSavedKey==key);
+        var ok=Response(200,"{\"tariffId\":\"general\",\"productId\":\"wine\",\"presentationId\":\"glass\",\"validFrom\":\"2026-09-23\",\"priceCents\":1000,\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return Task.FromResult(ok);
+    }));
+    client.AttachPendingStore(store);
+    var result=await client.SendAsync("erp/catalog/commands/price-set",new{tariffId="general",productId="wine",presentationId="glass",validFrom="",priceCents=1000},"Fijar precio");
+    Assert(result.GetProperty("changed").GetBoolean()&&client.Pending is null&&store.ClearedKeys.Single()==key);
+    var choice=JsonSerializer.Deserialize<ProductChoice>("{\"id\":\"wine\",\"name\":\"Vino\",\"presentation\":\"Copa\",\"priceCents\":950,\"presentationId\":\"glass\",\"categoryName\":\"Vinos\",\"tariffId\":\"general\"}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    var legacy=JsonSerializer.Deserialize<ProductChoice>("{\"id\":\"water\",\"name\":\"Agua\",\"presentation\":\"Botella\",\"priceCents\":400}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    Assert(choice.ToString().StartsWith("Vinos · Vino · Copa")&&legacy.PresentationId is null&&legacy.ToString().StartsWith("Agua · Botella"));
+});
 // E2: la mesa operativa lleva su sala; un servidor anterior sin ese campo sigue decodificando.
 await Check("table choice shows its zone when the server sends it",()=>{
     var withZone=JsonSerializer.Deserialize<TableChoice>("{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12,\"zoneId\":\"sala\",\"zoneName\":\"Sala\"}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;

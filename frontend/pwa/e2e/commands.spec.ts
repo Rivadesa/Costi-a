@@ -157,7 +157,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await page.getByTestId('table-M7').click()
   await page.locator('[data-testid=actions] details', { hasText: 'consumo' }).locator('summary').click()
   await expect(page.locator('select[name=product]')).not.toContainText(/€|\d+[.,]\d{2}/)
-  await page.selectOption('select[name=product]', 'water')
+  await page.selectOption('select[name=product]', 'water/bottle')   // E3: producto/presentacion
   await page.getByTestId('do-add-consumption').click()
   // "pending" a cero ya era cierto ANTES del clic: no es senal de nada. La senal es el cargo en CAJA (nunca en la tablet).
   const waterCharges = async () => ((await (await asMain(request, `/checkout/services/${serviceId}`)).json()) as { data: { charges: Array<{ description: string }> } })

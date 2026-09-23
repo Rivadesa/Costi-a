@@ -86,12 +86,12 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
 
     private void Render(AccountChoice[] choices, ProductChoice[] catalog, Versioned<AccountDto>? current)
     {
-        var previousProduct = SelectedProduct?.Id;
+        var previousProduct = SelectedProduct?.Id + "/" + SelectedProduct?.PresentationId;
         rendering = true;
         try
         {
             Accounts = choices; SelectedAccount = choices.FirstOrDefault(a => a.ServiceId == accountServiceId);
-            Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id == previousProduct) ?? catalog.FirstOrDefault();
+            Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id + "/" + p.PresentationId == previousProduct) ?? catalog.FirstOrDefault();
             Account = current; Charges = current?.Data.Charges ?? [];
             Totals = current is null ? "Sin cuenta seleccionada"
                 : $"Total {Money.Format(current.Data.TotalCents)}  ·  Pagado {Money.Format(current.Data.PaidCents)}  ·  Pendiente {Money.Format(current.Data.BalanceCents)}  ·  Crédito {Money.Format(current.Data.CreditCents)}  ·  Devuelto {Money.Format(current.Data.RefundedCents)}";
@@ -121,7 +121,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         var context = Require();
         if (!int.TryParse(Quantity, out var count) || count < 1) throw new ArgumentException("Introduce una cantidad positiva.");
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/add-product",
-            new { expectedVersion = context.Version, productId = SelectedProduct!.Id, quantity = count },
+            new { expectedVersion = context.Version, productId = SelectedProduct!.Id, presentationId = SelectedProduct.PresentationId, quantity = count },   // E3: presentacion vendida
             "Añadir consumo del catálogo · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: consumo añadido.";
