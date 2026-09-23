@@ -25,6 +25,10 @@ Que los menús dejen de ser un fixture del módulo (`dining.configuration`, `Men
 6. **Pantallas**: WPF **ERP › Oferta: cartas y menús** (entrada "Menús y pases" renombrada): lista de ofertas con tipo y vigencia; ficha; editor de pases y platos (estación por plato) o de ítems de carta (buscador del catálogo por categoría); "Comedor" elige la oferta al abrir y, en menú cerrado, muestra las elecciones por comensal. PWA: abrir mesa con oferta; en menú cerrado, elegir plato por comensal; en carta, "Añadir plato" (catálogo por grupo) además del consumo de bebidas.
 7. **Pruebas**: `offers_http.py` (ofertas de la demo; edición; vigencia por fecha/día/servicio; abrir con `tasting` = comportamiento actual; `set-menu` con elección obligatoria antes de disparar; `a-la-carte` con `add-dish` y cargo al precio de la tarifa de la sala; oferta sin precio no abre; 403 por rol), dominio (elecciones, pases dinámicos), `packaging_http.test_06e` hasta **v5** (el menú LAB-TASTING migrado y una mesa abierta con él), PWA (vitest + Playwright con `offerId`), checks del WPF con captura.
 
+## Resultado de E4a (23-09-2026)
+
+Hecho según lo anterior con estas concreciones: `offer-create` crea el producto-menú (`menu-<id>`, categoría `menus`, presentación `person`, `taxId` opcional, `priceCents` opcional); los productos-menú no salen en los catálogos operativos; `configuration.offers` para todos los roles con `menus` y `menuId` como alias una versión; el servicio guarda `offerId`; los pases de menú cerrado nacen sin elaboraciones y `choose` (`courseId`, `guestPosition`, `dishId`) las crea, `fire-next` exige elección completa (`choice_missing`); `a-la-carte` existe como tipo pero se rechaza (`kind_unsupported`) hasta E4b. Ver `docs/native/E4a-offers.md`.
+
 ## Corte en dos PR si hace falta
 
 - **E4a**: ofertas en el núcleo (esquema v5, migración, API, pantalla ERP), `tasting` y `set-menu` con elecciones, apertura por oferta en WPF y PWA. Versión `0.30.0-e5`.
