@@ -454,6 +454,7 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
 // E2: organizacion editable del nucleo (solo puesto principal). E3: catalogo y tarifas.
 app.MapOrganizationRoutes(store,source,scope,modules);
 app.MapCatalogRoutes(store,source,scope);
+app.MapOfferRoutes(store,source,scope);   // E4a: oferta (degustaciones, menus cerrados)
 // ADR-012: cada modulo activo registra sus rutas bajo su prefijo (y, durante una version, bajo el anterior como alias).
 var hosted=modules.Select(m=>(Module:m,Host:new ModuleHost(store,source,scope,prefix+"/"+m.Name,prefix))).ToList();
 foreach(var (module,host) in hosted) module.MapRoutes(app,host);

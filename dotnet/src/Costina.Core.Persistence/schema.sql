@@ -1,10 +1,10 @@
--- Esquema del NUCLEO, version 4 (E1b/E2/E3, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v4. Una base anterior la transforman antes, encadenados y en la misma transaccion,
--- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion relacional) y upgrade-v4.sql (catalogo y
--- tarifas relacionales). Nunca toca las tablas de "public".
+-- Esquema del NUCLEO, version 5 (E1b..E4a, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v5. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion), upgrade-v4.sql (catalogo y tarifas) y
+-- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 4));
-INSERT INTO core.schema_version VALUES (4) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 5));
+INSERT INTO core.schema_version VALUES (5) ON CONFLICT DO NOTHING;
 -- E3: CATALOGO Y TARIFAS (impuestos, categorias jerarquicas, productos, presentaciones vendibles, tarifas, precios con
 -- vigencia): datos maestros relacionales; nunca se borran, se desactivan. Precios con impuestos incluidos (PVP).
 CREATE TABLE IF NOT EXISTS core.taxes (
@@ -67,6 +67,32 @@ CREATE TABLE IF NOT EXISTS core.stations (
  name text NOT NULL, kind text NOT NULL CHECK (kind IN ('kitchen','pass','bar','room')),
  sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
  PRIMARY KEY (tenant, company, location, id)
+);
+-- E4a: OFERTA (lo que se vende en sala): degustaciones y menus cerrados vendidos como producto del catalogo (presentacion
+-- 'person'), con pases y platos (estacion de cocina) que el modulo Dining ejecuta. Nunca se borra, se desactiva.
+CREATE TABLE IF NOT EXISTS core.offers (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, id text NOT NULL,
+ name text NOT NULL, kind text NOT NULL CHECK (kind IN ('tasting','set-menu','a-la-carte')), product_id text NULL,
+ service text NOT NULL DEFAULT 'any' CHECK (service IN ('any','lunch','dinner')),
+ valid_from date NULL, valid_to date NULL, weekdays integer NOT NULL DEFAULT 127 CHECK (weekdays BETWEEN 1 AND 127),
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, product_id) REFERENCES core.products (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.offer_courses (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, offer_id text NOT NULL, id text NOT NULL,
+ name text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, offer_id, id),
+ FOREIGN KEY (tenant, company, location, offer_id) REFERENCES core.offers (tenant, company, location, id)
+);
+CREATE TABLE IF NOT EXISTS core.offer_dishes (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, offer_id text NOT NULL, course_id text NOT NULL, id text NOT NULL,
+ name text NOT NULL, station_id text NOT NULL, product_id text NULL,
+ sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, offer_id, course_id, id),
+ FOREIGN KEY (tenant, company, location, offer_id, course_id) REFERENCES core.offer_courses (tenant, company, location, offer_id, id),
+ FOREIGN KEY (tenant, company, location, station_id) REFERENCES core.stations (tenant, company, location, id),
+ FOREIGN KEY (tenant, company, location, product_id) REFERENCES core.products (tenant, company, location, id)
 );
 -- Cuenta (ventas): agregado del NUCLEO. service_id es la referencia OPACA que el modulo que la abrio le dio (nunca una
 -- clave foranea a una tabla de modulo: el nucleo no depende de ningun modulo); table_id es la mesa (organizacion, nucleo)

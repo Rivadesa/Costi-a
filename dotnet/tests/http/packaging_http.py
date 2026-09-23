@@ -153,7 +153,7 @@ class Packaging(unittest.TestCase):
         upgraded = cli('upgrade', env=env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
         self.assertEqual(psql_as(BOOTSTRAP, "SELECT string_agg(nspname || ':' || nspowner::regrole::text, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core:costina_owner,dining:costina_owner')
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '4')   # E3: esquema v4
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '5')   # E4a: esquema v5
 
     def test_04_runtime_role_has_no_ddl_and_cannot_touch_the_audit_trail(self):
         runtime = self.config('server.json')['COSTINA_DB']
@@ -329,7 +329,7 @@ class Packaging(unittest.TestCase):
         self.assertEqual((manifest['format'], manifest['tenantId'], manifest['tables']['core.users']['rows'], manifest['tables']['core.pairings']['rows']), (2, 'd5-tenant', 1, 1))
         # D5.6: un servicio real viaja en la copia. E1b: claves esquema.tabla; los menus ya viven en el esquema del modulo.
         self.assertEqual((manifest['tables']['dining.services']['rows'], manifest['tables']['dining.occupancies']['rows'],
-                          manifest['tables']['core.products']['rows'], manifest['tables']['dining.configuration']['rows']), (1, 1, 2, 1))   # E3: catalogo relacional
+                          manifest['tables']['core.products']['rows'], manifest['tables']['core.offers']['rows']), (1, 1, 4, 2))   # E3/E4a: catalogo y oferta relacionales
         self.assertEqual((manifest['tables']['core.zones']['rows'], manifest['tables']['core.tables']['rows'], manifest['tables']['core.stations']['rows']), (1, 8, 4))   # E2: organizacion relacional
         self.assert_private(newest)
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
@@ -425,12 +425,17 @@ class Packaging(unittest.TestCase):
             ('SELECT tenant,company,location,id,username,password_hash,role,active,created_at FROM core.users', 'native_d1.users (tenant,company,location,id,username,password_hash,role,active,created_at)'),
             # En v1 las mesas y los productos eran fixtures JSONB de configuration (E2 llevo las mesas a core.tables; E3 los productos al
             # catalogo relacional): se reconstruyen en su forma v1 (un producto v1 = producto + presentacion + precio en general).
-            ("SELECT tenant,company,location,kind,id,payload FROM dining.configuration "
+            # E4a: los menus v1 eran JSONB del modulo (kind='menu'); se reconstruyen desde las ofertas 'tasting' del nucleo y su producto-menu.
+            ("SELECT o.tenant,o.company,o.location,'menu',o.id,jsonb_build_object('id',o.id,'name',o.name,'unitPriceCents',x.price_cents,'courses',"
+             " (SELECT jsonb_agg(jsonb_build_object('id',c.id,'name',c.name,'preparations',(SELECT jsonb_agg(jsonb_build_object('id',d.id,'name',d.name,'stationId',d.station_id) ORDER BY d.sort)"
+             "   FROM core.offer_dishes d WHERE d.tenant=c.tenant AND d.offer_id=c.offer_id AND d.course_id=c.id)) ORDER BY c.sort) FROM core.offer_courses c WHERE c.tenant=o.tenant AND c.offer_id=o.id))"
+             " FROM core.offers o JOIN core.prices x ON x.tenant=o.tenant AND x.product_id=o.product_id AND x.presentation_id='person' AND x.tariff_id='general' WHERE o.kind='tasting' "
              "UNION ALL SELECT tenant,company,location,'table',id,jsonb_build_object('id',id,'name',name,'capacity',capacity) FROM core.tables "
              "UNION ALL SELECT p.tenant,p.company,p.location,'product',CASE WHEN count(*) OVER (PARTITION BY p.tenant,p.company,p.location,p.id)=1 THEN p.id ELSE p.id || '-' || s.id END,"
              " jsonb_build_object('id',CASE WHEN count(*) OVER (PARTITION BY p.tenant,p.company,p.location,p.id)=1 THEN p.id ELSE p.id || '-' || s.id END,'name',p.name,'presentation',s.name,'priceCents',x.price_cents,'active',p.active)"
              " FROM core.products p JOIN core.presentations s ON s.tenant=p.tenant AND s.company=p.company AND s.location=p.location AND s.product_id=p.id"
-             " JOIN core.prices x ON x.tenant=p.tenant AND x.company=p.company AND x.location=p.location AND x.product_id=p.id AND x.presentation_id=s.id AND x.tariff_id='general'", 'native_d1.configuration'),
+             " JOIN core.prices x ON x.tenant=p.tenant AND x.company=p.company AND x.location=p.location AND x.product_id=p.id AND x.presentation_id=s.id AND x.tariff_id='general'"
+             " WHERE coalesce(p.category_id,'')<>'menus'", 'native_d1.configuration'),   # los productos-menu no existian en v1
             ('SELECT tenant,company,location,id,table_id,state,version,payload_version,payload FROM dining.services', 'native_d1.services'),
             ('SELECT tenant,company,location,id,service_id,table_id,state,version,payload_version,payload FROM dining.occupancies', 'native_d1.occupancies'),
             ('SELECT tenant,company,location,id,service_id,state,version,payload_version,payload FROM core.accounts', 'native_d1.accounts (tenant,company,location,id,service_id,state,version,payload_version,payload)'),
@@ -460,16 +465,19 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
         upgraded = cli('upgrade', env=v1env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
-        self.assertIn('upgraded to version 4', upgraded.stdout)                                           # v1 -> v2 -> v3 -> v4 encadenadas
+        self.assertIn('upgraded to version 5', upgraded.stdout)                                           # v1 -> v2 -> v3 -> v4 -> v5 encadenadas
         self.assertEqual(psql_as(v1super, "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core,dining')
-        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '4')   # v1 -> v2 -> v3 -> v4
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '5')   # v1 -> v2 -> v3 -> v4 -> v5
         self.assertEqual(psql_as(v1super, "SELECT string_agg(table_id, ',') FROM core.accounts").stdout.strip(), 'M1')              # the table travelled into the account
-        self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || count(*) FILTER (WHERE kind='menu') FROM dining.configuration").stdout.strip(), '1:1')
+        # E4a (v5): el menu JSONB del modulo pasa a producto-menu del catalogo + oferta 'tasting' del nucleo con sus pases y platos.
+        self.assertEqual(psql_as(v1super, "SELECT count(*) FROM dining.configuration").stdout.strip(), '0')
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(id || '=' || kind || '/' || product_id, ',') FROM core.offers").stdout.strip(), 'LAB-TASTING=tasting/menu-lab-tasting')
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(course_id || '.' || id || '@' || station_id, ',' ORDER BY course_id, sort) FROM core.offer_dishes").stdout.strip(), 'p1.frio@cold,p1.caliente@hot,p2.principal@hot')
         # E3 (v4): los productos fixture v1 pasan al catalogo relacional con una presentacion 'unit' y su precio en la tarifa general.
         self.assertEqual(psql_as(v1super, "SELECT count(*) FROM pg_tables WHERE schemaname='core' AND tablename='configuration'").stdout.strip(), '0')
         self.assertEqual(psql_as(v1super, "SELECT string_agg(p.id || '=' || s.name || ':' || x.price_cents, ',' ORDER BY p.id) FROM core.products p "
                                           "JOIN core.presentations s ON s.product_id=p.id AND s.tenant=p.tenant JOIN core.prices x ON x.product_id=p.id AND x.presentation_id=s.id AND x.tenant=p.tenant").stdout.strip(),
-                         'water=Botella:400,wine-bottle=Botella:4200,wine-glass=Copa:950')
+                         'menu-lab-tasting=Por persona:15000,water=Botella:400,wine-bottle=Botella:4200,wine-glass=Copa:950')
         self.assertEqual(psql_as(v1super, "SELECT string_agg(id, ',' ORDER BY id) FROM core.tariffs").stdout.strip(), 'general')
         self.assertEqual(psql_as(v1super, "SELECT string_agg(id || '=' || rate, ',' ORDER BY rate DESC) FROM core.taxes").stdout.strip(), 'iva-21=21.00,iva-10=10.00,iva-4=4.00,iva-0=0.00')
         # E2 (v3): las mesas fixture pasan a core.tables dentro de la sala 'sala'; las estaciones de la demo y la de pase existen.
@@ -501,7 +509,7 @@ class Packaging(unittest.TestCase):
         restore_root, _, restore_super = scaffold('costina_restore_v1_d1_test', 5096)
         restored = cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root)))
         self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
-        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 4', restored.stdout)
+        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 5', restored.stdout)
         tables = schema_tables(v1super)
         self.assertEqual(tables, schema_tables(restore_super))
         for table in tables:                                                                              # same rows as the upgraded original
@@ -516,13 +524,20 @@ class Packaging(unittest.TestCase):
             # E3: el catalogo migrado se vende (precio de la tarifa general congelado en la cuenta) y sale en los catalogos operativos.
             status, board = call('/api/native/v1/dining/board', token=login['token'], base='http://127.0.0.1:5096'); service_id = board[0]['service']['id']
             status, catalog = call('/api/native/v1/checkout/catalog', token=login['token'], base='http://127.0.0.1:5096')
-            self.assertEqual((status, sorted((i['id'], i['presentationId'], i['priceCents']) for i in catalog)), (200, [('water', 'unit', 400), ('wine-bottle', 'unit', 4200), ('wine-glass', 'unit', 950)]))
+            self.assertEqual((status, sorted((i['id'], i['presentationId'], i['priceCents']) for i in catalog)), (200, [('water', 'unit', 400), ('wine-bottle', 'unit', 4200), ('wine-glass', 'unit', 950)]))   # E4a: el producto-menu migrado no es consumo suelto
             status, account = call('/api/native/v1/checkout/services/' + service_id, token=login['token'], base='http://127.0.0.1:5096')
             status, added = call('/api/native/v1/checkout/services/' + service_id + '/commands/add-product',
                                  {'expectedVersion': account['version'], 'productId': 'wine-glass', 'quantity': 2}, token=login['token'], base='http://127.0.0.1:5096')
             self.assertEqual(status, 200, added)
             line = [c for c in added['data']['charges'] if c.get('productId') == 'wine-glass'][0]
             self.assertEqual((line['unitPriceCents'], line['presentationId'], line['tariffId']), (950, 'unit', 'general'))
+            # E4a: la oferta migrada abre mesas como el menu de siempre y cobra el producto-menu por persona.
+            status, configuration = call('/api/native/v1/configuration', token=login['token'], base='http://127.0.0.1:5096')
+            self.assertEqual([(o['id'], o['kind'], [c['id'] for c in o['courses']]) for o in configuration['offers']], [('LAB-TASTING', 'tasting', ['p1', 'p2'])])
+            status, opened = call('/api/native/v1/dining/services', {'tableId': 'M2', 'pax': 2, 'offerId': 'LAB-TASTING'}, token=login['token'], base='http://127.0.0.1:5096')
+            self.assertEqual(status, 200, opened)
+            status, account = call('/api/native/v1/checkout/services/' + opened['serviceId'], token=login['token'], base='http://127.0.0.1:5096')
+            self.assertEqual((account['data']['charges'][0]['productId'], account['data']['charges'][0]['unitPriceCents'], account['data']['totalCents']), ('menu-lab-tasting', 15000, 30000))
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')

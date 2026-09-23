@@ -34,7 +34,9 @@ public static class DesktopReadRoutes
         // Configuracion operativa: el nucleo aporta la organizacion (mesas ACTIVAS con su sala, E2); cada modulo anade sus claves (p. ej. menus).
         app.MapGet(prefix+"/configuration",(Func<HttpContext,Task<IResult>>)(async c=>{
             var configuration=new Dictionary<string,object>(StringComparer.Ordinal){
-                ["tables"]=await reads.ActiveTables(scope,c.RequestAborted)};
+                ["tables"]=await reads.ActiveTables(scope,c.RequestAborted),
+                // E4a: ofertas VIGENTES ahora (degustaciones y menus cerrados con sus pases y platos): lo que se puede abrir. Sin dinero.
+                ["offers"]=await reads.AvailableOffers(scope,DateTime.Now,c.RequestAborted)};
             foreach(var (module,host) in modules)
                 foreach(var (key,value) in await module.ConfigurationAsync(host,c.RequestAborted))
                     if(!configuration.TryAdd(key,value)) throw new InvalidOperationException($"Configuration key {key} is claimed twice.");

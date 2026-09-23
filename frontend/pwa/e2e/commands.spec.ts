@@ -71,6 +71,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   // 1) Abrir mesa, iniciar y enviar el primer pase DESDE LA TABLET. Los botones existen porque el servidor los anuncia.
   await page.locator('[data-testid=open-form] summary').click()
   await page.selectOption('select[name=table]', 'M7')
+  await page.selectOption('select[name=menu]', 'LAB-TASTING')   // E4a: hay varias ofertas vigentes; la degustacion se elige
   await page.fill('input[name=pax]', '2')
   await page.getByTestId('do-open').click()
   const tile = page.getByTestId('table-M7')

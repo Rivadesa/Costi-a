@@ -7,7 +7,8 @@ import type { BoardEntry, Course } from '../types'
 // Acciones del comandero sobre UNA mesa. Ninguna regla de negocio aqui: un boton existe si y solo si el
 // servidor anuncia esa accion para este dispositivo (affordances, ya filtradas por rol y estacion). Lo
 // unico local es validar el formato de lo tecleado (motivo no vacio, cantidad entera positiva).
-const props = defineProps<{ entry: BoardEntry; catalog: CatalogItem[]; canConsume: boolean; disabled: boolean }>()
+import type { OfferChoice } from './BoardView.vue'
+const props = defineProps<{ entry: BoardEntry; catalog: CatalogItem[]; offers?: OfferChoice[]; canConsume: boolean; disabled: boolean }>()
 const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string] }>()
 
 const reason = ref('')
@@ -46,6 +47,17 @@ function consume(): void {
   command('add-consumption', { productId: item.id, presentationId: item.presentationId, quantity: quantity.value }, `Anadir ${quantity.value} × ${item.name} (${item.presentation})`)
 }
 const courseActions = (course: Course) => course.actions ?? []
+// E4a: pases de menu cerrado en los que el servidor anuncia 'choose': platos elegibles de la oferta con la que se abrio la mesa.
+const choice = ref<Record<string, string>>({})
+const choosable = computed(() => service.value.courses.filter(c => courseActions(c).includes('choose')))
+const dishesOf = (course: Course) => (props.offers ?? []).find(o => o.id === service.value.offerId)?.courses.find(c => c.id === course.id)?.dishes ?? []
+const chosen = (course: Course, guest: number) => course.preparations.find(p => p.guestPosition === guest)?.name ?? 'sin elegir'
+function choose(course: Course, guest: number): void {
+  const dishId = choice.value[`${course.id}/${guest}`]
+  const dish = dishesOf(course).find(d => d.id === dishId)
+  if (!dish) { problem.value = 'Elige un plato para ese comensal.'; return }
+  command('choose', { courseId: course.id, guestPosition: guest, dishId: dish.id }, `Elegir ${dish.name} para el comensal ${guest}`)
+}
 </script>
 
 <template>
@@ -61,6 +73,19 @@ const courseActions = (course: Course) => course.actions ?? []
       <button v-if="courseActions(course).includes('skip')" type="button" class="secondary" :disabled="disabled" :data-testid="`do-skip-${course.id}`"
         @click="withReason('skip', { courseId: course.id }, `Omitir ${course.name}`)">Omitir {{ course.name }} (con motivo)</button>
     </div>
+
+    <details v-for="course in choosable" :key="'choose-' + course.id" open :data-testid="`choose-${course.id}`">
+      <summary>{{ course.name }}: elegir plato por comensal</summary>
+      <div v-for="guest in guests" :key="guest" class="row">
+        <label>Comensal {{ guest }} ({{ chosen(course, guest) }})
+          <select v-model="choice[`${course.id}/${guest}`]" :name="`choice-${course.id}-${guest}`" :disabled="disabled">
+            <option value="" disabled>Elige…</option>
+            <option v-for="dish in dishesOf(course)" :key="dish.id" :value="dish.id">{{ dish.name }}</option>
+          </select>
+        </label>
+        <button type="button" :disabled="disabled" :data-testid="`do-choose-${course.id}-${guest}`" @click="choose(course, guest)">Elegir</button>
+      </div>
+    </details>
 
     <details v-if="canConsume && catalog.length > 0">
       <summary>Anadir consumo a mayores</summary>

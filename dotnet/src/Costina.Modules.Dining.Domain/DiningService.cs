@@ -8,14 +8,17 @@ public sealed partial class DiningService : Aggregate
     private readonly List<CourseExecution> courses;
     public string TableId { get; }
     public int Pax { get; }
+    // E4a: oferta del nucleo con la que se abrio (null en servicios anteriores a E4).
+    public string? OfferId { get; }
     public DiningState State { get; private set; } = DiningState.Open;
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
 
     public DiningService(string id, BusinessScope scope, string tableId, int pax,
-        IReadOnlyList<CourseDefinition> definitions) : base(id, scope)
+        IReadOnlyList<CourseDefinition> definitions, string? offerId = null) : base(id, scope)
     {
         TableId = Guard.Text(tableId, nameof(tableId));
+        OfferId = string.IsNullOrWhiteSpace(offerId) ? null : offerId;
         Guard.Rule(pax > 0, "invalid_pax", "Pax must be positive.");
         Pax = pax;
         ArgumentNullException.ThrowIfNull(definitions);
@@ -42,7 +45,7 @@ public sealed partial class DiningService : Aggregate
         Guard.Rule(!courses.Any(c => c.Active), "active_course", "Another course is still active.");
         var course = courses.FirstOrDefault(c => c.State == CourseState.Pending)
             ?? throw new RuleViolation("no_pending_course", "There are no pending courses.");
-        course.Fire(stamp);
+        course.Fire(stamp);   // choice_missing si un comensal no ha elegido (menu cerrado)
         Emit("course.fired", stamp, ("course_id", course.Id));
         return course.Id;
     }
@@ -73,6 +76,16 @@ public sealed partial class DiningService : Aggregate
         KitchenAllowed(stamp);
         Find(courseId).Serve(stamp);
         Emit("course.served", stamp, ("course_id", courseId));
+    }
+
+    // E4a: eleccion de plato de un comensal en un pase de menu cerrado, solo mientras el pase no se ha disparado.
+    public void Choose(string courseId, int guest, PreparationDefinition dish, CommandStamp stamp)
+    {
+        Check(stamp);
+        Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
+            "service_finished", "A finished service cannot be changed.");
+        Find(courseId).Choose(guest, dish);
+        Emit("course.chosen", stamp, ("course_id", courseId), ("guest", guest.ToString()), ("dish_id", dish.Id));
     }
 
     public void Skip(string courseId, string reason, CommandStamp stamp)
@@ -123,7 +136,7 @@ public sealed partial class DiningService : Aggregate
 
     public DiningView View() => new(Id, TableId, Pax, State,
         Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck);
+        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck, OfferId: OfferId);
     private CourseExecution Find(string id) => courses.FirstOrDefault(c => c.Id == id)
         ?? throw new RuleViolation("course_not_found", "Course not found.");
     private void KitchenAllowed(CommandStamp stamp)

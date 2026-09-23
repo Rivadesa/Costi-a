@@ -11,9 +11,11 @@ export interface Course {
   id: string; name: string; state: 'Pending' | 'Fired' | 'Preparing' | 'Ready' | 'Served' | 'Skipped'
   firedAt: string | null; readyAt: string | null; servedAt: string | null; skipReason: string | null
   preparations: Preparation[]; actions?: string[]
+  choiceRequired?: boolean   // E4a: pase de menu cerrado (cada comensal elige antes de disparar)
 }
 export interface Dining {
   id: string; tableId: string; pax: number; state: 'Open' | 'InService' | 'Paused' | 'Completed' | 'Cancelled'
+  offerId?: string | null   // E4a: oferta con la que se abrio la mesa
   courses: Course[]; actions?: string[]; restrictions?: GuestRestriction[]; restrictionsPendingAck?: boolean
 }
 export interface Occupancy { id: string; tableId: string; serviceId: string; state: 'Occupied' | 'Released'; releasedAt: string | null; actions?: string[] }

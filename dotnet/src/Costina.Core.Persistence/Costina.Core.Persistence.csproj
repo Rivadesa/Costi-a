@@ -7,5 +7,6 @@
     <EmbeddedResource Include="upgrade-v2.sql" />
     <EmbeddedResource Include="upgrade-v3.sql" />
     <EmbeddedResource Include="upgrade-v4.sql" />
+    <EmbeddedResource Include="upgrade-v5.sql" />
   </ItemGroup>
 </Project>

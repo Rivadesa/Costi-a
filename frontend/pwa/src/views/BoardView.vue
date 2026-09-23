@@ -13,26 +13,29 @@ const emit = defineEmits<{ unauthorized: [] }>()
 
 interface TableChoice { id: string; name: string; capacity: number }
 interface MenuChoice { id: string; name: string }
+// E4a: oferta vigente (degustacion o menu cerrado) con sus pases y platos elegibles. Sin dinero.
+export interface OfferChoice { id: string; name: string; kind: string; courses: Array<{ id: string; name: string; dishes: Array<{ id: string; name: string }> }> }
 
 const { state, runnerState, live, locked, age, stale, run, retry, reconcile, discard } = useOperations(props, () => emit('unauthorized'))
 
 const selectedId = ref<string | null>(null)
 const selected = computed(() => state.entries.find(entry => entry.service.id === selectedId.value) ?? null)
-const tables = ref<TableChoice[]>([]); const menus = ref<MenuChoice[]>([]); const catalog = ref<CatalogItem[]>([])
+const tables = ref<TableChoice[]>([]); const menus = ref<OfferChoice[]>([]); const catalog = ref<CatalogItem[]>([])
 const freeTables = computed(() => tables.value.filter(table => !state.entries.some(entry => entry.occupancy.tableId === table.id && entry.occupancy.state === 'Occupied')))
 const openTable = ref(''); const openMenu = ref(''); const openPax = ref(2)
 const can = (action: string) => props.session.actions.includes(action)
 
 function open(): void {
   if (!openTable.value || !openMenu.value || !Number.isInteger(openPax.value) || openPax.value < 1 || openPax.value > 40) { runnerState.notice = 'Elige mesa, menu y comensales (1 a 40).'; return }
-  void run('/dining/services', { tableId: openTable.value, pax: openPax.value, menuId: openMenu.value }, `Abrir mesa ${openTable.value} para ${openPax.value}`)
+  void run('/dining/services', { tableId: openTable.value, pax: openPax.value, offerId: openMenu.value, menuId: openMenu.value }, `Abrir mesa ${openTable.value} para ${openPax.value}`)   // menuId: alias para un servidor anterior
   openTable.value = ''
 }
 
 onMounted(async () => {
   try {
-    const configuration = await call<{ tables: TableChoice[]; menus: MenuChoice[] }>(fetch, '/configuration', { token: props.token })
-    tables.value = configuration.tables; menus.value = configuration.menus
+    const configuration = await call<{ tables: TableChoice[]; menus: MenuChoice[]; offers?: OfferChoice[] }>(fetch, '/configuration', { token: props.token })
+    tables.value = configuration.tables
+    menus.value = configuration.offers ?? configuration.menus.map(menu => ({ ...menu, kind: 'tasting', courses: [] }))   // servidor anterior a E4a: solo menus
     if (menus.value.length === 1) openMenu.value = menus.value[0].id
     if (can('add-consumption')) catalog.value = await getCatalog(fetch, props.token)
   } catch { /* sin configuracion no hay formularios; la lectura del tablero ya informa del problema */ }
@@ -63,7 +66,7 @@ onMounted(async () => {
         </label>
         <label>Comensales <input v-model.number="openPax" name="pax" type="number" min="1" max="40" inputmode="numeric" :disabled="locked" /></label>
         <label>Menu
-          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}</option></select>
+          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ menu.kind === 'set-menu' ? ' (menu cerrado)' : '' }}</option></select>
         </label>
         <button type="button" :disabled="locked" data-testid="do-open" @click="open">Abrir mesa</button>
       </details>
@@ -72,7 +75,7 @@ onMounted(async () => {
     <article v-else data-testid="detail">
       <button type="button" class="secondary" @click="selectedId = null">‹ Volver a las mesas</button>
       <h2>{{ selected.service.tableId }} · {{ selected.service.pax }} personas · {{ diningLabel(selected.service.state) }}</h2>
-      <ServiceActions :entry="selected" :catalog="catalog" :can-consume="can('add-consumption')" :disabled="locked" @run="run" />
+      <ServiceActions :entry="selected" :catalog="catalog" :offers="menus" :can-consume="can('add-consumption')" :disabled="locked" @run="run" />
       <section v-if="selected.service.restrictions?.length" class="restrictions" data-testid="restrictions">
         <h3>Restricciones declaradas</h3>
         <ul><li v-for="restriction in selected.service.restrictions" :key="restriction.id">⚠ {{ restrictionLabel(restriction) }}</li></ul>

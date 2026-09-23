@@ -35,7 +35,16 @@ public sealed record StationDto(string Id, string Name, string Kind, int Sort, b
     public override string ToString() => $"{Name} ({Id}) · {KindLabel} · {StateLabel}";
 }
 public sealed record OrganizationDto(ZoneDto[] Zones, StationDto[] Stations);
-public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null);   // menus: solo con el modulo Dining
+// E4a: ofertas VIGENTES (degustacion / menu cerrado) con sus pases y platos; Menus sigue como alias de un servidor anterior.
+public sealed record OfferDishChoice(string Id, string Name) { public override string ToString() => Name; }
+public sealed record OfferCourseChoice(string Id, string Name, OfferDishChoice[] Dishes);
+public sealed record OfferChoice(string Id, string Name, string Kind, OfferCourseChoice[] Courses)
+{ public string KindLabel => Kind switch { "tasting" => "degustación", "set-menu" => "menú cerrado", var k => k }; public override string ToString() => $"{Name} · {KindLabel}"; }
+public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null, OfferChoice[]? Offers = null);
+// E4a: oferta completa (solo main): espejo de GET /erp/offers.
+public sealed record OfferDishDto(string OfferId, string CourseId, string Id, string Name, string StationId, string? ProductId, int Sort, bool Active);
+public sealed record OfferCourseDto(string Id, string Name, int Sort, bool Active, OfferDishDto[] Dishes);
+public sealed record OfferDto(string Id, string Name, string Kind, string? ProductId, string Service, string? ValidFrom, string? ValidTo, int Weekdays, int Sort, bool Active, OfferCourseDto[] Courses);
 // E3: vendible de caja = producto + presentacion con el precio de la tarifa general como referencia (el servidor fija el real).
 // PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia.
 public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents, string? PresentationId = null, string? CategoryName = null, string? TariffId = null)
@@ -75,9 +84,9 @@ public sealed record PreparationDto(string Id, string Name, string StationId, in
 }
 public sealed record CourseDto(string Id, string Name, string State, DateTimeOffset? FiredAt,
     DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt, string? SkipReason, PreparationDto[] Preparations,
-    string[]? Actions = null);
+    string[]? Actions = null, bool ChoiceRequired = false);
 public sealed record DiningDto(string Id, string TableId, int Pax, string State, CourseDto[] Courses,
-    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null, bool RestrictionsPendingAck = false);
+    string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null, bool RestrictionsPendingAck = false, string? OfferId = null);
 public sealed record OccupancyDto(string Id, string TableId, string ServiceId, string State, DateTimeOffset? ReleasedAt,
     string[]? Actions = null);
 public sealed record BoardEntry(long Version, DiningDto Service, OccupancyDto Occupancy, long OccupancyVersion)
