@@ -12,6 +12,7 @@ export interface Course {
   firedAt: string | null; readyAt: string | null; servedAt: string | null; skipReason: string | null
   preparations: Preparation[]; actions?: string[]
   choiceRequired?: boolean   // E4a: pase de menu cerrado (cada comensal elige antes de disparar)
+  optional?: boolean         // E4b: grupo de carta libre (los platos se piden; vacio se omite)
 }
 export interface Dining {
   id: string; tableId: string; pax: number; state: 'Open' | 'InService' | 'Paused' | 'Completed' | 'Cancelled'

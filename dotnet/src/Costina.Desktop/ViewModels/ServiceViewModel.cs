@@ -30,6 +30,11 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private OfferDishChoice[] choiceDishes = [];
     [ObservableProperty] private OfferDishChoice? selectedChoiceDish;
     [ObservableProperty] private string choicesText = "";
+    // E4b: pedir un plato de la carta en un grupo pendiente (solo cuando el servidor anuncia 'add-dish' en el pase).
+    [ObservableProperty] private OfferItemChoice[] dishItems = [];
+    [ObservableProperty] private OfferItemChoice? selectedDishItem;
+    [ObservableProperty] private string dishGuest = "";
+    [ObservableProperty] private string dishQuantity = "1";
     [ObservableProperty] private string pax = "2";
     [ObservableProperty] private string reason = "";
     [ObservableProperty] private GuestRestrictionDto[] restrictions = [];
@@ -53,7 +58,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         "start" or "fire-next" or "pause" or "resume" or "complete" or "cancel-unstarted"
         or "declare-restriction" or "remove-restriction"
             => Context?.Data.Actions?.Contains(action) == true,
-        "ready" or "serve" or "skip" or "choose" => Context is not null && SelectedCourse?.Actions?.Contains(action) == true,
+        "ready" or "serve" or "skip" or "choose" or "add-dish" => Context is not null && SelectedCourse?.Actions?.Contains(action) == true,
         "preparation-start" or "preparation-ready" or "review-preparation"
             => Context is not null && SelectedPreparation?.Actions?.Contains(action) == true,
         "release" => Context is not null && SelectedEntry?.Occupancy.Actions?.Contains(action) == true,
@@ -65,8 +70,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     {
         ActCommand.NotifyCanExecuteChanged(); OpenCommand.NotifyCanExecuteChanged();
         ReleaseCommand.NotifyCanExecuteChanged(); DeclareRestrictionCommand.NotifyCanExecuteChanged();
-        RemoveRestrictionCommand.NotifyCanExecuteChanged(); ReviewCommand.NotifyCanExecuteChanged(); ChooseCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(CanChoose));
+        RemoveRestrictionCommand.NotifyCanExecuteChanged(); ReviewCommand.NotifyCanExecuteChanged(); ChooseCommand.NotifyCanExecuteChanged(); AddDishCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanChoose)); OnPropertyChanged(nameof(CanAddDish));
     }
 
     public void ApplyConfiguration(Configuration config)
@@ -166,10 +171,26 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         // E4a: platos elegibles del pase (de la oferta con la que se abrio la mesa) y resumen de las elecciones hechas.
         var course = Dining?.Data.OfferId is { } offerId ? Offers.FirstOrDefault(o => o.Id == offerId)?.Courses.FirstOrDefault(c => c.Id == SelectedCourse?.Id) : null;
         ChoiceDishes = course?.Dishes ?? []; SelectedChoiceDish = ChoiceDishes.FirstOrDefault();
+        DishItems = course?.Items ?? []; SelectedDishItem = DishItems.FirstOrDefault();
         var pax = Dining?.Data.Pax ?? 0;
         ChoicesText = SelectedCourse?.ChoiceRequired != true ? ""
             : string.Join(" · ", Enumerable.Range(1, pax).Select(g => $"{g}: " + (Preparations.FirstOrDefault(p => p.GuestPosition == g)?.Name ?? "sin elegir")));
     }
+    public bool CanAddDish => shell.Writable && Allowed("add-dish");
+    private bool CanAddDishItem() => CanAddDish && SelectedDishItem is not null;
+    [RelayCommand(CanExecute = nameof(CanAddDishItem))]
+    private Task AddDish() => shell.Run(async () =>
+    {
+        var context = Require();
+        int? guest = null;
+        if (DishGuest.Trim().Length > 0) { if (!int.TryParse(DishGuest, out var g) || g < 1 || g > context.Data.Pax) throw new ArgumentException("Comensal: vacío (toda la mesa) o un número entre 1 y " + context.Data.Pax + "."); guest = g; }
+        if (!int.TryParse(DishQuantity, out var quantity) || quantity < 1 || quantity > 20) throw new ArgumentException("Cantidad: entre 1 y 20.");
+        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/add-dish",
+            new { expectedVersion = context.Version, courseId = SelectedCourse!.Id, productId = SelectedDishItem!.ProductId, presentationId = SelectedDishItem.PresentationId, guestPosition = guest, quantity },
+            $"Pedir {quantity} × {SelectedDishItem.Name} en {SelectedCourse.Name} · {context.Data.TableId}");
+        await shell.RefreshAll();
+        shell.Status = "Operación confirmada por el servidor: plato pedido y apuntado en la cuenta.";
+    });
     public bool CanChoose => shell.Writable && Allowed("choose");
     private bool CanChooseDish() => CanChoose && SelectedChoiceDish is not null;
     [RelayCommand(CanExecute = nameof(CanChooseDish))]

@@ -209,9 +209,10 @@ internal static class Program
         window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);
         window.Shell.Service.Tables=[new("M1","Mesa 1",12,"sala","Sala"),new("M2","Mesa 2",4,"sala","Sala")]; window.Shell.Service.SelectedTable=window.Shell.Service.Tables[0];
         // E4a: apertura por oferta y eleccion de plato en un pase de menu cerrado; la vista ERP > Oferta se compone de lo leido.
-        var sampleOffers=new Costina.Client.OfferChoice[]{new("LAB-TASTING","Menú de ensayo","tasting",[]),new("LAB-DAILY","Menú del día de ensayo","set-menu",[new("primeros","Primeros",[new("ensalada","Ensalada de la huerta"),new("sopa","Sopa del día")]),new("segundos","Segundos",[new("pescado","Pescado del día")])])};
+        var sampleOffers=new Costina.Client.OfferChoice[]{new("LAB-TASTING","Menú de ensayo","tasting",[]),new("LAB-DAILY","Menú del día de ensayo","set-menu",[new("primeros","Primeros",[new("ensalada","Ensalada de la huerta"),new("sopa","Sopa del día")]),new("segundos","Segundos",[new("pescado","Pescado del día")])]),
+            new("LAB-CARTA","Carta de ensayo","a-la-carte",[new("entrantes","Entrantes",[],[new("croquetas","unit","Croquetas de la casa","Ración")])])};
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,null,sampleOffers));
-        if(window.Shell.Service.Offers.Length!=2||window.Shell.Service.SelectedOffer?.Id!="LAB-TASTING"||window.Shell.Service.SelectedOffer.ToString()!="Menú de ensayo · degustación") throw new Exception("Offers fill the open form.");
+        if(window.Shell.Service.Offers.Length!=3||window.Shell.Service.SelectedOffer?.Id!="LAB-TASTING"||window.Shell.Service.SelectedOffer.ToString()!="Menú de ensayo · degustación") throw new Exception("Offers fill the open form.");
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,[new("LAB-TASTING","Menú de ensayo")],null));
         if(window.Shell.Service.Offers.Length!=1||window.Shell.Service.Offers[0].Kind!="tasting") throw new Exception("A pre-E4a server with only menus still fills the open form.");
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,null,sampleOffers));
@@ -220,15 +221,24 @@ internal static class Program
         window.Shell.Service.Board=[dailyEntry]; window.Shell.Service.SelectedEntry=dailyEntry; window.Shell.Service.Dining=new(4,daily); window.Shell.Service.Courses=daily.Courses; window.Shell.Service.SelectedCourse=daily.Courses[0];
         if(!window.Shell.Service.CanChoose||window.Shell.Service.ChoiceDishes.Length!=2||window.Shell.Service.ChoicesText!="1: Sopa del día · 2: sin elegir") throw new Exception("A set-menu course announcing 'choose' offers its dishes and states who has chosen: "+window.Shell.Service.ChoicesText);
         if(!window.Shell.Service.ChooseCommand.CanExecute(null)) throw new Exception("Choose is enabled from the server affordance.");
+        // E4b: un grupo de carta que anuncia add-dish ofrece sus items; sin la affordance no hay fila de pedido.
+        var carte=new Costina.Client.DiningDto("s3","M3",2,"Open",[new("entrantes","Entrantes","Pending",null,null,null,null,[],["skip","add-dish"],false,true)],["start"],[],false,"LAB-CARTA");
+        var carteEntry=new Costina.Client.BoardEntry(1,carte,new("o3","M3","s3","Occupied",null),1);
+        window.Shell.Service.Board=[carteEntry]; window.Shell.Service.SelectedEntry=carteEntry; window.Shell.Service.Dining=new(1,carte); window.Shell.Service.Courses=carte.Courses; window.Shell.Service.SelectedCourse=carte.Courses[0];
+        if(!window.Shell.Service.CanAddDish||window.Shell.Service.CanChoose||window.Shell.Service.DishItems.Length!=1||window.Shell.Service.SelectedDishItem?.Key!="croquetas/unit"||!window.Shell.Service.AddDishCommand.CanExecute(null)) throw new Exception("An a la carte group announcing add-dish offers its items.");
         window.Shell.Session=new("kitchen","t","c","l",[],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         var offersView=window.Shell.Offers;
         var sampleOfferDtos=new Costina.Client.OfferDto[]{
             new("LAB-TASTING","Menú de ensayo","tasting","menu-lab-tasting","any",null,null,127,0,true,[new("p1","Aperitivos",0,true,[new("LAB-TASTING","p1","frio","Preparación fría","cold",null,0,true),new("LAB-TASTING","p1","caliente","Preparación caliente","hot",null,1,true)]),new("p2","Segundo pase",1,true,[new("LAB-TASTING","p2","principal","Preparación principal","hot",null,0,true)])]),
             new("LAB-DAILY","Menú del día de ensayo","set-menu","menu-lab-daily","lunch","2026-09-01","2026-12-31",31,1,true,[new("primeros","Primeros",0,true,[new("LAB-DAILY","primeros","ensalada","Ensalada de la huerta","cold",null,0,true),new("LAB-DAILY","primeros","sopa","Sopa del día","hot",null,1,false)])]),
-            new("VERANO","Degustación de verano","tasting","menu-verano","dinner",null,null,96,2,false,[])};
+            new("VERANO","Degustación de verano","tasting","menu-verano","dinner",null,null,96,2,false,[]),
+            new("LAB-CARTA","Carta de ensayo","a-la-carte",null,"any",null,null,127,3,true,[new("entrantes","Entrantes",0,true,[],[new("croquetas","unit","Croquetas de la casa","Ración","cold",0,true)])])};
         offersView.Render(sampleOfferDtos,sampleOrganization.Stations);
-        if(offersView.Offers.Length!=3||offersView.SelectedOffer?.Offer.Id!="LAB-TASTING"||offersView.Courses.Length!=2||offersView.SelectedCourse?.Course.Id!="p1"||offersView.Dishes.Length!=2) throw new Exception("Rendering selects the first offer and lists its courses and dishes.");
+        if(offersView.Offers.Length!=4||offersView.SelectedOffer?.Offer.Id!="LAB-TASTING"||offersView.Courses.Length!=2||offersView.SelectedCourse?.Course.Id!="p1"||offersView.Dishes.Length!=2||offersView.IsCarte) throw new Exception("Rendering selects the first offer and lists its courses and dishes.");
+        offersView.SelectedOffer=offersView.Offers[3];
+        if(!offersView.IsCarte||offersView.Items.Length!=1||offersView.Items[0].Item.StationId!="cold"||!offersView.OfferProductText.Contains("Carta libre")) throw new Exception("An a la carte offer lists its items per group.");
+        offersView.SelectedOffer=offersView.Offers[0];
         offersView.SelectedOffer=offersView.Offers[1];
         if(offersView.OfferKind!="set-menu"||offersView.OfferService!="lunch"||offersView.OfferValidFrom!="2026-09-01"||offersView.OfferDays[5]||!offersView.OfferDays[0]||offersView.Weekdays!=31) throw new Exception("Selecting an offer fills its form, weekdays included.");
         offersView.SelectedDish=offersView.Dishes[1];

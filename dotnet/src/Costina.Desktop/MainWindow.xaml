@@ -52,7 +52,7 @@
   <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
   <Separator/>
   <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
-  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.30.0-e5 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.31.0-e6 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
  </StatusBar>
  <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
   <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
@@ -149,6 +149,14 @@
         <WrapPanel><TextBlock Text="Comensal" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.ChoiceGuest, UpdateSourceTrigger=PropertyChanged}" Width="48"/>
          <ComboBox ItemsSource="{Binding Service.ChoiceDishes}" SelectedItem="{Binding Service.SelectedChoiceDish}" Width="220" Margin="8,0,0,0"/>
          <Button Content="Elegir plato" Style="{StaticResource Primary}" Command="{Binding Service.ChooseCommand}"/></WrapPanel>
+       </StackPanel></Border>
+       <!-- E4b: pedir un plato de la carta en un grupo pendiente (solo si el servidor anuncia 'add-dish' en el pase) -->
+       <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,6,0,0" Visibility="{Binding Service.CanAddDish, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="Carta: pedir platos de este grupo (se apuntan en la cuenta al pedirlos)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <WrapPanel><ComboBox ItemsSource="{Binding Service.DishItems}" SelectedItem="{Binding Service.SelectedDishItem}" Width="260"/>
+         <TextBlock Text="Comensal" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishGuest, UpdateSourceTrigger=PropertyChanged}" Width="48" ToolTip="Vacío = toda la mesa"/>
+         <TextBlock Text="Cantidad" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishQuantity, UpdateSourceTrigger=PropertyChanged}" Width="48"/>
+         <Button Content="Pedir plato" Style="{StaticResource Primary}" Command="{Binding Service.AddDishCommand}"/></WrapPanel>
        </StackPanel></Border>
        <DataGrid ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}"><DataGrid.Columns>
         <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding State}" Width="145"/>
@@ -267,6 +275,8 @@
          <ComboBox ItemsSource="{Binding Catalog.ActiveCategories}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.ProductCategoryId}" IsEnabled="{Binding Catalog.ProductEditable}"/>
          <TextBlock Text="Impuesto" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
          <ComboBox ItemsSource="{Binding Catalog.ActiveTaxes}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.ProductTaxId}" IsEnabled="{Binding Catalog.ProductEditable}"/>
+         <TextBlock Text="Estación de cocina (si es un plato)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+         <ComboBox ItemsSource="{Binding Catalog.StationChoices}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.ProductStationId}" IsEnabled="{Binding Catalog.ProductEditable}"/>
          <WrapPanel Margin="0,6,0,0">
           <StackPanel Margin="0,0,10,0"><TextBlock Text="Referencia externa" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductReference, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" Width="120"/></StackPanel>
           <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" Width="60"/></StackPanel>
@@ -401,7 +411,15 @@
      <!-- Platos -->
      <Border Grid.Column="4" Style="{StaticResource Card}">
       <DockPanel>
-       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Plato" Command="{Binding Offers.StartDishCommand}" Margin="0"/><TextBlock Text="Platos del pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Plato" Command="{Binding Offers.StartDishCommand}" Margin="0" Visibility="{Binding Offers.IsNotCarte, Converter={StaticResource Bool2Vis}}"/><TextBlock Text="Platos del pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+       <!-- E4b: en una carta, el grupo lleva items del catalogo (producto + presentacion con estacion) -->
+       <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,10,0,0" Visibility="{Binding Offers.IsCarte, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="Añadir a la carta" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <TextBlock Text="Producto y presentación del catálogo (necesita estación de cocina)" Style="{StaticResource FieldLabel}"/>
+        <ComboBox ItemsSource="{Binding Offers.ItemChoices}" SelectedItem="{Binding Offers.SelectedItemChoice}"/>
+        <WrapPanel Margin="0,8,0,0"><Button Content="Añadir al grupo" Style="{StaticResource Primary}" Command="{Binding Offers.AddItemCommand}"/>
+         <Button Content="Retirar / volver" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleItemCommand}"/></WrapPanel>
+       </StackPanel></Border>
        <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,10,0,0"><StackPanel>
         <TextBlock Text="{Binding Offers.DishFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
         <WrapPanel>
@@ -415,7 +433,8 @@
         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar plato" Style="{StaticResource Primary}" Command="{Binding Offers.SaveDishCommand}"/>
          <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleDishCommand}"/></WrapPanel>
        </StackPanel></Border>
-       <ListBox x:Name="OfferDishList" ItemsSource="{Binding Offers.Dishes}" SelectedItem="{Binding Offers.SelectedDish}"/>
+       <ListBox x:Name="OfferItemList" DockPanel.Dock="Top" ItemsSource="{Binding Offers.Items}" SelectedItem="{Binding Offers.SelectedItem}" MaxHeight="220" Visibility="{Binding Offers.IsCarte, Converter={StaticResource Bool2Vis}}"/>
+       <ListBox x:Name="OfferDishList" ItemsSource="{Binding Offers.Dishes}" SelectedItem="{Binding Offers.SelectedDish}" Visibility="{Binding Offers.IsNotCarte, Converter={StaticResource Bool2Vis}}"/>
       </DockPanel>
      </Border>
     </Grid>

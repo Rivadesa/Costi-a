@@ -24,9 +24,20 @@ public sealed record OfferDishRow(OfferDishDto Dish)
     public override string ToString() => $"{Dish.Name} ({Dish.Id}) · estación {Dish.StationId} · {StateLabel}";
 }
 
+public sealed record OfferItemRow(OfferItemDto Item)
+{
+    public string StateLabel => Item.Active ? "activo" : "desactivado";
+    public override string ToString() => $"{Item.Name} · {Item.Presentation} · estación {Item.StationId ?? "—"} · {StateLabel}";
+}
+
 public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableObject
 {
     private bool rendering;
+    // E4b: items de un grupo de carta y catalogo (vendibles de caja) para elegir el producto + presentacion.
+    [ObservableProperty] private OfferItemRow[] items = [];
+    [ObservableProperty] private OfferItemRow? selectedItem;
+    [ObservableProperty] private ProductChoice[] itemChoices = [];
+    [ObservableProperty] private ProductChoice? selectedItemChoice;
     [ObservableProperty] private OfferRow[] offers = [];
     [ObservableProperty] private OfferRow? selectedOffer;
     [ObservableProperty] private OfferCourseRow[] courses = [];
@@ -45,10 +56,13 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     public bool Visible { get; set; }
     public bool HasOffers => Offers.Length > 0;
     public bool HasCourses => Courses.Length > 0;
+    public bool IsCarte => SelectedOffer?.Offer.Kind == "a-la-carte";
+    public bool IsNotCarte => !IsCarte;
+    public bool ItemEditable => Main && IsCarte && SelectedCourse is not null && !NewCourse && SelectedItemChoice is not null;
     public string OfferFormTitle => NewOffer ? "Nueva oferta" : SelectedOffer is null ? "Selecciona una oferta" : "Oferta " + SelectedOffer.Offer.Id;
     public string CourseFormTitle => NewCourse ? "Nuevo pase" : SelectedCourse is null ? "Selecciona un pase" : "Pase " + SelectedCourse.Course.Id;
     public string DishFormTitle => NewDish ? "Nuevo plato" : SelectedDish is null ? "Selecciona un plato" : "Plato " + SelectedDish.Dish.Id;
-    public string OfferProductText => SelectedOffer?.Offer.ProductId is { Length: > 0 } p ? $"Se vende como el producto «{p}» por persona: su precio se fija en ERP › Catálogo y tarifas." : "Al crearla se crea también su producto-menú en el catálogo (categoría Menús).";
+    public string OfferProductText => IsCarte ? "Carta libre: no tiene producto-menú; cada plato se cobra al pedirlo al precio del catálogo." : SelectedOffer?.Offer.ProductId is { Length: > 0 } p ? $"Se vende como el producto «{p}» por persona: su precio se fija en ERP › Catálogo y tarifas." : "Al crearla se crea también su producto-menú en el catálogo (categoría Menús).";
     private bool Main => shell.Writable && shell.IsMain;
     public bool OfferEditable => Main && (NewOffer || SelectedOffer is not null);
     public bool CourseEditable => Main && SelectedOffer is not null && !NewOffer && (NewCourse || SelectedCourse is not null);
@@ -57,16 +71,16 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
 
     internal void Sync()
     {
-        foreach (var name in new[] { nameof(OfferEditable), nameof(CourseEditable), nameof(DishEditable), nameof(OfferFormTitle), nameof(CourseFormTitle), nameof(DishFormTitle), nameof(HasOffers), nameof(HasCourses), nameof(OfferProductText), nameof(ActiveStations) })
+        foreach (var name in new[] { nameof(OfferEditable), nameof(CourseEditable), nameof(DishEditable), nameof(OfferFormTitle), nameof(CourseFormTitle), nameof(DishFormTitle), nameof(HasOffers), nameof(HasCourses), nameof(OfferProductText), nameof(ActiveStations), nameof(IsCarte), nameof(IsNotCarte), nameof(ItemEditable) })
             OnPropertyChanged(name);
-        foreach (var command in new IRelayCommand[] { StartOfferCommand, SaveOfferCommand, ToggleOfferCommand, StartCourseCommand, SaveCourseCommand, ToggleCourseCommand, StartDishCommand, SaveDishCommand, ToggleDishCommand })
+        foreach (var command in new IRelayCommand[] { StartOfferCommand, SaveOfferCommand, ToggleOfferCommand, StartCourseCommand, SaveCourseCommand, ToggleCourseCommand, StartDishCommand, SaveDishCommand, ToggleDishCommand, AddItemCommand, ToggleItemCommand })
             command.NotifyCanExecuteChanged();
     }
 
     internal void Clear()
     {
         rendering = true;
-        try { Offers = []; Courses = []; Dishes = []; Stations = []; SelectedOffer = null; SelectedCourse = null; SelectedDish = null; NewOffer = NewCourse = NewDish = false; Summary = "Sin datos de oferta todavía."; }
+        try { Offers = []; Courses = []; Dishes = []; Items = []; ItemChoices = []; Stations = []; SelectedOffer = null; SelectedCourse = null; SelectedDish = null; SelectedItem = null; SelectedItemChoice = null; NewOffer = NewCourse = NewDish = false; Summary = "Sin datos de oferta todavía."; }
         finally { rendering = false; }
         Sync();
     }
@@ -76,6 +90,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         if (shell.Api is null || !shell.IsMain) return;
         var offers = await shell.Api.GetAsync<OfferDto[]>("erp/offers");
         var organization = await shell.Api.GetAsync<OrganizationDto>("organization");
+        ItemChoices = await shell.Api.GetAsync<ProductChoice[]>("checkout/catalog");   // E4b: producto + presentacion para los items de una carta
         Render(offers, organization.Stations);
     }
 
@@ -90,15 +105,19 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
             Offers = value.Select(o => new OfferRow(o)).ToArray();
             SelectedOffer = Offers.FirstOrDefault(o => o.Offer.Id == offer) ?? Offers.FirstOrDefault();
             RenderCourses(); SelectedCourse = Courses.FirstOrDefault(c => c.Course.Id == course) ?? Courses.FirstOrDefault();
-            RenderDishes(); SelectedDish = Dishes.FirstOrDefault(d => d.Dish.Id == dish);
-            Summary = $"{value.Count(o => o.Active)} ofertas activas · {value.Count(o => o.Active && o.Kind == "tasting")} degustaciones · {value.Count(o => o.Active && o.Kind == "set-menu")} menús cerrados · cada una se vende como producto del catálogo por persona";
+            RenderDishes(); SelectedDish = Dishes.FirstOrDefault(d => d.Dish.Id == dish); SelectedItem = null; SelectedItemChoice = ItemChoices.FirstOrDefault();
+            Summary = $"{value.Count(o => o.Active)} ofertas activas · {value.Count(o => o.Active && o.Kind == "tasting")} degustaciones · {value.Count(o => o.Active && o.Kind == "set-menu")} menús cerrados · {value.Count(o => o.Active && o.Kind == "a-la-carte")} cartas · los menús se venden por persona; los platos de carta, al pedirlos";
         }
         finally { rendering = false; }
         if (!NewOffer) FillOfferForm(); if (!NewCourse) FillCourseForm(); if (!NewDish) FillDishForm();
         Sync();
     }
     private void RenderCourses() => Courses = SelectedOffer is null ? [] : SelectedOffer.Offer.Courses.Select(c => new OfferCourseRow(c)).ToArray();
-    private void RenderDishes() => Dishes = SelectedCourse is null ? [] : SelectedCourse.Course.Dishes.Select(d => new OfferDishRow(d)).ToArray();
+    private void RenderDishes()
+    {
+        Dishes = SelectedCourse is null ? [] : SelectedCourse.Course.Dishes.Select(d => new OfferDishRow(d)).ToArray();
+        Items = SelectedCourse is null ? [] : (SelectedCourse.Course.Items ?? []).Select(i => new OfferItemRow(i)).ToArray();
+    }
 
     partial void OnSelectedOfferChanged(OfferRow? value)
     {
@@ -111,10 +130,12 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     {
         if (rendering) return;
         NewCourse = false; FillCourseForm();
-        rendering = true; try { RenderDishes(); SelectedDish = null; } finally { rendering = false; }
+        rendering = true; try { RenderDishes(); SelectedDish = null; SelectedItem = null; } finally { rendering = false; }
         NewDish = false; FillDishForm(); Sync();
     }
     partial void OnSelectedDishChanged(OfferDishRow? value) { if (rendering) return; NewDish = false; FillDishForm(); Sync(); }
+    partial void OnSelectedItemChanged(OfferItemRow? value) { if (!rendering) Sync(); }
+    partial void OnSelectedItemChoiceChanged(ProductChoice? value) { if (!rendering) Sync(); }
 
     private void FillOfferForm()
     {
@@ -195,6 +216,17 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     [RelayCommand(CanExecute = nameof(CanToggleCourse))]
     private Task ToggleCourse() => Command(SelectedCourse!.Course.Active ? "course-deactivate" : "course-reactivate", new { offerId = SelectedOffer!.Offer.Id, id = SelectedCourse.Course.Id },
         (SelectedCourse.Course.Active ? "Desactivar pase " : "Reactivar pase ") + SelectedCourse.Course.Id);
+
+    // E4b: items de una carta: anadir un vendible del catalogo al grupo; desactivar/reactivar.
+    private bool CanAddItem() => ItemEditable;
+    [RelayCommand(CanExecute = nameof(CanAddItem))]
+    private Task AddItem() => Command("item-create", new { offerId = SelectedOffer!.Offer.Id, courseId = SelectedCourse!.Course.Id, productId = SelectedItemChoice!.Id, presentationId = SelectedItemChoice.PresentationId, sort = Items.Length },
+        $"Añadir {SelectedItemChoice.Name} a {SelectedCourse.Course.Name}");
+    private bool CanToggleItem() => Main && IsCarte && SelectedCourse is not null && SelectedItem is not null;
+    [RelayCommand(CanExecute = nameof(CanToggleItem))]
+    private Task ToggleItem() => Command(SelectedItem!.Item.Active ? "item-deactivate" : "item-reactivate",
+        new { offerId = SelectedOffer!.Offer.Id, courseId = SelectedCourse!.Course.Id, productId = SelectedItem.Item.ProductId, presentationId = SelectedItem.Item.PresentationId },
+        (SelectedItem.Item.Active ? "Retirar de la carta " : "Volver a la carta ") + SelectedItem.Item.Name);
 
     private bool CanSaveDish() => DishEditable;
     [RelayCommand(CanExecute = nameof(CanSaveDish))]
