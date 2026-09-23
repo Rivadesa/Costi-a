@@ -32,7 +32,7 @@
    <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
   <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <MenuItem Header="Catálogo y tarifas" IsEnabled="False" ToolTip="Llega en E3 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView"/>
    <MenuItem Header="Menús y pases" IsEnabled="False" ToolTip="Llega en E4 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Informes" IsEnabled="False" ToolTip="Tras el Hito 7" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Módulos posteriores" ToolTipService.ShowOnDisabled="True"/>
@@ -52,7 +52,7 @@
   <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
   <Separator/>
   <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
-  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.28.0-e3 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.29.0-e4 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
  </StatusBar>
  <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
   <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
@@ -202,6 +202,126 @@
      </DataGrid.Columns></DataGrid>
     </DockPanel>
    </Border>
+  </TabItem>
+  <!-- ═══════════════ ERP › Catalogo y tarifas (nucleo, E3, solo main) ═══════════════ -->
+  <TabItem Header="Catálogo" x:Name="CatalogTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+     <TextBlock Text="Catálogo y tarifas" Style="{StaticResource PanelTitle}"/>
+     <TextBlock Text="{Binding Catalog.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+     <TextBlock Text="Nada se borra: productos, categorías, tarifas e impuestos se desactivan y conservan su historia. El precio que se cobra queda congelado en cada cuenta con su producto, presentación y tarifa." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+    </StackPanel>
+    <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="6*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+     <!-- Categorias -->
+     <Border Grid.Column="0" Style="{StaticResource Card}">
+      <DockPanel>
+       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Categoría" Command="{Binding Catalog.StartCategoryCommand}" Margin="0"/><TextBlock Text="Categorías" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+       <CheckBox DockPanel.Dock="Top" Content="Ver todos los productos" IsChecked="{Binding Catalog.AllCategories}" Margin="0,0,0,8"/>
+       <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,10,0,0"><StackPanel>
+        <TextBlock Text="{Binding Catalog.CategoryFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}"/>
+        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.CategoryName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}"/>
+        <TextBlock Text="Dentro de (vacío = raíz)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+        <ComboBox ItemsSource="{Binding Catalog.ParentChoices}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.CategoryParentId}" IsEnabled="{Binding Catalog.CategoryEditable}"/>
+        <WrapPanel Margin="0,6,0,0">
+         <StackPanel Margin="0,0,10,0"><TextBlock Text="Color (#RRGGBB)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.CategoryColor, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" Width="90"/></StackPanel>
+         <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.CategorySort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" Width="60"/></StackPanel>
+        </WrapPanel>
+        <WrapPanel Margin="0,8,0,0"><Button Content="Guardar categoría" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveCategoryCommand}"/>
+         <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleCategoryCommand}"/></WrapPanel>
+       </StackPanel></Border>
+       <TextBlock DockPanel.Dock="Bottom" Text="Aún no hay categorías. Crea la primera con «＋ Categoría» o importa un fichero." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Catalog.HasCategories, Converter={StaticResource NotBool2Vis}}"/>
+       <ListBox x:Name="CategoryList" ItemsSource="{Binding Catalog.Categories}" SelectedItem="{Binding Catalog.SelectedCategory}" FontFamily="Consolas, Segoe UI Variable"/>
+      </DockPanel>
+     </Border>
+     <!-- Productos y presentaciones -->
+     <Border Grid.Column="2" Style="{StaticResource Card}">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+       <DockPanel Grid.Column="0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Producto" Command="{Binding Catalog.StartProductCommand}" Margin="0"/><TextBlock Text="Productos" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <TextBox DockPanel.Dock="Top" Text="{Binding Catalog.Search, UpdateSourceTrigger=PropertyChanged}" ToolTip="Buscar por nombre, código o referencia" Margin="0,0,0,8"/>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" Height="150">
+         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6"><Button DockPanel.Dock="Right" Content="＋ Presentación" Command="{Binding Catalog.StartPresentationCommand}" Margin="0"/><TextBlock Text="Presentaciones del producto y precio vigente por tarifa" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+         <TextBlock DockPanel.Dock="Bottom" Text="Un producto se vende siempre por una presentación (botella, copa, ración…). Sin precio vigente en la tarifa general no se vende." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+         <ListBox x:Name="PresentationList" ItemsSource="{Binding Catalog.Presentations}" SelectedItem="{Binding Catalog.SelectedPresentation}"/>
+        </DockPanel>
+        <TextBlock DockPanel.Dock="Bottom" Text="No hay productos que mostrar: cambia la categoría o la búsqueda, crea uno con «＋ Producto» o importa un CSV con «Costina.Server import-catalog»." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding Catalog.HasProducts, Converter={StaticResource NotBool2Vis}}"/>
+        <ListBox x:Name="ProductList" ItemsSource="{Binding Catalog.Products}" SelectedItem="{Binding Catalog.SelectedProduct}"/>
+       </DockPanel>
+       <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
+        <Border Style="{StaticResource Banner}" Margin="0,0,0,10"><StackPanel>
+         <TextBlock Text="{Binding Catalog.ProductFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}"/>
+         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.ProductName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}"/>
+         <TextBlock Text="Categoría" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+         <ComboBox ItemsSource="{Binding Catalog.ActiveCategories}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.ProductCategoryId}" IsEnabled="{Binding Catalog.ProductEditable}"/>
+         <TextBlock Text="Impuesto" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+         <ComboBox ItemsSource="{Binding Catalog.ActiveTaxes}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.ProductTaxId}" IsEnabled="{Binding Catalog.ProductEditable}"/>
+         <WrapPanel Margin="0,6,0,0">
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Referencia externa" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductReference, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" Width="120"/></StackPanel>
+          <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" Width="60"/></StackPanel>
+         </WrapPanel>
+         <StackPanel Visibility="{Binding Catalog.NewProduct, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Primera presentación (p. ej. Botella, Ración)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.ProductPresentationName, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar producto" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveProductCommand}"/>
+          <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleProductCommand}"/></WrapPanel>
+        </StackPanel></Border>
+        <Border Style="{StaticResource Banner}"><StackPanel>
+         <TextBlock Text="{Binding Catalog.PresentationFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.PresentationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewPresentation}"/>
+         <WrapPanel Margin="0,6,0,0">
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Nombre" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.PresentationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PresentationEditable}" Width="150"/></StackPanel>
+          <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.PresentationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PresentationEditable}" Width="60"/></StackPanel>
+         </WrapPanel>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar presentación" Style="{StaticResource Primary}" Command="{Binding Catalog.SavePresentationCommand}"/>
+          <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.TogglePresentationCommand}"/></WrapPanel>
+         <TextBlock Text="Precio (IVA incluido)" Style="{StaticResource Section}" Margin="0,12,0,6"/>
+         <TextBlock Text="Tarifa" Style="{StaticResource FieldLabel}"/>
+         <ComboBox ItemsSource="{Binding Catalog.ActiveTariffs}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.PriceTariffId}" IsEnabled="{Binding Catalog.PriceEditable}"/>
+         <WrapPanel Margin="0,6,0,0">
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Importe (€)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.PriceText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PriceEditable}" Width="90"/></StackPanel>
+          <StackPanel><TextBlock Text="Desde (AAAA-MM-DD)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.PriceValidFrom, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PriceEditable}" Width="110"/></StackPanel>
+         </WrapPanel>
+         <Button Content="Fijar precio" Style="{StaticResource Primary}" Command="{Binding Catalog.SetPriceCommand}" Margin="0,8,0,0" HorizontalAlignment="Left"/>
+        </StackPanel></Border>
+       </StackPanel></ScrollViewer>
+      </Grid>
+     </Border>
+     <!-- Tarifas e impuestos -->
+     <Border Grid.Column="4" Style="{StaticResource Card}">
+      <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="16"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <DockPanel Grid.Row="0">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Tarifa" Command="{Binding Catalog.StartTariffCommand}" Margin="0"/><TextBlock Text="Tarifas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,8,0,0"><StackPanel>
+         <TextBlock Text="{Binding Catalog.TariffFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <WrapPanel>
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.TariffId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTariff}" Width="110"/></StackPanel>
+          <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.TariffSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TariffEditable}" Width="60"/></StackPanel>
+         </WrapPanel>
+         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.TariffName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TariffEditable}"/>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar tarifa" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveTariffCommand}"/>
+          <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleTariffCommand}"/></WrapPanel>
+        </StackPanel></Border>
+        <TextBlock DockPanel.Dock="Bottom" Text="La tarifa «general» existe siempre. Cada sala puede usar otra (Configuración › Salas): sin precio en ella se aplica la general." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+        <ListBox x:Name="TariffList" ItemsSource="{Binding Catalog.Tariffs}" SelectedItem="{Binding Catalog.SelectedTariff}"/>
+       </DockPanel>
+       <DockPanel Grid.Row="2">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Impuesto" Command="{Binding Catalog.StartTaxCommand}" Margin="0"/><TextBlock Text="Impuestos" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+        <Border DockPanel.Dock="Bottom" Style="{StaticResource Banner}" Margin="0,8,0,0"><StackPanel>
+         <TextBlock Text="{Binding Catalog.TaxFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+         <WrapPanel>
+          <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.TaxId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTax}" Width="110"/></StackPanel>
+          <StackPanel><TextBlock Text="Tipo (%)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.TaxRate, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TaxEditable}" Width="60"/></StackPanel>
+         </WrapPanel>
+         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.TaxName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TaxEditable}"/>
+         <WrapPanel Margin="0,8,0,0"><Button Content="Guardar impuesto" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveTaxCommand}"/>
+          <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleTaxCommand}"/></WrapPanel>
+        </StackPanel></Border>
+        <ListBox x:Name="TaxList" ItemsSource="{Binding Catalog.Taxes}" SelectedItem="{Binding Catalog.SelectedTax}"/>
+       </DockPanel>
+      </Grid>
+     </Border>
+    </Grid>
+   </Grid>
   </TabItem>
   <!-- ═══════════════ Configuracion (nucleo, E2, solo main) ═══════════════ -->
   <TabItem Header="Configuración" x:Name="OrganizationTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">

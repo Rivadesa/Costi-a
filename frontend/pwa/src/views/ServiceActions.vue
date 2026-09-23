@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { CatalogItem } from '../api'
+import { catalogKey, type CatalogItem } from '../api'
 import { restrictionLabel } from '../labels'
 import type { BoardEntry, Course } from '../types'
 
@@ -40,9 +40,10 @@ function declare(): void {
   substance.value = ''
 }
 function consume(): void {
-  const item = props.catalog.find(candidate => candidate.id === productId.value)
+  const item = props.catalog.find(candidate => catalogKey(candidate) === productId.value)
   if (!item || !Number.isInteger(quantity.value) || quantity.value < 1 || quantity.value > 99) { problem.value = 'Elige un producto y una cantidad entre 1 y 99.'; return }
-  command('add-consumption', { productId: item.id, quantity: quantity.value }, `Anadir ${quantity.value} × ${item.name} (${item.presentation})`)
+  // E3: la presentacion vendida viaja con el producto; el servidor fija el precio con la tarifa de la sala (nunca aqui).
+  command('add-consumption', { productId: item.id, presentationId: item.presentationId, quantity: quantity.value }, `Anadir ${quantity.value} × ${item.name} (${item.presentation})`)
 }
 const courseActions = (course: Course) => course.actions ?? []
 </script>
@@ -66,7 +67,7 @@ const courseActions = (course: Course) => course.actions ?? []
       <label>Producto
         <select v-model="productId" name="product" :disabled="disabled">
           <option value="" disabled>Elige…</option>
-          <option v-for="item in catalog" :key="item.id" :value="item.id">{{ item.name }} · {{ item.presentation }}</option>
+          <option v-for="item in catalog" :key="catalogKey(item)" :value="catalogKey(item)">{{ item.categoryName ? item.categoryName + ' · ' : '' }}{{ item.name }} · {{ item.presentation }}</option>
         </select>
       </label>
       <label>Cantidad <input v-model.number="quantity" name="quantity" type="number" min="1" max="99" inputmode="numeric" :disabled="disabled" /></label>

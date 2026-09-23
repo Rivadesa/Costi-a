@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS dining.occupancies (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_occupancy_per_table
  ON dining.occupancies (tenant, company, location, table_id) WHERE state = 'Occupied';
--- Menus por pases: configuracion del modulo (mesas y productos son del nucleo, core.configuration).
+-- Menus por pases: configuracion del modulo (mesas y productos son del nucleo: organizacion E2 y catalogo E3, relacionales).
 CREATE TABLE IF NOT EXISTS dining.configuration (
  tenant text NOT NULL, company text NOT NULL, location text NOT NULL,
  kind text NOT NULL CHECK (kind IN ('menu')), id text NOT NULL, payload jsonb NOT NULL,

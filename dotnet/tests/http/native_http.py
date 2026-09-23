@@ -198,13 +198,14 @@ class NativeHttp(unittest.TestCase):
             stop_server(); start_server()
 
     def test_08_initialization_does_not_overwrite_catalog_or_services(self):
-        sql("UPDATE core.configuration SET payload=jsonb_set(payload,'{priceCents}','575') WHERE tenant='d1-tenant' AND kind='product' AND id='water'")
+        sql("UPDATE core.prices SET price_cents=575 WHERE tenant='d1-tenant' AND product_id='water' AND tariff_id='general'")   # E3: catalogo relacional
         before=sql('SELECT count(*) FROM dining.services')
         stop_server()
         subprocess.run(['dotnet',str(SERVER),'init-lab'],env=ENV,check=True)
         start_server()
         self.assertEqual(sql('SELECT count(*) FROM dining.services'),before)
-        self.assertEqual(sql("SELECT payload->>'priceCents' FROM core.configuration WHERE tenant='d1-tenant' AND kind='product' AND id='water'"),'575')
+        self.assertEqual(sql("SELECT price_cents FROM core.prices WHERE tenant='d1-tenant' AND product_id='water' AND tariff_id='general'"),'575')
+        sql("UPDATE core.prices SET price_cents=400 WHERE tenant='d1-tenant' AND product_id='water' AND tariff_id='general'")   # las suites siguientes cuentan con 400
 
     def test_09_request_validation_and_price_tampering(self):
         self.assertEqual(request('/dining/services',{'tableId':'M7','pax':-1,'menuId':'LAB-TASTING'})[0],422)

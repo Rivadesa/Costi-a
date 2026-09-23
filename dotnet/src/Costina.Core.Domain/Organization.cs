@@ -5,7 +5,8 @@ namespace Costina.Core.Domain;
 // y cuentas antiguos sigan siendo legibles. El codigo (Id) es estable e inmutable; el nombre se edita.
 public enum StationKind { Kitchen, Pass, Bar, Room }
 
-public sealed record ZoneDefinition(string Id, string Name, int Sort, bool Active);
+// E3: TariffId = tarifa de la sala (null = la general del catalogo).
+public sealed record ZoneDefinition(string Id, string Name, int Sort, bool Active, string? TariffId = null);
 public sealed record TableDefinition(string Id, string Name, int Capacity, string ZoneId, int Sort, bool Active);
 public sealed record StationDefinition(string Id, string Name, StationKind Kind, int Sort, bool Active);
 
@@ -38,8 +39,8 @@ public static class Organization
         return sort;
     }
 
-    public static ZoneDefinition Zone(string? id, string? name, int? sort, bool active = true)
-        => new(Code(id, "zone id"), Name(name), Sort(sort), active);
+    public static ZoneDefinition Zone(string? id, string? name, int? sort, bool active = true, string? tariffId = null)
+        => new(Code(id, "zone id"), Name(name), Sort(sort), active, string.IsNullOrWhiteSpace(tariffId) ? null : Code(tariffId, "tariff id"));
 
     public static TableDefinition Table(string? id, string? name, int? capacity, string? zoneId, int? sort, bool active = true)
     {

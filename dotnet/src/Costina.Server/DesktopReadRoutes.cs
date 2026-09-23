@@ -2,6 +2,7 @@ using Costina.Core.Domain;
 using Costina.Core.Hosting;
 using Costina.Core.Persistence;
 using Npgsql;
+using static Costina.Core.Hosting.Requests;
 namespace Costina.Server;
 
 // Lecturas del NUCLEO. Uses the existing middleware and endpoint access metadata, without changing authentication.
@@ -40,14 +41,15 @@ public static class DesktopReadRoutes
             return Results.Json(configuration);
         })).WithMetadata(new RouteAccess("main","service","kitchen"));
         // D6.1 (#28, ADR-007): catalogo OPERATIVO para el comandero — que se puede anadir, nunca a que precio.
-        // Proyeccion propia: no reutiliza la de caja ni deja pasar un solo campo economico.
-        app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(
-            (await reads.Configuration<ProductDefinition>(scope,"product",c.RequestAborted)).Where(p=>p.Active)
-            .Select(p=>new {p.Id,p.Name,p.Presentation}).ToArray()
+        // Proyeccion propia: no reutiliza la de caja ni deja pasar un solo campo economico (ni 'tariff': la guarda de la PWA la rechaza).
+        // E3: un vendible = producto + presentacion activos con precio vigente en la tarifa general.
+        app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Json(
+            await reads.Sellables(scope,DateOnly.FromDateTime(DateTime.Now),c.RequestAborted)
         ))).WithMetadata(new RouteAccess("main","service"));
-        app.MapGet(prefix+"/checkout/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(
-            (await reads.Configuration<ProductDefinition>(scope,"product",c.RequestAborted)).Where(p=>p.Active)
-            .Select(p=>new {p.Id,p.Name,p.Presentation,p.PriceCents}).ToArray()
+        // Caja: el mismo listado con el precio de la tarifa GENERAL como referencia; el importe real lo fija el servidor con la
+        // tarifa de la sala de la cuenta al anadir el consumo.
+        app.MapGet(prefix+"/checkout/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Json(
+            await reads.PricedSellables(scope,DateOnly.FromDateTime(DateTime.Now),c.RequestAborted)
         ))).WithMetadata(new RouteAccess("main"));
         app.MapGet(prefix+"/checkout/accounts",(Func<HttpContext,Task<IResult>>)(async c=>Results.Json(
             await reads.OpenAccounts(scope,c.RequestAborted)

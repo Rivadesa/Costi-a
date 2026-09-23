@@ -133,6 +133,22 @@ if(args.Length == 1 && args[0] == "first-user")
     }
 }
 // D5.4: copia manual inmediata (la desatendida la hace el propio servicio). Usa el rol de ejecucion.
+// E3: importacion del catalogo desde un CSV (Verial, tienda web, alta masiva). Rol de ejecucion: solo INSERT/UPDATE en el
+// catalogo, una transaccion, idempotente por la huella del fichero (misma clave de comando -> nada se aplica dos veces).
+if(args.Length == 2 && args[0] == "import-catalog")
+{
+    await store.CheckAsync(schemaNames);
+    var content = await File.ReadAllBytesAsync(args[1]);
+    var rows = CatalogImport.Parse(System.Text.Encoding.UTF8.GetString(content));
+    var fingerprint = CatalogImport.Fingerprint(content);
+    var response = await store.ExecuteAsync(new(scope,"cli:import-catalog"),"import-catalog-" + fingerprint[..32],fingerprint,
+        async unit => await CatalogImport.Apply(unit,rows,CatalogOperations.Today()));
+    var summary = Wire.Decode<ImportSummary>(response);
+    Console.WriteLine($"Catalog import: {summary.Rows} rows; products created {summary.ProductsCreated}, updated {summary.ProductsUpdated}; " +
+        $"categories created {summary.CategoriesCreated}; presentations created {summary.PresentationsCreated}; prices set {summary.PricesSet}. " +
+        "Repeating the same file changes nothing.");
+    return;
+}
 if(args.Length == 1 && args[0] == "backup")
 {
     await store.CheckAsync(schemaNames);
@@ -143,7 +159,7 @@ if(args.Length == 1 && args[0] == "backup")
         + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: status, provision, init, upgrade, init-lab, load-demo, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role> or normal startup.");
+if(args.Length != 0) throw new ArgumentException("Supported: status, provision, init, upgrade, init-lab, load-demo, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role>, import-catalog <file.csv> or normal startup.");
 // D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
 // instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
 var notices = new List<string>();
@@ -435,8 +451,9 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
     return Results.Text(stored is null ? Wire.Encode(new {key,found=false})
         : "{\"key\":"+Wire.Encode(key)+",\"found\":true,\"response\":"+stored+"}","application/json");
 }).WithMetadata(new RouteAccess("main","service","kitchen"));
-// E2: organizacion editable del nucleo (solo puesto principal).
+// E2: organizacion editable del nucleo (solo puesto principal). E3: catalogo y tarifas.
 app.MapOrganizationRoutes(store,source,scope,modules);
+app.MapCatalogRoutes(store,source,scope);
 // ADR-012: cada modulo activo registra sus rutas bajo su prefijo (y, durante una version, bajo el anterior como alias).
 var hosted=modules.Select(m=>(Module:m,Host:new ModuleHost(store,source,scope,prefix+"/"+m.Name,prefix))).ToList();
 foreach(var (module,host) in hosted) module.MapRoutes(app,host);

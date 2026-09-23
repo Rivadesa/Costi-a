@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><Version>0.28.0-e3</Version></PropertyGroup>
+  <PropertyGroup><Version>0.29.0-e4</Version></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Costina.Core.Hosting/Costina.Core.Hosting.csproj" />
     <!-- Raiz de composicion (ADR-012): el host es el unico que conoce los modulos. -->

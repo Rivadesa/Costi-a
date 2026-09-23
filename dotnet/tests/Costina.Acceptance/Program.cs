@@ -109,6 +109,62 @@ internal static class Program
             Rule("invalid_capacity", () => Organization.Table("M1", "x", 61, "sala", 0));
             Rule("invalid_sort", () => Organization.Zone("z", "x", 10000));
         });
+        // E3: catalogo y tarifas del nucleo. Codigos como en E2; precio, tipo impositivo y color acotados; sin ciclos; general reservada.
+        Test("catalog accepts products, presentations, taxes, tariffs and prices", () => {
+            var product = Catalog.Product(" wine ", " Vino de ensayo ", "vinos", "iva-21", " 3754 ", null);
+            Equal(("wine", "Vino de ensayo", "vinos", "iva-21", "3754", 0, true), (product.Id, product.Name, product.CategoryId, product.TaxId, product.Reference, product.Sort, product.Active));
+            Equal(null, Catalog.Product("water", "Agua", "", "iva-10", " ", 1).CategoryId);
+            Equal("Copa", Catalog.Presentation("wine", "glass", "Copa", 0).Name);
+            Equal(10.5m, Catalog.Tax("iva-x", "IVA especial", 10.5m).Rate);
+            Equal(("#1F4D3A", "bebidas"), (Catalog.Category("vinos", "Vinos", "bebidas", "#1f4d3a", 1).Color, Catalog.Category("vinos", "Vinos", "bebidas", null, 1).ParentId));
+            var price = Catalog.Price("general", "wine", "glass", new DateOnly(2026, 9, 23), 950);
+            Equal(("general", 950L), (price.TariffId, price.PriceCents));
+            Equal(new DateOnly(2026, 10, 1), Catalog.ValidFrom(" 2026-10-01 ", new DateOnly(2026, 9, 23)));
+            Equal(new DateOnly(2026, 9, 23), Catalog.ValidFrom(null, new DateOnly(2026, 9, 23)));
+        });
+        Test("catalog rejects bad prices, rates, colors, references and dates", () => {
+            Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), -1));
+            Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), Catalog.MaxPriceCents + 1));
+            Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), null));
+            Rule("invalid_rate", () => Catalog.Tax("t", "x", 100.5m));
+            Rule("invalid_rate", () => Catalog.Tax("t", "x", 10.123m));
+            Rule("invalid_rate", () => Catalog.Tax("t", "x", null));
+            Rule("invalid_color", () => Catalog.Category("c", "x", null, "rojo", 0));
+            Rule("invalid_color", () => Catalog.Category("c", "x", null, "#12345", 0));
+            Rule("invalid_parent", () => Catalog.Category("c", "x", "c", null, 0));
+            Rule("invalid_reference", () => Catalog.Product("p", "x", null, "iva-10", new string('9', 65), 0));
+            Rule("invalid_code", () => Catalog.Product("con espacio", "x", null, "iva-10", null, 0));
+            Rule("invalid_code", () => Catalog.Presentation("p", "ñ", "x", 0));
+            Rule("invalid_date", () => Catalog.ValidFrom("01/10/2026", new DateOnly(2026, 9, 23)));
+        });
+        Test("category trees have no cycles and at most four levels", () => {
+            var parents = new Dictionary<string, string?> { ["a"] = null, ["b"] = "a", ["c"] = "b", ["d"] = "c", ["loop1"] = "loop2", ["loop2"] = "loop1" };
+            string? ParentOf(string id) => parents.GetValueOrDefault(id);
+            Equal(4, Catalog.Depth("d", "c", ParentOf));
+            Rule("category_depth", () => Catalog.Depth("e", "d", ParentOf));
+            Rule("category_cycle", () => Catalog.Depth("a", "d", ParentOf));      // a pasaria a colgar de su propio descendiente
+            Rule("category_cycle", () => Catalog.Depth("loop1", "loop2", ParentOf));
+        });
+        Test("the general tariff is reserved and the price in force is the latest not after the date", () => {
+            Rule("reserved_tariff", () => Catalog.Tariff(Catalog.GeneralTariff, "General", 0, active: false));
+            True(Catalog.Tariff(Catalog.GeneralTariff, "General", 0).Active);
+            PriceDefinition P(string from, long cents) => new("general", "wine", "glass", DateOnly.Parse(from), cents);
+            var prices = new[] { P("2026-01-01", 900), P("2026-10-01", 1000), P("2026-09-01", 950) };
+            Equal(950L, Catalog.Current(prices, new DateOnly(2026, 9, 23))!.PriceCents);
+            Equal(1000L, Catalog.Current(prices, new DateOnly(2026, 10, 1))!.PriceCents);
+            Equal(null, Catalog.Current(prices, new DateOnly(2025, 12, 31)));
+        });
+        Test("a charge freezes its product, presentation and tariff and never rereads the catalog", () => {
+            var account = Account();
+            account.AddCharge("c1", "Vino de ensayo · Copa", 2, 950, Stamp, "wine", "glass", "general");
+            var line = account.View().Charges.Single(c => c.Id == "c1");
+            Equal(("wine", "glass", "general", 1900L), (line.ProductId, line.PresentationId, line.TariffId, line.TotalCents));
+            var restored = SettlementAccount.Restore(account.Snapshot()).View().Charges.Single(c => c.Id == "c1");
+            Equal("glass", restored.PresentationId);
+            Equal("limpio", Catalog.Slug("  Limpio "));
+            Equal("el-rapolao-2023", Catalog.Slug("El Rapolao 2023"));
+            Equal("anada-cinco-x", Catalog.Slug("Añada · cinco (x)"));
+        });
         Test("the pass station is reserved: always kind pass and never deactivated", () => {
             Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Kitchen, 0));
             Rule("reserved_station", () => Organization.Station(Organization.PassStation, "Pase", StationKind.Pass, 0, active: false));

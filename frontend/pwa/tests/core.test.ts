@@ -42,6 +42,7 @@ describe('api client', () => {
   })
   it('refuses a successful response that carries money', async () => {
     await expect(call(async () => json(200, [{ id: 'water', priceCents: 400 }]), '/catalog')).rejects.toBeInstanceOf(MoneyLeakError)
+    await expect(call(async () => json(200, [{ id: 'water', presentationId: 'bottle', tariffId: 'general' }]), '/catalog')).rejects.toBeInstanceOf(MoneyLeakError)   // E3: la tarifa es vocabulario de caja
   })
 })
 

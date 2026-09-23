@@ -22,7 +22,7 @@ public sealed record ModuleSchema(string Name, string Schema, string Grants)
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}$")] private static partial Regex SchemaName();
     public static string CheckedSchema(string name)
         => SchemaName().IsMatch(name) && name != "public" ? name : throw new ArgumentException("Invalid schema name: " + name);
@@ -84,14 +84,21 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
         return upgraded;
     }
 
-    // E2: la estacion de PASE de este ambito existe siempre (validacion y revision de pases, D4.3). Idempotente; rol propietario.
+    // E2/E3: lo que existe SIEMPRE en un ambito: la estacion de PASE (validacion y revision de pases, D4.3), la tarifa GENERAL
+    // y los impuestos por defecto (IVA de hosteleria en Espana; editables). Idempotente; rol propietario.
     public async Task EnsureOrganizationAsync(BusinessScope scope, CancellationToken ct = default)
     {
-        await using var command = dataSource.CreateCommand(
-            "INSERT INTO core.stations (tenant,company,location,id,name,kind,sort,active) VALUES (@tenant,@company,@location,'pase','Pase','pass',0,true) ON CONFLICT DO NOTHING");
-        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
-        command.Parameters.AddWithValue("location", scope.LocationId);
-        await command.ExecuteNonQueryAsync(ct);
+        foreach (var sql in new[] {
+            "INSERT INTO core.stations (tenant,company,location,id,name,kind,sort,active) VALUES (@tenant,@company,@location,'pase','Pase','pass',0,true) ON CONFLICT DO NOTHING",
+            "INSERT INTO core.tariffs (tenant,company,location,id,name,sort,active) VALUES (@tenant,@company,@location,'general','General',0,true) ON CONFLICT DO NOTHING",
+            "INSERT INTO core.taxes (tenant,company,location,id,name,rate,active) VALUES (@tenant,@company,@location,'iva-10','IVA 10 %',10.00,true)," +
+            "(@tenant,@company,@location,'iva-21','IVA 21 %',21.00,true),(@tenant,@company,@location,'iva-4','IVA 4 %',4.00,true),(@tenant,@company,@location,'iva-0','Exento',0.00,true) ON CONFLICT DO NOTHING" })
+        {
+            await using var command = dataSource.CreateCommand(sql);
+            command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+            command.Parameters.AddWithValue("location", scope.LocationId);
+            await command.ExecuteNonQueryAsync(ct);
+        }
     }
 
     // D5.6: instalacion de demostracion = los fixtures ficticios dejaron su orden idempotente en este ambito.
@@ -108,7 +115,8 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
     public async Task<bool> HasConfigurationAsync(BusinessScope scope, CancellationToken ct = default)
     {
         await using var command = dataSource.CreateCommand(
-            "SELECT EXISTS (SELECT 1 FROM core.configuration WHERE tenant=@tenant AND company=@company AND location=@location)");
+            "SELECT EXISTS (SELECT 1 FROM core.products WHERE tenant=@tenant AND company=@company AND location=@location) OR " +
+            "EXISTS (SELECT 1 FROM core.tables WHERE tenant=@tenant AND company=@company AND location=@location)");
         command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
         command.Parameters.AddWithValue("location", scope.LocationId);
         return Equals(await command.ExecuteScalarAsync(ct), true);
@@ -316,8 +324,7 @@ public sealed partial class Unit(NpgsqlConnection connection, NpgsqlTransaction 
                 [("id",Guid.NewGuid()),("event",e.Id),("actor",identity.ActorId),("aggregate",e.AggregateId),("action",e.Type),("key",key),("at",e.At),("payload",payload)]);
         }
     }
-    // Configuracion del NUCLEO (mesas, productos) y de un MODULO (<modulo>.configuration): misma forma, esquema distinto.
-    public Task<T> Configuration<T>(string kind, string id) => ReadConfiguration<T>("core", kind, id);
+    // Configuracion de un MODULO (<modulo>.configuration, JSONB por kind). El nucleo ya no tiene configuracion JSONB (E2/E3).
     public Task<T> ModuleConfiguration<T>(string module, string kind, string id) => ReadConfiguration<T>(PostgresStore.CheckedSchema(module), kind, id);
     private async Task<T> ReadConfiguration<T>(string schema, string kind, string id)
     {
@@ -335,7 +342,6 @@ public sealed partial class Unit(NpgsqlConnection connection, NpgsqlTransaction 
             [("actor", identity.ActorId), ("key", commandKey)], r => r.GetString(0));
         return rows.Count == 0 ? null : rows[0];
     }
-    public Task<int> SeedConfiguration<T>(string kind,string id,T value) => Seed("core",kind,id,value);
     public Task<int> SeedModuleConfiguration<T>(string module,string kind,string id,T value) => Seed(PostgresStore.CheckedSchema(module),kind,id,value);
     private Task<int> Seed<T>(string schema,string kind,string id,T value) => Sql(
         $"INSERT INTO {schema}.configuration (tenant,company,location,kind,id,payload) VALUES (@tenant,@company,@location,@kind,@id,@payload::jsonb) ON CONFLICT DO NOTHING",

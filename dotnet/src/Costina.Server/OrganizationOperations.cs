@@ -9,7 +9,7 @@ namespace Costina.Server;
 
 // E2: comandos de ORGANIZACION (nucleo, solo puesto principal). Misma tuberia que todo: idempotencia, auditoria, outbox.
 // Sin version esperada: son datos maestros, la ultima edicion gana; el cliente relee tras cada comando como siempre.
-public sealed record OrganizationCommand(string? Id=null,string? Name=null,int? Capacity=null,string? ZoneId=null,int? Sort=null,string? Kind=null);
+public sealed record OrganizationCommand(string? Id=null,string? Name=null,int? Capacity=null,string? ZoneId=null,int? Sort=null,string? Kind=null,string? TariffId=null);
 
 public static class OrganizationOperations
 {
@@ -29,7 +29,8 @@ public static class OrganizationOperations
         {
             case "zone-create":
             {
-                var zone=Organization.Zone(id,request.Name,request.Sort);
+                var zone=Organization.Zone(id,request.Name,request.Sort,tariffId:request.TariffId);
+                await CheckTariff(unit,zone.TariffId);
                 await unit.InsertZone(zone);
                 await unit.Events([Event("zone_created",zone.Id,("name",zone.Name))]);
                 return zone;
@@ -37,7 +38,9 @@ public static class OrganizationOperations
             case "zone-update":
             {
                 var current=await unit.Zone(id);
-                var zone=Organization.Zone(id,request.Name??current.Name,request.Sort??current.Sort,current.Active);
+                // E3: tarifa de la sala; cadena vacia = volver a la general.
+                var zone=Organization.Zone(id,request.Name??current.Name,request.Sort??current.Sort,current.Active,request.TariffId is null ? current.TariffId : request.TariffId);
+                if(zone.TariffId!=current.TariffId) await CheckTariff(unit,zone.TariffId);
                 await unit.UpdateZone(zone);
                 await unit.Events([Event("zone_updated",zone.Id,("name",zone.Name))]);
                 return zone;
@@ -109,6 +112,12 @@ public static class OrganizationOperations
             }
             default: throw new StoreNotFound();
         }
+    }
+
+    private static async Task CheckTariff(Unit unit,string? tariffId)
+    {
+        if(tariffId is null) return;
+        if(!(await unit.Tariff(tariffId)).Active) throw new RuleViolation("tariff_inactive","The tariff is deactivated.");
     }
 
     // Rutas (nucleo, solo main): lectura completa de la organizacion y comandos. GET /configuration sigue sirviendo

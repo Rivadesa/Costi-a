@@ -24,7 +24,9 @@ export interface Session {
   actions: string[]
   modules: string[]   // ADR-012: modulos activos; las vistas se montan solo para ellos
 }
-export interface CatalogItem { id: string; name: string; presentation: string }
+// E3: un vendible = producto + presentacion (presentationId, categoria opcionales: un servidor anterior no los envia). Nunca dinero.
+export interface CatalogItem { id: string; presentationId?: string; name: string; presentation: string; categoryId?: string | null; categoryName?: string | null }
+export const catalogKey = (item: CatalogItem): string => item.presentationId ? `${item.id}/${item.presentationId}` : item.id
 
 export type Fetch = typeof fetch
 

@@ -10,10 +10,10 @@ public static class OrganizationUnit
     public static string KindText(StationKind kind) => kind.ToString().ToLowerInvariant();
     public static StationKind KindOf(string text) => Enum.Parse<StationKind>(text, ignoreCase: true);
 
-    private static ZoneDefinition ZoneRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetBoolean(3));
+    private static ZoneDefinition ZoneRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetBoolean(3), r.IsDBNull(4) ? null : r.GetString(4));
     private static TableDefinition TableRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetInt32(4), r.GetBoolean(5));
     private static StationDefinition StationRow(NpgsqlDataReader r) => new(r.GetString(0), r.GetString(1), KindOf(r.GetString(2)), r.GetInt32(3), r.GetBoolean(4));
-    public const string ZoneColumns = "id,name,sort,active", TableColumns = "id,name,capacity,zone_id,sort,active", StationColumns = "id,name,kind,sort,active";
+    public const string ZoneColumns = "id,name,sort,active,tariff_id", TableColumns = "id,name,capacity,zone_id,sort,active", StationColumns = "id,name,kind,sort,active";
 
     public static Task<List<ZoneDefinition>> Zones(this Unit unit)
         => unit.Rows($"SELECT {ZoneColumns} FROM core.zones WHERE {Unit.ScopeWhere} ORDER BY sort,id", [], ZoneRow);
@@ -49,11 +49,11 @@ public static class OrganizationUnit
     }
 
     public static Task InsertZone(this Unit unit, ZoneDefinition z) => Insert(unit,
-        "INSERT INTO core.zones (tenant,company,location,id,name,sort,active) VALUES (@tenant,@company,@location,@id,@name,@sort,@active)",
-        [("id", z.Id), ("name", z.Name), ("sort", z.Sort), ("active", z.Active)], z.Id);
+        "INSERT INTO core.zones (tenant,company,location,id,name,sort,active,tariff_id) VALUES (@tenant,@company,@location,@id,@name,@sort,@active,@tariff)",
+        [("id", z.Id), ("name", z.Name), ("sort", z.Sort), ("active", z.Active), ("tariff", (object?)z.TariffId ?? DBNull.Value)], z.Id);
     public static Task UpdateZone(this Unit unit, ZoneDefinition z) => Exactly(unit.Sql(
-        $"UPDATE core.zones SET name=@name,sort=@sort,active=@active WHERE {Unit.ScopeWhere} AND id=@id",
-        [("id", z.Id), ("name", z.Name), ("sort", z.Sort), ("active", z.Active)]), z.Id);
+        $"UPDATE core.zones SET name=@name,sort=@sort,active=@active,tariff_id=@tariff WHERE {Unit.ScopeWhere} AND id=@id",
+        [("id", z.Id), ("name", z.Name), ("sort", z.Sort), ("active", z.Active), ("tariff", (object?)z.TariffId ?? DBNull.Value)]), z.Id);
     public static Task InsertTable(this Unit unit, TableDefinition t) => Insert(unit,
         "INSERT INTO core.tables (tenant,company,location,id,name,capacity,zone_id,sort,active) VALUES (@tenant,@company,@location,@id,@name,@capacity,@zone,@sort,@active)",
         [("id", t.Id), ("name", t.Name), ("capacity", t.Capacity), ("zone", t.ZoneId), ("sort", t.Sort), ("active", t.Active)], t.Id);
@@ -79,7 +79,7 @@ public static class OrganizationUnit
 }
 
 // Lecturas de organizacion para el puesto principal y para la configuracion operativa de los clientes.
-public sealed record ZoneView(string Id, string Name, int Sort, bool Active, TableDefinition[] Tables);
+public sealed record ZoneView(string Id, string Name, int Sort, bool Active, TableDefinition[] Tables, string? TariffId = null);
 public sealed record OrganizationView(ZoneView[] Zones, StationDefinition[] Stations);
 // Mesa tal como la ven los clientes en GET /configuration (activas; campos de E1 mas la sala).
 public sealed record TableChoiceView(string Id, string Name, int Capacity, string ZoneId, string ZoneName);
@@ -89,12 +89,12 @@ public static class OrganizationReads
     public static async Task<OrganizationView> Organization(this DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)
     {
         var zones = await reads.Query(scope, $"SELECT {OrganizationUnit.ZoneColumns} FROM core.zones WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id",
-            r => new ZoneDefinition(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetBoolean(3)), ct);
+            r => new ZoneDefinition(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetBoolean(3), r.IsDBNull(4) ? null : r.GetString(4)), ct);
         var tables = await reads.Query(scope, $"SELECT {OrganizationUnit.TableColumns} FROM core.tables WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id",
             r => new TableDefinition(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetInt32(4), r.GetBoolean(5)), ct);
         var stations = await reads.Query(scope, $"SELECT {OrganizationUnit.StationColumns} FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id",
             r => new StationDefinition(r.GetString(0), r.GetString(1), OrganizationUnit.KindOf(r.GetString(2)), r.GetInt32(3), r.GetBoolean(4)), ct);
-        return new(zones.Select(z => new ZoneView(z.Id, z.Name, z.Sort, z.Active, tables.Where(t => t.ZoneId == z.Id).ToArray())).ToArray(), stations.ToArray());
+        return new(zones.Select(z => new ZoneView(z.Id, z.Name, z.Sort, z.Active, tables.Where(t => t.ZoneId == z.Id).ToArray(), z.TariffId)).ToArray(), stations.ToArray());
     }
 
     public static Task<List<TableChoiceView>> ActiveTables(this DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)

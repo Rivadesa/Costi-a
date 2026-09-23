@@ -6,7 +6,7 @@ namespace Costina.Server;
 
 // Cuenta / Caja: NUCLEO (ventas). Solo el puesto principal (ADR-007); los modulos apuntan cargos por la Unit.
 public sealed record AccountCommand(long ExpectedVersion,string? ProductId=null,int Quantity=1,string? PaymentId=null,
-    string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null,string? RefundId=null);
+    string? Method=null,long AmountCents=0,string? ChargeId=null,string? Reason=null,string? RefundId=null,string? PresentationId=null);
 
 public static class CheckoutOperations
 {
@@ -17,10 +17,13 @@ public static class CheckoutOperations
         switch(action)
         {
             case "add-product":
-                var product=await unit.Configuration<ProductDefinition>("product",Required(request.ProductId));
-                if(!product.Active) throw new RuleViolation("product_unavailable","Product unavailable.");
-                entity.AddCharge(Guid.NewGuid().ToString("N"),product.Name+" · "+product.Presentation,request.Quantity,product.PriceCents,stamp);
+            {
+                // E3: vendible del catalogo al precio vigente de la tarifa de la sala de la cuenta (o la general); origen congelado en el cargo.
+                var (product,presentation)=await unit.Sellable(Required(request.ProductId),request.PresentationId);
+                var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
+                entity.AddCharge(Guid.NewGuid().ToString("N"),product.Name+" · "+presentation.Name,request.Quantity,cents,stamp,product.Id,presentation.Id,tariff);
                 break;
+            }
             case "payment":
                 if(request.Method is not ("cash" or "card" or "other")) throw new ArgumentException("Unsupported payment method.");
                 entity.RecordPayment(Required(request.PaymentId),request.Method,request.AmountCents,stamp); break;
