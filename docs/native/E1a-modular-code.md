@@ -29,7 +29,7 @@ Regla de dependencias (ADR-012): un módulo referencia el núcleo; el núcleo **
 
 ## Qué NO cambia
 
-Esquema (`native_d1` sigue siendo el único esquema hasta E1b), contrato de datos, dominio, instalador, copias, PWA y WPF salvo lo dicho. `DesktopReadRepository.OpenAccounts` sigue uniendo `accounts` con `services` para mostrar la mesa: **deuda para E1b** (la cuenta del núcleo no debe leer una tabla del módulo; la referencia a la mesa se guardará en la cuenta).
+Esquema (`native_d1` sigue siendo el único esquema hasta E1b), contrato de datos, dominio, instalador, copias, PWA y WPF salvo lo dicho. `DesktopReadRepository.OpenAccounts` sigue uniendo `accounts` con `services` para mostrar la mesa: **deuda para E1b** (la cuenta del núcleo no debe leer una tabla del módulo; la referencia a la mesa se guardará en la cuenta). *Saldada en E1b: `core.accounts.table_id`.*
 
 ## Comprobaciones automáticas
 

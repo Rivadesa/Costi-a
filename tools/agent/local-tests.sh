@@ -56,6 +56,7 @@ http() {
       # Como en CI: base y roles recien creados. packaging_http usa el superusuario y EXPORTA las conexiones de rol (GITHUB_ENV).
       # (la historia de copia y restauracion deja ademas su propia base: tambien se va.)
       psql -q -d postgres -c "DROP DATABASE IF EXISTS costina_restore_d1_test WITH (FORCE)" \
+        -c "DROP DATABASE IF EXISTS costina_v1_d1_test WITH (FORCE)" -c "DROP DATABASE IF EXISTS costina_restore_v1_d1_test WITH (FORCE)" \
         -c "DROP DATABASE IF EXISTS costina_d1_test WITH (FORCE)" -c "DROP ROLE IF EXISTS costina_runtime" \
         -c "DROP ROLE IF EXISTS costina_owner" -c "CREATE DATABASE costina_d1_test" > /dev/null || exit 2
       export COSTINA_DB="$BOOTSTRAP" GITHUB_ENV="$T/github-env.txt"; unset COSTINA_DB_OWNER; : > "$GITHUB_ENV"

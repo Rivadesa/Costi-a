@@ -4,6 +4,7 @@ Runs FIRST in the battery against the fresh *_d1_test CI database: it provisions
 roles once and exports their connections (GITHUB_ENV) so every later suite exercises the engine
 with the runtime role, which has no DDL and cannot rewrite or delete the audit trail.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,6 +45,33 @@ def psql_as(connection, query):
     env = os.environ | {'PGUSER': c['Username'], 'PGPASSWORD': c['Password'], 'PGDATABASE': c['Database'],
                         'PGHOST': c['Host'], 'PGPORT': c['Port']}
     return subprocess.run(['psql', '-At', '-v', 'ON_ERROR_STOP=1', '-c', query], env=env, text=True, capture_output=True)
+
+def schema_tables(connection):
+    return psql_as(connection, "SELECT string_agg(schemaname || '.' || tablename, ',' ORDER BY schemaname, tablename) FROM pg_tables WHERE schemaname IN ('core','dining')").stdout.strip().split(',')
+
+def digest(qualified_table):
+    return f"SELECT count(*) || ':' || coalesce(md5(string_agg(h, '' ORDER BY h)), '') FROM (SELECT md5(t::text) AS h FROM {qualified_table} t) s"
+
+def psql_file(connection, path):
+    c = parts(connection)
+    env = os.environ | {'PGUSER': c['Username'], 'PGPASSWORD': c['Password'], 'PGDATABASE': c['Database'],
+                        'PGHOST': c['Host'], 'PGPORT': c['Port']}
+    return subprocess.run(['psql', '-q', '-v', 'ON_ERROR_STOP=1', '-f', str(path)], env=env, text=True, capture_output=True)
+
+def copy_rows(source, select, target, into):
+    # COPY entre dos bases del mismo cluster, por texto: la salida de una es la entrada de la otra.
+    out = psql_as(source, f'COPY ({select}) TO STDOUT')
+    assert out.returncode == 0, out.stderr
+    c = parts(target)
+    env = os.environ | {'PGUSER': c['Username'], 'PGPASSWORD': c['Password'], 'PGDATABASE': c['Database'], 'PGHOST': c['Host'], 'PGPORT': c['Port']}
+    done = subprocess.run(['psql', '-q', '-v', 'ON_ERROR_STOP=1', '-c', f'COPY {into} FROM STDIN'], env=env, input=out.stdout, text=True, capture_output=True)
+    assert done.returncode == 0, done.stderr
+
+def pg_tool(name, connection, *args):
+    c = parts(connection)
+    env = os.environ | {'PGUSER': c['Username'], 'PGPASSWORD': c['Password'], 'PGDATABASE': c['Database'], 'PGHOST': c['Host'], 'PGPORT': c['Port']}
+    exe = os.path.join(os.environ['COSTINA_PG_BIN'], name) if os.environ.get('COSTINA_PG_BIN') else name
+    return subprocess.run([exe, *args], env=env, text=True, capture_output=True)
 
 def call(path, data=None, token=None, base=None):
     headers = {'Content-Type': 'application/json'}
@@ -106,7 +134,7 @@ class Packaging(unittest.TestCase):
     def test_02_normal_start_never_creates_the_schema(self):
         started = cli(env=clean_env())
         self.assertNotEqual(started.returncode, 0)
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT to_regclass('native_d1.schema_version') IS NULL").stdout.strip(), 't')
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT to_regclass('core.schema_version') IS NULL").stdout.strip(), 't')
 
     def test_03_explicit_init_and_upgrade_from_file_configuration(self):
         env = clean_env()
@@ -115,25 +143,27 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(refused.returncode, 0)
         first = cli('init', env=env)
         self.assertEqual(first.returncode, 0, first.stderr)
-        users = "SELECT count(*) FROM native_d1.users"
+        users = "SELECT count(*) FROM core.users"
         self.assertEqual(psql_as(BOOTSTRAP, users).stdout.strip(), '0')
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT count(*) FROM native_d1.configuration").stdout.strip(), '0')
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT count(*) FROM core.configuration").stdout.strip(), '0')
         second = cli('init', env=env)
         self.assertEqual(second.returncode, 0)
         self.assertIn('nothing was changed', second.stdout)
         upgraded = cli('upgrade', env=env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname='native_d1'").stdout.strip(), 'costina_owner')
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT string_agg(nspname || ':' || nspowner::regrole::text, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core:costina_owner,dining:costina_owner')
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '2')
 
     def test_04_runtime_role_has_no_ddl_and_cannot_touch_the_audit_trail(self):
         runtime = self.config('server.json')['COSTINA_DB']
-        self.assertEqual(psql_as(runtime, 'SELECT count(*) FROM native_d1.audit').returncode, 0)
-        for forbidden in ('CREATE TABLE native_d1.intruder (id int)', 'DROP TABLE native_d1.audit',
-                          'DELETE FROM native_d1.audit', "UPDATE native_d1.audit SET actor='x'",
-                          "UPDATE native_d1.commands SET response='{}'", 'DELETE FROM native_d1.commands',
-                          'DELETE FROM native_d1.outbox', "UPDATE native_d1.outbox SET type='x'",
-                          "UPDATE native_d1.users SET role='main'", 'DELETE FROM native_d1.sessions',
-                          'TRUNCATE native_d1.services', 'CREATE SCHEMA other'):
+        self.assertEqual(psql_as(runtime, 'SELECT count(*) FROM core.audit').returncode, 0)
+        for forbidden in ('CREATE TABLE core.intruder (id int)', 'DROP TABLE core.audit',
+                          'DELETE FROM core.audit', "UPDATE core.audit SET actor='x'",
+                          "UPDATE core.commands SET response='{}'", 'DELETE FROM core.commands',
+                          'DELETE FROM core.outbox', "UPDATE core.outbox SET type='x'",
+                          "UPDATE core.users SET role='main'", 'DELETE FROM core.sessions',
+                          'TRUNCATE dining.services', 'CREATE TABLE dining.intruder (id int)', 'DELETE FROM dining.configuration',
+                          'CREATE SCHEMA other'):
             result = psql_as(runtime, forbidden)
             self.assertNotEqual(result.returncode, 0, forbidden)
             self.assertTrue('permission denied' in result.stderr or 'must be owner' in result.stderr, (forbidden, result.stderr))
@@ -295,8 +325,10 @@ class Packaging(unittest.TestCase):
         self.assertNotIn(parts(self.config('server.json')['COSTINA_DB'])['Password'], made.stdout + made.stderr)
         newest = sorted((DATA / 'backups').glob('costina-*.backup'))[-1]
         manifest = json.loads(Path(str(newest) + '.json').read_text(encoding='utf8'))
-        self.assertEqual((manifest['tenantId'], manifest['tables']['users']['rows'], manifest['tables']['pairings']['rows']), ('d5-tenant', 1, 1))
-        self.assertEqual((manifest['tables']['services']['rows'], manifest['tables']['occupancies']['rows'], manifest['tables']['configuration']['rows']), (1, 1, 12))   # D5.6: un servicio real viaja en la copia
+        self.assertEqual((manifest['format'], manifest['tenantId'], manifest['tables']['core.users']['rows'], manifest['tables']['core.pairings']['rows']), (2, 'd5-tenant', 1, 1))
+        # D5.6: un servicio real viaja en la copia. E1b: claves esquema.tabla; los menus ya viven en el esquema del modulo.
+        self.assertEqual((manifest['tables']['dining.services']['rows'], manifest['tables']['dining.occupancies']['rows'],
+                          manifest['tables']['core.configuration']['rows'], manifest['tables']['dining.configuration']['rows']), (1, 1, 11, 1))
         self.assert_private(newest)
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
 
@@ -319,27 +351,148 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(refused.returncode, 0); self.assertIn('checksum', refused.stdout + refused.stderr)
         foreign = cli('restore', str(newest), env=clean_env(COSTINA_DATA=str(clean), COSTINA_TENANT='otro-tenant'))
         self.assertNotEqual(foreign.returncode, 0); self.assertIn('scope', foreign.stdout + foreign.stderr)
-        self.assertEqual(psql_as(elsewhere, "SELECT to_regclass('native_d1.users') IS NULL").stdout.strip(), 't')   # nothing touched
+        self.assertEqual(psql_as(elsewhere, "SELECT to_regclass('core.users') IS NULL").stdout.strip(), 't')   # nothing touched
 
         restored = cli('restore', str(newest), env=fresh)
         self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
         self.assertIn('Restored and verified', restored.stdout)
         # Independent comparison, table by table and by content, between the source and the restored database.
-        tables = psql_as(BOOTSTRAP, "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname='native_d1'").stdout.strip().split(',')
-        self.assertGreaterEqual(len(tables), 12)
+        tables = schema_tables(BOOTSTRAP)
+        self.assertGreaterEqual(len(tables), 14)
+        self.assertEqual(tables, schema_tables(elsewhere))
         for table in tables:
-            digest = f"SELECT count(*) || ':' || coalesce(md5(string_agg(h, '' ORDER BY h)), '') FROM (SELECT md5(t::text) AS h FROM native_d1.{table} t) s"
-            self.assertEqual(psql_as(BOOTSTRAP, digest).stdout.strip(), psql_as(elsewhere, digest).stdout.strip(), table)
+            self.assertEqual(psql_as(BOOTSTRAP, digest(table)).stdout.strip(), psql_as(elsewhere, digest(table)).stdout.strip(), table)
         self.assertNotEqual(cli('restore', str(newest), env=fresh).returncode, 0)             # never overwrites an installation
 
         # The restored installation WORKS: same user and password, runtime role still least-privileged.
         runtime = json.loads((clean / 'config' / 'server.json').read_text(encoding='utf8'))['COSTINA_DB']
-        self.assertIn('permission denied', psql_as(runtime, 'DELETE FROM native_d1.audit').stderr)
+        self.assertIn('permission denied', psql_as(runtime, 'DELETE FROM core.audit').stderr)
         with Server(fresh, base='http://127.0.0.1:5094'):
             status, again = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5094')
             self.assertEqual(status, 200)
             status, session = call('/api/native/v1/session', token=again['token'], base='http://127.0.0.1:5094')
             self.assertEqual(session['installationId'], manifest['installationId'])
+
+    def test_06d_active_modules_live_in_the_installation_row(self):
+        """E1b (ADR-012): the installation decides its active modules (core.installation.modules); COSTINA_MODULES only narrows a laboratory."""
+        owner = self.config('owner.json')['COSTINA_DB_OWNER']
+        self.assertEqual(psql_as(BOOTSTRAP, 'SELECT modules IS NULL FROM core.installation').stdout.strip(), 't')   # NULL = every compiled module
+        try:
+            self.assertEqual(psql_as(owner, "UPDATE core.installation SET modules = '{}'").returncode, 0)
+            with Server(clean_env()):
+                _, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
+                status, session = call('/api/native/v1/session', token=login['token'])
+                self.assertEqual((status, session['modules'], session['actions']), (200, [], []))
+                missing = call('/api/native/v1/no-such-route', token=login['token'])[0]                  # an unmapped path never reaches a handler
+                self.assertEqual(call('/api/native/v1/dining/board', token=login['token'])[0], missing)  # no routes without the module
+                self.assertEqual(call('/api/native/v1/board', token=login['token'])[0], missing)         # nor its compatibility alias
+                status, configuration = call('/api/native/v1/configuration', token=login['token'])
+                self.assertEqual((status, len(configuration['tables']), 'menus' in configuration), (200, 8, False))
+                self.assertEqual(psql_as(BOOTSTRAP, 'SELECT count(*) FROM dining.services').stdout.strip(), '1')   # the module's data stays
+            self.assertEqual(psql_as(owner, "UPDATE core.installation SET modules = '{nope}'").returncode, 0)
+            refused = cli(env=clean_env())
+            self.assertNotEqual(refused.returncode, 0); self.assertIn('Unknown module', refused.stdout + refused.stderr)
+        finally:
+            self.assertEqual(psql_as(owner, 'UPDATE core.installation SET modules = NULL').returncode, 0)
+        with Server(clean_env(COSTINA_MODULES='nope')):                    # an installation ignores the laboratory variable
+            _, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
+            self.assertEqual(call('/api/native/v1/session', token=login['token'])[1]['modules'], ['dining'])
+
+    def test_06e_a_v1_database_upgrades_in_place_and_a_v1_backup_still_restores(self):
+        """E1b: a REAL v1 database (the old monolithic native_d1 DDL, fed with real rows) is upgraded by `upgrade` to core + dining,
+        and a backup taken from it in the v1 format (manifest 1) restores on a clean installation and ends up in v2."""
+        owner_main = self.config('owner.json')['COSTINA_DB_OWNER']
+        def scaffold(database, port):
+            root = Path(tempfile.mkdtemp(prefix='costina-' + database + '-')); (root / 'config').mkdir()
+            self.assertEqual(psql_as(BOOTSTRAP, f'CREATE DATABASE {database} OWNER costina_owner').returncode, 0)
+            self.assertEqual(psql_as(BOOTSTRAP, f'GRANT CONNECT ON DATABASE {database} TO costina_runtime').returncode, 0)
+            for name in ('server.json', 'owner.json'):
+                config = {k: v.replace('Database=' + DATABASE, 'Database=' + database) for k, v in self.config(name).items()}
+                if name == 'server.json': config['COSTINA_PORT'] = str(port)
+                (root / 'config' / name).write_text(json.dumps(config), encoding='utf8')
+            return root, owner_main.replace('Database=' + DATABASE, 'Database=' + database), BOOTSTRAP.replace('Database=' + DATABASE, 'Database=' + database)
+
+        # 1. A v1 database: the DDL the 0.26.0-e1 binaries created, filled with the rows this battery already produced.
+        v1root, v1owner, v1super = scaffold('costina_v1_d1_test', 5095)
+        for fixture in ('schema-v1.sql', 'grants-v1.sql'):                   # the DDL and the runtime grants of a real v1 installation
+            applied = psql_file(v1owner, Path(__file__).resolve().parent / 'fixtures' / fixture)
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual(psql_as(v1owner, 'DELETE FROM native_d1.installation').returncode, 0)
+        for select, into in (
+            ('SELECT id, created_at FROM core.installation', 'native_d1.installation (id, created_at)'),
+            ('SELECT tenant,company,location,id,username,password_hash,role,active,created_at FROM core.users', 'native_d1.users (tenant,company,location,id,username,password_hash,role,active,created_at)'),
+            ('SELECT tenant,company,location,kind,id,payload FROM core.configuration UNION ALL SELECT tenant,company,location,kind,id,payload FROM dining.configuration', 'native_d1.configuration'),
+            ('SELECT tenant,company,location,id,table_id,state,version,payload_version,payload FROM dining.services', 'native_d1.services'),
+            ('SELECT tenant,company,location,id,service_id,table_id,state,version,payload_version,payload FROM dining.occupancies', 'native_d1.occupancies'),
+            ('SELECT tenant,company,location,id,service_id,state,version,payload_version,payload FROM core.accounts', 'native_d1.accounts (tenant,company,location,id,service_id,state,version,payload_version,payload)'),
+            ('SELECT tenant,company,location,actor,key,fingerprint,response,created_at FROM core.commands', 'native_d1.commands')):
+            copy_rows(BOOTSTRAP, select, v1owner, into)
+        self.assertEqual(psql_as(v1super, "SELECT count(*) FROM native_d1.configuration WHERE kind='menu'").stdout.strip(), '1')
+        installation = psql_as(v1super, 'SELECT id::text FROM native_d1.installation').stdout.strip()
+
+        # 2. A backup of that v1 database exactly as the 0.26.0-e1 binaries wrote it: pg_dump of native_d1 plus a manifest of format 1.
+        kit = Path(tempfile.mkdtemp(prefix='costina-v1-backup-'))
+        v1backup = kit / 'costina-20260921-000000Z.backup'
+        dumped = pg_tool('pg_dump', v1owner, '--format=custom', '--schema=native_d1', '--no-password', '--file=' + str(v1backup))
+        self.assertEqual(dumped.returncode, 0, dumped.stderr)
+        v1tables = {}
+        for table in psql_as(v1super, "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname='native_d1'").stdout.strip().split(','):
+            # Misma zona y estilo de fecha que BackupDigest (texto determinista); psql anuncia cada SET: la huella es la ultima linea.
+            rows, md5 = psql_as(v1super, "SET TIME ZONE 'UTC'; SET datestyle = 'ISO, MDY'; " + digest('native_d1.' + table)).stdout.strip().split(chr(10))[-1].split(':')
+            v1tables[table] = {'rows': int(rows), 'md5': md5}
+        Path(str(v1backup) + '.json').write_text(json.dumps({
+            'format': 1, 'createdAt': '2026-09-21T00:00:00+00:00', 'serverVersion': '0.26.0-e1', 'installationId': installation,
+            'tenantId': 'd5-tenant', 'companyId': 'd5-company', 'locationId': 'd5-location', 'file': v1backup.name,
+            'sizeBytes': v1backup.stat().st_size, 'sha256': hashlib.sha256(v1backup.read_bytes()).hexdigest(), 'tables': v1tables}), encoding='utf8')
+
+        # 3. The new binaries refuse to serve a v1 database and `upgrade` transforms it in place, in one transaction.
+        v1env = clean_env(COSTINA_DATA=str(v1root))
+        stale = cli(env=v1env)
+        self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
+        upgraded = cli('upgrade', env=v1env)
+        self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
+        self.assertIn('upgraded from v1', upgraded.stdout)
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core,dining')
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '2')
+        self.assertEqual(psql_as(v1super, "SELECT string_agg(table_id, ',') FROM core.accounts").stdout.strip(), 'M1')              # the table travelled into the account
+        self.assertEqual(psql_as(v1super, "SELECT count(*) FROM core.configuration WHERE kind='menu'").stdout.strip(), '0')
+        self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || count(*) FILTER (WHERE kind='menu') FROM dining.configuration").stdout.strip(), '1:1')
+        self.assertEqual(psql_as(v1super, 'SELECT count(*) FROM core.configuration').stdout.strip(), '11')
+        self.assertEqual(psql_as(v1super, "SELECT count(*) FROM pg_constraint WHERE conname='accounts_tenant_company_location_service_id_fkey'").stdout.strip(), '0')
+        self.assertEqual(psql_as(v1super, 'SELECT id::text FROM core.installation').stdout.strip(), installation)
+        again = cli('upgrade', env=v1env)                                                                  # idempotent
+        self.assertEqual(again.returncode, 0, again.stderr); self.assertIn('upgraded in place', again.stdout)
+        runtime = json.loads((v1root / 'config' / 'server.json').read_text(encoding='utf8'))['COSTINA_DB']
+        self.assertEqual(psql_as(runtime, 'SELECT count(*) FROM dining.services').stdout.strip(), '1')       # grants of the module schema
+        for forbidden in ('DELETE FROM core.audit', 'TRUNCATE dining.services', 'DELETE FROM dining.configuration'):
+            self.assertIn('permission denied', psql_as(runtime, forbidden).stderr, forbidden)
+        with Server(v1env, base='http://127.0.0.1:5095'):
+            with urllib.request.urlopen('http://127.0.0.1:5095/health', timeout=5) as r: self.assertTrue(json.loads(r.read())['demo'])   # the demo mark survived
+            status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5095')
+            self.assertEqual(status, 200)
+            status, session = call('/api/native/v1/session', token=login['token'], base='http://127.0.0.1:5095')
+            self.assertEqual((session['modules'], session['installationId']), (['dining'], installation))
+            status, board = call('/api/native/v1/dining/board', token=login['token'], base='http://127.0.0.1:5095')
+            self.assertEqual((status, [row['service']['tableId'] for row in board]), (200, ['M1']))
+            status, accounts = call('/api/native/v1/checkout/accounts', token=login['token'], base='http://127.0.0.1:5095')
+            self.assertEqual((status, [(a['tableId'], a['state']) for a in accounts]), (200, [('M1', 'Open')]))   # listed without reading the module
+
+        # 4. The v1 backup restores on a clean installation: verified against ITS manifest, then upgraded to v2.
+        restore_root, _, restore_super = scaffold('costina_restore_v1_d1_test', 5096)
+        restored = cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root)))
+        self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
+        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded from v1 to v2', restored.stdout)
+        tables = schema_tables(v1super)
+        self.assertEqual(tables, schema_tables(restore_super))
+        for table in tables:                                                                              # same rows as the upgraded original
+            if table == 'core.sessions': continue                                                         # (the login above left a session there)
+            self.assertEqual(psql_as(v1super, digest(table)).stdout.strip(), psql_as(restore_super, digest(table)).stdout.strip(), table)
+        self.assertNotEqual(cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root))).returncode, 0)   # never overwrites
+        with Server(clean_env(COSTINA_DATA=str(restore_root)), base='http://127.0.0.1:5096'):
+            status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5096')
+            self.assertEqual(status, 200)
+            status, session = call('/api/native/v1/session', token=login['token'], base='http://127.0.0.1:5096')
+            self.assertEqual((session['modules'], session['installationId']), (['dining'], installation))
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')

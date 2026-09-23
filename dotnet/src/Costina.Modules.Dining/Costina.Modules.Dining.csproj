@@ -4,5 +4,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../Costina.Core.Hosting/Costina.Core.Hosting.csproj" />
     <ProjectReference Include="../Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" />
+    <EmbeddedResource Include="schema.sql" />
+    <EmbeddedResource Include="grants.sql" />
   </ItemGroup>
 </Project>

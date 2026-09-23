@@ -141,20 +141,20 @@ class NativeHttp(unittest.TestCase):
         key=secrets.token_hex(16)
         data={'tableId':'M2','pax':2,'menuId':'LAB-TASTING'}
         first=request('/dining/services',data,key=key)
-        before=sql('SELECT count(*) FROM native_d1.audit')
+        before=sql('SELECT count(*) FROM core.audit')
         stop_server(); start_server()
         self.assertEqual(request('/dining/services',data,key=key),first)
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),before)
+        self.assertEqual(sql('SELECT count(*) FROM core.audit'),before)
         self.assertEqual(request('/dining/services',data|{'pax':3},key=key)[0],409)
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),before)
+        self.assertEqual(sql('SELECT count(*) FROM core.audit'),before)
 
     def test_03_concurrent_open_same_table_has_one_winner(self):
-        before=int(sql('SELECT count(*) FROM native_d1.services'))
+        before=int(sql('SELECT count(*) FROM dining.services'))
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             results=list(pool.map(lambda _:request('/dining/services',{'tableId':'M3','pax':2,'menuId':'LAB-TASTING'}),range(2)))
         self.assertEqual(sorted(s for s,_ in results),[200,409])
-        self.assertEqual(int(sql('SELECT count(*) FROM native_d1.services')),before+1)
-        self.assertEqual(sql("SELECT count(*) FROM native_d1.occupancies WHERE table_id='M3' AND state='Occupied'"),'1')
+        self.assertEqual(int(sql('SELECT count(*) FROM dining.services')),before+1)
+        self.assertEqual(sql("SELECT count(*) FROM dining.occupancies WHERE table_id='M3' AND state='Occupied'"),'1')
 
     def test_04_concurrent_same_key_replays_one_payment(self):
         id=open_table('M4'); key=secrets.token_hex(16)
@@ -166,12 +166,12 @@ class NativeHttp(unittest.TestCase):
 
     def test_05_stale_version_and_failed_command_roll_back(self):
         id=open_table('M5'); mutate(id,'start')
-        before=sql('SELECT count(*) FROM native_d1.outbox')
+        before=sql('SELECT count(*) FROM core.outbox')
         self.assertEqual(request('/dining/services/'+id+'/commands/fire-next',{'expectedVersion':1})[0],409)
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.outbox'),before)
-        before=sql('SELECT count(*) FROM native_d1.commands')
+        self.assertEqual(sql('SELECT count(*) FROM core.outbox'),before)
+        before=sql('SELECT count(*) FROM core.commands')
         self.assertEqual(request('/dining/services/'+id+'/commands/complete',{'expectedVersion':2})[0],409)
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.commands'),before)
+        self.assertEqual(sql('SELECT count(*) FROM core.commands'),before)
         self.assertEqual(dining(id)['version'],2)
 
     def test_06_authorization_financial_boundaries_and_scope_headers(self):
@@ -198,13 +198,13 @@ class NativeHttp(unittest.TestCase):
             stop_server(); start_server()
 
     def test_08_initialization_does_not_overwrite_catalog_or_services(self):
-        sql("UPDATE native_d1.configuration SET payload=jsonb_set(payload,'{priceCents}','575') WHERE tenant='d1-tenant' AND kind='product' AND id='water'")
-        before=sql('SELECT count(*) FROM native_d1.services')
+        sql("UPDATE core.configuration SET payload=jsonb_set(payload,'{priceCents}','575') WHERE tenant='d1-tenant' AND kind='product' AND id='water'")
+        before=sql('SELECT count(*) FROM dining.services')
         stop_server()
         subprocess.run(['dotnet',str(SERVER),'init-lab'],env=ENV,check=True)
         start_server()
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.services'),before)
-        self.assertEqual(sql("SELECT payload->>'priceCents' FROM native_d1.configuration WHERE tenant='d1-tenant' AND kind='product' AND id='water'"),'575')
+        self.assertEqual(sql('SELECT count(*) FROM dining.services'),before)
+        self.assertEqual(sql("SELECT payload->>'priceCents' FROM core.configuration WHERE tenant='d1-tenant' AND kind='product' AND id='water'"),'575')
 
     def test_09_request_validation_and_price_tampering(self):
         self.assertEqual(request('/dining/services',{'tableId':'M7','pax':-1,'menuId':'LAB-TASTING'})[0],422)
@@ -215,30 +215,30 @@ class NativeHttp(unittest.TestCase):
     def test_10_failure_after_state_write_rolls_back_everything(self):
         id=open_table('M8'); mutate(id,'start')
         before=dining(id)
-        audit=sql('SELECT count(*) FROM native_d1.audit')
-        commands=sql('SELECT count(*) FROM native_d1.commands')
-        sql("CREATE FUNCTION native_d1.reject_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.type='service.paused' THEN RAISE EXCEPTION 'injected failure' USING ERRCODE='23514'; END IF; RETURN NEW; END $$")
-        sql('CREATE TRIGGER fail_pause BEFORE INSERT ON native_d1.outbox FOR EACH ROW EXECUTE FUNCTION native_d1.reject_pause()')
+        audit=sql('SELECT count(*) FROM core.audit')
+        commands=sql('SELECT count(*) FROM core.commands')
+        sql("CREATE FUNCTION core.reject_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.type='service.paused' THEN RAISE EXCEPTION 'injected failure' USING ERRCODE='23514'; END IF; RETURN NEW; END $$")
+        sql('CREATE TRIGGER fail_pause BEFORE INSERT ON core.outbox FOR EACH ROW EXECUTE FUNCTION core.reject_pause()')
         key=secrets.token_hex(16)
         payload={'expectedVersion':before['version'],'reason':'test rollback'}
         try:
             self.assertEqual(request('/dining/services/'+id+'/commands/pause',payload,key=key)[0],503)
             self.assertEqual(dining(id),before)
-            self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),audit)
-            self.assertEqual(sql('SELECT count(*) FROM native_d1.commands'),commands)
+            self.assertEqual(sql('SELECT count(*) FROM core.audit'),audit)
+            self.assertEqual(sql('SELECT count(*) FROM core.commands'),commands)
         finally:
-            sql('DROP TRIGGER fail_pause ON native_d1.outbox')
-            sql('DROP FUNCTION native_d1.reject_pause()')
+            sql('DROP TRIGGER fail_pause ON core.outbox')
+            sql('DROP FUNCTION core.reject_pause()')
         self.assertEqual(ok('/dining/services/'+id+'/commands/pause',payload,key=key)['data']['state'],'Paused')
 
     def test_11_outbox_and_audit_are_one_to_one(self):
-        self.assertEqual(sql('SELECT count(*) FROM native_d1.audit'),sql('SELECT count(*) FROM native_d1.outbox'))
+        self.assertEqual(sql('SELECT count(*) FROM core.audit'),sql('SELECT count(*) FROM core.outbox'))
         # D2: el publicador del servidor marca published_at para SU ambito. La publicacion es
         # asincrona (at-least-once), asi que se espera el drenado en vez de exigir instantaneidad.
         for _ in range(100):
-            if sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d1-tenant' AND published_at IS NULL")=='0': break
+            if sql("SELECT count(*) FROM core.outbox WHERE tenant='d1-tenant' AND published_at IS NULL")=='0': break
             time.sleep(0.1)
-        self.assertEqual(sql("SELECT count(*) FROM native_d1.outbox WHERE tenant='d1-tenant' AND published_at IS NULL"),'0')
+        self.assertEqual(sql("SELECT count(*) FROM core.outbox WHERE tenant='d1-tenant' AND published_at IS NULL"),'0')
 
 if __name__=='__main__':
     result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(NativeHttp))

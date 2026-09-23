@@ -143,7 +143,8 @@ try {
         $file = Join-Path $dataRoot "backups\$($backup.lastFile)"
         Assert ((Test-Path $file) -and (Test-Path "$file.json")) 'Backup file or manifest missing.'
         $manifest = Get-Content "$file.json" -Raw | ConvertFrom-Json
-        Assert ($manifest.tables.users.rows -eq 1 -and $manifest.sha256 -eq (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()) 'Manifest does not describe the file.'
+        # E1b: manifiesto formato 2, claves esquema.tabla (core.users).
+        Assert ($manifest.format -eq 2 -and $manifest.tables.'core.users'.rows -eq 1 -and $manifest.sha256 -eq (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()) 'Manifest does not describe the file.'
         $acl = & icacls.exe (Join-Path $dataRoot 'backups') | Out-String
         Assert ($acl -notmatch 'Users' -and $acl -notmatch 'Everyone') "backups is too open: $acl"
     }

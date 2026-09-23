@@ -19,8 +19,12 @@ using Npgsql;
 var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab" or "load-demo")
     || (args.Length == 2 && args[0] == "restore");
 var settings = new ServerSettings(administrative);
-// ADR-012: modulos compilados en este binario y, de ellos, los ACTIVOS (COSTINA_MODULES acota; E1b lo lleva a la base).
-var modules = ModuleRegistry.Activate([new DiningModule()], settings.Get("COSTINA_MODULES"));
+// ADR-012: modulos COMPILADOS en este binario. Los ACTIVOS se deciden tras abrir la base (E1b): core.installation.modules
+// (NULL = todos) y, solo en laboratorio/CI, COSTINA_MODULES. El esquema y la copia cubren siempre todos los compilados.
+IModule[] compiled = [new DiningModule()];
+var moduleSchemas = compiled.Select(m => m.Schema()).ToList();
+var schemaNames = compiled.Select(m => m.Name).ToList();
+string[] backupSchemas = ["core", ..schemaNames];
 if(args.Length == 1 && args[0] == "provision") { await Provisioner.RunAsync(settings); return; }
 // D5.2: registro como servicio de Windows (consola elevada, una vez). Desinstalar nunca toca los datos.
 if(args.Length == 1 && args[0] == "install-service") { await ServiceInstaller.InstallAsync(settings); return; }
@@ -37,6 +41,7 @@ var mode = settings.Get("COSTINA_MODE") ?? (settings.Get("COSTINA_LAB_MODE") == 
     ?? throw new InvalidOperationException("Set COSTINA_MODE=installation (provisioned roles) or COSTINA_LAB_MODE=true (engineering laboratory).");
 if(mode is not ("laboratory" or "installation")) throw new InvalidOperationException("COSTINA_MODE must be installation or laboratory.");
 var laboratory = mode == "laboratory";
+async Task<IReadOnlyList<IModule>> ActiveModules(PostgresStore s) => ModuleRegistry.Activate(compiled, await s.ActiveModulesAsync(), laboratory ? settings.Get("COSTINA_MODULES") : null);
 var connectionString = settings.Required("COSTINA_DB");
 var db = new NpgsqlConnectionStringBuilder(connectionString).Database ?? "";
 if(laboratory && !db.EndsWith("_d1_lab",StringComparison.Ordinal) && !db.EndsWith("_d1_test",StringComparison.Ordinal))
@@ -49,7 +54,7 @@ if(administrative)
         : throw new InvalidOperationException("Missing COSTINA_DB_OWNER: schema commands never run with the runtime role."));
     await using var ownerSource = NpgsqlDataSource.Create(ownerConnection);
     // D5.4: restauracion verificada de una copia sobre una instalacion recien aprovisionada (nunca pisa datos).
-    if(args[0] == "restore") { await new BackupRunner(settings,scope,BuildInfo.Version).RestoreAsync(args[1],ownerConnection); return; }
+    if(args[0] == "restore") { await new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas).RestoreAsync(args[1],ownerConnection,moduleSchemas); return; }
     var ownerStore = new PostgresStore(ownerSource);
     var exists = await ownerStore.SchemaExistsAsync();
     if(args[0] == "init" && exists)
@@ -65,18 +70,19 @@ if(administrative)
         if(!exists) throw new InvalidOperationException("Run init before load-demo.");
         if(await ownerStore.HasConfigurationAsync(scope))
             throw new InvalidOperationException("This installation already has tables, menus or products: demo fixtures are only loaded into an empty configuration.");
-        await LabConfiguration.Seed(ownerStore,scope,modules);
+        await LabConfiguration.Seed(ownerStore,scope,await ActiveModules(ownerStore));
         Console.WriteLine("Fictitious DEMO fixtures loaded. This installation is now flagged as a demo; never reuse it for real data."); return;
     }
     if(args[0] == "init-lab" && !laboratory)
         throw new InvalidOperationException("init-lab installs fictitious fixtures and only runs in laboratory mode.");
-    await ownerStore.InitializeAsync();
+    var upgraded = await ownerStore.InitializeAsync(moduleSchemas);
     if(args[0] == "init-lab")
     {
-        await LabConfiguration.Seed(ownerStore,scope,modules);
+        await LabConfiguration.Seed(ownerStore,scope,await ActiveModules(ownerStore));
         Console.WriteLine("D1 laboratory schema/fixtures initialized. Existing data was not reset."); return;
     }
     Console.WriteLine(args[0] == "init" ? "Schema initialized. Create the first user with create-user <username> main."
+        : upgraded ? "Schema upgraded from v1 (native_d1) to v2 (core + one schema per module). Existing data was not reset."
         : "Schema upgraded in place. Existing data was not reset."); return;
 }
 await using var source = NpgsqlDataSource.Create(connectionString);
@@ -86,7 +92,7 @@ var store = new PostgresStore(source);
 // las claves de laboratorio, que se retiran en D4.3.
 if(args.Length == 3 && args[0] == "create-user")
 {
-    await store.CheckAsync();
+    await store.CheckAsync(schemaNames);
     var password = Console.ReadLine() ?? "";
     var created = await new IdentityStore(source,scope).CreateUserAsync(args[1],password,args[2]);
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
@@ -96,7 +102,7 @@ if(args.Length == 3 && args[0] == "create-user")
 // oculta y dos veces; nunca pasa por argumentos, entorno, ficheros ni el instalador.
 if(args.Length == 1 && args[0] == "first-user")
 {
-    await store.CheckAsync();
+    await store.CheckAsync(schemaNames);
     if(Console.IsInputRedirected) throw new InvalidOperationException("first-user is interactive; scripts use create-user with the password on stdin.");
     string Hidden(string prompt)
     {
@@ -124,8 +130,8 @@ if(args.Length == 1 && args[0] == "first-user")
 // D5.4: copia manual inmediata (la desatendida la hace el propio servicio). Usa el rol de ejecucion.
 if(args.Length == 1 && args[0] == "backup")
 {
-    await store.CheckAsync();
-    var manual = new BackupRunner(settings,scope,BuildInfo.Version);
+    await store.CheckAsync(schemaNames);
+    var manual = new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas);
     var written = await manual.BackupAsync(connectionString);
     var replicated = await manual.ReplicateAsync(written);
     Console.WriteLine($"Backup {written.File} written under {BackupRunner.Folder} ({written.SizeBytes} bytes, sha256 {written.Sha256})."
@@ -138,7 +144,7 @@ if(args.Length != 0) throw new ArgumentException("Supported: status, provision, 
 var notices = new List<string>();
 for(var attempt = 0; ; attempt++)
 {
-    try { await store.CheckAsync(); break; }
+    try { await store.CheckAsync(schemaNames); break; }
     catch(NpgsqlException e) when (!laboratory && attempt < 20 && (e is not PostgresException starting || starting.SqlState == "57P03"))
     { await Task.Delay(1000); }
 }
@@ -149,6 +155,10 @@ if(await store.RuntimeOverprivilegedAsync())
     notices.Add("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
 }
 var installation = await store.InstallationAsync();
+// E1b: modulos activos de ESTA instalacion, leidos de la base. En una instalacion COSTINA_MODULES no manda (solo laboratorio/CI).
+var modules = await ActiveModules(store);
+if(!laboratory && settings.Get("COSTINA_MODULES") is not null)
+    notices.Add("AVISO: COSTINA_MODULES solo acota en laboratorio; en una instalacion los modulos activos viven en la base (core.installation.modules).");
 var demoState = new DemoState{IsDemo = await store.IsDemoAsync(scope)};
 // Version unica del paquete (csproj) y commit del build (SourceLink): una sola fuente para /health y /session.
 var informational = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
@@ -202,7 +212,7 @@ builder.Services.AddSingleton<HubTicketStore>();
 builder.Services.AddSingleton<PublisherHealth>();
 builder.Services.AddSingleton<AttemptThrottle>();
 builder.Services.AddSingleton<BackupHealth>();
-var backupRunner = new BackupRunner(settings,scope,serverVersion);
+var backupRunner = new BackupRunner(settings,scope,serverVersion,backupSchemas);
 if(!laboratory) builder.Services.AddHostedService(services=>new BackupService(backupRunner,services.GetRequiredService<BackupHealth>(),
     settings,connectionString,services.GetRequiredService<ILogger<BackupService>>()));
 builder.Services.AddSignalR();
@@ -314,7 +324,7 @@ const string prefix="/api/native/v1";
 app.MapGet("/ca.crt",()=>File.Exists(LocalTls.CaCertificate) && tlsCertificate is not null
     ? Results.File(File.ReadAllBytes(LocalTls.CaCertificate),"application/x-x509-ca-cert","costina-ca.crt") : Results.NotFound());
 app.MapGet("/health",async ()=>{
-    await store.CheckAsync();
+    await store.CheckAsync(schemaNames);
     if(!laboratory && !demoState.IsDemo) demoState.IsDemo=await store.IsDemoAsync(scope); // cargar la demo con el servicio en marcha se refleja sin reiniciar
     return Results.Json(new {status="ready",mode=laboratory?"local-laboratory":"installation",version=serverVersion,build=serverBuild,demo=!laboratory && demoState.IsDemo,pwa=pwaHosted});
 });

@@ -32,7 +32,7 @@ public sealed class OutboxPublisher(NpgsqlDataSource dataSource, BusinessScope s
         // Publicacion por ambito: este proceso solo releva los eventos de SU tenant/empresa/local.
         // Eventos de otro ambito en la misma base los publica el servidor de ese ambito.
         await using (var select = new NpgsqlCommand(
-            "SELECT id,type,aggregate_id,occurred_at FROM native_d1.outbox WHERE published_at IS NULL " +
+            "SELECT id,type,aggregate_id,occurred_at FROM core.outbox WHERE published_at IS NULL " +
             "AND tenant=@tenant AND company=@company AND location=@location " +
             "ORDER BY occurred_at,id LIMIT 100 FOR UPDATE SKIP LOCKED", connection, transaction))
         {
@@ -47,7 +47,7 @@ public sealed class OutboxPublisher(NpgsqlDataSource dataSource, BusinessScope s
         {
             await sink.PublishAsync(IsFinancial(notice.Type) ? "fin" : "ops", notice, ct);
             await using var mark = new NpgsqlCommand(
-                "UPDATE native_d1.outbox SET published_at=now() WHERE id=@id", connection, transaction);
+                "UPDATE core.outbox SET published_at=now() WHERE id=@id", connection, transaction);
             mark.Parameters.AddWithValue("id", notice.Id);
             await mark.ExecuteNonQueryAsync(ct);
         }
