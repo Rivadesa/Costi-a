@@ -50,6 +50,16 @@ const courseActions = (course: Course) => course.actions ?? []
 // E4a: pases de menu cerrado en los que el servidor anuncia 'choose': platos elegibles de la oferta con la que se abrio la mesa.
 const choice = ref<Record<string, string>>({})
 const choosable = computed(() => service.value.courses.filter(c => courseActions(c).includes('choose')))
+// E4b: grupos de una carta en los que el servidor anuncia 'add-dish': items pedibles de la oferta de la mesa.
+const orderable = computed(() => service.value.courses.filter(c => courseActions(c).includes('add-dish')))
+const itemsOf = (course: Course) => (props.offers ?? []).find(o => o.id === service.value.offerId)?.courses.find(c => c.id === course.id)?.items ?? []
+const dishPick = ref<Record<string, string>>({}); const dishQty = ref<Record<string, number>>({}); const dishGuest = ref<Record<string, number | null>>({})
+function addDish(course: Course): void {
+  const item = itemsOf(course).find(i => `${i.productId}/${i.presentationId}` === dishPick.value[course.id])
+  const quantity = dishQty.value[course.id] ?? 1
+  if (!item || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) { problem.value = 'Elige un plato y una cantidad entre 1 y 20.'; return }
+  command('add-dish', { courseId: course.id, productId: item.productId, presentationId: item.presentationId, quantity, guestPosition: dishGuest.value[course.id] ?? null }, `Pedir ${quantity} × ${item.name} en ${course.name}`)
+}
 const dishesOf = (course: Course) => (props.offers ?? []).find(o => o.id === service.value.offerId)?.courses.find(c => c.id === course.id)?.dishes ?? []
 const chosen = (course: Course, guest: number) => course.preparations.find(p => p.guestPosition === guest)?.name ?? 'sin elegir'
 function choose(course: Course, guest: number): void {
@@ -85,6 +95,21 @@ function choose(course: Course, guest: number): void {
         </label>
         <button type="button" :disabled="disabled" :data-testid="`do-choose-${course.id}-${guest}`" @click="choose(course, guest)">Elegir</button>
       </div>
+    </details>
+
+    <details v-for="course in orderable" :key="'order-' + course.id" open :data-testid="`order-${course.id}`">
+      <summary>{{ course.name }}: pedir platos de la carta</summary>
+      <label>Plato
+        <select v-model="dishPick[course.id]" :name="`dish-${course.id}`" :disabled="disabled">
+          <option value="" disabled>Elige…</option>
+          <option v-for="item in itemsOf(course)" :key="`${item.productId}/${item.presentationId}`" :value="`${item.productId}/${item.presentationId}`">{{ item.name }} · {{ item.presentation }}</option>
+        </select>
+      </label>
+      <label>Comensal
+        <select v-model="dishGuest[course.id]" :name="`dish-guest-${course.id}`" :disabled="disabled"><option :value="null">Toda la mesa</option><option v-for="position in guests" :key="position" :value="position">Comensal {{ position }}</option></select>
+      </label>
+      <label>Cantidad <input v-model.number="dishQty[course.id]" :name="`dish-qty-${course.id}`" type="number" min="1" max="20" inputmode="numeric" placeholder="1" :disabled="disabled" /></label>
+      <button type="button" :disabled="disabled" :data-testid="`do-add-dish-${course.id}`" @click="addDish(course)">Pedir plato</button>
     </details>
 
     <details v-if="canConsume && catalog.length > 0">

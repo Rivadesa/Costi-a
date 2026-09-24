@@ -46,6 +46,9 @@ internal sealed partial class CourseExecution
         // E4a: mientras el pase de menu cerrado no se dispara, los comensales eligen (y pueden cambiar) su plato.
         if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
             && State == CourseState.Pending && ChoiceRequired) actions.Add("choose");
+        // E4b: en un grupo pendiente de una carta se piden platos.
+        if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
+            && State == CourseState.Pending && Optional) actions.Add("add-dish");
         var items = preparations.Select(p =>
         {
             var itemActions = new List<string>();

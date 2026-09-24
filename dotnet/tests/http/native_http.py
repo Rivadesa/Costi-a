@@ -15,9 +15,11 @@ import urllib.request
 
 SERVER = Path(sys.argv[1]).resolve()
 sys.argv = sys.argv[:1]
-BASE = 'http://127.0.0.1:5088'
+# COSTINA_TEST_PORT: puerto del servidor de pruebas (5088 por defecto; en un PC con una instalacion real de Costina, otro).
+PORT = os.environ.get('COSTINA_TEST_PORT', '5088')
+BASE = 'http://127.0.0.1:' + PORT
 ENV = os.environ.copy()
-ENV.update(COSTINA_LAB_MODE='true', COSTINA_PORT='5088', COSTINA_TENANT='d1-tenant',
+ENV.update(COSTINA_LAB_MODE='true', COSTINA_PORT=PORT, COSTINA_TENANT='d1-tenant',
            COSTINA_COMPANY='d1-company', COSTINA_LOCATION='d1-location')
 # D4.3: las claves de rol quedan retiradas. Cada rol autentica como usuario lab-<rol> con
 # sesion real; KEYS pasa a contener tokens de sesion y todas las suites siguen funcionando.

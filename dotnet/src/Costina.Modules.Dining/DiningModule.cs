@@ -57,7 +57,8 @@ public sealed class DiningModule : IModule
         Post("/services", (HttpContext c) => Write<OpenRequest>(c, store, scope, DiningOperations.Open), new RouteAccess("main", "service"));
         // La matriz rol x accion que el middleware aplica es la MISMA que filtra las affordances: nada se anuncia que de 403.
         Post("/services/{id}/commands/{action}", (HttpContext c, string id, string action) =>
-            Write<DiningCommand>(c, store, scope, (u, i, r) => action == "add-consumption" ? DiningOperations.Consumption(u, i, id, r) : DiningOperations.Dining(u, i, id, action, r)),
+            Write<DiningCommand>(c, store, scope, (u, i, r) => action == "add-consumption" ? DiningOperations.Consumption(u, i, id, r)
+                : action == "add-dish" ? DiningOperations.AddDish(u, i, id, r) : DiningOperations.Dining(u, i, id, action, r)),
             new RouteAccess("main", "service", "kitchen") { ActionPolicy = Affordances.Allows });
         Post("/occupancy/{id}/release", (HttpContext c, string id) =>
             Write<ReleaseCommand>(c, store, scope, (u, i, r) => DiningOperations.Release(u, i, id, r)), new RouteAccess("main"));

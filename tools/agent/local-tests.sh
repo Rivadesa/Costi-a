@@ -29,6 +29,8 @@ DOTNET_ROOT="$(cygpath -u "$D" 2>/dev/null || printf '%s' "$D")"
 export DOTNET_ROOT DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 PYTHONIOENCODING=utf-8
 export PATH="$DOTNET_ROOT:$PG_BIN:$PATH"
 export PGHOST=127.0.0.1 PGPORT=5434 PGUSER=costina PGPASSWORD=ci-only PGDATABASE=costina_d1_test COSTINA_PG_BIN="$PG_BIN"
+# Puerto del servidor de pruebas: 5090 (una instalacion REAL de Costina en este PC escucha en 5088 y no se toca).
+export COSTINA_TEST_PORT="${COSTINA_TEST_PORT:-5090}"
 BOOTSTRAP='Host=127.0.0.1;Port=5434;Database=costina_d1_test;Username=costina;Password=ci-only'
 SERVER=src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
 ALL="packaging_http native_http security_http desktop_reads affordances_http restrictions_http checkout_http identity_http pairing_http station_http organization_http catalog_http offers_http pwa_http"

@@ -7,7 +7,8 @@ namespace Costina.Core.Domain;
 // Nada se borra: se desactiva. El precio se congela en la cuenta al consumir (ChargeLine lleva producto, presentacion y tarifa).
 public sealed record TaxDefinition(string Id, string Name, decimal Rate, bool Active);
 public sealed record CategoryDefinition(string Id, string Name, string? ParentId, string? Color, int Sort, bool Active);
-public sealed record ProductDefinition(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active);
+// E4b: StationId = estacion de cocina de un plato (a la carta); null = bebida o consumo directo, sin pase.
+public sealed record ProductDefinition(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, string? StationId = null);
 public sealed record PresentationDefinition(string ProductId, string Id, string Name, int Sort, bool Active);
 public sealed record TariffDefinition(string Id, string Name, int Sort, bool Active);
 public sealed record PriceDefinition(string TariffId, string ProductId, string PresentationId, DateOnly ValidFrom, long PriceCents);
@@ -44,10 +45,11 @@ public static class Catalog
         return text;
     }
 
-    public static ProductDefinition Product(string? id, string? name, string? categoryId, string? taxId, string? reference, int? sort, bool active = true)
+    public static ProductDefinition Product(string? id, string? name, string? categoryId, string? taxId, string? reference, int? sort, bool active = true, string? stationId = null)
     {
         var category = string.IsNullOrWhiteSpace(categoryId) ? null : Organization.Code(categoryId, "category id");
-        return new(Organization.Code(id, "product id"), Organization.Name(name), category, Organization.Code(taxId, "tax id"), Reference(reference), Organization.Sort(sort), active);
+        var station = string.IsNullOrWhiteSpace(stationId) ? null : Organization.Code(stationId, "station id");
+        return new(Organization.Code(id, "product id"), Organization.Name(name), category, Organization.Code(taxId, "tax id"), Reference(reference), Organization.Sort(sort), active, station);
     }
 
     // Referencia externa (codigo de articulo del ERP anterior, SKU de la tienda web): texto corto sin control.

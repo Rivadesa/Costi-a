@@ -53,7 +53,7 @@ class Offers(unittest.TestCase):
 
     def test_01_demo_offers_are_core_data_sold_as_catalog_products(self):
         all_offers = offers()
-        self.assertEqual([(o['id'], o['kind'], o['productId']) for o in all_offers], [('LAB-TASTING', 'tasting', 'menu-lab-tasting'), ('LAB-DAILY', 'set-menu', 'menu-lab-daily')])
+        self.assertEqual([(o['id'], o['kind'], o['productId']) for o in all_offers], [('LAB-TASTING', 'tasting', 'menu-lab-tasting'), ('LAB-DAILY', 'set-menu', 'menu-lab-daily'), ('LAB-CARTA', 'a-la-carte', None)])
         tasting = offer('LAB-TASTING')
         self.assertEqual([(c['id'], [d['id'] for d in c['dishes']]) for c in tasting['courses']], [('p1', ['frio', 'caliente']), ('p2', ['principal'])])
         self.assertEqual(tasting['courses'][0]['dishes'][0]['stationId'], 'cold')
@@ -66,10 +66,11 @@ class Offers(unittest.TestCase):
         # Configuracion operativa (todos los roles): ofertas vigentes con pases y platos, sin dinero; 'menus' sigue como alias (id, name).
         for role in ('main', 'service', 'kitchen'):
             cfg = ok('/configuration', role=role)
-            self.assertEqual([(o['id'], o['kind'], len(o['courses'])) for o in cfg['offers']], [('LAB-TASTING', 'tasting', 2), ('LAB-DAILY', 'set-menu', 2)], role)
-            self.assertEqual([m['id'] for m in cfg['menus']], ['LAB-TASTING', 'LAB-DAILY'])
+            self.assertEqual([(o['id'], o['kind'], len(o['courses'])) for o in cfg['offers']], [('LAB-TASTING', 'tasting', 2), ('LAB-DAILY', 'set-menu', 2), ('LAB-CARTA', 'a-la-carte', 3)], role)
+            self.assertEqual([m['id'] for m in cfg['menus']], ['LAB-TASTING', 'LAB-DAILY', 'LAB-CARTA'])
+            self.assertEqual([(c['id'], [(i['productId'], i['presentationId'], i['name']) for i in c['items']]) for c in cfg['offers'][2]['courses']][0], ('entrantes', [('croquetas', 'unit', 'Croquetas de la casa')]))
             self.assertEqual(list(money_keys(cfg['offers'])), [])
-        self.assertEqual({'id', 'name', 'kind', 'courses'}, set(cfg['offers'][0])); self.assertEqual({'id', 'name', 'dishes'}, set(cfg['offers'][0]['courses'][0]))
+        self.assertEqual({'id', 'name', 'kind', 'courses'}, set(cfg['offers'][0])); self.assertEqual({'id', 'name', 'dishes', 'items'}, set(cfg['offers'][0]['courses'][0]))
 
     def test_02_offers_courses_and_dishes_are_edited_and_never_deleted(self):
         # Alta de un menu cerrado: nace con su producto-menu (categoria menus, presentacion person) y su precio en la general.
@@ -79,7 +80,7 @@ class Offers(unittest.TestCase):
         product = next(p for p in ok('/erp/catalog')['products'] if p['id'] == 'menu-degusta')
         self.assertEqual((product['categoryId'], product['taxId'], product['presentations'][0]['id'], product['presentations'][0]['prices'][0]['priceCents']), ('menus', 'iva-10', 'person', 9500))
         self.assertEqual(command('offer-create', id='DEGUSTA', name='Otra')[0], 409)                        # codigo unico
-        self.assertEqual(json.loads(command('offer-create', id='CARTA', name='Carta', kind='a-la-carte')[1])['error'], 'kind_unsupported')   # E4b
+        self.assertEqual(json.loads(command('offer-create', id='CARTA', name='Carta', kind='a-la-carte', productId='water')[1])['error'], 'product_not_allowed')   # E4b: una carta no es un producto
         self.assertEqual(command('offer-create', id='X1', name='x', productId='no-existe')[0], 404)
         self.assertEqual(json.loads(command('offer-create', id='X1', name='x', productId='water')[1])['error'], 'presentation_required')   # no se vende por persona
         for bad in (dict(id='X1', name='x', weekdays=0), dict(id='X1', name='x', validFrom='2026-10-10', validTo='2026-10-01'), dict(id='X1', name='x', validFrom='hoy'), dict(id='con espacio', name='x')):
@@ -176,6 +177,68 @@ class Offers(unittest.TestCase):
         h.mutate(sid, 'skip', courseId='segundos', reason='sin tiempo')
         h.mutate(sid, 'complete')
         self.assertEqual(h.dining(sid)['data']['state'], 'Completed')
+
+    def test_045_an_a_la_carte_offer_takes_dishes_per_group_and_charges_each_one(self):
+        # Configuracion: una carta sin producto-menu; sus grupos llevan items (producto + presentacion con estacion).
+        self.assertEqual(command('offer-create', id='CARTA', name='Carta de temporada', kind='a-la-carte')[0], 200)
+        self.assertIsNone(offer('CARTA')['productId'])
+        self.assertEqual(command('course-create', offerId='CARTA', id='platos', name='Platos')[0], 200)
+        self.assertEqual(json.loads(command('item-create', offerId='CARTA', courseId='platos', productId='water', presentationId='bottle')[1])['error'], 'station_required')   # bebida: sin estacion
+        self.assertEqual(command('item-create', offerId='CARTA', courseId='platos', productId='no-existe', presentationId='unit')[0], 404)
+        self.assertEqual(json.loads(command('item-create', offerId='LAB-DAILY', courseId='primeros', productId='lubina', presentationId='unit')[1])['error'], 'not_a_la_carte')
+        self.assertEqual(command('item-create', offerId='CARTA', courseId='platos', productId='lubina', presentationId='unit')[0], 200)
+        self.assertEqual(command('item-create', offerId='CARTA', courseId='platos', productId='lubina', presentationId='unit')[0], 409)
+        self.assertEqual([(i['productId'], i['stationId']) for i in offer('CARTA')['courses'][0]['items']], [('lubina', 'hot')])
+        # Un producto pasa a plato al darle estacion en el catalogo.
+        self.assertEqual(request('/erp/catalog/commands/product-update', dict(id='water', stationId='no-existe'))[0], 404)
+        self.assertEqual(request('/erp/catalog/commands/product-update', dict(id='wine', stationId='cold'))[0], 200)
+        self.assertEqual(next(p['stationId'] for p in ok('/erp/catalog')['products'] if p['id'] == 'wine'), 'cold')
+        self.assertEqual(command('item-create', offerId='CARTA', courseId='platos', productId='wine', presentationId='glass')[0], 200)
+        self.assertEqual(request('/erp/catalog/commands/product-update', dict(id='wine', stationId=''))[0], 200)                       # vuelve a ser bebida
+        # Servicio: abrir con la carta de la demo no cobra nada; los grupos estan vacios y anuncian add-dish.
+        table = free_table()
+        status, body = open_with(table, 'LAB-CARTA', pax=2)
+        self.assertEqual(status, 200, body); sid = json.loads(body)['serviceId']
+        dining = h.dining(sid)['data']
+        self.assertEqual([(c['id'], c['optional'], c['choiceRequired'], len(c['preparations'])) for c in dining['courses']], [('entrantes', True, False, 0), ('principales', True, False, 0), ('postres', True, False, 0)])
+        self.assertEqual(h.account(sid)['data']['totalCents'], 0)
+        self.assertIn('add-dish', dining['courses'][0]['actions'])
+        self.assertNotIn('add-dish', ok('/dining/services/' + sid, role='kitchen')['data']['courses'][0].get('actions', []))
+        h.mutate(sid, 'start')
+        self.assertEqual(json.loads(h.request('/dining/services/' + sid + '/commands/fire-next', dict(expectedVersion=h.dining(sid)['version']))[1])['error'], 'course_empty')
+        # Pedir desde sala: elaboracion en el grupo con la estacion del producto y cargo congelado en la cuenta; sin dinero en la respuesta.
+        status, body = h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='croquetas', presentationId='unit', quantity=2, guestPosition=1), role='service')
+        self.assertEqual(status, 200, body)
+        self.assertEqual(list(money_keys(json.loads(body))), [])
+        self.assertEqual([(p['id'], p['stationId'], p['quantity'], p['guestPosition']) for p in json.loads(body)['data']['courses'][0]['preparations']], [('croquetas-unit-1', 'cold', 2, 1)])
+        charge = h.account(sid)['data']['charges'][0]
+        self.assertEqual((charge['description'], charge['quantity'], charge['unitPriceCents'], charge['productId'], charge['tariffId']), ('Croquetas de la casa · Ración', 2, 800, 'croquetas', 'general'))
+        self.assertEqual(h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='lubina', presentationId='unit'))[0], 409)   # item_unavailable: no esta en ese grupo
+        self.assertEqual(h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='croquetas', presentationId='unit', quantity=0))[0], 422)
+        self.assertEqual(h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='croquetas', presentationId='unit'), role='kitchen')[0], 403)
+        self.assertEqual(h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='croquetas', presentationId='unit'))[0], 200)   # otra racion
+        self.assertEqual([p['id'] for p in h.dining(sid)['data']['courses'][0]['preparations']], ['croquetas-unit-1', 'croquetas-unit-2'])
+        self.assertEqual(h.account(sid)['data']['totalCents'], 2400)
+        h.mutate(sid, 'fire-next')
+        self.assertEqual(h.request('/dining/services/' + sid + '/commands/add-dish', dict(expectedVersion=h.dining(sid)['version'], courseId='entrantes', productId='croquetas', presentationId='unit'))[0], 409)   # ya disparado
+        for prep in ('croquetas-unit-1', 'croquetas-unit-2'):
+            h.mutate(sid, 'preparation-start', courseId='entrantes', itemId=prep); h.mutate(sid, 'preparation-ready', courseId='entrantes', itemId=prep)
+        h.mutate(sid, 'ready', courseId='entrantes'); h.mutate(sid, 'serve', courseId='entrantes')
+        h.mutate(sid, 'add-dish', courseId='principales', productId='lubina', presentationId='unit', guestPosition=2)
+        h.mutate(sid, 'fire-next')
+        self.assertEqual(h.account(sid)['data']['totalCents'], 4800)
+        h.mutate(sid, 'preparation-start', courseId='principales', itemId='lubina-unit-1'); h.mutate(sid, 'preparation-ready', courseId='principales', itemId='lubina-unit-1')
+        h.mutate(sid, 'ready', courseId='principales'); h.mutate(sid, 'serve', courseId='principales')
+        h.mutate(sid, 'skip', courseId='postres', reason='sin postre')
+        h.mutate(sid, 'complete')
+        self.assertEqual(h.dining(sid)['data']['state'], 'Completed')
+        # Sin items activos en un grupo, la carta no lo publica; sin ningun grupo, no se abre.
+        self.assertEqual(command('item-deactivate', offerId='CARTA', courseId='platos', productId='lubina', presentationId='unit')[0], 200)
+        self.assertEqual(command('item-deactivate', offerId='CARTA', courseId='platos', productId='wine', presentationId='glass')[0], 200)
+        self.assertNotIn('CARTA', [o['id'] for o in ok('/configuration')['offers']])
+        self.assertEqual(json.loads(open_with(table, 'CARTA')[1])['error'], 'offer_incomplete')
+        self.assertEqual(command('item-reactivate', offerId='CARTA', courseId='platos', productId='lubina', presentationId='unit')[0], 200)
+        self.assertIn('CARTA', [o['id'] for o in ok('/configuration')['offers']])
 
     def test_05_commands_are_idempotent_and_audited(self):
         key = 'offer-' + datetime.datetime.now().strftime('%H%M%S%f')

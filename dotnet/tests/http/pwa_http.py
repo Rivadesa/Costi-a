@@ -52,7 +52,7 @@ class Pwa(unittest.TestCase):
             self.assertEqual(status, 200, role)
             items = json.loads(body)
             # E3: un vendible por presentacion (water/bottle, wine/glass, wine/bottle); categoria sin dinero; nunca 'tariff'.
-            self.assertEqual(sorted((i['id'], i['presentationId']) for i in items), [('water', 'bottle'), ('wine', 'bottle'), ('wine', 'glass')])
+            self.assertEqual(sorted((i['id'], i['presentationId']) for i in items), [('croquetas', 'unit'), ('lubina', 'unit'), ('tarta', 'unit'), ('water', 'bottle'), ('wine', 'bottle'), ('wine', 'glass')])   # E4b: platos de la carta de ensayo
             self.assertEqual(set(items[0]), {'id', 'presentationId', 'name', 'presentation', 'categoryId', 'categoryName'})
             self.assertEqual(list(money_keys(items)), [])
         self.assertEqual(h.request('/catalog', role='kitchen')[0], 403)
@@ -80,7 +80,7 @@ class Pwa(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b'<div id="app">', body)
         csp = headers['Content-Security-Policy']
-        for required in ("default-src 'none'", "script-src 'self'", "style-src 'self'", "connect-src 'self' wss://127.0.0.1:5088", "frame-ancestors 'none'", "base-uri 'none'"):
+        for required in ("default-src 'none'", "script-src 'self'", "style-src 'self'", "connect-src 'self' wss://127.0.0.1:" + h.PORT, "frame-ancestors 'none'", "base-uri 'none'"):
             self.assertIn(required, csp)
         for forbidden in ('unsafe-inline', 'unsafe-eval', 'http:', 'https:', '*'):
             self.assertNotIn(forbidden, csp)

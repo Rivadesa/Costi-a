@@ -88,6 +88,16 @@ public sealed partial class DiningService : Aggregate
         Emit("course.chosen", stamp, ("course_id", courseId), ("guest", guest.ToString()), ("dish_id", dish.Id));
     }
 
+    // E4b: plato pedido a la carta en un grupo pendiente (la cuenta se apunta fuera, por el contrato del nucleo).
+    public void AddDish(string courseId, PreparationDefinition dish, CommandStamp stamp)
+    {
+        Check(stamp);
+        Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
+            "service_finished", "A finished service cannot be changed.");
+        Find(courseId).AddDish(dish);
+        Emit("course.dish_added", stamp, ("course_id", courseId), ("item_id", dish.Id), ("quantity", dish.Quantity.ToString()));
+    }
+
     public void Skip(string courseId, string reason, CommandStamp stamp)
     {
         Check(stamp);

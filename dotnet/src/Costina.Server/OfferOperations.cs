@@ -12,14 +12,15 @@ namespace Costina.Server;
 // 'person') si no se indica uno; su precio se fija con price-set del catalogo o con priceCents al crearla.
 public sealed record OfferCommand(string? Id=null,string? Name=null,string? Kind=null,string? ProductId=null,string? Service=null,
     string? ValidFrom=null,string? ValidTo=null,int? Weekdays=null,int? Sort=null,long? PriceCents=null,string? TaxId=null,
-    string? OfferId=null,string? CourseId=null,string? StationId=null);
+    string? OfferId=null,string? CourseId=null,string? StationId=null,string? PresentationId=null);
 
 public static class OfferOperations
 {
     public static readonly string[] Actions = [
         "offer-create","offer-update","offer-deactivate","offer-reactivate",
         "course-create","course-update","course-deactivate","course-reactivate",
-        "dish-create","dish-update","dish-deactivate","dish-reactivate"];
+        "dish-create","dish-update","dish-deactivate","dish-reactivate",
+        "item-create","item-deactivate","item-reactivate"];
     public static bool Allows(string role,string action) => role=="main" && Actions.Contains(action,StringComparer.Ordinal);
 
     private static DateOnly? Date(string? text,string name)
@@ -110,6 +111,28 @@ public static class OfferOperations
                     request.ProductId is null ? current.ProductId : request.ProductId,request.Sort??current.Sort,current.Active);
                 if(dish.StationId!=current.StationId || dish.ProductId!=current.ProductId) await CheckDishLinks(unit,dish);
                 await unit.UpdateOfferDish(dish); await unit.Events([Event("dish_updated",dish.OfferId,("course",dish.CourseId),("dish",dish.Id),("name",dish.Name))]); return dish;
+            }
+            // E4b: items de un grupo de carta (producto + presentacion activos del catalogo; el producto necesita estacion para ser plato).
+            case "item-create":
+            {
+                var item=Offers.Item(Required(request.OfferId),Required(request.CourseId),Required(request.ProductId),Required(request.PresentationId),request.Sort);
+                var offer=await unit.Offer(item.OfferId);
+                if(offer.Kind!=OfferKind.ALaCarte) throw new RuleViolation("not_a_la_carte","Items belong to a la carte offers; set menus and tastings use dishes.");
+                _=await unit.OfferCourse(item.OfferId,item.CourseId);
+                var (product,_)=await unit.Sellable(item.ProductId,item.PresentationId);
+                if(product.StationId is null) throw new RuleViolation("station_required","A dish needs a kitchen station on its product (drinks are ordered as consumptions).");
+                await unit.InsertOfferItem(item);
+                await unit.Events([Event("item_created",item.OfferId,("course",item.CourseId),("product",item.ProductId),("presentation",item.PresentationId))]);
+                return item;
+            }
+            case "item-deactivate": case "item-reactivate":
+            {
+                var current=(await unit.OfferItems(Required(request.OfferId))).FirstOrDefault(i=>i.CourseId==Required(request.CourseId) && i.Item.ProductId==Required(request.ProductId) && i.Item.PresentationId==Required(request.PresentationId));
+                if(current.Item is null) throw new StoreNotFound();
+                var item=new OfferItemDefinition(current.OfferId,current.CourseId,current.Item.ProductId,current.Item.PresentationId,current.Item.Sort,active);
+                await unit.UpdateOfferItem(item);
+                await unit.Events([Event(active ? "item_reactivated" : "item_deactivated",item.OfferId,("course",item.CourseId),("product",item.ProductId),("presentation",item.PresentationId))]);
+                return item;
             }
             case "dish-deactivate": case "dish-reactivate":
             {

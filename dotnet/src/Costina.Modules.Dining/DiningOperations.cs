@@ -23,20 +23,24 @@ public static class DiningOperations
         if(request.Pax < 1 || request.Pax > table.Capacity) throw new ArgumentException("Pax is outside the configured table capacity.");
         var stamp = new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         var id = Guid.NewGuid().ToString("N");
-        var choice = offer.Kind == OfferKind.SetMenu;
-        var courses = offerCourses.Select(c => new CourseDefinition(c.Id,c.Name,choice ? [] : c.Dishes.SelectMany(d =>
-            Enumerable.Range(1,request.Pax).Select(n => new PreparationDefinition(d.Id+"-"+n,d.Name,d.StationId,1,n))).ToArray(),choice)).ToArray();
+        var choice = offer.Kind == OfferKind.SetMenu; var carte = offer.Kind == OfferKind.ALaCarte;
+        // E4b: en una carta los pases son grupos vacios y opcionales: los platos se piden con add-dish y se cobran al pedirlos.
+        var courses = offerCourses.Select(c => new CourseDefinition(c.Id,c.Name,choice || carte ? [] : c.Dishes.SelectMany(d =>
+            Enumerable.Range(1,request.Pax).Select(n => new PreparationDefinition(d.Id+"-"+n,d.Name,d.StationId,1,n))).ToArray(),choice,carte)).ToArray();
         var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses,offer.Id);
         // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu (producto del catalogo, por persona, a la
         // tarifa de la sala; E3) por el contrato de la Unit, en la misma transaccion. El precio queda congelado con su origen.
         var account = new SettlementAccount(Guid.NewGuid().ToString("N"),identity.Scope,id);
         var occupancy = new TableOccupancy(Guid.NewGuid().ToString("N"),identity.Scope,table.Id,id);
-        var (product,presentation) = await unit.Sellable(offer.ProductId ?? throw new RuleViolation("offer_unpriced","This offer has no menu product."),Offers.PersonPresentation);
-        var zone = await unit.Zone(table.ZoneId);
-        long cents; string tariff;
-        try { (cents,tariff) = await unit.PriceFor(zone.Active && zone.TariffId is not null ? zone.TariffId : Catalog.GeneralTariff,product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now)); }
-        catch(RuleViolation e) when(e.Code=="price_missing") { throw new RuleViolation("offer_unpriced","Set the menu price in the catalog before opening tables with this offer."); }
-        account.AddCharge(Guid.NewGuid().ToString("N"),offer.Name+" · "+presentation.Name,request.Pax,cents,stamp,product.Id,presentation.Id,tariff);
+        if(!carte)
+        {
+            var (product,presentation) = await unit.Sellable(offer.ProductId ?? throw new RuleViolation("offer_unpriced","This offer has no menu product."),Offers.PersonPresentation);
+            var zone = await unit.Zone(table.ZoneId);
+            long cents; string tariff;
+            try { (cents,tariff) = await unit.PriceFor(zone.Active && zone.TariffId is not null ? zone.TariffId : Catalog.GeneralTariff,product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now)); }
+            catch(RuleViolation e) when(e.Code=="price_missing") { throw new RuleViolation("offer_unpriced","Set the menu price in the catalog before opening tables with this offer."); }
+            account.AddCharge(Guid.NewGuid().ToString("N"),offer.Name+" · "+presentation.Name,request.Pax,cents,stamp,product.Id,presentation.Id,tariff);
+        }
         await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
             new DomainEvent(Guid.NewGuid(),"service.created",id,identity.Scope,identity.ActorId,stamp.At,
@@ -100,6 +104,30 @@ public static class DiningOperations
                 ParseEnum<ReviewDecision>(request.Decision),Required(request.Note),stamp); break;
             default: throw new StoreNotFound();
         }
+        await unit.Save(entity,stored.Version);
+        return new Versioned<DiningView>(stored.Version+1,entity.View());
+    }
+    // E4b: plato pedido a la carta en un grupo pendiente: elaboracion en el pase (estacion del producto) y cargo en la cuenta al
+    // precio vigente de la tarifa de la sala, en la misma transaccion. La respuesta NO lleva importes (ADR-007).
+    public static async Task<object> AddDish(Unit unit,ExecutionIdentity identity,string id,DiningCommand request)
+    {
+        var stored=await unit.Dining(id); Version(stored.Version,request.ExpectedVersion);
+        var entity=stored.Entity; var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
+        var courseId=Required(request.CourseId);
+        var items=await unit.OfferItems(entity.OfferId ?? throw new RuleViolation("no_dishes","This service was not opened with an offer."));
+        var item=items.FirstOrDefault(i=>i.CourseId==courseId && i.Item.ProductId==Required(request.ProductId) && i.Item.PresentationId==Required(request.PresentationId) && i.Item.Active).Item
+            ?? throw new RuleViolation("item_unavailable","That dish is not on this group of the offer.");
+        var (product,presentation)=await unit.Sellable(item.ProductId,item.PresentationId);
+        if(product.StationId is null) throw new RuleViolation("station_required","This product has no kitchen station: order it as a consumption.");
+        if(request.Quantity<1 || request.Quantity>20) throw new ArgumentException("Quantity must be between 1 and 20.");
+        var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
+        var account=await unit.Account(id);
+        var chargeId=Guid.NewGuid().ToString("N");
+        account.Entity.AddCharge(chargeId,product.Name+" · "+presentation.Name,request.Quantity,cents,stamp,product.Id,presentation.Id,tariff);
+        var existing=entity.View().Courses.First(c=>c.Id==courseId).Preparations.Count(p=>p.Id.StartsWith(product.Id+"-"+presentation.Id+"-",StringComparison.Ordinal));
+        var dishId=product.Id+"-"+presentation.Id+"-"+(existing+1);
+        entity.AddDish(courseId,new PreparationDefinition(dishId,product.Name+(presentation.Id==Catalog.DefaultPresentation ? "" : " · "+presentation.Name),product.StationId,request.Quantity,request.GuestPosition),stamp);
+        await unit.Save(account.Entity,account.Version);
         await unit.Save(entity,stored.Version);
         return new Versioned<DiningView>(stored.Version+1,entity.View());
     }
