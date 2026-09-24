@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-09-23. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-09-24. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -73,6 +73,7 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, insta
 - E3 (Hito 6): catálogo y tarifas del núcleo con pantalla: impuestos, categorías jerárquicas, productos con presentaciones vendibles, tarifas y precios con vigencia (`core.taxes/categories/products/presentations/tariffs/prices`, esquema v4; `core.configuration` desaparece), `GET /erp/catalog` y comandos `erp/catalog/commands/{action}` (solo principal, auditados), tarifa por sala con la `general` de respaldo, precio **congelado en el cargo** con producto, presentación y tarifa, catálogos operativos solo con vendibles y sin dinero, importación CSV idempotente (`import-catalog`) y exportador desde WooCommerce; vista **ERP › Catálogo y tarifas** en el WPF y comandero/caja por presentación. Ver `docs/native/E3-catalog.md`.
 - E4a (Hito 6): oferta del núcleo con pantalla: degustaciones y menús cerrados como `core.offers` con pases y platos (esquema v5; los menús JSONB del módulo migran a producto-menú del catálogo + oferta), cada oferta vendida como producto por persona a las tarifas de E3, vigencia por fechas, días y servicio, `GET /erp/offers` y comandos (solo principal, auditados), `configuration.offers` para todos los roles (`menus` y `menuId` como alias una versión), apertura por oferta y comando `choose` (elección de plato por comensal antes de disparar un pase de menú cerrado); vista **ERP › Oferta: cartas y menús** y elecciones en Comedor y en la PWA. Ver `docs/native/E4a-offers.md`.
 - E4b (Hito 6): carta libre: ofertas `a-la-carte` sin producto-menú cuyos grupos llevan ítems del catálogo (`core.offer_items`, esquema v6) y productos con estación de cocina (`core.products.station_id`); `add-dish` pide un plato en un grupo pendiente creando la elaboración por estación y apuntando el cargo a la tarifa de la sala; grupos opcionales que no se disparan vacíos; ítems en ERP › Oferta y estación en ERP › Catálogo; fila «pedir platos» en Comedor y en la PWA. Ver `docs/native/E4b-carte.md`.
+- Propuesta (24-09, **borrador pendiente de decisión del promotor**, sin código): pantalla **Inicio** con «Conectar comandero» y «Conectar pantalla de cocina» por estación, reglas del servidor rol ↔ tipo de estación y sin rol principal para tablets (corte A), y **puesto principal conectado al arrancar** como dispositivo de sala con «Entrar como responsable» para lo sensible (corte B). Incluye las respuestas comprobadas sobre la persistencia de la conexión y trece fallos encontrados. Ver `docs/plans/2026-09-24-inicio-y-dispositivos.md`.
 
 - D6.6 (corte correctivo tras tres revisiones externas documentales del 21-09): la PWA ya no cierra una orden incierta como "no aplicada" por un rechazo sin preguntar antes al servidor por su clave (un reintento puede recibir 403 de una orden que sí se aplicó, si el puesto se re-emparejó con otro rol), y pide almacenamiento persistente al navegador, avisando si no lo obtiene. El mismo arreglo en el WPF y la "generación de recuperación" tras restaurar una copia antigua quedan propuestos. Ver `docs/native/D6.6-hardening.md`.
 
@@ -84,11 +85,11 @@ PR #23 (D1.3, instalador de ensayo por usuario, ADR-010) queda **cerrada como su
 
 ## Bloqueos antes de piloto operativo (motor nativo)
 
-1. Vinculación segura de dispositivos y permisos por estación (#26): un perfil `main` no autoriza físicamente al equipo principal.
+1. Vinculación segura de dispositivos y permisos por estación (#26): completa en código (D4.1–D4.3b), falta el guion manual. El puesto principal no arranca con identidad propia (hay que entrar con contraseña cada vez que se abre el programa) y conectar comanderos y pantallas de cocina está escondido en Configuración: propuesta en `docs/plans/2026-09-24-inicio-y-dispositivos.md` (cortes A y B, pendiente de decisión del promotor).
 2. Servidor Windows como servicio, TLS local, LAN, backups/restauración, observabilidad y actualización/rollback (#27).
 3. Comanderos y KDS en tablets/móviles (#28) y pruebas físicas de latencia/concurrencia.
 4. Verificación física de D3.4–D3.6 en el laboratorio y decisión sobre devoluciones parciales por medio de pago.
-5. Administración editable de mesas, estaciones y menús (hoy fixtures de laboratorio).
+5. Administración editable de mesas, estaciones, catálogo y oferta: **resuelta en E2–E4** (`docs/native/E2-organization.md`, `E3-catalog.md`, `E4a-offers.md`, `E4b-carte.md`).
 6. Migración/integración del legado (#17) con datos reales; no cargar datos reales sobre fixtures.
 
 ## Fuera del alcance actual
