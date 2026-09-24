@@ -53,6 +53,20 @@ public static class LabConfiguration
             await unit.SeedOfferCourse(new OfferCourseDefinition("LAB-DAILY","segundos","Segundos",1,true));
             await unit.SeedOfferDish(new OfferDishDefinition("LAB-DAILY","segundos","pescado","Pescado del día","hot",null,0,true));
             await unit.SeedOfferDish(new OfferDishDefinition("LAB-DAILY","segundos","carne","Carne guisada","hot",null,1,true));
+            // E4b: carta libre de ensayo: platos del catalogo con estacion, agrupados; se cobran al pedirlos.
+            await unit.SeedCategory(new CategoryDefinition("comida","Comida",null,"#C98A1B",2,true));
+            foreach(var (pid,name,station,cents,sort) in new[]{ ("croquetas","Croquetas de la casa","cold",800L,10), ("lubina","Lubina a la sal","hot",2400L,11), ("tarta","Tarta de queso","cold",600L,12) })
+            {
+                await unit.SeedProduct(new ProductDefinition(pid,name,"comida","iva-10",null,sort,true,station));
+                await unit.SeedPresentation(new PresentationDefinition(pid,"unit","Ración",0,true));
+                await unit.SeedPrice(new PriceDefinition("general",pid,"unit",new DateOnly(1970,1,1),cents));
+            }
+            await unit.SeedOffer(new OfferDefinition("LAB-CARTA","Carta de ensayo",OfferKind.ALaCarte,null,OfferService.Any,null,null,127,2,true));
+            foreach(var (cid,cname,csort,pid) in new[]{ ("entrantes","Entrantes",0,"croquetas"), ("principales","Principales",1,"lubina"), ("postres","Postres",2,"tarta") })
+            {
+                await unit.SeedOfferCourse(new OfferCourseDefinition("LAB-CARTA",cid,cname,csort,true));
+                await unit.SeedOfferItem(new OfferItemDefinition("LAB-CARTA",cid,pid,"unit",0,true));
+            }
             foreach(var module in modules) await module.SeedDemoAsync(unit);
             return new { initialized=true };
         });

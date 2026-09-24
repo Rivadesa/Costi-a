@@ -47,6 +47,8 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string categoryParentId = ""; [ObservableProperty] private string categoryColor = ""; [ObservableProperty] private string categorySort = "0";
     [ObservableProperty] private bool newProduct; [ObservableProperty] private string productId = ""; [ObservableProperty] private string productName = "";
     [ObservableProperty] private string productCategoryId = ""; [ObservableProperty] private string productTaxId = "iva-10"; [ObservableProperty] private string productReference = "";
+    [ObservableProperty] private string productStationId = "";   // E4b: estacion de cocina (vacio = bebida o consumo directo)
+    [ObservableProperty] private StationDto[] stations = [];
     [ObservableProperty] private string productSort = "0"; [ObservableProperty] private string productPresentationName = "Unidad";
     [ObservableProperty] private bool newPresentation; [ObservableProperty] private string presentationId = ""; [ObservableProperty] private string presentationName = ""; [ObservableProperty] private string presentationSort = "0";
     [ObservableProperty] private string priceTariffId = "general"; [ObservableProperty] private string priceValidFrom = ""; [ObservableProperty] private string priceText = "";
@@ -60,6 +62,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     public CategoryDto[] ParentChoices => [new("", "(raíz)", null, null, -1, true), .. catalog?.Categories.Where(c => c.Active && c.Id != SelectedCategory?.Category.Id) ?? []];
     public TariffDto[] ActiveTariffs => Tariffs.Where(t => t.Active).ToArray();
     public TaxDto[] ActiveTaxes => Taxes.Where(t => t.Active).ToArray();
+    public StationDto[] StationChoices => [new("", "(sin estación: bebida o consumo directo)", "Kitchen", -1, true), .. Stations.Where(s => s.Active && s.Kind != "Pass")];
     public bool HasCategories => Categories.Length > 0;
     public bool HasProducts => Products.Length > 0;
     public bool HasPresentations => Presentations.Length > 0;
@@ -80,7 +83,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     {
         foreach (var name in new[] { nameof(CategoryEditable), nameof(ProductEditable), nameof(PresentationEditable), nameof(PriceEditable), nameof(TariffEditable), nameof(TaxEditable),
             nameof(CategoryFormTitle), nameof(ProductFormTitle), nameof(PresentationFormTitle), nameof(TariffFormTitle), nameof(TaxFormTitle),
-            nameof(HasCategories), nameof(HasProducts), nameof(HasPresentations), nameof(ActiveCategories), nameof(ParentChoices), nameof(ActiveTariffs), nameof(ActiveTaxes) })
+            nameof(HasCategories), nameof(HasProducts), nameof(HasPresentations), nameof(ActiveCategories), nameof(ParentChoices), nameof(ActiveTariffs), nameof(ActiveTaxes), nameof(StationChoices) })
             OnPropertyChanged(name);
         foreach (var command in new IRelayCommand[] { StartCategoryCommand, SaveCategoryCommand, ToggleCategoryCommand, StartProductCommand, SaveProductCommand, ToggleProductCommand,
             StartPresentationCommand, SavePresentationCommand, TogglePresentationCommand, SetPriceCommand, StartTariffCommand, SaveTariffCommand, ToggleTariffCommand, StartTaxCommand, SaveTaxCommand, ToggleTaxCommand })
@@ -103,7 +106,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     internal async Task LoadAsync()
     {
         if (shell.Api is null || !shell.IsMain) return;
-        Render(await shell.Api.GetAsync<CatalogDto>("erp/catalog"));
+        var catalog = await shell.Api.GetAsync<CatalogDto>("erp/catalog");
+        Stations = (await shell.Api.GetAsync<OrganizationDto>("organization")).Stations;
+        Render(catalog);
     }
 
     public static string Money(long cents) => (cents / 100m).ToString("N2", CultureInfo.GetCultureInfo("es-ES")) + " €";
@@ -203,7 +208,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     {
         var p = SelectedProduct?.Product;
         ProductId = p?.Id ?? ""; ProductName = p?.Name ?? ""; ProductCategoryId = p?.CategoryId ?? SelectedCategory?.Category.Id ?? ""; ProductTaxId = p?.TaxId ?? "iva-10";
-        ProductReference = p?.Reference ?? ""; ProductSort = (p?.Sort ?? 0).ToString();
+        ProductReference = p?.Reference ?? ""; ProductSort = (p?.Sort ?? 0).ToString(); ProductStationId = p?.StationId ?? "";
     }
     private void FillPresentationForm()
     {
@@ -273,10 +278,10 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private Task SaveProduct()
     {
         var id = Code(NewProduct ? ProductId : SelectedProduct!.Product.Id); var name = Name(ProductName); var sort = Number(ProductSort, "Orden", 0, 9999);
-        var categoryId = ProductCategoryId.Trim(); var taxId = Code(ProductTaxId); var reference = ProductReference.Trim();
+        var categoryId = ProductCategoryId.Trim(); var taxId = Code(ProductTaxId); var reference = ProductReference.Trim(); var stationId = ProductStationId.Trim();
         return NewProduct
-            ? Command("product-create", new { id, name, categoryId, taxId, reference, sort, presentation = Name(ProductPresentationName) }, "Crear producto " + id)
-            : Command("product-update", new { id, name, categoryId, taxId, reference, sort }, "Guardar producto " + id);
+            ? Command("product-create", new { id, name, categoryId, taxId, reference, sort, stationId, presentation = Name(ProductPresentationName) }, "Crear producto " + id)
+            : Command("product-update", new { id, name, categoryId, taxId, reference, sort, stationId }, "Guardar producto " + id);
     }
     private bool CanToggleProduct() => Main && SelectedProduct is not null && !NewProduct;
     [RelayCommand(CanExecute = nameof(CanToggleProduct))]

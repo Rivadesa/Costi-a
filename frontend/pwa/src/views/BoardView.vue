@@ -14,7 +14,8 @@ const emit = defineEmits<{ unauthorized: [] }>()
 interface TableChoice { id: string; name: string; capacity: number }
 interface MenuChoice { id: string; name: string }
 // E4a: oferta vigente (degustacion o menu cerrado) con sus pases y platos elegibles. Sin dinero.
-export interface OfferChoice { id: string; name: string; kind: string; courses: Array<{ id: string; name: string; dishes: Array<{ id: string; name: string }> }> }
+export interface OfferItem { productId: string; presentationId: string; name: string; presentation: string }
+export interface OfferChoice { id: string; name: string; kind: string; courses: Array<{ id: string; name: string; dishes: Array<{ id: string; name: string }>; items?: OfferItem[] }> }
 
 const { state, runnerState, live, locked, age, stale, run, retry, reconcile, discard } = useOperations(props, () => emit('unauthorized'))
 
@@ -66,7 +67,7 @@ onMounted(async () => {
         </label>
         <label>Comensales <input v-model.number="openPax" name="pax" type="number" min="1" max="40" inputmode="numeric" :disabled="locked" /></label>
         <label>Menu
-          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ menu.kind === 'set-menu' ? ' (menu cerrado)' : '' }}</option></select>
+          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ menu.kind === 'set-menu' ? ' (menu cerrado)' : menu.kind === 'a-la-carte' ? ' (carta)' : '' }}</option></select>
         </label>
         <button type="button" :disabled="locked" data-testid="do-open" @click="open">Abrir mesa</button>
       </details>

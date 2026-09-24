@@ -37,13 +37,17 @@ public sealed record StationDto(string Id, string Name, string Kind, int Sort, b
 public sealed record OrganizationDto(ZoneDto[] Zones, StationDto[] Stations);
 // E4a: ofertas VIGENTES (degustacion / menu cerrado) con sus pases y platos; Menus sigue como alias de un servidor anterior.
 public sealed record OfferDishChoice(string Id, string Name) { public override string ToString() => Name; }
-public sealed record OfferCourseChoice(string Id, string Name, OfferDishChoice[] Dishes);
+// E4b: Items = lo pedible en un grupo de carta (producto + presentacion); Dishes = platos de un menu cerrado.
+public sealed record OfferItemChoice(string ProductId, string PresentationId, string Name, string Presentation)
+{ public string Key => ProductId + "/" + PresentationId; public override string ToString() => Name + " · " + Presentation; }
+public sealed record OfferCourseChoice(string Id, string Name, OfferDishChoice[] Dishes, OfferItemChoice[]? Items = null);
 public sealed record OfferChoice(string Id, string Name, string Kind, OfferCourseChoice[] Courses)
 { public string KindLabel => Kind switch { "tasting" => "degustación", "set-menu" => "menú cerrado", var k => k }; public override string ToString() => $"{Name} · {KindLabel}"; }
 public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null, OfferChoice[]? Offers = null);
 // E4a: oferta completa (solo main): espejo de GET /erp/offers.
 public sealed record OfferDishDto(string OfferId, string CourseId, string Id, string Name, string StationId, string? ProductId, int Sort, bool Active);
-public sealed record OfferCourseDto(string Id, string Name, int Sort, bool Active, OfferDishDto[] Dishes);
+public sealed record OfferItemDto(string ProductId, string PresentationId, string Name, string Presentation, string? StationId, int Sort, bool Active);
+public sealed record OfferCourseDto(string Id, string Name, int Sort, bool Active, OfferDishDto[] Dishes, OfferItemDto[]? Items = null);
 public sealed record OfferDto(string Id, string Name, string Kind, string? ProductId, string Service, string? ValidFrom, string? ValidTo, int Weekdays, int Sort, bool Active, OfferCourseDto[] Courses);
 // E3: vendible de caja = producto + presentacion con el precio de la tarifa general como referencia (el servidor fija el real).
 // PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia.
@@ -55,7 +59,7 @@ public sealed record TaxDto(string Id, string Name, decimal Rate, bool Active)
 public sealed record CategoryDto(string Id, string Name, string? ParentId, string? Color, int Sort, bool Active);
 public sealed record PriceDto(string TariffId, string ValidFrom, long PriceCents);
 public sealed record PresentationDto(string Id, string Name, int Sort, bool Active, PriceDto[] Prices);
-public sealed record ProductDto(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationDto[] Presentations);
+public sealed record ProductDto(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationDto[] Presentations, string? StationId = null);
 public sealed record TariffDto(string Id, string Name, int Sort, bool Active)
 { public string StateLabel => Active ? "activa" : "desactivada"; public override string ToString() => $"{Name} ({Id}) · {StateLabel}"; }
 public sealed record CatalogDto(TaxDto[] Taxes, CategoryDto[] Categories, ProductDto[] Products, TariffDto[] Tariffs, string Today);
@@ -84,7 +88,7 @@ public sealed record PreparationDto(string Id, string Name, string StationId, in
 }
 public sealed record CourseDto(string Id, string Name, string State, DateTimeOffset? FiredAt,
     DateTimeOffset? ReadyAt, DateTimeOffset? ServedAt, string? SkipReason, PreparationDto[] Preparations,
-    string[]? Actions = null, bool ChoiceRequired = false);
+    string[]? Actions = null, bool ChoiceRequired = false, bool Optional = false);
 public sealed record DiningDto(string Id, string TableId, int Pax, string State, CourseDto[] Courses,
     string[]? Actions = null, GuestRestrictionDto[]? Restrictions = null, bool RestrictionsPendingAck = false, string? OfferId = null);
 public sealed record OccupancyDto(string Id, string TableId, string ServiceId, string State, DateTimeOffset? ReleasedAt,

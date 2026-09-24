@@ -10,7 +10,8 @@ public enum OccupancyState { Occupied, Released }
 public sealed record PreparationDefinition(string Id, string Name, string StationId,
     int Quantity = 1, int? GuestPosition = null, bool Mandatory = true);
 // E4a: ChoiceRequired = pase de menu cerrado: cada comensal elige su plato (Choose) antes de poder dispararlo.
-public sealed record CourseDefinition(string Id, string Name, IReadOnlyList<PreparationDefinition> Preparations, bool ChoiceRequired = false);
+// E4b: Optional = grupo de una carta libre: puede quedar vacio (no se dispara vacio: se anaden platos o se omite).
+public sealed record CourseDefinition(string Id, string Name, IReadOnlyList<PreparationDefinition> Preparations, bool ChoiceRequired = false, bool Optional = false);
 
 // Actions: affordances calculadas por el dominio en el momento de la lectura, NUNCA persistidas.
 // Con valor null la propiedad no se serializa: los payloads de snapshot quedan identicos a D1.
@@ -32,7 +33,9 @@ public sealed record CourseView(string Id, string Name, CourseState State,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<string>? Actions = null,
     // E4a (aditivo, SI persiste): el pase exige una eleccion por comensal; un payload anterior restaura con false.
-    bool ChoiceRequired = false);
+    bool ChoiceRequired = false,
+    // E4b (aditivo, SI persiste): grupo de carta libre, puede quedar vacio.
+    bool Optional = false);
 
 // These DTOs contain no account, payment, price, balance or fiscal fields.
 // Restrictions/RestrictionsPendingAck son ESTADO del servicio (no affordances) y viajan siempre.

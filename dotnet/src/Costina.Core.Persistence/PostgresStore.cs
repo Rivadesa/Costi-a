@@ -22,7 +22,7 @@ public sealed record ModuleSchema(string Name, string Schema, string Grants)
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
 {
-    public const int SchemaVersion = 5;
+    public const int SchemaVersion = 6;
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}$")] private static partial Regex SchemaName();
     public static string CheckedSchema(string name)
         => SchemaName().IsMatch(name) && name != "public" ? name : throw new ArgumentException("Invalid schema name: " + name);

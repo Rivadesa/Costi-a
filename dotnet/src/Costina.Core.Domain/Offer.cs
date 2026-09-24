@@ -11,6 +11,8 @@ public sealed record OfferDefinition(string Id, string Name, OfferKind Kind, str
     DateOnly? ValidFrom, DateOnly? ValidTo, int Weekdays, int Sort, bool Active);
 public sealed record OfferCourseDefinition(string OfferId, string Id, string Name, int Sort, bool Active);
 public sealed record OfferDishDefinition(string OfferId, string CourseId, string Id, string Name, string StationId, string? ProductId, int Sort, bool Active);
+// E4b: item de una carta libre: lo que se puede pedir en un grupo (producto + presentacion del catalogo).
+public sealed record OfferItemDefinition(string OfferId, string CourseId, string ProductId, string PresentationId, int Sort, bool Active);
 
 public static class Offers
 {
@@ -24,7 +26,8 @@ public static class Offers
         var code = Organization.Code(id, "offer id");
         var product = string.IsNullOrWhiteSpace(productId) ? null : Organization.Code(productId, "product id");
         Guard.Rule(kind == OfferKind.ALaCarte || product is not null, "product_required", "A tasting or set menu is sold as a product: productId is required.");
-        Guard.Rule(kind != OfferKind.ALaCarte, "kind_unsupported", "A la carte offers arrive in E4b.");
+        // E4b: una carta no se vende como producto: cada plato se cobra al pedirlo.
+        Guard.Rule(kind != OfferKind.ALaCarte || product is null, "product_not_allowed", "An a la carte offer has no menu product: dishes are charged as they are ordered.");
         Guard.Rule(validFrom is null || validTo is null || validFrom <= validTo, "invalid_validity", "validTo must not precede validFrom.");
         var days = weekdays ?? AllWeekdays;
         Guard.Rule(days is >= 1 and <= AllWeekdays, "invalid_weekdays", "weekdays is a 7-bit mask (Monday = 1 ... Sunday = 64) with at least one day.");
@@ -37,6 +40,9 @@ public static class Offers
     public static OfferDishDefinition Dish(string? offerId, string? courseId, string? id, string? name, string? stationId, string? productId, int? sort, bool active = true)
         => new(Organization.Code(offerId, "offer id"), Organization.Code(courseId, "course id"), Organization.Code(id, "dish id"), Organization.Name(name),
             Organization.Code(stationId, "station id"), string.IsNullOrWhiteSpace(productId) ? null : Organization.Code(productId, "product id"), Organization.Sort(sort), active);
+
+    public static OfferItemDefinition Item(string? offerId, string? courseId, string? productId, string? presentationId, int? sort, bool active = true)
+        => new(Organization.Code(offerId, "offer id"), Organization.Code(courseId, "course id"), Organization.Code(productId, "product id"), Organization.Code(presentationId, "presentation id"), Organization.Sort(sort), active);
 
     // Bit del dia de la semana: lunes = 1 ... domingo = 64.
     public static int WeekdayBit(DayOfWeek day) => 1 << (((int)day + 6) % 7);

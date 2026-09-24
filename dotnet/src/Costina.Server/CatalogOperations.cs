@@ -11,7 +11,7 @@ namespace Costina.Server;
 // Sin version esperada: datos maestros, la ultima edicion gana; el cliente relee tras cada comando.
 public sealed record CatalogCommand(string? Id=null,string? Name=null,decimal? Rate=null,string? ParentId=null,string? Color=null,int? Sort=null,
     string? CategoryId=null,string? TaxId=null,string? Reference=null,string? Presentation=null,string? ProductId=null,string? PresentationId=null,
-    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null);
+    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null,string? StationId=null);
 
 public static class CatalogOperations
 {
@@ -79,22 +79,23 @@ public static class CatalogOperations
             }
             case "product-create":
             {
-                var product=Catalog.Product(Required(request.Id),request.Name,request.CategoryId,request.TaxId??"iva-10",request.Reference,request.Sort);
+                var product=Catalog.Product(Required(request.Id),request.Name,request.CategoryId,request.TaxId??"iva-10",request.Reference,request.Sort,stationId:request.StationId);
                 await CheckProductLinks(unit,product);
                 await unit.InsertProduct(product);
                 // Un producto nace vendible por UNA presentacion ('unit' o la indicada); el precio se fija aparte (price-set).
                 var presentation=Catalog.Presentation(product.Id,Catalog.DefaultPresentation,request.Presentation??"Unidad",0);
                 await unit.InsertPresentation(presentation);
                 await unit.Events([Event("product_created",product.Id,("name",product.Name))]);
-                return new { product.Id,product.Name,product.CategoryId,product.TaxId,product.Reference,product.Sort,product.Active,presentationId=presentation.Id };
+                return new { product.Id,product.Name,product.CategoryId,product.TaxId,product.Reference,product.Sort,product.Active,product.StationId,presentationId=presentation.Id };
             }
             case "product-update":
             {
                 var current=await unit.Product(Required(request.Id));
-                var product=Catalog.Product(current.Id,request.Name??current.Name,request.CategoryId??current.CategoryId,request.TaxId??current.TaxId,request.Reference??current.Reference,request.Sort??current.Sort,current.Active);
+                var product=Catalog.Product(current.Id,request.Name??current.Name,request.CategoryId??current.CategoryId,request.TaxId??current.TaxId,request.Reference??current.Reference,request.Sort??current.Sort,current.Active,request.StationId??current.StationId);
                 if(request.CategoryId=="") product=product with { CategoryId=null };
                 if(request.Reference=="") product=product with { Reference=null };
-                if(product.CategoryId!=current.CategoryId || product.TaxId!=current.TaxId) await CheckProductLinks(unit,product);
+                if(request.StationId=="") product=product with { StationId=null };   // E4b: sin estacion = bebida o consumo directo
+                if(product.CategoryId!=current.CategoryId || product.TaxId!=current.TaxId || product.StationId!=current.StationId) await CheckProductLinks(unit,product);
                 await unit.UpdateProduct(product); await unit.Events([Event("product_updated",product.Id,("name",product.Name))]); return product;
             }
             case "product-deactivate": case "product-reactivate":
@@ -169,6 +170,7 @@ public static class CatalogOperations
     {
         if(product.CategoryId is not null && !(await unit.Category(product.CategoryId)).Active) throw new RuleViolation("category_inactive","The category is deactivated.");
         if(!(await unit.Tax(product.TaxId)).Active) throw new RuleViolation("tax_inactive","The tax is deactivated.");
+        if(product.StationId is not null && !(await unit.Station(product.StationId)).Active) throw new RuleViolation("station_inactive","The station is deactivated.");
     }
 
     // Rutas (nucleo, solo main): catalogo completo para editar y comandos. Los catalogos operativos (/catalog, /checkout/catalog)

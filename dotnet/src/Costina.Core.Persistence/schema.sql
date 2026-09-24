@@ -1,10 +1,11 @@
--- Esquema del NUCLEO, version 5 (E1b..E4a, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v5. Una base anterior la transforman antes, encadenados y en la misma transaccion,
--- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion), upgrade-v4.sql (catalogo y tarifas) y
--- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos). Nunca toca las tablas de "public".
+-- Esquema del NUCLEO, version 6 (E1b..E4b, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v6. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion), upgrade-v4.sql (catalogo y tarifas),
+-- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos) y upgrade-v6.sql (carta libre: items por
+-- grupo y estacion del producto). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 5));
-INSERT INTO core.schema_version VALUES (5) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 6));
+INSERT INTO core.schema_version VALUES (6) ON CONFLICT DO NOTHING;
 -- E3: CATALOGO Y TARIFAS (impuestos, categorias jerarquicas, productos, presentaciones vendibles, tarifas, precios con
 -- vigencia): datos maestros relacionales; nunca se borran, se desactivan. Precios con impuestos incluidos (PVP).
 CREATE TABLE IF NOT EXISTS core.taxes (
@@ -94,6 +95,16 @@ CREATE TABLE IF NOT EXISTS core.offer_dishes (
  FOREIGN KEY (tenant, company, location, station_id) REFERENCES core.stations (tenant, company, location, id),
  FOREIGN KEY (tenant, company, location, product_id) REFERENCES core.products (tenant, company, location, id)
 );
+-- E4b: items de una carta libre (producto + presentacion del catalogo que se puede pedir en un grupo) y estacion de
+-- cocina del producto (plato); un producto sin estacion es bebida o consumo directo.
+CREATE TABLE IF NOT EXISTS core.offer_items (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, offer_id text NOT NULL, course_id text NOT NULL,
+ product_id text NOT NULL, presentation_id text NOT NULL, sort integer NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT true,
+ PRIMARY KEY (tenant, company, location, offer_id, course_id, product_id, presentation_id),
+ FOREIGN KEY (tenant, company, location, offer_id, course_id) REFERENCES core.offer_courses (tenant, company, location, offer_id, id),
+ FOREIGN KEY (tenant, company, location, product_id, presentation_id) REFERENCES core.presentations (tenant, company, location, product_id, id)
+);
+ALTER TABLE core.products ADD COLUMN IF NOT EXISTS station_id text NULL;
 -- Cuenta (ventas): agregado del NUCLEO. service_id es la referencia OPACA que el modulo que la abrio le dio (nunca una
 -- clave foranea a una tabla de modulo: el nucleo no depende de ningun modulo); table_id es la mesa (organizacion, nucleo)
 -- en la que se abrio, o '' si el origen no tiene mesa. Con ella el puesto principal lista las cuentas sin leer al modulo.
