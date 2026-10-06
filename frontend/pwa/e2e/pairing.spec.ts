@@ -59,8 +59,8 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
 
   const deviceId = await pairThroughTheUi(page, request, deviceName, 'service', 'sala-1')
   await expect(page.getByTestId('actor')).toHaveText(`device:${deviceName}`)
-  await expect(page.getByTestId('role')).toContainText('Sala')
-  await expect(page.getByTestId('role')).toContainText('sala-1')
+  await expect(page.getByTestId('role')).toContainText('COMANDERO')
+  await expect(page.getByTestId('role')).toContainText('Sala 1')                     // A4: el NOMBRE de la estacion, no su codigo
   expect(page.url()).not.toContain('pair=')                                         // el codigo usado no queda a la vista
 
   await page.reload()                                                               // la credencial vive en IndexedDB
@@ -84,7 +84,7 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
   expect((await asMain(request, `/auth/devices/${deviceId}/revoke`, {})).ok()).toBeTruthy()
   // Nadie pulsa nada: la revocacion corta el tiempo real y la siguiente lectura devuelve 401; la PWA lo descubre SOLA.
   await expect(page.getByTestId('pair')).toBeVisible({ timeout: 45_000 })
-  await expect(page.getByTestId('notice')).toContainText('revocado')
+  await expect(page.getByTestId('notice')).toContainText('ya no esta emparejado')
   await page.reload()
   await expect(page.getByTestId('pair')).toBeVisible()                              // la credencial se borro de verdad
 
@@ -95,11 +95,17 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
 test('a kitchen device shows its station and a denied request says so', async ({ page, request }) => {
   const leaks: string[] = [], violations: string[] = []
   watchResponses(page, leaks, violations)
-  await pairThroughTheUi(page, request, `e2e-kds-${RUN}`, 'kitchen', 'cold')
-  await expect(page.getByTestId('role')).toContainText('Cocina')
-  await expect(page.getByTestId('role')).toContainText('cold')
+  const kdsId = await pairThroughTheUi(page, request, `e2e-kds-${RUN}`, 'kitchen', 'cold')
+  await expect(page.getByTestId('role')).toContainText('PANTALLA DE COCINA')
+  await expect(page.getByTestId('role')).toContainText('Cocina fr\u00eda')
+  // A10 (F9): desvincular va en Opciones, pide confirmacion y revoca EN EL SERVIDOR antes de olvidar la credencial.
+  await page.getByText('Opciones').click()
   await page.getByRole('button', { name: 'Desvincular este dispositivo' }).click()
+  await page.getByTestId('unpair-confirm').click()
   await expect(page.getByTestId('pair')).toBeVisible()
+  const afterUnpair = await (await asMain(request, '/auth/devices')).json() as Array<{ id: string; revokedAt: string | null; online: boolean }>
+  expect(afterUnpair.find(d => d.id === kdsId)).toMatchObject({ online: false })
+  expect(afterUnpair.find(d => d.id === kdsId)!.revokedAt).not.toBeNull()
 
   const issued = await (await asMain(request, '/auth/pairings', {})).json()
   // PWA ya abierta y se escanea el QR: solo cambia el fragmento, sin recarga. Un fragmento hostil se ignora.
@@ -120,5 +126,22 @@ test('a kitchen device shows its station and a denied request says so', async ({
   await page.fill('input[name=code]', 'codigo-inventado-0000000000')
   await page.click('button[type=submit]')
   await expect(page.getByTestId('pair-status')).toContainText('no valido')
+  expect(leaks).toEqual([]); expect(violations).toEqual([])
+})
+
+test('a server that is not ready when the app opens never freezes it on Cargando (F8)', async ({ page, request }) => {
+  const leaks: string[] = [], violations: string[] = []
+  watchResponses(page, leaks, violations)
+  await pairThroughTheUi(page, request, `e2e-503-${RUN}`, 'service', 'sala-1')
+  // Siguiente apertura con el servidor "no listo" (p. ej. 503 con PostgreSQL caido): se dice, no se borra la credencial y se reintenta solo.
+  let failures = 0
+  await page.route('**/api/native/v1/session', route => { failures++; return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"storage_unavailable"}' }) })
+  await page.reload()
+  await expect(page.getByTestId('offline')).toBeVisible()
+  await expect(page.getByTestId('notice')).toContainText('Servidor no listo')
+  expect(failures).toBeGreaterThan(0)
+  await page.unroute('**/api/native/v1/session')
+  await expect(page.getByTestId('home')).toBeVisible({ timeout: 25_000 })            // el reintento periodico lo recupera sin tocar nada
+  await expect(page.getByTestId('notice')).toHaveCount(0)
   expect(leaks).toEqual([]); expect(violations).toEqual([])
 })

@@ -113,6 +113,17 @@ await Check("non-JSON 403 retains the command",async()=>{
         html.Headers.Add("Idempotency-Key",r.Headers.GetValues("Idempotency-Key").Single());return Task.FromResult(html);}));
     await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is not null);
 });
+await Check("device rows and session accept an older server without online or stationName",()=>{
+    var web=new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    var online=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d1\",\"name\":\"tablet\",\"role\":\"service\",\"station\":\"sala-1\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":null,\"online\":true}",web)!;
+    var older=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d2\",\"name\":\"kds\",\"role\":\"kitchen\",\"station\":\"cold\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":\"2026-10-06T11:00:00Z\"}",web)!;
+    Assert(online.Online&&online.Active&&online.StateLabel=="CONECTADO AHORA"&&online.RoleLabel=="Comandero");
+    Assert(!older.Online&&!older.Active&&older.StateLabel.StartsWith("quitado",StringComparison.Ordinal)&&older.RoleLabel=="Pantalla de cocina");
+    var named=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\",\"stationName\":\"Cocina fría\"}",web)!;
+    var unnamed=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\"}",web)!;
+    Assert(named.StationName=="Cocina fría"&&unnamed.StationName is null);
+    return Task.CompletedTask;
+});
 await Check("operational DTO excludes financial fields",()=>{
     var types=new[]{typeof(DiningDto),typeof(CourseDto),typeof(PreparationDto),typeof(BoardEntry)};
     Assert(types.SelectMany(t=>t.GetProperties()).All(p=>!new[]{"Price","Balance","Payments","Account","TotalCents"}.Any(x=>p.Name.Contains(x,StringComparison.OrdinalIgnoreCase))));

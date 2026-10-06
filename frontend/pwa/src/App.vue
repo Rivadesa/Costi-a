@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { ApiError, getSession, NetworkError, type Session } from './api'
+import { getSession, type Session } from './api'
 import { clearCredential, loadCredential, saveCredential, type Credential } from './credentials'
-import { MoneyLeakError } from './money-guard'
+import { unpairDevice } from './pairing'
 import { indexedDbPendingStore } from './pending'
+import { NOT_READY_PREFIX, outcomeOf } from './startup'
 import { requestPersistence, type Persistence } from './storage'
 import PairView from './views/PairView.vue'
 import HomeView from './views/HomeView.vue'
@@ -19,26 +20,27 @@ let persistenceAsked = false
 let timer: number | undefined
 
 async function refresh(): Promise<void> {
+  // F8: ni IndexedDB que no abre ni un servidor que no esta listo dejan la pantalla en "Cargando…": se dice y se reintenta solo.
+  try { if (!credential.value) credential.value = await loadCredential() }
+  catch (error) { state.value = 'offline'; notice.value = outcomeOf(error, false).notice; return }
   if (!credential.value) { state.value = 'unpaired'; return }
   const stored = await indexedDbPendingStore.load().catch(() => null)
   pendingDescription.value = stored?.kind === 'restored' ? stored.command.description : stored?.kind === 'unreadable' ? 'orden anterior ilegible' : ''
   try {
     session.value = await getSession(fetch, credential.value.token)
     state.value = 'ready'
+    if (notice.value.startsWith(NOT_READY_PREFIX)) notice.value = ''
     // Ya emparejado: lo guardado en este dispositivo (credencial, orden sin confirmar) merece almacenamiento persistente.
     if (!persistenceAsked) { persistenceAsked = true; persistence.value = await requestPersistence() }
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) {
-      // Emparejamiento revocado desde el PC principal: la credencial local deja de valer y se borra.
+    const outcome = outcomeOf(error, session.value !== null)
+    if (outcome.state === 'unpaired') {
+      // La credencial ya no vale en el servidor (quitado, desvinculado o copia restaurada): se borra y se explica.
       await clearCredential()
       credential.value = null; session.value = null
-      notice.value = 'Este dispositivo ya no esta emparejado (revocado). Pide un codigo nuevo en el PC principal.'
-      state.value = 'unpaired'
-    } else if (error instanceof NetworkError) {
-      state.value = session.value ? 'ready' : 'offline'
-    } else if (error instanceof MoneyLeakError) {
-      notice.value = error.message; state.value = 'offline'
-    } else throw error
+    }
+    if (outcome.notice) notice.value = outcome.notice
+    state.value = outcome.state
   }
 }
 
@@ -49,18 +51,26 @@ async function paired(next: Credential): Promise<void> {
   await refresh()
 }
 
+// Desvincular (F9): primero en el servidor, despues en este navegador. Sin conexion no se olvida nada.
 async function unpair(): Promise<void> {
+  if (!credential.value) return
+  const outcome = await unpairDevice(fetch, credential.value.token)
+  if (outcome === 'offline') {
+    notice.value = 'Sin conexion con el servidor: el dispositivo NO se ha desvinculado. Vuelve a intentarlo con Wi-Fi, o quitalo desde el PC principal.'
+    return
+  }
   await clearCredential()
   credential.value = null; session.value = null
-  notice.value = 'Dispositivo desvinculado en este navegador. Para impedir su uso, revocalo tambien en el PC principal.'
+  notice.value = outcome === 'unpaired' ? 'Dispositivo desvinculado: ha dejado de valer tambien en el servidor. Para volver a usarlo, conectalo de nuevo desde el PC principal.'
+    : 'Este dispositivo ya no estaba emparejado en el servidor.'
   state.value = 'unpaired'
 }
 
 onMounted(async () => {
-  credential.value = await loadCredential()
-  await refresh()
+  // F8: el temporizador y el aviso 'online' se instalan ANTES de la primera lectura: un servidor que aun arranca no bloquea nada.
   timer = window.setInterval(() => { void refresh() }, 15000)
   window.addEventListener('online', refresh)
+  await refresh()
 })
 onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('online', refresh) })
 </script>

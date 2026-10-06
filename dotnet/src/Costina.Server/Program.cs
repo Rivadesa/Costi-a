@@ -313,6 +313,7 @@ app.Use(async (context,next)=>
         context.Items["sessionId"]=userSession?.SessionId;
         context.Items["deviceId"]=device?.DeviceId;
         context.Items["station"]=device?.Station;
+        context.Items["stationName"]=device?.StationName;   // A4: nombre legible de la estacion del puesto
         var access=context.GetEndpoint()?.Metadata.GetMetadata<RouteAccess>();
         var action=context.Request.RouteValues["action"]?.ToString();
         bool allowed=access is not null && access.Roles.Contains(role,StringComparer.Ordinal);
@@ -383,9 +384,16 @@ app.MapPost(prefix+"/auth/pairings/{id}/approve",async (HttpContext c,string id)
     using var reader=new StreamReader(c.Request.Body);
     var request=JsonSerializer.Deserialize<PairingDecisionRequest>(await reader.ReadToEndAsync(c.RequestAborted),Wire.Json)
         ?? throw new ArgumentException("Role and station are required.");
+    // A1 (Inicio y dispositivos): ningun dispositivo NUEVO con rol principal: cualquiera delante de la tablet tendria caja y
+    // configuracion sin contrasena, podria aprobar mas principales y la auditoria diria 'device:'. Los existentes siguen.
+    if(request.Role=="main") throw new RuleViolation("device_role_not_allowed","A paired device is never a main desk: approve it as service (waiter) or kitchen.");
     // E2: la estacion de un puesto es una estacion ACTIVA de la organizacion, elegida de la lista (ya no se teclea libre).
-    if(request.Station is null || !await new DesktopReadRepository(source).StationActive(scope,request.Station.Trim(),c.RequestAborted))
-        throw new ArgumentException("Unknown or inactive station.");
+    var kind=request.Station is null ? null : await new DesktopReadRepository(source).ActiveStationKind(scope,request.Station.Trim(),c.RequestAborted);
+    if(kind is null) throw new ArgumentException("Unknown or inactive station.");
+    // A2: el rol tiene que encajar con el TIPO de estacion: cocina en cocina, pase o barra; sala en sala o barra. Lo decide el
+    // servidor (la pantalla no autoriza) y solo afecta a aprobaciones nuevas. Un comandero aprobado 'en el pase' validaba pases.
+    bool fits=request.Role switch { "kitchen"=>kind is "kitchen" or "pass" or "bar", "service"=>kind is "room" or "bar", _=>false };
+    if(!fits) throw new RuleViolation("station_kind_mismatch",$"A {request.Role} device cannot be attached to a {kind} station.");
     if(!await deviceStore.DecideAsync(id,true,request.Role,request.Station,(string)c.Items["actor"]!,c.RequestAborted))
         throw new StoreNotFound();
     return Results.Json(new {approved=true});
@@ -426,7 +434,17 @@ app.MapPost(prefix+"/auth/pairings/{id}/collect",async (HttpContext c,string id)
     c.Response.StatusCode=404; return Results.Json(new {error="unknown_pairing"});
 });
 app.MapGet(prefix+"/auth/devices",(Func<HttpContext,Task<IResult>>)(async c=>
-    Results.Json(await deviceStore.DevicesAsync(c.RequestAborted)))).WithMetadata(new RouteAccess("main"));
+    Results.Json((await deviceStore.DevicesAsync(c.RequestAborted)).Select(d=>new {d.Id,d.Name,d.Role,d.Station,d.ApprovedBy,d.CreatedAt,d.RevokedAt,
+        // A3: 'conectado ahora' = canal de tiempo real abierto en este proceso (nunca un revocado).
+        online=d.RevokedAt is null && deviceConnections.IsOnline(d.Id)})))).WithMetadata(new RouteAccess("main"));
+// A5: un dispositivo se da de baja A SI MISMO (Desvincular en la tablet): misma revocacion y misma expulsion del tiempo real
+// que desde el PC, auditada a su nombre. Una sesion de persona no es un dispositivo y recibe 403.
+app.MapPost(prefix+"/auth/unpair",(Func<HttpContext,Task<IResult>>)(async c=>{
+    if(c.Items["deviceId"] is not string deviceId) { c.Response.StatusCode=403; return Results.Json(new {error="forbidden"}); }
+    if(!await deviceStore.RevokeAsync(deviceId,(string)c.Items["actor"]!,c.RequestAborted)) throw new StoreNotFound();
+    deviceConnections.AbortAll(deviceId);
+    return Results.Json(new {unpaired=true});
+})).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/auth/devices/{id}/revoke",async (HttpContext c,string id)=>{
     if(!await deviceStore.RevokeAsync(id,(string)c.Items["actor"]!,c.RequestAborted)) throw new StoreNotFound();
     deviceConnections.AbortAll(id); // expulsion inmediata de las conexiones SignalR vivas

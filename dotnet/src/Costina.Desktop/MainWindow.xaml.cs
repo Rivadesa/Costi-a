@@ -36,10 +36,10 @@ public partial class MainWindow : Window
         Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().FirstOrDefault(t => t.Visibility == Visibility.Visible);
     }
 
-    // Menu: cada entrada selecciona una vista del area de trabajo por su nombre (Tag).
+    // Menu (y accesos de Inicio): cada entrada selecciona una vista del area de trabajo por su nombre (Tag).
     private void ShowView(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem { Tag: string name } && FindName(name) is TabItem view) Tabs.SelectedItem = view;
+        if (sender is FrameworkElement { Tag: string name } && FindName(name) is TabItem view) Tabs.SelectedItem = view;
     }
     private void ExitClick(object sender, RoutedEventArgs e) => Close();
     private void AboutClick(object sender, RoutedEventArgs e) => MessageBox.Show(this,
@@ -55,12 +55,15 @@ public partial class MainWindow : Window
     private async void TabChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.Source is not TabControl tabs) return;
+        shell.Home.Visible = tabs.SelectedItem == HomeTab;
         shell.Checkout.Visible = tabs.SelectedItem == CheckoutTab;
         shell.Devices.Visible = tabs.SelectedItem == DevicesTab;
         shell.Organization.Visible = tabs.SelectedItem == OrganizationTab;
         shell.Catalog.Visible = tabs.SelectedItem == CatalogTab;
         shell.Offers.Visible = tabs.SelectedItem == OffersTab;
-        if (shell.Checkout.Visible && shell.IsMain && !shell.Busy)
+        if (shell.Home.Visible && shell.Connected && !shell.Busy)
+            await shell.Run(shell.Home.LoadAsync);
+        else if (shell.Checkout.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Checkout.LoadAsync);
         else if (shell.Devices.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Devices.LoadAsync);

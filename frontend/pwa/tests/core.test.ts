@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { call, NetworkError, type Fetch } from '../src/api'
 import { clearCredential, loadCredential, saveCredential } from '../src/credentials'
 import { assertNoMoney, MoneyLeakError } from '../src/money-guard'
-import { codeFromLocation, pairDevice } from '../src/pairing'
+import { codeFromLocation, pairDevice, unpairDevice } from '../src/pairing'
+import { ApiError } from '../src/api'
+import { NOT_READY_PREFIX, outcomeOf, UNPAIRED_NOTICE } from '../src/startup'
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const noWait = () => Promise.resolve()
@@ -104,5 +106,28 @@ describe('persistent storage request (D6.6)', () => {
     const { requestPersistence } = await import('../src/storage')
     const strict = { granted: true, async persisted(this: { granted: boolean }) { return false }, async persist(this: { granted: boolean }) { return this.granted } }
     expect(await requestPersistence(strict)).toBe('persisted')
+  })
+})
+
+describe('startup (corte A, F8)', () => {
+  it('a 401 is the only "unpaired"; a network cut keeps the last state; anything else is "server not ready" and retried', () => {
+    expect(outcomeOf(new ApiError(401, 'unauthorized'), true)).toEqual({ state: 'unpaired', notice: UNPAIRED_NOTICE })
+    expect(outcomeOf(new NetworkError('x'), true)).toEqual({ state: 'ready', notice: '' })
+    expect(outcomeOf(new NetworkError('x'), false)).toEqual({ state: 'offline', notice: '' })
+    const notReady = outcomeOf(new ApiError(503, 'storage_unavailable'), false)
+    expect(notReady.state).toBe('offline'); expect(notReady.notice).toContain(NOT_READY_PREFIX); expect(notReady.notice).toContain('HTTP 503')
+    expect(outcomeOf(new ApiError(403, 'forbidden'), false).state).toBe('offline')              // nunca se borra la credencial por un 403
+    expect(outcomeOf(new Error('IndexedDB bloqueada por otra pestana'), false).notice).toContain('IndexedDB bloqueada')
+    expect(outcomeOf(new MoneyLeakError('$.x'), true).state).toBe('offline')
+  })
+})
+
+describe('unpair (corte A, F9)', () => {
+  it('revokes on the server first, treats 401 as already gone and refuses to forget the credential offline', async () => {
+    let posted = ''
+    expect(await unpairDevice(async (url, init) => { posted = `${init!.method} ${url}`; return json(200, { unpaired: true }) }, 'dev.a.b')).toBe('unpaired')
+    expect(posted).toBe('POST /api/native/v1/auth/unpair')
+    expect(await unpairDevice(async () => json(401, { error: 'unauthorized' }), 'dev.a.b')).toBe('already')
+    expect(await unpairDevice(async () => { throw new TypeError('offline') }, 'dev.a.b')).toBe('offline')
   })
 })

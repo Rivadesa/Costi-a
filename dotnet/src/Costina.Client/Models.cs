@@ -7,16 +7,25 @@ public sealed record SessionInfo(string Role, string TenantId, string CompanyId,
     string[]? Actions = null, string? InstallationId = null, string? ServerVersion = null,
     string? Actor = null, string? Station = null, bool Demo = false,
     // ADR-012: modulos activos en la instalacion; las pestanas se montan solo para ellos.
-    string[]? Modules = null);
+    string[]? Modules = null,
+    // A4 (Inicio y dispositivos): nombre legible de la estacion de un puesto emparejado (un servidor anterior no lo envia).
+    string? StationName = null);
 // Administracion de puestos (D4.2/D4.3b, solo main): espejo de las filas que devuelve el servidor.
 public sealed record PairingPendingDto(string PairingId, string DeviceName, DateTimeOffset ClaimedAt)
 { public override string ToString() => $"{DeviceName} · solicitado a las {ClaimedAt.ToLocalTime():HH:mm:ss}"; }
+// A3: Online = canal de tiempo real abierto ahora mismo (un servidor anterior no lo envia: false).
 public sealed record DeviceRowDto(string Id, string Name, string Role, string Station,
-    string ApprovedBy, DateTimeOffset CreatedAt, DateTimeOffset? RevokedAt)
+    string ApprovedBy, DateTimeOffset CreatedAt, DateTimeOffset? RevokedAt, bool Online = false)
 {
-    public override string ToString() => $"{Name} · {Role}/{Station} · aprobado por {ApprovedBy}"
-        + (RevokedAt is null ? "" : $" · REVOCADO {RevokedAt.Value.ToLocalTime():dd/MM HH:mm}");
+    public bool Active => RevokedAt is null;
+    public string RoleLabel => Role switch { "service" => "Comandero", "kitchen" => "Pantalla de cocina", "main" => "Principal (antiguo)", var r => r };
+    public string StateLabel => RevokedAt is { } at ? $"quitado {at.ToLocalTime():dd/MM HH:mm}" : Online ? "CONECTADO AHORA" : "sin conexión ahora";
+    public override string ToString() => $"{Name} · {RoleLabel} · {Station} · {StateLabel} · aprobado por {ApprovedBy}";
 }
+// A8: diagnostico (solo main, D5.2): lo que Inicio muestra del servidor. Sin datos de negocio ni secretos; campos opcionales.
+public sealed record TlsInfo(bool Enabled, int? Port = null, DateTimeOffset? ServerCertificateExpiresAt = null, string? Names = null, string? CaFingerprintSha256 = null);
+public sealed record BackupInfo(bool Automatic, DateTimeOffset? LastSuccessAt = null, string? LastFile = null, string? LastError = null);
+public sealed record DiagnosticsDto(string Mode, string Version, DateTimeOffset StartedAt, TlsInfo? Tls = null, BackupInfo? Backup = null, bool RunningAsService = false);
 // Resultado de conciliar una clave de idempotencia: si el servidor la aplico, devuelve su respuesta guardada.
 public sealed record CommandLookup(string Key, bool Found, JsonElement? Response = null);
 // E2: la mesa operativa lleva su sala (ZoneId/ZoneName son opcionales: un servidor anterior no los envia).

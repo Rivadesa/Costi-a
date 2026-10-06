@@ -95,4 +95,37 @@ class PairingChecks(unittest.TestCase):
                       "FROM core.pairings WHERE tenant='d4-pairing'")
         self.assertTrue(all(len(x) in (0, 64) for x in codes.split(',')))
 
+    def test_08_role_must_fit_the_station_kind_and_no_new_device_is_ever_main(self):
+        # Inicio y dispositivos (A1/A2): lo decide el SERVIDOR, no la pantalla. Fixtures: sala-1 (room), cold (kitchen), pase (pass).
+        def approve(role, station):
+            _, issued = request('/auth/pairings', {}, token=self.admin)
+            _, claimed = request('/auth/pairings/claim', {'code': issued['code'], 'deviceName': f'matriz-{role}-{station}'})
+            status, body = request(f"/auth/pairings/{claimed['pairingId']}/approve", {'role': role, 'station': station}, token=self.admin)
+            return status, body.get('error')
+        self.assertEqual((409, 'device_role_not_allowed'), approve('main', 'sala-1'))
+        for role, station in (('kitchen', 'cold'), ('kitchen', 'pase'), ('service', 'sala-1')):
+            self.assertEqual((200, None), approve(role, station), (role, station))
+        for role, station in (('kitchen', 'sala-1'), ('service', 'cold'), ('service', 'pase')):
+            self.assertEqual((409, 'station_kind_mismatch'), approve(role, station), (role, station))
+        self.assertEqual((422, 'invalid_request'), approve('service', 'inventada'))
+        self.assertEqual('0', h.sql("SELECT count(*) FROM core.devices WHERE tenant='d4-pairing' AND role='main'"))
+
+    def test_09_online_is_a_live_channel_and_a_device_unpairs_itself(self):
+        # A3: sin canal de tiempo real abierto no esta 'conectado ahora'. A4: /session nombra la estacion. A5: Desvincular en la
+        # tablet revoca en el servidor (auditado a su nombre) y una persona con sesion no puede usarlo.
+        _, issued = request('/auth/pairings', {}, token=self.admin)
+        _, claimed = request('/auth/pairings/claim', {'code': issued['code'], 'deviceName': 'tablet-unpair'})
+        request(f"/auth/pairings/{claimed['pairingId']}/approve", {'role': 'service', 'station': 'sala-1'}, token=self.admin)
+        _, creds = request(f"/auth/pairings/{claimed['pairingId']}/collect", {'pollSecret': claimed['pollSecret']})
+        row = next(d for d in request('/auth/devices', token=self.admin)[1] if d['id'] == creds['deviceId'])
+        self.assertIs(row['online'], False)
+        session = request('/session', token=creds['deviceToken'])[1]
+        self.assertEqual(['sala-1', 'Sala 1'], [session['station'], session['stationName']])
+        self.assertEqual(403, request('/auth/unpair', {}, token=self.admin)[0])
+        status, out = request('/auth/unpair', {}, token=creds['deviceToken'])
+        self.assertEqual((200, True), (status, out['unpaired']))
+        self.assertEqual(401, request('/session', token=creds['deviceToken'])[0])
+        self.assertEqual('device:tablet-unpair', h.sql("SELECT revoked_by FROM core.devices WHERE tenant='d4-pairing' AND name='tablet-unpair'"))
+        self.assertEqual(401, request('/auth/unpair', {}, token=creds['deviceToken'])[0])
+
 if __name__ == '__main__': unittest.main()
