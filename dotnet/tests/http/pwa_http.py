@@ -121,7 +121,8 @@ class Pwa(unittest.TestCase):
     def test_05_real_browser_pairs_survives_reload_works_offline_shell_and_honours_revocation(self):
         env = os.environ | {'E2E_BASE': h.BASE, 'E2E_MAIN_TOKEN': h.KEYS['main'], 'E2E_RUN': secrets.token_hex(3)}
         npx = 'npx.cmd' if os.name == 'nt' else 'npx'
-        done = subprocess.run([npx, 'playwright', 'test'], cwd=PWA, env=env, text=True, capture_output=True)
+        # UTF-8 explicito: en Windows el codec por defecto (cp1252) no decodifica la salida de Playwright y la prueba moria antes de leerla.
+        done = subprocess.run([npx, 'playwright', 'test'], cwd=PWA, env=env, text=True, capture_output=True, encoding='utf-8', errors='replace')
         print(done.stdout[-6000:])
         self.assertEqual(done.returncode, 0, done.stdout[-3000:] + done.stderr[-2000:])
 
