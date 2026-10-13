@@ -57,6 +57,8 @@ public sealed class EventsHub(DeviceConnectionRegistry devices) : Hub
         var role = http?.Items["role"] as string
             ?? throw new HubException("Missing authenticated role.");
         if (http?.Items["deviceId"] is string deviceId) devices.Register(deviceId, Context);
+        // Corte B: una sesion de persona se registra con su propia clave para poder cortarla al cerrar sesion (logout).
+        if (http?.Items["sessionId"] is string sessionId) devices.Register("session:" + sessionId, Context);
         await Groups.AddToGroupAsync(Context.ConnectionId, "ops");
         if (role == "main") await Groups.AddToGroupAsync(Context.ConnectionId, "fin");
         await base.OnConnectedAsync();
@@ -64,8 +66,9 @@ public sealed class EventsHub(DeviceConnectionRegistry devices) : Hub
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
-        if (Context.GetHttpContext()?.Items["deviceId"] is string deviceId)
-            devices.Unregister(deviceId, Context.ConnectionId);
+        var items = Context.GetHttpContext()?.Items;
+        if (items?["deviceId"] is string deviceId) devices.Unregister(deviceId, Context.ConnectionId);
+        if (items?["sessionId"] is string sessionId) devices.Unregister("session:" + sessionId, Context.ConnectionId);
         return base.OnDisconnectedAsync(exception);
     }
 }

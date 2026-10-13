@@ -159,7 +159,13 @@ if(args.Length == 1 && args[0] == "backup")
         + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
     return;
 }
-if(args.Length != 0) throw new ArgumentException("Supported: status, provision, init, upgrade, init-lab, load-demo, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role>, import-catalog <file.csv> or normal startup.");
+if(args.Length != 0)
+{
+    // Corte B: un argumento desconocido explica el uso y sale con codigo 2, sin traza de excepcion.
+    Console.Error.WriteLine("Unknown argument(s): "+string.Join(' ',args));
+    Console.Error.WriteLine("Supported: status, provision, init, upgrade, init-lab, load-demo, provision-tls, renew-tls, install-service, uninstall-service, backup, restore <file>, setup-server, stop-services, remove-server, first-user, create-user <username> <role>, import-catalog <file.csv> or normal startup (no arguments).");
+    Environment.ExitCode=2; return;
+}
 // D5.2: al arrancar con el sistema, PostgreSQL puede tardar unos segundos en aceptar conexiones. Una
 // instalacion espera (acotado, por debajo del plazo del SCM); un esquema ausente sigue fallando al instante.
 var notices = new List<string>();
@@ -361,11 +367,13 @@ app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
     // D5.3: tope de fallos por origen y usuario antes de abrir la LAN (429 durante el bloqueo).
     var throttle=c.RequestServices.GetRequiredService<AttemptThrottle>();
     var throttleKey=AttemptThrottle.Key(c,"login:"+request.Username);
-    if(throttle.IsBlocked(throttleKey)) { c.Response.StatusCode=429; return Results.Json(new {error="too_many_attempts"}); }
+    // Corte B: tope global por origen ademas del tope por origen+usuario (rotar nombres de usuario no elude el freno).
+    var originKey=AttemptThrottle.Key(c,"login-origin");
+    if(throttle.IsBlocked(throttleKey)||throttle.IsBlocked(originKey)) { c.Response.StatusCode=429; return Results.Json(new {error="too_many_attempts"}); }
     var login=await identityStore.LoginAsync(request.Username,request.Password,c.RequestAborted);
     if(login is null)
     {
-        throttle.Failed(throttleKey);
+        throttle.Failed(throttleKey); throttle.Failed(originKey,AttemptThrottle.OriginLimit);
         await Task.Delay(400,c.RequestAborted); // freno minimo y respuesta generica: no revela si el usuario existe
         c.Response.StatusCode=401; return Results.Json(new {error="invalid_credentials"});
     }
@@ -458,6 +466,8 @@ app.MapPost(prefix+"/auth/hub-token",(Func<HttpContext,IResult>)(c=>{
 app.MapPost(prefix+"/auth/logout",(Func<HttpContext,Task<IResult>>)(async c=>{
     var sessionId=c.Items["sessionId"] as string;
     if(sessionId is not null) await identityStore.RevokeSessionAsync(sessionId,c.RequestAborted);
+    // Corte B (F13): cerrar la sesion corta tambien su canal de tiempo real; el grupo 'fin' no queda abierto a nadie.
+    if(sessionId is not null) deviceConnections.AbortAll("session:"+sessionId);
     return Results.Json(new {loggedOut=sessionId is not null});
 })).WithMetadata(new RouteAccess("main","service","kitchen"));
 app.MapPost(prefix+"/checkout/services/{id}/commands/{action}",(HttpContext c,string id,string action)=>

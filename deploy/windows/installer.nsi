@@ -99,6 +99,9 @@ Section "Aplicacion de puesto (Windows)" SecDesktop
   CreateDirectory "$SMPROGRAMS\Costina"
   CreateShortcut "$SMPROGRAMS\Costina\Costina.lnk" "$INSTDIR\desktop\Costina.Desktop.exe"
   CreateShortcut "$DESKTOP\Costina.lnk" "$INSTDIR\desktop\Costina.Desktop.exe"
+  ; Corte B (B9): la aplicacion de puesto se abre sola al iniciar sesion en Windows (modos Completo y Puesto adicional).
+  ; Si este PC esta conectado como puesto, entra sin teclear nada; si no, muestra la entrada del responsable.
+  CreateShortcut "$SMSTARTUP\Costina.lnk" "$INSTDIR\desktop\Costina.Desktop.exe"
 SectionEnd
 
 Section "-Comun"
@@ -305,6 +308,7 @@ Section "Uninstall"
   ${EndIf}
   SetShellVarContext all
   Delete "$DESKTOP\Costina.lnk"
+  Delete "$SMSTARTUP\Costina.lnk"
   Delete "$SMPROGRAMS\Costina\Costina.lnk"
   RMDir "$SMPROGRAMS\Costina"
   ; Deliberadamente NUNCA se toca %ProgramData%\Costina.

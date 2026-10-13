@@ -5,6 +5,11 @@ using System.Text.Json;
 namespace Costina.Client;
 
 public sealed record LoginResult(string Token, DateTimeOffset ExpiresAt, string Role, string Username);
+public sealed record HealthProbe(string Status, string Mode, string Version, bool Demo);
+// Corte B (B1): por que no se puede hablar con el servidor al arrancar. Unreachable = esperar y reintentar (arranque en frio,
+// red); Certificate = NO reintentar ni sortear (la validacion TLS sigue estricta: hay que instalar la CA o revisar la direccion);
+// Other = respuesta que no es del motor (otro servicio en ese puerto, proxy).
+public enum StartupProblem { Unreachable, Certificate, Other }
 public sealed record PairingClaim(string PairingId, string PollSecret);
 public sealed record PairingCollect(string Status, string? DeviceId, string? DeviceToken, string? Role, string? Station);
 
@@ -29,6 +34,30 @@ public sealed class AuthClient : IDisposable
         var text = await response.Content.ReadAsStringAsync(ct);
         try { return ((int)response.StatusCode, JsonSerializer.Deserialize<JsonElement>(text, ApiClient.Json)); }
         catch (JsonException) { throw new ApiError((int)response.StatusCode, "respuesta_no_reconocida"); }
+    }
+
+    // GET /health sin credencial. Lanza HttpRequestException (red o TLS) o ApiError (respuesta que no es del motor).
+    public async Task<HealthProbe> ProbeAsync(CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(http.BaseAddress!, "/health"));
+        using var response = await http.SendAsync(request, ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+        if ((int)response.StatusCode != 200) throw new ApiError((int)response.StatusCode, "health_unavailable");
+        try
+        {
+            var body = JsonSerializer.Deserialize<JsonElement>(text, ApiClient.Json);
+            return new(body.GetProperty("status").GetString() ?? "", body.GetProperty("mode").GetString() ?? "",
+                body.GetProperty("version").GetString() ?? "", body.TryGetProperty("demo", out var demo) && demo.ValueKind == JsonValueKind.True);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException) { throw new ApiError(200, "respuesta_no_reconocida"); }
+    }
+
+    // Pura (los checks la ejercitan): clasifica el fallo de un sondeo.
+    public static StartupProblem Classify(Exception error)
+    {
+        for (Exception? e = error; e is not null; e = e.InnerException)
+            if (e is System.Security.Authentication.AuthenticationException) return StartupProblem.Certificate;
+        return error is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException ? StartupProblem.Unreachable : StartupProblem.Other;
     }
 
     public async Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default)

@@ -115,4 +115,22 @@ class IdentityChecks(unittest.TestCase):
         self.assertNotIn(h.LAB_PASSWORD, log)
         self.assertNotIn(data['token'], log)
 
+class IdentityOriginThrottle(unittest.TestCase):
+    # Corte B: rotar nombres de usuario no elude el freno. Clase aparte y al final del fichero: deja este origen bloqueado 60 s.
+    @classmethod
+    def setUpClass(cls):
+        h.ENV['COSTINA_TENANT'] = 'd4-identity-origin'
+        h.NativeHttp.setUpClass()
+        create_user('vigilante', 'main')
+    @classmethod
+    def tearDownClass(cls): h.stop_server()
+
+    def test_01_thirty_failures_from_one_origin_block_every_login_from_it(self):
+        for n in range(29):
+            self.assertEqual(401, login(f'inventado-{n}', 'contrasena-equivocada-1')[0])   # usuarios distintos: ninguno llega a 10
+        self.assertEqual(200, login('vigilante', PASSWORD)[0])                               # 29 fallos: el origen sigue abierto
+        self.assertEqual(401, login('inventado-29', 'contrasena-equivocada-1')[0])
+        self.assertEqual(429, login('inventado-30', 'contrasena-equivocada-1')[0])            # 30 fallos: bloqueado aunque cambie el nombre
+        self.assertEqual(429, login('vigilante', PASSWORD)[0])                               # tambien con la contrasena buena
+
 if __name__ == '__main__': unittest.main()

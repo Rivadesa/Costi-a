@@ -38,5 +38,16 @@ public sealed class RealtimeSubscription : IAsyncDisposable
         StateChanged?.Invoke("connected");
     }
 
+    // Corte B (F2): tras agotar la reconexion automatica el canal queda "closed"; el consumidor puede volver a abrirlo
+    // (cada 30 s, indefinidamente, como la PWA). Devuelve false si el servidor sigue sin responder; nunca lanza.
+    public async Task<bool> TryRestartAsync(CancellationToken ct = default)
+    {
+        if (connection.State != HubConnectionState.Disconnected) return connection.State == HubConnectionState.Connected;
+        try { await connection.StartAsync(ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { return false; }
+        StateChanged?.Invoke("connected"); Reconnected?.Invoke();
+        return true;
+    }
+
     public ValueTask DisposeAsync() => connection.DisposeAsync();
 }

@@ -1,6 +1,6 @@
 # Plan (borrador): Inicio y dispositivos, y puesto principal conectado al arrancar
 
-Fecha: 2026-09-24. **Estado: APROBADO el 06-10-2026** con las decisiones del promotor (sección 8). El corte A se construye en la rama `feat/a-inicio-dispositivos`. Base: `develop` con E4b mezclada (`7d276b7`, PR #66).
+Fecha: 2026-09-24. **Estado: APROBADO el 06-10-2026** con las decisiones del promotor (sección 8). **Corte A hecho** (PR #68, `docs/native/A-inicio-y-dispositivos.md`); **corte B hecho** (ADR-013, `docs/native/B-puesto-principal-conectado.md`); B3 se construyó «todo visible y lo sensible protegido» conforme a la decisión 3. Base: `develop` con E4b mezclada (`7d276b7`, PR #66).
 
 Origen: al revisar la implementación, el promotor pidió (24-09) una **pantalla de inicio** con un apartado para **conectar dispositivos** (una opción para comanderos y otra para las pantallas de cocina de cada estación) y preguntó:
 

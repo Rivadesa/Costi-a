@@ -148,11 +148,13 @@ public static partial class LocalTls
 // D5.3: al abrir la LAN, el freno de 400 ms por intento deja de bastar. Tope de fallos por origen y
 // objetivo (IP + usuario, o IP + emparejamiento): 10 fallos en 5 minutos bloquean 60 s con 429. En
 // memoria del proceso; acotado. No sustituye a contrasenas fuertes ni a la revocacion.
+// Corte B: ademas un tope GLOBAL por origen (OriginLimit fallos de login en la ventana, sea cual sea el usuario), para que
+// rotar nombres no eluda el freno; y la cota de memoria purga solo entradas vencidas, nunca vacia el estado de todos.
 public sealed class AttemptThrottle
 {
     private sealed class Entry { public readonly Queue<DateTimeOffset> Failures=new(); public DateTimeOffset BlockedUntil; }
     private readonly ConcurrentDictionary<string,Entry> entries=new(StringComparer.Ordinal);
-    private const int Limit=10;
+    public const int Limit=10, OriginLimit=30;
     private static readonly TimeSpan Window=TimeSpan.FromMinutes(5), Block=TimeSpan.FromSeconds(60);
 
     public static string Key(HttpContext context,string target) =>
@@ -166,16 +168,29 @@ public sealed class AttemptThrottle
         lock(entry) return entry.BlockedUntil>DateTimeOffset.UtcNow;
     }
 
-    public void Failed(string key)
+    public void Failed(string key,int limit=Limit)
     {
-        if(entries.Count>10_000) entries.Clear(); // cota dura de memoria ante un barrido de objetivos
+        if(entries.Count>10_000) Purge(); // cota de memoria ante un barrido de objetivos: fuera lo vencido, nunca todo
         var entry=entries.GetOrAdd(Bounded(key),_=>new Entry());
         lock(entry)
         {
             var now=DateTimeOffset.UtcNow;
             while(entry.Failures.Count>0 && now-entry.Failures.Peek()>Window) entry.Failures.Dequeue();
             entry.Failures.Enqueue(now);
-            if(entry.Failures.Count>=Limit) { entry.BlockedUntil=now+Block; entry.Failures.Clear(); }
+            if(entry.Failures.Count>=limit) { entry.BlockedUntil=now+Block; entry.Failures.Clear(); }
+        }
+    }
+
+    // Quita las entradas sin bloqueo vigente y sin fallos dentro de la ventana. Un atacante que genere miles de claves solo
+    // consigue que se purguen SUS entradas vencidas; los bloqueos vigentes de los demas se conservan.
+    private void Purge()
+    {
+        var now=DateTimeOffset.UtcNow;
+        foreach(var (key,entry) in entries)
+        {
+            bool stale;
+            lock(entry) stale=entry.BlockedUntil<=now && (entry.Failures.Count==0 || now-entry.Failures.Last()>Window);
+            if(stale) entries.TryRemove(key,out _);
         }
     }
 

@@ -9,6 +9,7 @@ $engine = Join-Path $program 'server\Costina.Server.exe'
 $base = 'http://127.0.0.1:5088'
 $api = "$base/api/native/v1"
 $password = 'instalador-password-123'
+$startup = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\Costina.lnk'   # corte B: arranque con Windows
 $script:results = @()
 $script:failed = $false
 
@@ -49,6 +50,7 @@ try {
             Assert (Test-Path $path) "Missing $path"
         }
         Assert (-not (Get-ChildItem $program -Recurse -Include 'server.json', 'PG_VERSION', '*.backup')) 'Mutable data leaked into the program directory.'
+        Assert (Test-Path $startup) 'The desk application must open with Windows (Start Menu > StartUp shortcut).'
         $database = Get-CimInstance Win32_Service -Filter "Name='CostinaPostgres'"
         $service = Get-CimInstance Win32_Service -Filter "Name='Costina'"
         Assert ($database.StartMode -eq 'Auto' -and $database.StartName -match 'NetworkService') "Unexpected database service: $($database.StartMode) $($database.StartName)"
@@ -92,6 +94,7 @@ try {
         Assert ($code -eq 0) "Uninstaller exit code $code"
         Assert (-not (Get-Service Costina, CostinaPostgres -ErrorAction SilentlyContinue)) 'Services are still registered.'
         Assert (-not (Test-Path "$program\server")) 'Program files were left behind.'
+        Assert (-not (Test-Path $startup)) 'Uninstall must remove the StartUp shortcut.'
         foreach ($path in "$dataRoot\config\server.json", "$dataRoot\config\owner.json", "$dataRoot\pg\PG_VERSION", "$dataRoot\tls\ca.key") {
             Assert (Test-Path $path) "Uninstall removed data: $path"
         }
@@ -105,6 +108,7 @@ try {
         $after = @(Get-ChildItem "$dataRoot\backups" -Filter '*.backup').Count
         Assert ($after -gt $before) 'The update did not take a backup before upgrading.'
         Assert (-not (Test-Path "$program\desktop")) 'Server-only mode must not install the desktop application.'
+        Assert (-not (Test-Path $startup)) 'Server-only mode must not register the desk application at StartUp.'
     }
     Check 'in-place update (services running) keeps working' {
         $code = Run-Setup @('/S', '/MODE=server')
@@ -131,6 +135,7 @@ try {
             $code = Run-Setup @('/S', '/MODE=client', "/CA=$kit\ca.crt")
             Assert ($code -eq 0) "Installer exit code $code"
             Assert (Test-Path "$program\desktop\Costina.Desktop.exe") 'Desktop application missing.'
+            Assert (Test-Path $startup) 'An additional workstation opens the desk application with Windows.'
             Assert (-not (Test-Path "$program\server")) 'Client mode must not install the server.'
             Assert (-not (Test-Path $dataRoot)) 'Client mode must not create a server data root.'
             Assert (-not (Get-Service Costina, CostinaPostgres -ErrorAction SilentlyContinue)) 'Client mode must not register services.'
