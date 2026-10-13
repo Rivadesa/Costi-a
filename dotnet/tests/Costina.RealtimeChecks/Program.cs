@@ -168,6 +168,15 @@ async Task<int> RunCli(string input, params string[] arguments)
     await process.WaitForExitAsync();
     return process.ExitCode;
 }
+async Task<JsonElement> Get(string path, string bearer)
+{
+    using var request = new HttpRequestMessage(HttpMethod.Get, path);
+    request.Headers.Add("Authorization", "Bearer " + bearer);
+    var response = await http.SendAsync(request);
+    var text = await response.Content.ReadAsStringAsync();
+    if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {(int)response.StatusCode}: {text}");
+    return JsonSerializer.Deserialize<JsonElement>(text, Wire.Json);
+}
 async Task<JsonElement> Anon(string path, object body, string? bearer = null)
 {
     using var request = new HttpRequestMessage(HttpMethod.Post, path)
@@ -279,11 +288,41 @@ try
         await deviceSub.StartAsync();
         _ = await Post("MAIN", "/api/native/v1/services", new { tableId = "M2", pax = 2, menuId = "LAB-TASTING" });
         await WaitUntil(() => deviceNotices.Any(n => n.Type == "service.created"), 15, "device realtime notice");
-        _ = await Anon($"/api/native/v1/auth/devices/{credentials.GetProperty("deviceId").GetString()}/revoke", new { }, admin);
+        // A3 (Inicio y dispositivos): 'conectado ahora' sigue al canal de tiempo real, sin escrituras en la base.
+        var deviceId = credentials.GetProperty("deviceId").GetString()!;
+        bool Online() => Get("/api/native/v1/auth/devices", admin).GetAwaiter().GetResult().EnumerateArray()
+            .Any(d => d.GetProperty("id").GetString() == deviceId && d.GetProperty("online").GetBoolean());
+        await WaitUntil(Online, 10, "device listed as ONLINE while its realtime channel is open");
+        _ = await Anon($"/api/native/v1/auth/devices/{deviceId}/revoke", new { }, admin);
         await WaitUntil(() => deviceStates.Contains("closed"), 10, "revoked device connection aborted");
+        await WaitUntil(() => !Online(), 10, "revoked device is no longer online");
         using var probe = new HttpRequestMessage(HttpMethod.Get, "/api/native/v1/session");
         probe.Headers.Add("Authorization", "Bearer " + deviceToken);
         Assert((int)(await http.SendAsync(probe)).StatusCode == 401, "revoked device token must be rejected");
+    });
+
+    await Check("B7 a device that unpairs itself is expelled from realtime like a revoked one", async () =>
+    {
+        // A5 (Inicio y dispositivos): Desvincular en la tablet = revocacion en el servidor + corte del canal, a su nombre.
+        var admin = (await Anon("/api/native/v1/auth/login", new { username = "gerente", password = "clave-de-ensayo-larga-1" }))
+            .GetProperty("token").GetString()!;
+        var issued = await Anon("/api/native/v1/auth/pairings", new { }, admin);
+        var claimed = await Anon("/api/native/v1/auth/pairings/claim", new { code = issued.GetProperty("code").GetString(), deviceName = "tablet-b7" });
+        var pairingId = claimed.GetProperty("pairingId").GetString()!;
+        _ = await Anon($"/api/native/v1/auth/pairings/{pairingId}/approve", new { role = "kitchen", station = "cold" }, admin);
+        var credentials = await Anon($"/api/native/v1/auth/pairings/{pairingId}/collect", new { pollSecret = claimed.GetProperty("pollSecret").GetString() });
+        var deviceToken = credentials.GetProperty("deviceToken").GetString()!;
+        var states = new ConcurrentQueue<string>();
+        await using var subscription = new RealtimeSubscription(endpoint, deviceToken, []);
+        subscription.StateChanged += states.Enqueue;
+        await subscription.StartAsync();
+        await WaitUntil(() => states.Contains("connected"), 10, "device realtime connected");
+        var unpaired = await Anon("/api/native/v1/auth/unpair", new { }, deviceToken);
+        Assert(unpaired.GetProperty("unpaired").GetBoolean(), "unpair must confirm");
+        await WaitUntil(() => states.Contains("closed"), 10, "unpaired device connection aborted");
+        var rows = await Get("/api/native/v1/auth/devices", admin);
+        Assert(rows.EnumerateArray().Any(d => d.GetProperty("name").GetString() == "tablet-b7" && d.GetProperty("revokedAt").ValueKind != JsonValueKind.Null && !d.GetProperty("online").GetBoolean()),
+            "an unpaired device is listed as revoked and offline");
     });
 }
 finally

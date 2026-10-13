@@ -39,7 +39,7 @@ async function submit(): Promise<void> {
 <template>
   <section data-testid="pair">
     <h2>Emparejar este dispositivo</h2>
-    <p>En el PC principal, pestana <strong>Puestos</strong>, genera un codigo de un solo uso. Despues apruebalo alli con su rol y estacion.</p>
+    <p>En el PC principal, <strong>Inicio › Dispositivos</strong>, pulsa «Conectar comandero» o «Conectar pantalla de cocina» y lee el QR con la camara (o teclea el codigo). El responsable aprueba alli la solicitud.</p>
     <form @submit.prevent="submit">
       <label>Codigo de emparejamiento
         <input v-model="code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="busy" />

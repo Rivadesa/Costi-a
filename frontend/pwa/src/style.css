@@ -6,6 +6,7 @@ main { max-width: 44rem; margin: 0 auto; padding: max(1rem, env(safe-area-inset-
 header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 h1 { font-size: 1.4rem; letter-spacing: .06em; margin: .5rem 0; }
 h2 { font-size: 1.25rem; margin: 1rem 0 .5rem; }
+.headline { font-size: 1.6rem; letter-spacing: .04em; margin: .75rem 0 .25rem; }
 label { display: block; margin: 1rem 0 0; font-weight: 600; }
 input { display: block; width: 100%; margin-top: .35rem; padding: .8rem; font-size: 1rem; border: 2px solid #8a97a8; border-radius: .4rem; background: #fff; }
 input:focus-visible, button:focus-visible { outline: 3px solid #1f6feb; outline-offset: 2px; }

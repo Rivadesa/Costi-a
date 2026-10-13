@@ -26,6 +26,8 @@ public static class DesktopReadRoutes
                 actor=(string)c.Items["actor"]!,
                 // station: solo dispositivos emparejados (D4.2); acota lo que anuncian los modulos (D4.3).
                 station=c.Items["station"] as string,
+                // A4 (Inicio y dispositivos): nombre legible de esa estacion, para la cabecera de la tablet. Solo anade.
+                stationName=c.Items["stationName"] as string,
                 // ADR-012: modulos ACTIVOS en esta instalacion. Los clientes montan solo sus superficies.
                 modules=modules.Select(m=>m.Module.Name).ToArray(),
                 // Affordances de sesion: acciones globales (no ligadas a un agregado) que este rol puede iniciar, por modulo.

@@ -105,4 +105,9 @@ public static class OrganizationReads
     public static async Task<bool> StationActive(this DesktopReadRepository reads, BusinessScope scope, string id, CancellationToken ct)
         => (await reads.Query(scope, "SELECT 1 FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location AND id=@id AND active",
             r => 1, ct, ("id", id))).Count == 1;
+    // A2 (Inicio y dispositivos): tipo (kitchen/pass/bar/room) de una estacion ACTIVA, o null. El servidor comprueba con el que
+    // el rol de un puesto encaja con su estacion; la pantalla nunca decide esa regla.
+    public static async Task<string?> ActiveStationKind(this DesktopReadRepository reads, BusinessScope scope, string id, CancellationToken ct)
+        => (await reads.Query(scope, "SELECT kind FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location AND id=@id AND active",
+            r => r.GetString(0), ct, ("id", id))).SingleOrDefault();
 }

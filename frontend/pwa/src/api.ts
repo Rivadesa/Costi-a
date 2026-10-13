@@ -15,6 +15,7 @@ export interface Session {
   role: 'main' | 'service' | 'kitchen'
   actor: string
   station: string | null
+  stationName?: string | null   // A4: nombre legible de la estacion (un servidor anterior no lo envia)
   tenantId: string
   companyId: string
   locationId: string

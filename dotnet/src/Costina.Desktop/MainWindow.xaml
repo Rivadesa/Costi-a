@@ -9,6 +9,7 @@
       Cada entrada muestra una vista del area de trabajo (el TabControl de abajo, sin cabeceras). -->
  <Menu x:Name="MainMenu" DockPanel.Dock="Top">
   <MenuItem Header="_Archivo">
+   <MenuItem Header="Inicio" Tag="HomeTab" Click="ShowView"/>
    <MenuItem Header="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}"/>
    <MenuItem Header="Actualizar" Command="{Binding RefreshCommand}" InputGestureText="F5"/>
    <MenuItem Header="Desconectar" Command="{Binding DisconnectCommand}"/>
@@ -26,7 +27,7 @@
   </MenuItem>
   <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
-   <MenuItem Header="Puestos y emparejamiento" Tag="DevicesTab" Click="ShowView"/>
+   <MenuItem Header="Dispositivos: comanderos y pantallas de cocina" Tag="DevicesTab" Click="ShowView"/>
    <Separator/>
    <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
@@ -52,7 +53,7 @@
   <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
   <Separator/>
   <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
-  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.31.0-e6 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.32.0-a1 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
  </StatusBar>
  <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
   <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
@@ -94,6 +95,36 @@
  <!-- Area de trabajo: una vista por entrada de menu. Las cabeceras de pestana no se pintan (plantilla vacia). -->
  <TabControl x:Name="Tabs" IsEnabled="{Binding TabsEnabled}" SelectionChanged="TabChanged" Margin="24,0,24,12">
   <TabControl.ItemContainerStyle><Style TargetType="TabItem"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem"/></Setter.Value></Setter></Style></TabControl.ItemContainerStyle>
+  <!-- =============== Inicio (corte A, plan 2026-09-24): estado, accesos y dispositivos =============== -->
+  <TabItem Header="Inicio" x:Name="HomeTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
+   <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,4,0,0"><StackPanel>
+    <Border Style="{StaticResource Card}" Margin="0,0,0,12"><StackPanel>
+     <TextBlock Text="Inicio" Style="{StaticResource PanelTitle}"/>
+     <TextBlock Text="{Binding Home.WhoText}" TextWrapping="Wrap" Margin="0,4,0,4"/>
+     <TextBlock Text="{Binding Home.ServerText}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+     <TextBlock Text="{Binding RealtimeState}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+     <TextBlock Text="{Binding Home.BackupText}" TextWrapping="Wrap" Style="{StaticResource Subtle}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+    </StackPanel></Border>
+    <Border Style="{StaticResource WarnBanner}" Margin="0,0,0,12" Visibility="{Binding Home.HasCertificateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Home.CertificateWarning}" TextWrapping="Wrap"/></Border>
+    <TextBlock Text="Apartados" Style="{StaticResource Section}"/>
+    <WrapPanel Margin="0,4,0,12">
+     <Button x:Name="HomeDiningButton" Content="Comedor y cocina" Tag="ServiceTab" Click="ShowView" Style="{StaticResource Primary}" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Configuración" Tag="OrganizationTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+     <Button x:Name="HomeDevicesButton" Content="Dispositivos" Tag="DevicesTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+    </WrapPanel>
+    <Border Style="{StaticResource Card}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"><StackPanel>
+     <TextBlock Text="Dispositivos" Style="{StaticResource Section}"/>
+     <TextBlock Text="{Binding Home.DevicesSummary}" TextWrapping="Wrap"/>
+     <WrapPanel Margin="0,8,0,0">
+      <Button Content="Conectar comandero" Tag="DevicesTab" Click="ShowView"/>
+      <Button Content="Conectar pantalla de cocina" Tag="DevicesTab" Click="ShowView"/>
+     </WrapPanel>
+    </StackPanel></Border>
+   </StackPanel></ScrollViewer>
+  </TabItem>
   <!-- ═══════════════ Comedor y cocina (modulo Dining) ═══════════════ -->
   <TabItem Header="Comedor y cocina" x:Name="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -511,49 +542,86 @@
     </Grid>
    </Grid>
   </TabItem>
-  <!-- ═══════════════ Puestos (nucleo, solo main) ═══════════════ -->
-  <TabItem Header="Puestos" x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
-   <Border Style="{StaticResource Card}" Margin="0,4,0,0">
-    <DockPanel>
-     <StackPanel DockPanel.Dock="Top">
-      <TextBlock Text="Puestos y emparejamiento" Style="{StaticResource PanelTitle}"/>
-      <TextBlock Text="Solo administración. Un código sirve una vez y caduca en cinco minutos." Style="{StaticResource Subtle}" Margin="0,4,0,10"/>
-      <WrapPanel Margin="0,0,0,4">
-       <Button Content="Generar código de emparejamiento" Style="{StaticResource Primary}" Command="{Binding Devices.GenerateCodeCommand}"/>
-       <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" Width="360" Margin="10,0,0,0" FontSize="16" FontWeight="Bold" ToolTip="Cópialo o tecléalo en el puesto nuevo, o usa el QR de abajo con la cámara del dispositivo."/>
+  <!-- =============== Dispositivos (nucleo, solo main; corte A): conectar comanderos y pantallas de cocina =============== -->
+  <TabItem Header="Dispositivos" x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+   <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Border Grid.Column="0" Style="{StaticResource Card}"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+     <TextBlock Text="Conectar un dispositivo" Style="{StaticResource PanelTitle}"/>
+     <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,4,0,10" TextWrapping="Wrap"/>
+     <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}">
+      <TextBlock Text="Comandero (sala)" Style="{StaticResource Section}"/>
+      <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+       <ComboBox x:Name="RoomStationBox" Width="210" ItemsSource="{Binding Devices.RoomStations}" SelectedItem="{Binding Devices.SelectedRoomStation}" DisplayMemberPath="Name" Margin="0,0,8,0" ToolTip="Estación de sala (o barra) a la que pertenece el comandero"/>
+       <Button x:Name="StartWaiterButton" Content="Conectar comandero" Style="{StaticResource Primary}" Command="{Binding Devices.StartWaiterCommand}"/>
       </WrapPanel>
-      <WrapPanel Margin="0,0,0,4">
-       <TextBlock Text="Dirección para los dispositivos" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
-       <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" Width="330" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se recuerda en este equipo."/>
+      <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource Bool2Vis}}">
+       <TextBlock Text="No hay ninguna estación de sala donde poner un comandero." VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap"/>
+       <Button x:Name="CreateRoomStationButton" Content="Crear la estación «Sala»" Command="{Binding Devices.CreateRoomStationCommand}"/>
       </WrapPanel>
-      <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
-       <Border Background="White" Padding="6" CornerRadius="6" BorderBrush="{StaticResource Line}" BorderThickness="1" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
-        <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="176" Height="176" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
+      <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,14,0,4"/>
+      <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">
+       <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+       <ItemsControl.ItemTemplate><DataTemplate>
+        <Button Content="{Binding Name}" MinWidth="160" Command="{Binding DataContext.Devices.StartKitchenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+       </DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </StackPanel>
+     <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource Bool2Vis}}">
+      <TextBlock Text="{Binding Devices.AssistantTitle}" Style="{StaticResource Section}"/>
+      <TextBlock Text="{Binding Devices.AssistantText}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+      <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Border Grid.Column="0" Background="White" Padding="8" CornerRadius="6" BorderBrush="{StaticResource Line}" BorderThickness="1" VerticalAlignment="Top" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+        <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="232" Height="232" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
        </Border>
-       <StackPanel Margin="12,0,0,0" MaxWidth="560">
-        <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap"/>
-        <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,6,0,0"/>
+       <StackPanel Grid.Column="1" Margin="12,0,0,0">
+        <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+        <TextBlock Text="Código" Style="{StaticResource FieldLabel}" Margin="0,8,0,2"/>
+        <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"/>
+        <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,4,0,0"/>
        </StackPanel>
-      </StackPanel>
-      <TextBlock Text="{Binding Devices.PairingInfo}" Margin="0,0,0,12" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
-      <TextBlock Text="Solicitudes pendientes" Style="{StaticResource Section}"/>
-      <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="110"/>
-      <WrapPanel Margin="0,6,0,14">
-       <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Devices.ApproveRole}">
-        <ComboBoxItem Tag="service" IsSelected="True">Sala</ComboBoxItem><ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="main">Principal</ComboBoxItem>
-       </ComboBox>
-       <ComboBox x:Name="ApproveStationBox" Width="220" Margin="8,0,8,0" ItemsSource="{Binding Devices.Stations}" SelectedValuePath="Id" SelectedValue="{Binding Devices.ApproveStation}" ToolTip="Estación activa de la organización (pestaña Configuración)"/>
-       <Button Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}"/>
-       <Button Content="Denegar" Style="{StaticResource DangerButton}" Command="{Binding Devices.DenyCommand}"/>
+      </Grid>
+      <Border Style="{StaticResource WarnBanner}" Margin="0,0,0,8" Visibility="{Binding Devices.HasDuplicateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Devices.DuplicateWarning}" TextWrapping="Wrap"/></Border>
+      <Border Style="{StaticResource Banner}" Margin="0,0,0,8" Visibility="{Binding Devices.HasRecognised, Converter={StaticResource Bool2Vis}}"><DockPanel>
+       <Button DockPanel.Dock="Right" x:Name="ApproveButton" Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}"/>
+       <TextBlock Text="{Binding Devices.RecognisedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+      </DockPanel></Border>
+      <WrapPanel>
+       <Button Content="Generar otro código" Command="{Binding Devices.NewCodeCommand}"/>
+       <Button Content="Cerrar el asistente" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelCommand}"/>
       </WrapPanel>
-      <TextBlock Text="Puestos emparejados" Style="{StaticResource Section}"/>
+     </StackPanel>
+     <Expander Header="Dirección para los dispositivos y solicitudes recibidas" Margin="0,14,0,0">
+      <StackPanel Margin="0,6,0,0">
+       <TextBlock Text="Dirección para los dispositivos" Style="{StaticResource FieldLabel}"/>
+       <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se propone sola y se recuerda en este equipo."/>
+       <TextBlock Text="Solicitudes recibidas" Style="{StaticResource Section}" Margin="0,10,0,4"/>
+       <TextBlock Text="Solo se aprueba la solicitud del asistente abierto, que sabe qué va a ser el dispositivo. Cualquier otra solo puede denegarse." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+       <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="100" Margin="0,4,0,4"/>
+       <Button Content="Denegar la solicitud seleccionada" Style="{StaticResource DangerButton}" Command="{Binding Devices.DenyCommand}" HorizontalAlignment="Left"/>
+      </StackPanel>
+     </Expander>
+    </StackPanel></ScrollViewer></Border>
+    <Border Grid.Column="2" Style="{StaticResource Card}"><DockPanel>
+     <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="Dispositivos conectados" Style="{StaticResource PanelTitle}"/>
+      <TextBlock Text="{Binding Devices.ListSummary}" TextWrapping="Wrap" Style="{StaticResource Subtle}" Margin="0,4,0,6"/>
+      <CheckBox Content="Mostrar también los quitados" IsChecked="{Binding Devices.ShowRevoked}" Margin="0,0,0,6"/>
      </StackPanel>
      <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-      <Button Content="Revocar puesto seleccionado (expulsión inmediata)" Style="{StaticResource DangerButton}" Command="{Binding Devices.RevokeCommand}" HorizontalAlignment="Left"/>
+      <Border Style="{StaticResource DangerBanner}" Margin="0,0,0,6" Visibility="{Binding Devices.ConfirmingRemoval, Converter={StaticResource Bool2Vis}}"><DockPanel>
+       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+        <Button x:Name="ConfirmRemoveButton" Content="Sí, quitar" Style="{StaticResource DangerButton}" Command="{Binding Devices.ConfirmRemoveCommand}"/>
+        <Button Content="No" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelRemoveCommand}"/>
+       </StackPanel>
+       <TextBlock Text="{Binding Devices.RemovalText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+      </DockPanel></Border>
+      <Button x:Name="RemoveButton" Content="Quitar el dispositivo seleccionado" Style="{StaticResource DangerButton}" Command="{Binding Devices.AskRemoveCommand}" HorizontalAlignment="Left"/>
      </StackPanel>
-     <ListBox ItemsSource="{Binding Devices.Devices}" SelectedItem="{Binding Devices.SelectedDevice}"/>
-    </DockPanel>
-   </Border>
+     <ListBox x:Name="DeviceList" ItemsSource="{Binding Devices.Rows}" SelectedItem="{Binding Devices.SelectedRow}" DisplayMemberPath="Text">
+      <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" FontWeight="Bold" Margin="0,8,0,2"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
+     </ListBox>
+    </DockPanel></Border>
+   </Grid>
   </TabItem>
  </TabControl>
 </DockPanel></Window>

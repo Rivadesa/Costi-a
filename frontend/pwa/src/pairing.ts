@@ -1,4 +1,4 @@
-import { ApiError, call, type Fetch } from './api'
+import { ApiError, call, NetworkError, type Fetch } from './api'
 
 // Emparejamiento del dispositivo (contrato D4.2): reclamar el codigo de un solo uso, esperar a que el
 // PC principal apruebe con rol y estacion, y recoger UNA vez el token. Logica pura y testeable: sin DOM.
@@ -46,6 +46,18 @@ export async function pairDevice(code: string, deviceName: string, options: Pair
     }
   }
   return { kind: 'expired' }
+}
+
+// Desvincular (corte A, F9): el dispositivo se da de baja EN EL SERVIDOR (revocacion a su nombre) antes de olvidar su
+// credencial. Sin conexion no se olvida nada: un dispositivo "desvinculado" solo en local seguiria activo en el servidor.
+export type UnpairOutcome = 'unpaired' | 'already' | 'offline'
+export async function unpairDevice(fetcher: Fetch, token: string): Promise<UnpairOutcome> {
+  try { await call(fetcher, '/auth/unpair', { token, body: {} }); return 'unpaired' }
+  catch (error) {
+    if (error instanceof ApiError && error.status === 401) return 'already'
+    if (error instanceof NetworkError) return 'offline'
+    throw error
+  }
 }
 
 // El QR del PC principal abrira https://servidor:5443/app/#pair=CODIGO (D6.5): el codigo llega en el

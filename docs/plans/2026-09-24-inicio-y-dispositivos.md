@@ -1,6 +1,6 @@
 # Plan (borrador): Inicio y dispositivos, y puesto principal conectado al arrancar
 
-Fecha: 2026-09-24. **Estado: BORRADOR, pendiente de las decisiones del promotor (sección final).** No se ha escrito código. Base: `develop` con E4b mezclada (`7d276b7`, PR #66).
+Fecha: 2026-09-24. **Estado: APROBADO el 06-10-2026** con las decisiones del promotor (sección 8). El corte A se construye en la rama `feat/a-inicio-dispositivos`. Base: `develop` con E4b mezclada (`7d276b7`, PR #66).
 
 Origen: al revisar la implementación, el promotor pidió (24-09) una **pantalla de inicio** con un apartado para **conectar dispositivos** (una opción para comanderos y otra para las pantallas de cocina de cada estación) y preguntó:
 
@@ -148,11 +148,14 @@ Esquema (v6), `grants.sql`, cadena `upgrade-v*.sql`, copias y restauración. Con
 - **Reglas nuevas del servidor (A1, A2):** pueden rechazar una combinación que alguien usara; los dispositivos existentes no se tocan.
 - **Presencia:** puede dar falsos «sin conexión» mientras el tiempo real está degradado o justo tras reiniciar el motor.
 
-## 8. Decisiones pendientes del promotor
+## 8. Decisiones del promotor (06-10-2026)
 
-1. ¿Se hacen los cortes A y B **ahora, antes de E8 reservas**? (Recomendación: sí; es lo que se usa cada día y lo que falta para la prueba en el local.)
-2. Sin contraseña, el PC toma comandas pero no cobra, ni cierra cuentas, ni configura, ni conecta dispositivos: eso pide la contraseña del responsable hasta que E5 traiga el PIN. ¿Vale así?
-3. Durante el servicio, ¿el PC principal hace de **sala** (comandero grande) o de **pase de cocina** (valida pases y revisa alergias)?
-4. ¿Comanderos y pantallas de cocina serán **Android o iPad**? El iPad obliga a instalar desde el icono y tiene más riesgo de perder la conexión.
+1. **Sí: los cortes A y B se hacen ahora, antes de E8 reservas.**
+2. **Sí:** sin contraseña el PC toma comandas; cobrar, cerrar cuentas, configurar y conectar dispositivos piden la contraseña del responsable hasta que E5 traiga el PIN.
+3. **«El PC principal actúa como ERP: desde él se accede a todos los apartados del programa, al TPV, a las mesas, etc.»** Consecuencias para el diseño (donde el borrador suponía sala *o* pase):
+   - En el nivel **Puesto** (sin contraseña) el PC es un dispositivo `service` con una estación de **sala**: toma comandas como un comandero grande. El pase de cocina sigue siendo cosa de la pantalla `pase` o del responsable identificado (un usuario con sesión no tiene restricción de estación, D4.3a); el servidor no admite `service` en una estación de pase (A2).
+   - **Nada se oculta**: la barra de menús y la pantalla Inicio muestran siempre todos los apartados (Comedor, Caja, Configuración, ERP, Fiscalidad, Dispositivos). En el nivel Puesto, pulsar uno sensible pide la contraseña del responsable en el momento (B3 pasa de «ocultos» a «visibles y protegidos»); al entrar como responsable se abre el apartado pedido.
+   - La pantalla **Inicio** es la del ERP: estado, accesos a todo y el bloque de dispositivos.
+4. **PWA en ambos**: comanderos y pantallas de cocina pueden ser **Android o iPad**; el guion físico (D6.5, ampliado con «apagar y encender la tablet») se ejecuta en los dos.
 
-Con las respuestas, este borrador pasa a plan aprobado (se anotan aquí las decisiones) y el corte A arranca desde `develop`.
+Con estas decisiones el borrador pasa a plan aprobado y el corte A arranca desde `develop` (`d8817b4`).

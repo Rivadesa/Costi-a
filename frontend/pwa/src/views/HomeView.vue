@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Session } from '../api'
 import type { Credential } from '../credentials'
 import { PERSISTENCE_HINT, type Persistence } from '../storage'
@@ -7,12 +8,14 @@ import KitchenView from './KitchenView.vue'
 
 defineProps<{ session: Session; credential: Credential; persistence: Persistence }>()
 defineEmits<{ unpair: []; refresh: [] }>()
-const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitchen: 'Cocina' }
+// A11: la cabecera dice QUE es este dispositivo y DONDE esta, con el nombre de la estacion (no su codigo).
+const KINDS: Record<string, string> = { main: 'PRINCIPAL (antiguo)', service: 'COMANDERO', kitchen: 'PANTALLA DE COCINA' }
+const confirming = ref(false)   // desvincular en dos pasos (F9), sin window.confirm (CSP intacta)
 </script>
 
 <template>
   <section data-testid="home">
-    <h2 data-testid="role">{{ ROLES[session.role] ?? session.role }}<span v-if="session.station"> · estacion {{ session.station }}</span></h2>
+    <h2 class="headline" data-testid="role">{{ KINDS[session.role] ?? session.role }}<span v-if="session.stationName || session.station"> · {{ session.stationName || session.station }}</span></h2>
     <p class="identity"><span data-testid="actor">{{ session.actor }}</span> · servidor {{ session.serverVersion }} · {{ session.companyId }}/{{ session.locationId }}</p>
 
     <!-- ADR-012: cada vista pertenece a un modulo y solo se monta si la instalacion lo tiene activo. -->
@@ -26,7 +29,15 @@ const ROLES: Record<string, string> = { main: 'Principal', service: 'Sala', kitc
 
     <footer>
       <p v-if="PERSISTENCE_HINT[persistence]" class="identity" data-testid="persistence-hint">{{ PERSISTENCE_HINT[persistence] }}</p>
-      <button type="button" class="secondary" @click="$emit('unpair')">Desvincular este dispositivo</button>
+      <details data-testid="options">
+        <summary>Opciones</summary>
+        <p class="identity">Desvincular deja este dispositivo sin acceso, tambien en el servidor. Para volver a usarlo habra que conectarlo de nuevo desde el PC principal.</p>
+        <button v-if="!confirming" type="button" class="secondary" @click="confirming = true">Desvincular este dispositivo</button>
+        <p v-else class="row">
+          <button type="button" data-testid="unpair-confirm" @click="confirming = false; $emit('unpair')">Si, desvincular</button>
+          <button type="button" class="secondary" @click="confirming = false">No, seguir conectado</button>
+        </p>
+      </details>
     </footer>
   </section>
 </template>

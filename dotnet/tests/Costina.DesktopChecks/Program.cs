@@ -204,8 +204,66 @@ internal static class Program
         if(catalogView.SaveProductCommand.CanExecute(null)||catalogView.SetPriceCommand.CanExecute(null)) throw new Exception("Busy must gate every catalog command.");
         window.Shell.Busy=false;
         catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
+        // Corte A (plan 2026-09-24): Inicio es la primera vista al entrar y resume servidor, certificado, copias y dispositivos;
+        // el centro de dispositivos ofrece asistentes CON INTENCION (comandero / pantalla por estacion), reconoce solo su propia
+        // solicitud, no ofrece 'Principal', agrupa la lista con presencia y quita en dos pasos. Todo compuesto de lo leido.
+        var archivo=((Menu)window.FindName("MainMenu")).Items.OfType<MenuItem>().First().Items.OfType<MenuItem>().Select(m=>m.Header?.ToString()).ToArray();
+        if(archivo[0]!="Inicio") throw new Exception("Archivo starts with Inicio: "+string.Join(",",archivo));
+        var workspace=(TabControl)window.FindName("Tabs");
+        window.Shell.Session=null; window.UpdateLayout();
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]); window.UpdateLayout();
+        if(workspace.SelectedItem!=(TabItem)window.FindName("HomeTab")) throw new Exception("Connecting selects Inicio first.");
+        var home=window.Shell.Home;
+        if(!home.WhoText.StartsWith("Responsable",StringComparison.Ordinal)) throw new Exception("Inicio states who is connected: "+home.WhoText);
+        home.ApplyDevices([new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d2","tablet-sala-2","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null),
+            new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null,true),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))]);
+        if(home.DevicesSummary!="2 comanderos (1 con conexión ahora) · 1 pantalla de cocina (1 con conexión ahora)") throw new Exception("Inicio summarises active devices and presence: "+home.DevicesSummary);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.32.0-a1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        home.ApplyDiagnostics(soon);
+        if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerText.Contains("costina-server.local")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
+        home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
+        if(home.HasCertificateWarning) throw new Exception("No warning for a certificate with months left.");
+        home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(-1)}});
+        if(!home.CertificateWarning.StartsWith("EL CERTIFICADO DEL SERVIDOR CADUCÓ",StringComparison.Ordinal)) throw new Exception("An expired certificate is said loudly.");
+        home.ApplyDiagnostics(soon);
+        var center=window.Shell.Devices;
+        var stationsForDevices=new Costina.Client.StationDto[]{new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true),new("hot","Cocina caliente","Kitchen",2,true),new("sala-1","Sala 1","Room",3,true),new("terraza","Terraza","Room",4,false)};
+        var pendingOther=new Costina.Client.PairingPendingDto("pid-otra","tablet-ajena",DateTimeOffset.Now);
+        var activeDevices=new Costina.Client.DeviceRowDto[]{new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))};
+        center.Render(stationsForDevices,[pendingOther],activeDevices);
+        if(!center.RoomStations.Select(s=>s.Id).SequenceEqual(new[]{"sala-1"})||!center.KitchenStations.Select(s=>s.Id).SequenceEqual(new[]{"pase","cold","hot"})) throw new Exception("Waiters go to room/bar stations and screens to kitchen/pass/bar; inactive ones are never offered.");
+        if(window.FindName("ApproveStationBox") is not null||window.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
+        if(!center.StartWaiterCommand.CanExecute(null)||!center.StartKitchenCommand.CanExecute(center.KitchenStations[1])||center.CreateRoomStationCommand.CanExecute(null)) throw new Exception("With a room station the waiter assistant starts and 'create Sala' is not offered.");
+        if(center.Rows.Length!=2||center.Rows[0].Group!="Comanderos"||center.Rows[1].Group!="Pantalla de cocina · Cocina fría"||!center.ListSummary.Contains("1 quitados (ocultos)")) throw new Exception("The list groups active devices and hides the removed ones: "+center.ListSummary);
+        center.ShowRevoked=true;
+        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("quitado",StringComparison.Ordinal)) throw new Exception("Removed devices appear on demand, stated in text.");
+        center.ShowRevoked=false;
+        center.BeginAssistant("kitchen",center.KitchenStations[1]);
+        if(!center.HasAssistant||center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.StartWaiterCommand.CanExecute(null)) throw new Exception("One assistant at a time, with its intent in the title.");
+        center.Issued("pid-propia","AbC123_def-456",DateTimeOffset.UtcNow.AddMinutes(5));
+        center.DeviceAddress="https://costina-server.local:5443";
+        if(!center.HasQr||center.PairingUrl!="https://costina-server.local:5443/app/#pair=AbC123_def-456") throw new Exception("The assistant shows the QR of the one-use code.");
+        center.Render(stationsForDevices,[pendingOther],activeDevices);
+        if(center.HasRecognised||center.ApproveCommand.CanExecute(null)||!center.DenyCommand.CanExecute(null)) throw new Exception("A request that is not the assistant's own is never recognised nor approvable (only denied).");
+        center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-fria",DateTimeOffset.Now)],activeDevices);
+        if(!center.HasRecognised||!center.ApproveCommand.CanExecute(null)||!center.RecognisedText.Contains("pantalla de cocina de Cocina fría")) throw new Exception("The assistant recognises its own request by pairingId and offers to approve it.");
+        if(!center.HasDuplicateWarning) throw new Exception("A request named like an active device is flagged (F12).");
+        center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-caliente",DateTimeOffset.Now)],activeDevices);
+        if(center.HasDuplicateWarning||center.NewCodeCommand.CanExecute(null)) throw new Exception("A fresh name raises no warning; with a recognised request no new code is offered.");
+        center.SelectedRow=center.Rows[0];
+        if(!center.AskRemoveCommand.CanExecute(null)||center.ConfirmRemoveCommand.CanExecute(null)) throw new Exception("Removing asks first.");
+        center.AskRemoveCommand.Execute(null);
+        if(!center.ConfirmingRemoval||!center.RemovalText.Contains("tablet-sala-1")||!center.ConfirmRemoveCommand.CanExecute(null)||center.AskRemoveCommand.CanExecute(null)) throw new Exception("Removal is confirmed in a second step that names the device.");
+        center.CancelRemoveCommand.Execute(null);
+        if(center.ConfirmingRemoval) throw new Exception("Cancelling leaves the device alone.");
+        center.Render([new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true)],[],[]);
+        if(!center.NeedsRoomStation||!center.CreateRoomStationCommand.CanExecute(null)||!center.HasAssistant) throw new Exception("Without a room station the screen offers to create 'Sala'; the open assistant survives a re-read.");
+        window.Shell.Busy=true;
+        if(center.ApproveCommand.CanExecute(null)||center.StartKitchenCommand.CanExecute(center.KitchenStations[0])) throw new Exception("Busy must gate every device command.");
+        window.Shell.Busy=false;
+        center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-caliente",DateTimeOffset.Now)],activeDevices);
         // Capturas del tema visual (E2): cada pestana del puesto principal compuesta con datos leidos.
-        var tabs=(TabControl)window.FindName("Tabs");
+        var tabs=workspace;
         window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);
         window.Shell.Service.Tables=[new("M1","Mesa 1",12,"sala","Sala"),new("M2","Mesa 2",4,"sala","Sala")]; window.Shell.Service.SelectedTable=window.Shell.Service.Tables[0];
         // E4a: apertura por oferta y eleccion de plato en un pase de menu cerrado; la vista ERP > Oferta se compone de lo leido.
@@ -255,10 +313,8 @@ internal static class Program
         window.Shell.Checkout.Charges=[new("ch1","Menú de ensayo",2,15000,false,null,30000),new("ch2","Agua mineral · Botella",1,400,false,null,400)];
         window.Shell.Checkout.Totals="Total 304,00 € · Pagado 0,00 € · Pendiente 304,00 €";
         window.Shell.Status="Datos leídos del servidor. Las acciones se habilitan según lo que el servidor anuncia.";
-        window.Shell.Devices.DeviceAddress="https://costina-server.local:5443"; window.Shell.Devices.PairingCode="AbC123_def-456";
-        window.Shell.Devices.Stations=sampleOrganization.Stations; window.Shell.Devices.ApproveStation="cold";
-        window.Shell.Devices.Devices=[new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null)];
-        foreach(var (tab,file) in new[]{("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
+        window.Shell.Home.Visible=true;
+        foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
         {
             tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout();
             // Las columnas "*" del DataGrid se reparten en una pasada diferida: se vacia la cola del despachador antes de capturar.

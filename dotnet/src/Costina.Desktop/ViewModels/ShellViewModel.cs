@@ -14,6 +14,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private RealtimeSubscription? realtime;
     private bool refreshQueued;
 
+    public HomeViewModel Home { get; }                   // corte A: Inicio (estado, accesos, dispositivos)
     public ServiceViewModel Service { get; }
     public CheckoutViewModel Checkout { get; }
     public DevicesViewModel Devices { get; }
@@ -35,7 +36,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
 
-    public ShellViewModel() { Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this); }
+    public ShellViewModel() { Home = new(this); Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this); }
 
     // Cambiar la sesion (conectar, desconectar, otro rol) refresca todas las propiedades derivadas que enlazan menus y vistas.
     partial void OnSessionChanged(SessionInfo? value) => Sync();
@@ -75,7 +76,7 @@ public sealed partial class ShellViewModel : ObservableObject
         DisconnectCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged(); RetryCommand.NotifyCanExecuteChanged();
         ReconcileCommand.NotifyCanExecuteChanged(); DiscardCommand.NotifyCanExecuteChanged();
-        Service.Sync(); Checkout.Sync(); Devices.Sync(); Organization.Sync(); Catalog.Sync(); Offers.Sync();
+        Home.Sync(); Service.Sync(); Checkout.Sync(); Devices.Sync(); Organization.Sync(); Catalog.Sync(); Offers.Sync();
     }
 
     // Coalescencia: los avisos que llegan durante una operacion no la interrumpen; se relee al terminar.
@@ -114,6 +115,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     internal async Task RefreshAll()
     {
+        if (Home.Visible) await Home.LoadAsync();
         if (HasDining) await Service.LoadAsync();
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
         if (IsMain && Devices.Visible) await Devices.LoadAsync();
@@ -267,7 +269,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false; sessionToken = null;
         RealtimeState = "Tiempo real inactivo.";
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
-        Service.Clear(); Checkout.Clear(); Devices.Clear(); Organization.Clear(); Catalog.Clear(); Offers.Clear();
+        Home.Clear(); Service.Clear(); Checkout.Clear(); Devices.Clear(); Organization.Clear(); Catalog.Clear(); Offers.Clear();
         Status = "Desconectado. La contraseña no se guarda en disco.";
         ReadTime = "Sin lectura actual del servidor.";
         Sync();

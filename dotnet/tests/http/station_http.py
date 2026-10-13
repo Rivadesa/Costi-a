@@ -121,6 +121,11 @@ class StationChecks(unittest.TestCase):
         status, lookup = request('/commands/' + key, token=cook)                                         # mismo actor: el registro manda
         self.assertEqual(200, status); self.assertTrue(lookup['found']); self.assertEqual(key, lookup['key'])
 
+    def test_03b_session_names_the_station_of_a_device(self):
+        # A4 (Inicio y dispositivos): la tablet rotula su cabecera con el nombre, no con el codigo.
+        self.assertEqual(['cold', 'Cocina fr\u00eda'], [request('/session', token=self.cold)[1][k] for k in ('station', 'stationName')])
+        self.assertIsNone(request('/session', token=h.KEYS['main'])[1]['stationName'])
+
     def test_04_session_users_have_no_station_restriction(self):
         # El chef con sesion (sin estacion) marco arriba una elaboracion 'hot' sin restriccion;
         # el dispositivo de una estacion nunca gana permisos de rol por tener estacion.

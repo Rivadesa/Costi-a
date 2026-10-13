@@ -7,6 +7,7 @@
 #     instalarlo en %USERPROFILE%\.dotnet-sdk (ver abajo); COSTINA_DOTNET=<carpeta> para cualquier otra ubicacion.
 #   - Binarios portables de PostgreSQL 17 en .lab/pgsql/bin (los del laboratorio, docs/native/lab-engineering.md), o PG_BIN=<carpeta bin>
 #   - Python 3 y, para pwa_http, el build de la PWA (npm run build en frontend/pwa) ANTES de compilar el servidor
+#   - Opcional, E2E de Playwright en local: COSTINA_E2E=1 con los navegadores en %USERPROFILE%\.ms-playwright (ver abajo)
 #
 # Usa un cluster PostgreSQL PROPIO y desechable en .lab-test/ (puerto 5434, base costina_d1_test, superusuario costina/ci-only como en CI).
 # JAMAS toca el laboratorio (.lab, puerto 5433) ni una instalacion real. .lab-test/ esta fuera de git (.git/info/exclude).
@@ -29,6 +30,9 @@ DOTNET_ROOT="$(cygpath -u "$D" 2>/dev/null || printf '%s' "$D")"
 export DOTNET_ROOT DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 PYTHONIOENCODING=utf-8
 export PATH="$DOTNET_ROOT:$PG_BIN:$PATH"
 export PGHOST=127.0.0.1 PGPORT=5434 PGUSER=costina PGPASSWORD=ci-only PGDATABASE=costina_d1_test COSTINA_PG_BIN="$PG_BIN"
+# Playwright (COSTINA_E2E=1): los navegadores en %USERPROFILE%\.ms-playwright si existen. Mismo motivo que el SDK: el Python de
+# Microsoft Store no ve %LOCALAPPDATA%\ms-playwright. Instalar con PLAYWRIGHT_BROWSERS_PATH=~/.ms-playwright npx playwright install chromium
+[ -d "$USERPROFILE/.ms-playwright" ] && export PLAYWRIGHT_BROWSERS_PATH="$(cygpath -w "$USERPROFILE/.ms-playwright")"
 # Puerto del servidor de pruebas: 5090 (una instalacion REAL de Costina en este PC escucha en 5088 y no se toca).
 export COSTINA_TEST_PORT="${COSTINA_TEST_PORT:-5090}"
 BOOTSTRAP='Host=127.0.0.1;Port=5434;Database=costina_d1_test;Username=costina;Password=ci-only'

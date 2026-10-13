@@ -11,7 +11,7 @@ namespace Costina.Core.Persistence;
 public sealed record PairingIssued(string PairingId, string Code, DateTimeOffset ExpiresAt);
 public sealed record PairingPending(string PairingId, string DeviceName, DateTimeOffset ClaimedAt);
 public sealed record DeviceCredentials(string DeviceId, string Secret, string Role, string Station);
-public sealed record AuthenticatedDevice(string DeviceId, string Name, string Role, string Station);
+public sealed record AuthenticatedDevice(string DeviceId, string Name, string Role, string Station, string? StationName = null);
 public sealed record DeviceRow(string Id, string Name, string Role, string Station,
     string ApprovedBy, DateTimeOffset CreatedAt, DateTimeOffset? RevokedAt);
 
@@ -139,14 +139,18 @@ public sealed class DeviceStore(NpgsqlDataSource dataSource, BusinessScope scope
 
     public async Task<AuthenticatedDevice?> AuthenticateAsync(string deviceId, string secret, CancellationToken ct = default)
     {
+        // A4 (Inicio y dispositivos): el nombre de la estacion viaja en /session para la cabecera de la tablet. Una estacion
+        // desactivada o renombrada se refleja en la siguiente peticion, sin tocar el dispositivo.
         await using var command = Command(
-            "SELECT name, role, station FROM core.devices WHERE " + ScopeWhere +
-            " AND id=@id AND secret_hash=@hash AND revoked_at IS NULL");
+            "SELECT d.name, d.role, d.station, s.name FROM core.devices d LEFT JOIN core.stations s " +
+            "ON s.tenant=d.tenant AND s.company=d.company AND s.location=d.location AND s.id=d.station " +
+            "WHERE d.tenant=@tenant AND d.company=@company AND d.location=@location" +
+            " AND d.id=@id AND d.secret_hash=@hash AND d.revoked_at IS NULL");
         command.Parameters.AddWithValue("id", deviceId);
         command.Parameters.AddWithValue("hash", HashOf(secret));
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
-        return new(deviceId, reader.GetString(0), reader.GetString(1), reader.GetString(2));
+        return new(deviceId, reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3));
     }
 
     public async Task<IReadOnlyList<DeviceRow>> DevicesAsync(CancellationToken ct = default)

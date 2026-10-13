@@ -44,6 +44,9 @@ public sealed class DeviceConnectionRegistry
     { if (byDevice.TryGetValue(deviceId, out var map)) map.TryRemove(connectionId, out _); }
     public void AbortAll(string deviceId)
     { if (byDevice.TryRemove(deviceId, out var map)) foreach (var context in map.Values) context.Abort(); }
+    // A3 (Inicio y dispositivos): 'conectado ahora' = tiene un canal de tiempo real abierto en este proceso. Sin columna
+    // last_seen ni escrituras en el camino caliente; tras reiniciar el motor todos aparecen desconectados hasta que vuelven.
+    public bool IsOnline(string deviceId) => byDevice.TryGetValue(deviceId, out var map) && !map.IsEmpty;
 }
 
 public sealed class EventsHub(DeviceConnectionRegistry devices) : Hub
