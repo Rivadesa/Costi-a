@@ -10,6 +10,10 @@ namespace Costina.Core.Persistence;
 public static class PasswordHashing
 {
     private const int Iterations = 210_000;
+    // Corte B (revision externa 06-10, A3): el hash senuelo con el que se verifica un usuario INEXISTENTE se calcula una sola
+    // vez por proceso. Calcularlo en cada intento doblaba el coste de CPU justo para esos intentos y dejaba una diferencia de
+    // tiempo observable entre "usuario que existe" y "usuario que no existe".
+    public static readonly string Decoy = Hash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)));
 
     public static string Hash(string password)
     {
@@ -81,8 +85,8 @@ public sealed class IdentityStore(NpgsqlDataSource dataSource, BusinessScope sco
         string? userId = null, storedHash = null, role = null;
         await using (var reader = await find.ExecuteReaderAsync(ct))
             if (await reader.ReadAsync(ct)) { userId = reader.GetString(0); storedHash = reader.GetString(1); role = reader.GetString(2); }
-        // Coste constante tambien con usuario inexistente: se verifica contra un hash senuelo.
-        var candidate = storedHash ?? PasswordHashing.Hash("decoy-password-never-matches");
+        // Coste constante tambien con usuario inexistente: se verifica contra el hash senuelo fijo del proceso.
+        var candidate = storedHash ?? PasswordHashing.Decoy;
         if (!PasswordHashing.Verify(password, candidate) || userId is null) return null;
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .Replace('+', '-').Replace('/', '_').TrimEnd('=');

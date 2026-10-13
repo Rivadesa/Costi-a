@@ -10,6 +10,8 @@
  <Menu x:Name="MainMenu" DockPanel.Dock="Top">
   <MenuItem Header="_Archivo">
    <MenuItem Header="Inicio" Tag="HomeTab" Click="ShowView"/>
+   <MenuItem Header="Entrar como responsable" Click="ElevateClick"/>
+   <MenuItem Header="Salir del modo responsable" Command="{Binding LeaveResponsibleCommand}"/>
    <MenuItem Header="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}"/>
    <MenuItem Header="Actualizar" Command="{Binding RefreshCommand}" InputGestureText="F5"/>
    <MenuItem Header="Desconectar" Command="{Binding DisconnectCommand}"/>
@@ -19,26 +21,26 @@
   <MenuItem Header="_Comedor" x:Name="DiningMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Comedor y cocina" Tag="ServiceTab" Click="ShowView"/>
   </MenuItem>
-  <MenuItem Header="Ca_ja" x:Name="CheckoutMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <MenuItem Header="Ca_ja" x:Name="CheckoutMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView"/>
    <Separator/>
    <MenuItem Header="Apertura y cierre de caja" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Arqueo y turnos" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
-  <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
    <MenuItem Header="Dispositivos: comanderos y pantallas de cocina" Tag="DevicesTab" Click="ShowView"/>
    <Separator/>
    <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
-  <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView"/>
    <MenuItem Header="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView"/>
    <MenuItem Header="Informes" IsEnabled="False" ToolTip="Tras el Hito 7" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Módulos posteriores" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
-  <MenuItem Header="_Fiscalidad" x:Name="FiscalMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <MenuItem Header="_Fiscalidad" x:Name="FiscalMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Series y facturas" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
    <MenuItem Header="VERI*FACTU" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
@@ -53,30 +55,41 @@
   <StatusBarItem><TextBlock Text="{Binding RealtimeState}" Style="{StaticResource Subtle}"/></StatusBarItem>
   <Separator/>
   <StatusBarItem><TextBlock Text="{Binding ReadTime}" Style="{StaticResource Subtle}"/></StatusBarItem>
-  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.32.0-a1 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
+  <StatusBarItem HorizontalAlignment="Right"><TextBlock Text="Costiña 0.33.0-b1 · ensayo con servidor local real · no usar con datos de clientes" Style="{StaticResource Subtle}"/></StatusBarItem>
  </StatusBar>
  <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
-  <!-- Conexion: solo mientras no hay sesion. Despues, todo va por el menu Archivo. -->
-  <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12" Visibility="{Binding Connected, Converter={StaticResource NotBool2Vis}}">
+  <!-- Arranque (corte B): mientras el servidor levanta tras encender el equipo, la ventana lo dice y espera. -->
+  <Border Style="{StaticResource Banner}" Margin="0,0,0,10" Padding="16,12" Visibility="{Binding Booting, Converter={StaticResource Bool2Vis}}">
+   <StackPanel><TextBlock Text="COSTIÑA" Style="{StaticResource AppTitle}"/><TextBlock Text="{Binding BootText}" TextWrapping="Wrap" Margin="0,4,0,0"/></StackPanel>
+  </Border>
+  <!-- Entrada del responsable (corte B): sin conexion, o cuando un apartado sensible lo pide desde el nivel Puesto. -->
+  <Border x:Name="LoginCard" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="16,12" Visibility="{Binding LoginCardVisible, Converter={StaticResource Bool2Vis}}">
    <StackPanel>
-    <TextBlock Text="COSTIÑA" Style="{StaticResource AppTitle}"/>
-    <TextBlock Text="Entra con tu usuario y contraseña, o conecta este puesto emparejado. La contraseña no se guarda en disco." Style="{StaticResource Subtle}" Margin="0,2,0,10"/>
+    <TextBlock Text="{Binding LoginTitle}" Style="{StaticResource PanelTitle}"/>
+    <TextBlock Text="Usuario y contraseña del responsable. La contraseña no se guarda en disco y la sesión caduca sola; el puesto sigue operativo mientras tanto." Style="{StaticResource Subtle}" Margin="0,2,0,10" TextWrapping="Wrap"/>
     <WrapPanel VerticalAlignment="Bottom">
-     <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor" Style="{StaticResource FieldLabel}"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="220"/></StackPanel>
-     <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="140"/></StackPanel>
-     <StackPanel Margin="0,0,12,0"><TextBlock Text="Contraseña" Style="{StaticResource FieldLabel}"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="180"/></StackPanel>
+     <StackPanel Margin="0,0,8,0"><TextBlock Text="Usuario" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="160"/></StackPanel>
+     <StackPanel Margin="0,0,12,0"><TextBlock Text="Contraseña" Style="{StaticResource FieldLabel}"/><PasswordBox x:Name="AccessKey" IsEnabled="{Binding ConnectEnabled}" Width="200" KeyDown="AccessKeyDown"/></StackPanel>
      <Button x:Name="ConnectButton" Content="Entrar" Style="{StaticResource Primary}" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick" VerticalAlignment="Bottom"/>
-     <Button Content="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}" VerticalAlignment="Bottom"/>
-     <Button x:Name="DisconnectButton" Content="Desconectar" Style="{StaticResource Ghost}" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
-     <Button x:Name="RefreshButton" Content="Actualizar" Style="{StaticResource Ghost}" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
+     <Button x:Name="CancelElevationButton" Content="Seguir como puesto" Style="{StaticResource Ghost}" Command="{Binding CancelElevationCommand}" VerticalAlignment="Bottom" Visibility="{Binding ElevationRequested, Converter={StaticResource Bool2Vis}}"/>
     </WrapPanel>
-    <WrapPanel Margin="0,6,0,0" Visibility="{Binding ConnectEnabled, Converter={StaticResource Bool2Vis}}">
-     <TextBlock Text="Emparejar este puesto:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
-     <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado por el administrador (Configuración › Puestos del PC principal)"/>
-     <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. tablet-sala-1)"/>
-     <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
-     <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
-    </WrapPanel>
+    <Expander Header="Este PC no es el servidor, o es un puesto adicional" Margin="0,8,0,0" Visibility="{Binding Connected, Converter={StaticResource NotBool2Vis}}">
+     <StackPanel Margin="0,6,0,0">
+      <WrapPanel>
+       <StackPanel Margin="0,0,12,0"><TextBlock Text="Servidor" Style="{StaticResource FieldLabel}"/><TextBox x:Name="Endpoint" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ConnectEnabled}" Width="260" ToolTip="http://127.0.0.1:5088 en el propio servidor; https://EQUIPO:PUERTO en un puesto adicional. Se recuerda en este equipo."/></StackPanel>
+       <Button Content="Conectar puesto emparejado" Command="{Binding ConnectPairedCommand}" VerticalAlignment="Bottom"/>
+       <Button x:Name="DisconnectButton" Content="Desconectar" Style="{StaticResource Ghost}" Command="{Binding DisconnectCommand}" VerticalAlignment="Bottom"/>
+       <Button x:Name="RefreshButton" Content="Actualizar" Style="{StaticResource Ghost}" Command="{Binding RefreshCommand}" VerticalAlignment="Bottom"/>
+      </WrapPanel>
+      <WrapPanel Margin="0,6,0,0">
+       <TextBlock Text="Emparejar este PC como puesto adicional:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/>
+       <TextBox x:Name="PairCode" Width="330" ToolTip="Código de un solo uso generado en el PC principal (Dispositivos › Conectar comandero)"/>
+       <TextBox Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" Width="150" Margin="8,0,8,0" ToolTip="Nombre de este puesto (p. ej. pc-barra)"/>
+       <Button Content="Solicitar emparejamiento" Command="{Binding PairDeviceCommand}" CommandParameter="{Binding Text, ElementName=PairCode}"/>
+       <TextBlock Text="{Binding PairingStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="SemiBold"/>
+      </WrapPanel>
+     </StackPanel>
+    </Expander>
    </StackPanel>
   </Border>
   <Border Style="{StaticResource Banner}" Margin="0,0,0,8"><TextBlock Text="{Binding Status}" TextWrapping="Wrap"/></Border>
@@ -109,11 +122,11 @@
     <TextBlock Text="Apartados" Style="{StaticResource Section}"/>
     <WrapPanel Margin="0,4,0,12">
      <Button x:Name="HomeDiningButton" Content="Comedor y cocina" Tag="ServiceTab" Click="ShowView" Style="{StaticResource Primary}" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}"/>
-     <Button Content="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
-     <Button Content="Configuración" Tag="OrganizationTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
-     <Button Content="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
-     <Button Content="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
-     <Button x:Name="HomeDevicesButton" Content="Dispositivos" Tag="DevicesTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Configuración" Tag="OrganizationTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+     <Button Content="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+     <Button x:Name="HomeDevicesButton" Content="Dispositivos" Tag="DevicesTab" Click="ShowView" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
     </WrapPanel>
     <Border Style="{StaticResource Card}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"><StackPanel>
      <TextBlock Text="Dispositivos" Style="{StaticResource Section}"/>
@@ -220,7 +233,7 @@
    </Grid>
   </TabItem>
   <!-- ═══════════════ Cuenta / Caja (nucleo, solo main) ═══════════════ -->
-  <TabItem Header="Cuenta / Caja" x:Name="CheckoutTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <TabItem Header="Cuenta / Caja" x:Name="CheckoutTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <Border Style="{StaticResource Card}" Margin="0,4,0,0">
     <DockPanel>
      <StackPanel DockPanel.Dock="Top">
@@ -253,7 +266,7 @@
    </Border>
   </TabItem>
   <!-- ═══════════════ ERP › Catalogo y tarifas (nucleo, E3, solo main) ═══════════════ -->
-  <TabItem Header="Catálogo" x:Name="CatalogTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <TabItem Header="Catálogo" x:Name="CatalogTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,10">
      <TextBlock Text="Catálogo y tarifas" Style="{StaticResource PanelTitle}"/>
@@ -375,7 +388,7 @@
    </Grid>
   </TabItem>
   <!-- ═══════════════ ERP › Oferta: cartas y menus (nucleo, E4a, solo main) ═══════════════ -->
-  <TabItem Header="Oferta" x:Name="OffersTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <TabItem Header="Oferta" x:Name="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,10">
      <TextBlock Text="Oferta: cartas y menús" Style="{StaticResource PanelTitle}"/>
@@ -472,7 +485,7 @@
    </Grid>
   </TabItem>
   <!-- ═══════════════ Configuracion (nucleo, E2, solo main) ═══════════════ -->
-  <TabItem Header="Configuración" x:Name="OrganizationTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <TabItem Header="Configuración" x:Name="OrganizationTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,10">
      <TextBlock Text="Configuración del negocio" Style="{StaticResource PanelTitle}"/>
@@ -543,7 +556,7 @@
    </Grid>
   </TabItem>
   <!-- =============== Dispositivos (nucleo, solo main; corte A): conectar comanderos y pantallas de cocina =============== -->
-  <TabItem Header="Dispositivos" x:Name="DevicesTab" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}">
+  <TabItem Header="Dispositivos" x:Name="DevicesTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Border Grid.Column="0" Style="{StaticResource Card}"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
      <TextBlock Text="Conectar un dispositivo" Style="{StaticResource PanelTitle}"/>
@@ -557,6 +570,10 @@
       <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource Bool2Vis}}">
        <TextBlock Text="No hay ninguna estación de sala donde poner un comandero." VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap"/>
        <Button x:Name="CreateRoomStationButton" Content="Crear la estación «Sala»" Command="{Binding Devices.CreateRoomStationCommand}"/>
+      </WrapPanel>
+      <WrapPanel Margin="0,6,0,0" Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+       <Button x:Name="KeepThisPcButton" Content="Dejar este PC conectado para el servicio" Command="{Binding Devices.KeepThisPcConnectedCommand}" ToolTip="Este PC queda emparejado como puesto de sala en la estación elegida: al encenderlo entra solo y toma comandas; caja, configuración y dispositivos siguen pidiendo la contraseña del responsable."/>
+       <TextBlock Text="{Binding Devices.ThisPcText}" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap" MaxWidth="360" Style="{StaticResource Subtle}"/>
       </WrapPanel>
       <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,14,0,4"/>
       <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">

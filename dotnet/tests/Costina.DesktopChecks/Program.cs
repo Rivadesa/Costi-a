@@ -134,10 +134,11 @@ internal static class Program
         admin.Devices.PairingCode="";
         if(admin.Devices.HasQr||admin.Devices.PairingUrl.Length!=0) throw new Exception("No code, no QR.");
         var again=new Costina.Desktop.ViewModels.ShellViewModel(); again.Devices.MemoryFolder=qrFolder; again.Devices.SuggestAddress();
+        if(!File.ReadAllText(System.IO.Path.Combine(qrFolder,"desktop.json")).Contains("costina-server.local")||File.ReadAllText(System.IO.Path.Combine(qrFolder,"desktop.json")).Contains("dev.")) throw new Exception("The device address is remembered in desktop.json without secrets.");
         if(again.Devices.DeviceAddress!="https://costina-server.local:5443") throw new Exception("On loopback the last device address used on this machine is proposed.");
         var lan=new Costina.Desktop.ViewModels.ShellViewModel(); lan.Devices.MemoryFolder=qrFolder; lan.Endpoint="https://otro-servidor.local:5443"; lan.Devices.SuggestAddress();
         if(lan.Devices.DeviceAddress!="https://otro-servidor.local:5443") throw new Exception("A client already on the LAN proposes its own server address.");
-        Directory.Delete(qrFolder,true);
+        Directory.Delete(qrFolder,true); DesktopSettings.Folder=null;
         // E2: pestana Configuracion (solo main). La pantalla se compone SOLO de lo leido; los comandos siguen la misma tuberia y
         // se habilitan por rol y por estado (ocupado, orden pendiente): nunca por reglas de negocio locales.
         var sampleOrganization=new Costina.Client.OrganizationDto(
@@ -218,7 +219,7 @@ internal static class Program
         home.ApplyDevices([new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d2","tablet-sala-2","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null),
             new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null,true),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))]);
         if(home.DevicesSummary!="2 comanderos (1 con conexión ahora) · 1 pantalla de cocina (1 con conexión ahora)") throw new Exception("Inicio summarises active devices and presence: "+home.DevicesSummary);
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.32.0-a1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.33.0-b1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerText.Contains("costina-server.local")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -262,6 +263,53 @@ internal static class Program
         if(center.ApproveCommand.CanExecute(null)||center.StartKitchenCommand.CanExecute(center.KitchenStations[0])) throw new Exception("Busy must gate every device command.");
         window.Shell.Busy=false;
         center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-caliente",DateTimeOffset.Now)],activeDevices);
+        // Corte B (ADR-013): niveles Puesto / Responsable. Todo visible; lo sensible pide al responsable; la sesion caducada
+        // vuelve a Puesto sin matar el programa; la inactividad tambien; desktop.json nunca guarda secretos; el arranque
+        // clasifica red frente a certificado. Nada de esto toca la red: estados simulados.
+        var settingsFolder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-settings-"+Guid.NewGuid().ToString("N"));
+        DesktopSettings.Folder=settingsFolder;
+        new DesktopSettings{Endpoint="https://costina-server.local:5443",Username="jefa",DeviceAddress="https://costina-server.local:5443"}.Save();
+        var reloaded=DesktopSettings.Load();
+        if(reloaded.Endpoint!="https://costina-server.local:5443"||reloaded.Username!="jefa"||File.ReadAllText(DesktopSettings.Path).Contains("dev.")) throw new Exception("desktop.json round-trips the address and the user and holds no secrets.");
+        new DesktopSettings{Endpoint="http://127.0.0.1:5088",Username="dev.abc.secreto"}.Save();
+        if(DesktopSettings.Load().Username!="jefa") throw new Exception("A value that looks like a credential is never written to desktop.json.");
+        File.WriteAllText(DesktopSettings.Path,"{\"endpoint\":\"http://127.0.0.1:5088\",\"username\":\"dev.abc.secreto\"}");
+        if(DesktopSettings.Load().Username!="") throw new Exception("A credential found in desktop.json is discarded on load.");
+        if(Costina.Client.AuthClient.Classify(new System.Net.Http.HttpRequestException("tls",new System.Security.Authentication.AuthenticationException("untrusted")))!=Costina.Client.StartupProblem.Certificate
+            ||Costina.Client.AuthClient.Classify(new System.Net.Http.HttpRequestException("refused"))!=Costina.Client.StartupProblem.Unreachable
+            ||Costina.Client.AuthClient.Classify(new Costina.Client.ApiError(502,"health_unavailable"))!=Costina.Client.StartupProblem.Other) throw new Exception("Startup failures are classified: certificate (never retried), unreachable (wait), other.");
+        var levels=window.Shell;
+        levels.Session=new("service","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]); window.UpdateLayout();
+        if(!levels.IsStation||levels.IsResponsible||levels.LevelText!="Puesto"||!levels.ConnectionText.StartsWith("Puesto:",StringComparison.Ordinal)) throw new Exception("A device session is the Puesto level: "+levels.ConnectionText);
+        if(((MenuItem)window.FindName("CheckoutMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("ErpMenu")).Visibility!=Visibility.Visible) throw new Exception("Every menu is visible at the Puesto level (decision 3: nothing hidden).");
+        if(!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("CheckoutTab")||!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("DevicesTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("ServiceTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("HomeTab")) throw new Exception("Caja, configuracion, ERP and devices are the responsible's; dining and home are not.");
+        if(levels.LoginCardVisible||levels.ElevationRequested) throw new Exception("Connected as Puesto, no login card until something sensitive is asked.");
+        levels.RequestElevation("CheckoutTab");
+        if(!levels.ElevationRequested||!levels.LoginCardVisible||!levels.LoginTitle.Contains("Cuenta / Caja")||!levels.ConnectEnabled) throw new Exception("Asking for a sensitive view opens the responsible login naming the view: "+levels.LoginTitle);
+        window.UpdateLayout();
+        if(((Border)window.FindName("LoginCard")).Visibility!=Visibility.Visible||((Button)window.FindName("CancelElevationButton")).Visibility!=Visibility.Visible) throw new Exception("The login card and 'seguir como puesto' are shown.");
+        var elevationShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); elevationShot.Render(window);
+        var elevationEncoder=new PngBitmapEncoder(); elevationEncoder.Frames.Add(BitmapFrame.Create(elevationShot));
+        using(var elevationFile=File.Create("artifacts/desktop/elevation.png")) elevationEncoder.Save(elevationFile);
+        levels.CancelElevationCommand.Execute(null);
+        if(levels.ElevationRequested||levels.LoginCardVisible||levels.ConnectEnabled) throw new Exception("'Seguir como puesto' closes the card and keeps the station connected.");
+        var opened=""; levels.ViewRequested+=name=>opened=name;
+        levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
+        if(!levels.IsResponsible||levels.LevelText!="Responsable"||!levels.LeaveResponsibleCommand.CanExecute(null)) throw new Exception("A person session is the Responsable level.");
+        levels.RequestElevation("CatalogTab");
+        if(opened!="CatalogTab"||levels.ElevationRequested) throw new Exception("A responsible asking for a sensitive view just gets it.");
+        var moment=new DateTimeOffset(2026,10,13,12,0,0,TimeSpan.Zero); levels.Clock=()=>moment; levels.NoteActivity();
+        moment=moment.AddMinutes(14);
+        if(levels.CheckInactivity()||!levels.IsResponsible) throw new Exception("Under 15 minutes of inactivity the responsible stays.");
+        moment=moment.AddMinutes(2);
+        if(!levels.CheckInactivity()||levels.Connected||!levels.Status.Contains("Sin actividad")) throw new Exception("15 minutes without input leave the responsible level and say so: "+levels.Status);
+        levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
+        levels.OnUnauthorized().GetAwaiter().GetResult();
+        if(levels.Connected||!levels.Status.Contains("caducado")) throw new Exception("A 401 of the person session returns to Puesto (or to the login card) and explains it: "+levels.Status);
+        levels.Clock=()=>DateTimeOffset.UtcNow;
+        if(Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().Length<4||!Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().StartsWith("pc-",StringComparison.Ordinal)) throw new Exception("This PC pairs under a stable, readable name.");
+        Directory.Delete(settingsFolder,true); DesktopSettings.Folder=null;
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         // Capturas del tema visual (E2): cada pestana del puesto principal compuesta con datos leidos.
         var tabs=workspace;
         window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);

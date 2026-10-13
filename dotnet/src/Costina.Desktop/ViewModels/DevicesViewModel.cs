@@ -64,8 +64,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string qrInfo = QrIdle;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasQr))] private ImageSource? pairingQr;
     public bool HasQr => PairingQr is not null;
-    // Carpeta del recordatorio de la direccion (no es un secreto). Los checks la apuntan a una carpeta temporal.
-    public string? MemoryFolder { get; set; }
+    // Corte B: la direccion para los dispositivos vive en desktop.json (DesktopSettings). Los checks apuntan la carpeta de
+    // preferencias a un directorio temporal a traves de esta propiedad.
+    public string? MemoryFolder { get => DesktopSettings.Folder; set { DesktopSettings.Folder = value; shell.ReloadSettings(); } }
+    public string ThisPcText => shell.HasPairedDevice ? "Este PC ya está conectado como puesto: al encenderlo entra solo." : "";
 
     // Quitar en dos pasos (F9: nada irreversible con un solo toque)
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ConfirmingRemoval))] [NotifyPropertyChangedFor(nameof(RemovalText))] private DeviceRow? removalCandidate;
@@ -80,6 +82,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         StartWaiterCommand.NotifyCanExecuteChanged(); StartKitchenCommand.NotifyCanExecuteChanged(); CreateRoomStationCommand.NotifyCanExecuteChanged();
         NewCodeCommand.NotifyCanExecuteChanged(); ApproveCommand.NotifyCanExecuteChanged(); DenyCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
         AskRemoveCommand.NotifyCanExecuteChanged(); ConfirmRemoveCommand.NotifyCanExecuteChanged(); CancelRemoveCommand.NotifyCanExecuteChanged();
+        KeepThisPcConnectedCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(ThisPcText));
     }
 
     internal void Clear()
@@ -209,17 +212,45 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         }
     }
 
-    private string MemoryPath => System.IO.Path.Combine(MemoryFolder ?? System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina"), "device-address.txt");
     private string Recall()
     {
-        try { return PairingLink.ParseDeviceAddress(File.ReadAllText(MemoryPath)).GetLeftPart(UriPartial.Authority); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { return ""; }
+        try { return shell.Settings.DeviceAddress.Length == 0 ? "" : PairingLink.ParseDeviceAddress(shell.Settings.DeviceAddress).GetLeftPart(UriPartial.Authority); }
+        catch (ArgumentException) { return ""; }
     }
     private void Remember(Uri address)
     {
-        try { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(MemoryPath)!); File.WriteAllText(MemoryPath, address.GetLeftPart(UriPartial.Authority)); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        var authority = address.GetLeftPart(UriPartial.Authority);
+        if (shell.Settings.DeviceAddress == authority) return;
+        shell.Settings.DeviceAddress = authority; shell.Settings.Save();
+    }
+
+    // ---- B6: dejar ESTE PC conectado como puesto de sala, con una sola sesion del responsable ----
+    // Emite el codigo, lo reclama este mismo programa, comprueba que la solicitud reclamada es la emitida, la aprueba con la
+    // estacion elegida y recoge el token, que se guarda cifrado con DPAPI (el unico secreto en disco). Auditado al responsable.
+    public bool CanKeepThisPc => shell.Writable && shell.IsMain && shell.IsResponsible && SelectedRoomStation is not null && !shell.HasPairedDevice;
+    [RelayCommand(CanExecute = nameof(CanKeepThisPc))]
+    private Task KeepThisPcConnected() => shell.Run(async () =>
+    {
+        var uri = shell.ParseEndpoint();
+        var station = SelectedRoomStation!;
+        var name = ThisPcName();
+        var issued = await shell.Api!.PostRawAsync("auth/pairings", new { });
+        using var auth = new AuthClient(uri);
+        var claim = await auth.ClaimAsync(issued.GetProperty("code").GetString()!, name);
+        if (claim.PairingId != issued.GetProperty("pairingId").GetString()) throw new InvalidOperationException("La solicitud reclamada no es la que se acaba de emitir.");
+        await shell.Api.PostRawAsync("auth/pairings/" + ApiClient.Segment(claim.PairingId) + "/approve", new { role = "service", station = station.Id });
+        var collect = await auth.CollectAsync(claim.PairingId, claim.PollSecret);
+        if (collect.Status != "approved" || collect.DeviceToken is null) throw new InvalidOperationException("No se pudo recoger la credencial del puesto.");
+        new DpapiDeviceStore(uri).Save(collect.DeviceToken);
+        shell.Status = $"Este PC queda conectado como puesto \"{name}\" en {station.Name}. Al encenderlo entrará solo; al salir del modo responsable seguirá operativo.";
+        OnPropertyChanged(nameof(ThisPcText)); shell.Sync();
+        await LoadAsync();
+    });
+    public static string ThisPcName()
+    {
+        var machine = new string(Environment.MachineName.ToLowerInvariant().Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_').ToArray());
+        var name = "pc-" + (machine.Length > 0 ? machine : "principal");
+        return name.Length > 60 ? name[..60] : name;
     }
 
     // ---- Asistentes ----

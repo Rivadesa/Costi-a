@@ -301,6 +301,22 @@ try
         Assert((int)(await http.SendAsync(probe)).StatusCode == 401, "revoked device token must be rejected");
     });
 
+    await Check("B8 logging out a person closes that session's realtime channel", async () =>
+    {
+        // Corte B (F13): con entrar y salir como responsable varias veces al dia, el grupo 'fin' no puede quedar abierto.
+        var token = (await Anon("/api/native/v1/auth/login", new { username = "lab-main", password = LabPassword })).GetProperty("token").GetString()!;
+        var states = new ConcurrentQueue<string>();
+        await using var subscription = new RealtimeSubscription(endpoint, token, []);
+        subscription.StateChanged += states.Enqueue;
+        await subscription.StartAsync();
+        await WaitUntil(() => states.Contains("connected"), 10, "session realtime connected");
+        _ = await Anon("/api/native/v1/auth/logout", new { }, token);
+        await WaitUntil(() => states.Contains("closed"), 10, "logged-out session connection aborted");
+        using var probe = new HttpRequestMessage(HttpMethod.Get, "/api/native/v1/session");
+        probe.Headers.Add("Authorization", "Bearer " + token);
+        Assert((int)(await http.SendAsync(probe)).StatusCode == 401, "a logged-out token must be rejected");
+    });
+
     await Check("B7 a device that unpairs itself is expelled from realtime like a revoked one", async () =>
     {
         // A5 (Inicio y dispositivos): Desvincular en la tablet = revocacion en el servidor + corte del canal, a su nombre.
