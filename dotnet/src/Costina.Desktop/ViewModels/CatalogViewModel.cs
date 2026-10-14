@@ -215,7 +215,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     {
         var p = SelectedPresentation?.Presentation;
         PresentationId = p?.Id ?? ""; PresentationName = p?.Name ?? ""; PresentationSort = (p?.Sort ?? 0).ToString();
-        var current = p is null || catalog is null ? null : Current(p, PriceTariffId.Length == 0 ? "general" : PriceTariffId, catalog.Today);
+        // C1 (arreglo): el desplegable de tarifa escribe null en PriceTariffId cuando su lista se vacia (limpiar o releer el catalogo
+        // con la vista abierta); sin tarifa elegida se muestra la general, como al empezar.
+        var current = p is null || catalog is null ? null : Current(p, string.IsNullOrEmpty(PriceTariffId) ? "general" : PriceTariffId, catalog.Today);
         PriceText = current is null ? "" : (current.PriceCents / 100m).ToString("0.00", CultureInfo.GetCultureInfo("es-ES"));
     }
     partial void OnPriceTariffIdChanged(string value) { if (!rendering && !NewPresentation) FillPresentationForm(); }
@@ -307,7 +309,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanSetPrice))]
     private Task SetPrice()
     {
-        var tariffId = Code(PriceTariffId); var priceCents = Cents(PriceText); var validFrom = PriceValidFrom.Trim();
+        var tariffId = Code(PriceTariffId ?? ""); var priceCents = Cents(PriceText); var validFrom = PriceValidFrom.Trim();
         if (validFrom.Length > 0 && !DateOnly.TryParseExact(validFrom, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) throw new ArgumentException("Vigencia: fecha AAAA-MM-DD (vacía = hoy).");
         return Command("price-set", new { tariffId, productId = SelectedProduct!.Product.Id, presentationId = SelectedPresentation!.Presentation.Id, validFrom, priceCents },
             $"Fijar precio {Money(priceCents)} de {SelectedProduct.Product.Name} · {SelectedPresentation.Presentation.Name} en {Tariffs.FirstOrDefault(t => t.Id == tariffId)?.Name ?? tariffId}");
