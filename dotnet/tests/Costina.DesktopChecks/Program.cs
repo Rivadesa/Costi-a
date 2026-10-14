@@ -1,9 +1,11 @@
 using System.IO;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Costina.Desktop;
 
 internal static class Program
@@ -184,8 +186,10 @@ internal static class Program
         // se habilitan por rol y por estado (ocupado, orden pendiente): nunca por reglas de negocio locales.
         var sampleOrganization=new Costina.Client.OrganizationDto(
             [new("sala","Sala",0,true,[new("M1","Mesa 1",12,"sala",0,true),new("M2","Mesa 2",4,"sala",1,true),new("M3","Mesa 3 (junto a la ventana)",6,"sala",2,false)]),
-             new("terraza","Terraza",1,true,[new("T1","Terraza 1",4,"terraza",0,true)])],
-            [new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true),new("hot","Cocina caliente","Kitchen",2,true),new("sala-1","Sala 1","Room",3,false)]);
+             new("terraza","Terraza",1,true,[new("T1","Terraza 1",4,"terraza",0,true)],"terraza")],
+            [new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true),new("hot","Cocina caliente","Kitchen",2,true),new("sala-1","Sala 1","Room",3,false)],
+            // E3.2: las tarifas llegan con la organizacion; Eventos esta desactivada y ninguna sala la usa.
+            [new("general","General",0,true),new("terraza","Terraza",1,true),new("eventos","Eventos",2,false)]);
         var organization=window.Shell.Organization;
         organization.Render(sampleOrganization);
         if(organization.SaveZoneCommand.CanExecute(null)||organization.StartTableCommand.CanExecute(null)) throw new Exception("Disconnected must gate every organization command.");
@@ -272,6 +276,133 @@ internal static class Program
         if(catalogView.SaveProductCommand.CanExecute(null)||catalogView.SetPriceCommand.CanExecute(null)) throw new Exception("Busy must gate every catalog command.");
         window.Shell.Busy=false;
         catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
+        // E3.2: imagenes de los articulos y tarifa de cada sala. La ventana habla con un servidor SIMULADO en memoria (un HttpMessageHandler):
+        // ordenes, relecturas e imagenes pasan por el ApiClient real, sin red ni puerto. Las fotos son botellas dibujadas aqui y guardadas
+        // como PNG y JPEG de verdad. Las esperas dejan trabajar al despachador: las imagenes se decodifican fuera de la ventana y vuelven a ella.
+        var previousContext=SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(window.Dispatcher));
+        var greenBottle=Bottle(Color.FromRgb(0x24,0x55,0x35),Color.FromRgb(0xF4,0xEC,0xD8),new PngBitmapEncoder());
+        var redBottle=Bottle(Color.FromRgb(0x5E,0x17,0x25),Color.FromRgb(0xEB,0xDC,0xB8),new JpegBitmapEncoder{QualityLevel=90});
+        var amberBottle=Bottle(Color.FromRgb(0x9A,0x5B,0x13),Color.FromRgb(0xFF,0xFF,0xFF),new PngBitmapEncoder());
+        if(Costina.Client.ProductImages.TypeOf(greenBottle)!="image/png"||Costina.Client.ProductImages.TypeOf(redBottle)!="image/jpeg"||greenBottle.Length>64*1024) throw new Exception("The sample photos must be small, real PNG and JPEG files.");
+        string Sha(byte[] content)=>Costina.Client.ProductImages.Sha256(content);
+        var imageCatalog=sampleCatalog with {Products=[..sampleCatalog.Products.Select(p=>p.Id switch{"wine"=>p with {ImageSha=Sha(greenBottle)},"3760"=>p with {ImageSha=Sha(redBottle)},_=>p})]};
+        var server=new FakeServer(imageCatalog,sampleOrganization);
+        void ServeSampleImages(){ server.Images.Clear(); server.Images["wine"]=("image/png",greenBottle); server.Images["3760"]=("image/jpeg",redBottle); }
+        ServeSampleImages();
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        var catalogPanel=(FrameworkElement)window.FindName("CatalogView");
+        var productList=(ListBox)catalogPanel.FindName("ProductList");
+        tabsControl.SelectedItem=(TabItem)window.FindName("CatalogTab");   // abrir la vista relee el catalogo (del servidor simulado)
+        Wait(()=>!window.Shell.Busy&&catalogView.Products.Any(p=>p.Product.ImageSha is not null),"opening the catalog reads it");
+        catalogView.AllCategories=true; window.UpdateLayout();
+        Wait(()=>catalogView.Images.ThumbnailCount==2&&catalogView.Images.Waiting==0,"the list loads the thumbnails of its visible rows");
+        var wineRow=catalogView.Products.Single(p=>p.Product.Id=="wine"); var waterRow=catalogView.Products.Single(p=>p.Product.Id=="water");
+        if(wineRow.Thumbnail is not {PixelWidth:64}||waterRow.Thumbnail is not null) throw new Exception("A row with an image gets a 64 px thumbnail (32 px painted); a row without one keeps its placeholder.");
+        if(server.Count("GET","catalog/images/wine")!=1||server.Count("GET","catalog/images/3760")!=1||server.Count("GET","catalog/images/water")+server.Count("GET","catalog/images/coffee")!=0)
+            throw new Exception("Only products with an image are asked for, once each: "+string.Join(", ",server.Requests.Select(r=>r.Path)));
+        window.UpdateLayout();
+        var wineItem=(ListBoxItem)productList.ItemContainerGenerator.ContainerFromItem(wineRow); var waterItem=(ListBoxItem)productList.ItemContainerGenerator.ContainerFromItem(waterRow);
+        if(!Descendants<Border>(wineItem).Any(b=>b.IsVisible&&b.Background is ImageBrush{ImageSource:var shown}&&ReferenceEquals(shown,wineRow.Thumbnail))) throw new Exception("The row paints its thumbnail.");
+        if(!Descendants<System.Windows.Shapes.Path>(waterItem).Any(p=>p.IsVisible&&p.Data==(Geometry)Application.Current.FindResource("IconImage"))||Descendants<Border>(waterItem).Any(b=>b.IsVisible&&b.Background is ImageBrush))
+            throw new Exception("A row without an image paints the image placeholder icon.");
+        if(!Texts(wineItem).Contains("Vino de ensayo")||!Texts(wineItem).Any(t=>t.StartsWith("Vinos · Copa 9,50 €",StringComparison.Ordinal))) throw new Exception("The row shows the name and, below, category, prices and state: "+string.Join(" | ",Texts(wineItem)));
+        // Lista virtualizada: con 300 articulos con imagen solo piden la suya las filas que se pintan; al bajar al final llega la ultima.
+        var manyProducts=Enumerable.Range(1,300).Select(i=>new Costina.Client.ProductDto($"v{i:000}",$"Vino de muestra {i:000}","tintos","iva-21",null,i,true,
+            [new("botella","Botella",0,true,[new("general","1970-01-01",1500+i)])],null,i.ToString("x64"))).ToArray();
+        foreach(var p in manyProducts) server.Images[p.Id]=("image/png",greenBottle);
+        catalogView.Render(imageCatalog with {Products=manyProducts}); window.UpdateLayout();
+        Wait(()=>catalogView.Images.Thumbnail(1.ToString("x64")) is not null&&catalogView.Images.Waiting==0,"the first rows of a long list load");
+        var firstAsked=server.Count("GET","catalog/images/v");
+        if(firstAsked is 0 or > 80) throw new Exception("A long list asks only for the images of the rows it paints: "+firstAsked+" of 300.");
+        productList.ScrollIntoView(catalogView.Products[^1]); window.UpdateLayout();
+        Wait(()=>catalogView.Images.Thumbnail(300.ToString("x64")) is not null&&catalogView.Images.Waiting==0,"scrolling to the end loads the last rows");
+        if(server.Count("GET","catalog/images/v") is var allAsked&&(allAsked<=firstAsked||allAsked>=300)) throw new Exception("Scrolling asks for the newly painted rows, never for the whole list: "+allAsked);
+        catalogView.Render(imageCatalog); productList.ScrollIntoView(catalogView.Products[0]); window.UpdateLayout();
+        // Ficha CON imagen: la foto a 140 px (decodificada a 240, su tamano real); la lista y la ficha comparten la misma lectura.
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="wine");
+        Wait(()=>catalogView.ProductPhoto is not null,"the product form shows its photo");
+        if(catalogView.ProductPhoto is not {PixelWidth:240}||catalogView.PhotoText!=""||server.Count("GET","catalog/images/wine")!=1) throw new Exception("The photo comes from the bytes already read (one GET per sha): "+server.Count("GET","catalog/images/wine"));
+        if(!catalogView.ChangeImageCommand.CanExecute(null)||!catalogView.RemoveImageCommand.CanExecute(null)) throw new Exception("The responsible can change and remove the image of a product that has one.");
+        var photoWell=(Border)catalogPanel.FindName("ProductPhotoWell"); window.UpdateLayout();
+        if(photoWell.ActualWidth!=140||!Descendants<Border>(photoWell).Any(b=>b.IsVisible&&b.Background is ImageBrush{ImageSource:var big}&&ReferenceEquals(big,catalogView.ProductPhoto))) throw new Exception("The form paints the photo in a 140 px rounded well.");
+        // Ficha SIN imagen: el hueco con su icono dice "Sin imagen"; se puede poner una, no quitarla.
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="water"); window.UpdateLayout();
+        if(catalogView.ProductPhoto is not null||catalogView.PhotoText!="Sin imagen"||!((TextBlock)catalogPanel.FindName("ProductPhotoText")).IsVisible) throw new Exception("Without an image the form says so: "+catalogView.PhotoText);
+        if(!catalogView.ChangeImageCommand.CanExecute(null)||catalogView.RemoveImageCommand.CanExecute(null)) throw new Exception("Without an image it can be set, not removed.");
+        // Solo el responsable: un puesto de sala no cambia imagenes (el servidor daria 403), ocupado tampoco; un producto nuevo aun no tiene ficha.
+        window.Shell.Session=new("service","t","c","l",["open"],"inst-checks","0.35.0-e3.2",Modules:["dining"]);
+        if(catalogView.ChangeImageCommand.CanExecute(null)||catalogView.RemoveImageCommand.CanExecute(null)) throw new Exception("Image commands are only for the responsible.");
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.35.0-e3.2",Modules:["dining"]);
+        window.Shell.Busy=true;
+        if(catalogView.ChangeImageCommand.CanExecute(null)) throw new Exception("Busy gates the image commands.");
+        window.Shell.Busy=false;
+        catalogView.StartProductCommand.Execute(null);
+        if(catalogView.ChangeImageCommand.CanExecute(null)||catalogView.PhotoText!="Guarda el producto para añadirle una imagen.") throw new Exception("A product not saved yet has no image to change: "+catalogView.PhotoText);
+        catalogView.SelectedProduct=null; catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="water");
+        if(catalogView.NewProduct||!catalogView.ChangeImageCommand.CanExecute(null)) throw new Exception("Choosing a product again leaves the new-product form.");
+        // Cambiar imagen: el fichero elegido viaja en base64 con el tipo de sus bytes, por la tuberia de siempre, y se relee el catalogo.
+        // La imagen confirmada ya esta en memoria: la relectura no la vuelve a descargar.
+        var imageFolder=System.IO.Path.Combine(checksRoot,"imagenes"); Directory.CreateDirectory(imageFolder);
+        var amberFile=System.IO.Path.Combine(imageFolder,"agua.png"); File.WriteAllBytes(amberFile,amberBottle);
+        catalogView.PickImageFile=()=>amberFile;
+        Await(catalogView.ChangeImageCommand.ExecuteAsync(null),"change image");
+        var imageSet=server.Requests.Last(r=>r.Method=="POST");
+        var setBody=JsonSerializer.Deserialize<JsonElement>(imageSet.Body);
+        if(imageSet.Path!="erp/catalog/commands/product-image-set"||setBody.GetProperty("productId").GetString()!="water"||setBody.GetProperty("contentType").GetString()!="image/png"
+            ||!Convert.FromBase64String(setBody.GetProperty("data").GetString()!).SequenceEqual(amberBottle)||imageSet.Key is not {Length:32}) throw new Exception("product-image-set carries the product, the type of the bytes and the bytes in base64: "+imageSet.Path);
+        if(window.Shell.Status!="Cambiar imagen de Agua mineral: confirmado por el servidor."||window.Shell.Pending is not null) throw new Exception("The change is confirmed by the server: "+window.Shell.Status);
+        if(server.Requests.SkipWhile(r=>r!=imageSet).Skip(1).FirstOrDefault()?.Path!="erp/catalog") throw new Exception("After the command the catalog is read again.");
+        Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Products.Single(p=>p.Product.Id=="water").Thumbnail is not null,"the new image appears in the form and the list");
+        if(server.Count("GET","catalog/images/water")!=0) throw new Exception("The confirmed image is never downloaded again.");
+        var posts=server.Count("POST","");
+        File.WriteAllBytes(amberFile,[..amberBottle[..8],..new byte[Costina.Client.ProductImages.MaxBytes]]);
+        Await(catalogView.ChangeImageCommand.ExecuteAsync(null),"too large");
+        if(!window.Shell.Status.StartsWith("La imagen ocupa 2,1 MB; el máximo es 2 MB.",StringComparison.Ordinal)||server.Count("POST","")!=posts) throw new Exception("Over 2 MB is refused before sending: "+window.Shell.Status);
+        File.WriteAllText(amberFile,"<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>");
+        Await(catalogView.ChangeImageCommand.ExecuteAsync(null),"not an image");
+        if(!window.Shell.Status.StartsWith("El fichero no es una imagen JPEG, PNG o WebP.",StringComparison.Ordinal)||server.Count("POST","")!=posts) throw new Exception("An SVG named .png is refused by its bytes before sending: "+window.Shell.Status);
+        catalogView.PickImageFile=()=>null;
+        Await(catalogView.ChangeImageCommand.ExecuteAsync(null),"cancelled dialog");
+        if(server.Count("POST","")!=posts) throw new Exception("Cancelling the dialog sends nothing.");
+        // Quitar imagen: una orden normal con solo el producto; despues la ficha y la fila vuelven al hueco.
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="wine");
+        Await(catalogView.RemoveImageCommand.ExecuteAsync(null),"remove image");
+        var imageRemoved=server.Requests.Last(r=>r.Method=="POST");
+        if(imageRemoved.Path!="erp/catalog/commands/product-image-remove"||imageRemoved.Body!="{\"productId\":\"wine\"}") throw new Exception("product-image-remove carries only the product: "+imageRemoved.Body);
+        if(catalogView.ProductPhoto is not null||catalogView.PhotoText!="Sin imagen"||catalogView.RemoveImageCommand.CanExecute(null)||catalogView.Products.Single(p=>p.Product.Id=="wine").Thumbnail is not null)
+            throw new Exception("After removing, the form and the row show the placeholder: "+catalogView.PhotoText);
+        // Configuracion > Salas: la tarifa de cada sala. Desplegable con la General y las tarifas activas; la lista nombra la tarifa propia.
+        var organizationPanel=(FrameworkElement)window.FindName("OrganizationView");
+        var zoneTariffBox=(ComboBox)organizationPanel.FindName("ZoneTariffBox");
+        tabsControl.SelectedItem=(TabItem)window.FindName("OrganizationTab");
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","organization")>0,"opening the configuration reads the organization");
+        if(organization.Zones[0].ToString()!="Sala · 2 mesas activas · activa"||organization.Zones[1].ToString()!="Terraza · tarifa Terraza · 1 mesa activa · activa") throw new Exception("The zone list names a zone's own tariff (never 'General'): "+organization.Zones[1]);
+        if(!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","Terraza"])) throw new Exception("The zone tariff offers the General and the ACTIVE tariffs: "+string.Join(",",organization.TariffChoices.Select(t=>t.Name)));
+        organization.SelectedZone=organization.Zones[1]; window.UpdateLayout();
+        if(organization.ZoneTariffId!="terraza"||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"Terraza"}||!zoneTariffBox.IsEnabled) throw new Exception("Selecting a zone shows its tariff.");
+        organization.ZoneTariffId="";
+        Await(organization.SaveZoneCommand.ExecuteAsync(null),"save zone with the general tariff");
+        if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"organization/commands/zone-update",Body:"{\"id\":\"terraza\",\"name\":\"Terraza\",\"sort\":1,\"tariffId\":\"\"}"}) throw new Exception("Back to the General: tariffId empty. "+server.Requests.Last(r=>r.Method=="POST").Body);
+        organization.SelectedZone=organization.Zones[0]; window.UpdateLayout();
+        if(organization.ZoneTariffId!=""||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"}) throw new Exception("A zone without its own tariff shows General.");
+        organization.ZoneTariffId="terraza";
+        Await(organization.SaveZoneCommand.ExecuteAsync(null),"save zone with its own tariff");
+        if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"organization/commands/zone-update",Body:"{\"id\":\"sala\",\"name\":\"Sala\",\"sort\":0,\"tariffId\":\"terraza\"}"}) throw new Exception("A zone saves its tariff by code: "+server.Requests.Last(r=>r.Method=="POST").Body);
+        organization.StartZoneCommand.Execute(null); window.UpdateLayout();
+        if(organization.ZoneTariffId!=""||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"}) throw new Exception("A new zone starts with the General tariff.");
+        // Una sala que conserva una tarifa desactivada la ve marcada (no se cambia sin querer); un servidor anterior (sin tarifas) muestra el codigo.
+        organization.Render(sampleOrganization with {Zones=[..sampleOrganization.Zones,new("jardin","Jardín",2,false,[],"eventos")]});
+        if(!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","Terraza","Eventos (desactivada)"])||organization.Zones[2].ToString()!="Jardín · tarifa Eventos · 0 mesas activas · desactivada") throw new Exception("A deactivated tariff still used by a zone is offered, marked.");
+        organization.Render(sampleOrganization with {Tariffs=null});
+        if(!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","terraza"])||!organization.Zones[1].ToString().Contains("tarifa terraza")) throw new Exception("An older server without tariffs still shows the zone's tariff by code.");
+        window.Shell.Busy=true;
+        if(organization.SaveZoneCommand.CanExecute(null)) throw new Exception("Busy gates saving a zone.");
+        window.Shell.Busy=false;
+        organization.Render(sampleOrganization);
+        window.Shell.Api.Dispose(); window.Shell.Api=null;
+        tabsControl.SelectedItem=(TabItem)window.FindName("HomeTab");
+        SynchronizationContext.SetSynchronizationContext(previousContext);
         // Corte A (plan 2026-09-24): Inicio es la primera vista al entrar y resume servidor, certificado, copias y dispositivos;
         // el centro de dispositivos ofrece asistentes CON INTENCION (comandero / pantalla por estacion), reconoce solo su propia
         // solicitud, no ofrece 'Principal', agrupa la lista con presencia y quita en dos pasos. Todo compuesto de lo leido.
@@ -481,8 +612,18 @@ internal static class Program
         // C1: las capturas muestran cada vista con sus datos de ejemplo (las comprobaciones de niveles las vaciaron al salir del modo
         // responsable) y con un responsable identificado, como en el uso real. Solo datos: ninguna asercion anterior cambia.
         window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.34.0-c1",Actor:"user:jefa",Modules:["dining"]));
-        organization.Render(sampleOrganization);
-        catalogView.Render(sampleCatalog); catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
+        organization.Render(sampleOrganization); organization.SelectedZone=organization.Zones[1];   // E3.2: la sala con tarifa propia
+        // E3.2: el catalogo de la captura lleva fotos (lista y ficha), cargadas por la tuberia real desde el servidor simulado; despues la
+        // ventana se queda sin conexion, como en el resto de capturas.
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
+        server.Catalog=imageCatalog; ServeSampleImages();
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        catalogView.Render(imageCatalog); tabs.SelectedItem=(TabItem)window.FindName("CatalogTab");
+        Wait(()=>!window.Shell.Busy,"the catalog is read for the capture");
+        catalogView.SelectedCategory=null; catalogView.AllCategories=true; catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="wine"); window.UpdateLayout();
+        Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Products.Where(p=>p.Product.ImageSha is not null).All(p=>p.Thumbnail is not null)&&catalogView.Images.Waiting==0,"the capture shows the photos");
+        window.Shell.Api.Dispose(); window.Shell.Api=null;
+        SynchronizationContext.SetSynchronizationContext(previousContext);
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
         window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
@@ -584,5 +725,97 @@ internal static class Program
             if(node is TextBlock{Text:{Length:>0} text}) yield return text;
             for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) pending.Push(VisualTreeHelper.GetChild(node,i));
         }
+    }
+    // E3.2: elementos de un tipo bajo un elemento del arbol visual.
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject
+    {
+        var pending=new Stack<DependencyObject>(); pending.Push(root);
+        while(pending.Count>0)
+        {
+            var node=pending.Pop();
+            if(node is T match) yield return match;
+            for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) pending.Push(VisualTreeHelper.GetChild(node,i));
+        }
+    }
+    // E3.2: deja trabajar al despachador (descargas y decodificacion vuelven a la ventana por el) hasta que se cumpla la condicion.
+    private static void Wait(Func<bool> done,string what)
+    {
+        var deadline=DateTime.UtcNow.AddSeconds(30);
+        while(!done())
+        {
+            if(DateTime.UtcNow>deadline) throw new Exception("Timed out waiting: "+what);
+            var frame=new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle,new Action(()=>frame.Continue=false));
+            Dispatcher.PushFrame(frame);
+            Thread.Sleep(2);
+        }
+    }
+    private static void Await(Task task,string what){ Wait(()=>task.IsCompleted,what); task.GetAwaiter().GetResult(); }
+    // E3.2: foto de muestra: una botella dibujada (cristal, capsula, etiqueta y brillo) sobre blanco, guardada como PNG o JPEG de verdad.
+    private static byte[] Bottle(Color glass,Color label,BitmapEncoder encoder)
+    {
+        var visual=new DrawingVisual();
+        using(var dc=visual.RenderOpen())
+        {
+            var glassBrush=new SolidColorBrush(glass);
+            dc.DrawRectangle(Brushes.White,null,new Rect(0,0,240,240));
+            dc.DrawEllipse(new SolidColorBrush(Color.FromRgb(0xEE,0xEF,0xF1)),null,new Point(120,224),46,6);   // sombra
+            dc.DrawGeometry(glassBrush,null,Geometry.Parse("M110,34 L130,34 L130,80 C130,98 154,100 154,124 L154,214 Q154,222 146,222 L94,222 Q86,222 86,214 L86,124 C86,100 110,98 110,80 Z"));
+            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(0x2B,0x2B,0x2E)),null,new Rect(107,22,26,34),3,3);   // capsula
+            dc.DrawRoundedRectangle(new SolidColorBrush(label),null,new Rect(91,142,58,52),4,4);                            // etiqueta
+            dc.DrawRectangle(glassBrush,null,new Rect(101,156,38,4)); dc.DrawRectangle(glassBrush,null,new Rect(108,168,24,2)); dc.DrawRectangle(glassBrush,null,new Rect(108,176,24,2));
+            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(60,255,255,255)),null,new Rect(93,116,7,92),3.5,3.5);   // brillo
+        }
+        var bitmap=new RenderTargetBitmap(240,240,96,96,PixelFormats.Pbgra32); bitmap.Render(visual);
+        encoder.Frames.Add(BitmapFrame.Create(new FormatConvertedBitmap(bitmap,PixelFormats.Bgr24,null,0)));
+        using var stream=new MemoryStream(); encoder.Save(stream); return stream.ToArray();
+    }
+
+    // E3.2: servidor simulado en memoria para los checks: sirve el catalogo, la organizacion y las imagenes (con su tipo y su ETag),
+    // confirma las ordenes con el eco de su clave y aplica en memoria las de imagen, como el motor; registra cada peticion. Sin puertos.
+    private sealed record Request(string Method,string Path,string Body,string? Key);
+    private sealed class FakeServer(Costina.Client.CatalogDto catalog,Costina.Client.OrganizationDto organization) : System.Net.Http.HttpMessageHandler
+    {
+        public Costina.Client.CatalogDto Catalog { get; set; }=catalog;
+        public Costina.Client.OrganizationDto Organization { get; set; }=organization;
+        public System.Collections.Concurrent.ConcurrentDictionary<string,(string Type,byte[] Content)> Images { get; }=new();
+        private readonly List<Request> requests=[];
+        public Request[] Requests { get { lock(requests) return [..requests]; } }
+        public int Count(string method,string path)=>Requests.Count(r=>r.Method==method&&r.Path.StartsWith(path,StringComparison.Ordinal));
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)
+        {
+            var path=request.RequestUri!.AbsolutePath["/api/native/v1/".Length..];
+            var body=request.Content is null?"":await request.Content.ReadAsStringAsync(ct);
+            var key=request.Headers.TryGetValues("Idempotency-Key",out var keys)?keys.Single():null;
+            lock(requests) requests.Add(new(request.Method.Method,path,body,key));
+            if(request.Method==System.Net.Http.HttpMethod.Get)
+            {
+                if(path.StartsWith("catalog/images/",StringComparison.Ordinal))
+                {
+                    if(!Images.TryGetValue(Uri.UnescapeDataString(path["catalog/images/".Length..]),out var image)) return Json(404,"{\"error\":\"not_found\"}");
+                    var found=new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new System.Net.Http.ByteArrayContent(image.Content)};
+                    found.Content.Headers.ContentType=new(image.Type);
+                    found.Headers.ETag=new("\""+Costina.Client.ProductImages.Sha256(image.Content)+"\"");
+                    return found;
+                }
+                if(path=="erp/catalog") return Json(200,JsonSerializer.Serialize(Catalog,Costina.Client.ApiClient.Json));
+                if(path=="organization") return Json(200,JsonSerializer.Serialize(Organization,Costina.Client.ApiClient.Json));
+                return Json(404,"{\"error\":\"not_found\"}");
+            }
+            var command=JsonSerializer.Deserialize<JsonElement>(body);
+            if(path=="erp/catalog/commands/product-image-set")
+            {
+                var id=command.GetProperty("productId").GetString()!; var content=Convert.FromBase64String(command.GetProperty("data").GetString()!);
+                Images[id]=(command.GetProperty("contentType").GetString()!,content);
+                Catalog=Catalog with {Products=[..Catalog.Products.Select(p=>p.Id==id?p with {ImageSha=Costina.Client.ProductImages.Sha256(content)}:p)]};
+            }
+            if(path=="erp/catalog/commands/product-image-remove")
+            {
+                var id=command.GetProperty("productId").GetString()!; Images.TryRemove(id,out _);
+                Catalog=Catalog with {Products=[..Catalog.Products.Select(p=>p.Id==id?p with {ImageSha=null}:p)]};
+            }
+            var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
+        }
+        private static System.Net.Http.HttpResponseMessage Json(int status,string json)=>new((System.Net.HttpStatusCode)status){Content=new System.Net.Http.StringContent(json,System.Text.Encoding.UTF8,"application/json")};
     }
 }

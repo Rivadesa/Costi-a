@@ -57,6 +57,13 @@
   <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
   <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="12"/>
  </Style>
+ <!-- E3.2: hueco de una imagen (foto de la ficha de un articulo, miniatura de la lista): gris suave con borde y esquinas redondas;
+      sin imagen muestra el icono IconImage y su texto, con imagen la foto lo tapa (fondo blanco detras de un PNG transparente). -->
+ <Style x:Key="ImageWell" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+  <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/><Setter Property="SnapsToDevicePixels" Value="True"/>
+  <Setter Property="RenderOptions.BitmapScalingMode" Value="HighQuality"/>
+ </Style>
  <!-- Caja de icono (accesos, cabeceras): cuadrado suave con el icono en el color del acento. -->
  <Style x:Key="IconBox" TargetType="Border">
   <Setter Property="Width" Value="40"/><Setter Property="Height" Value="40"/><Setter Property="CornerRadius" Value="10"/>

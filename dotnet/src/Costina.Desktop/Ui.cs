@@ -42,6 +42,15 @@ public sealed class SameViewConverter : IMultiValueConverter
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
+// E3.2: hueco de una imagen que aun no hay: visible con null, recogido con valor. Con Invert, al reves (la propia imagen).
+public sealed class NullToVisibility : IValueConverter
+{
+    public bool Invert { get; set; }
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        (value is null) != Invert ? Visibility.Visible : Visibility.Collapsed;
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
 // C1: un texto vacio no ocupa sitio (avisos que solo aparecen cuando hay algo que decir).
 public sealed class Text2Vis : IValueConverter
 {

@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.IO;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Costina.Client;
@@ -19,9 +22,36 @@ public sealed record CategoryRow(CategoryDto Category, int Depth)
     public System.Windows.Thickness Indent => new(Depth * 16, 0, 0, 0);
     public override string ToString() => new string(' ', Depth * 4) + Label;
 }
-public sealed record ProductRow(ProductDto Product, string CategoryName, string PriceText)
+// E3.2: la fila pinta una miniatura de 32 px junto al nombre. Se pide solo cuando la fila llega a pintarse (lista virtualizada: el
+// enlace lee Thumbnail al crear o reciclar su contenedor) y una sola vez por huella; mientras tanto se ve el hueco con su icono.
+public sealed class ProductRow : ObservableObject
 {
+    private readonly ImageLoader? images;
+    private BitmapSource? thumbnail;
+    private bool requested;
+    public ProductRow(ProductDto product, string categoryName, string priceText, ImageLoader? images = null)
+    {
+        Product = product; CategoryName = categoryName; PriceText = priceText; this.images = images;
+        if (product.ImageSha is { } sha) thumbnail = images?.Thumbnail(sha);   // ya decodificada: aparece sin esperar
+    }
+    public ProductDto Product { get; }
+    public string CategoryName { get; }
+    public string PriceText { get; }
     public string StateLabel => Labels.Active(Product.Active, feminine: false);
+    // Segunda linea de la fila: categoria, precio vigente de cada presentacion en la General y estado.
+    public string Detail => $"{CategoryName} · {PriceText} · {StateLabel}";
+    public BitmapSource? Thumbnail
+    {
+        get
+        {
+            if (thumbnail is null && !requested && images is not null && Product.ImageSha is { } sha)
+            {
+                requested = true;
+                images.RequestThumbnail(Product.Id, sha, image => { if (image is null) return; thumbnail = image; OnPropertyChanged(nameof(Thumbnail)); });
+            }
+            return thumbnail;
+        }
+    }
     public override string ToString() => $"{Product.Name} · {CategoryName} · {PriceText} · {StateLabel}";
 }
 public sealed record PresentationRow(PresentationDto Presentation, string PriceText)
@@ -34,6 +64,26 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 {
     private bool rendering;
     private CatalogDto? catalog;
+    // E3.2: fotos de los articulos. Los bytes los pide la conexion abierta (con su credencial y su cache por huella); sin conexion no
+    // hay nada que pedir. Se decodifican fuera del hilo de la ventana (ImageLoader).
+    private readonly ImageLoader images = new(async (productId, sha) => shell.Api is { } api ? (await api.GetProductImageAsync(productId, sha))?.Content : null,
+        System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher);
+    private int photoGeneration;
+    public ImageLoader Images => images;
+    // Foto de la ficha (null = hueco con icono y PhotoText) y el texto del hueco.
+    [ObservableProperty] private BitmapSource? productPhoto;
+    [ObservableProperty] private string photoText = "Sin producto seleccionado.";
+    // E3.2: dialogo de Windows filtrado a JPEG, PNG y WebP (devuelve la ruta o null). Los checks lo sustituyen: no abren dialogos.
+    public Func<string?> PickImageFile { get; set; } = () =>
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Imagen del producto (JPEG, PNG o WebP, hasta 2 MB)",
+            Filter = "Imágenes JPEG, PNG o WebP (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp",
+            CheckFileExists = true, Multiselect = false
+        };
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    };
 
     [ObservableProperty] private CategoryRow[] categories = [];
     [ObservableProperty] private CategoryRow? selectedCategory;
@@ -91,7 +141,8 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             nameof(HasCategories), nameof(HasProducts), nameof(HasPresentations), nameof(ActiveCategories), nameof(ParentChoices), nameof(ActiveTariffs), nameof(ActiveTaxes), nameof(StationChoices) })
             OnPropertyChanged(name);
         foreach (var command in new IRelayCommand[] { StartCategoryCommand, SaveCategoryCommand, ToggleCategoryCommand, StartProductCommand, SaveProductCommand, ToggleProductCommand,
-            StartPresentationCommand, SavePresentationCommand, TogglePresentationCommand, SetPriceCommand, StartTariffCommand, SaveTariffCommand, ToggleTariffCommand, StartTaxCommand, SaveTaxCommand, ToggleTaxCommand })
+            StartPresentationCommand, SavePresentationCommand, TogglePresentationCommand, SetPriceCommand, StartTariffCommand, SaveTariffCommand, ToggleTariffCommand, StartTaxCommand, SaveTaxCommand, ToggleTaxCommand,
+            ChangeImageCommand, RemoveImageCommand })
             command.NotifyCanExecuteChanged();
     }
 
@@ -103,6 +154,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             catalog = null; Categories = []; Products = []; Presentations = []; Tariffs = []; Taxes = [];
             SelectedCategory = null; SelectedProduct = null; SelectedPresentation = null; SelectedTariff = null; SelectedTax = null;
             NewCategory = NewProduct = NewPresentation = NewTariff = NewTax = false; Search = ""; AllCategories = true; Summary = "Sin datos de catálogo todavía.";
+            images.Clear(); photoGeneration++; ProductPhoto = null; PhotoText = "Sin producto seleccionado.";
         }
         finally { rendering = false; }
         Sync();
@@ -178,7 +230,8 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             .Where(p => AllCategories || SelectedCategory is null || p.CategoryId == SelectedCategory.Category.Id)
             .Where(p => text.Length == 0 || p.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase) || p.Id.Contains(text, StringComparison.OrdinalIgnoreCase) || (p.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false))
             .Select(p => new ProductRow(p, p.CategoryId is null ? "sin categoría" : names.GetValueOrDefault(p.CategoryId, p.CategoryId),
-                p.Presentations.Length == 0 ? "sin presentación" : string.Join(" / ", p.Presentations.Where(s => s.Active).Select(s => Current(s, "general", catalog.Today) is { } price ? $"{s.Name} {Money(price.PriceCents)}" : s.Name + " sin precio"))))
+                p.Presentations.Length == 0 ? "sin presentación" : string.Join(" / ", p.Presentations.Where(s => s.Active).Select(s => Current(s, "general", catalog.Today) is { } price ? $"{s.Name} {Money(price.PriceCents)}" : s.Name + " sin precio")),
+                images))
             .ToArray();
     }
     private void RenderPresentations() => Presentations = SelectedProduct is null ? [] : SelectedProduct.Product.Presentations.Select(p => new PresentationRow(p, PriceLabel(p))).ToArray();
@@ -214,6 +267,33 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         var p = SelectedProduct?.Product;
         ProductId = p?.Id ?? ""; ProductName = p?.Name ?? ""; ProductCategoryId = p?.CategoryId ?? SelectedCategory?.Category.Id ?? ""; ProductTaxId = p?.TaxId ?? "iva-10";
         ProductReference = p?.Reference ?? ""; ProductSort = (p?.Sort ?? 0).ToString(); ProductStationId = p?.StationId ?? "";
+        _ = ShowPhotoAsync();
+    }
+
+    // E3.2: foto de la ficha del producto seleccionado. La ultima peticion manda: si se cambia de producto mientras carga, la
+    // respuesta anterior no pisa la nueva. Nunca espera en el hilo de la ventana: el hueco dice "Cargando imagen…" mientras tanto.
+    private async Task ShowPhotoAsync()
+    {
+        var generation = ++photoGeneration;
+        var product = NewProduct ? null : SelectedProduct?.Product;
+        ProductPhoto = null;
+        if (product is null) { PhotoText = NewProduct ? "Guarda el producto para añadirle una imagen." : "Sin producto seleccionado."; return; }
+        if (product.ImageSha is not { } sha) { PhotoText = "Sin imagen"; return; }
+        if (images.Photo(sha) is { } cached) { ProductPhoto = cached; PhotoText = ""; return; }
+        PhotoText = "Cargando imagen…";
+        string text;
+        BitmapSource? photo = null;
+        try
+        {
+            var (image, found) = await images.LoadPhotoAsync(product.Id, sha);
+            photo = image;
+            text = image is not null ? "" : found
+                ? "Este equipo no puede mostrar esta imagen. Si es WebP, instala «Extensiones de imagen WebP» de Microsoft Store."
+                : "La imagen ya no está en el servidor. Pulsa Actualizar.";
+        }
+        catch (Exception e) when (e is not OutOfMemoryException) { text = "No se pudo cargar la imagen del servidor. Pulsa Actualizar para intentarlo de nuevo."; }
+        if (generation != photoGeneration) return;
+        ProductPhoto = photo; PhotoText = text;
     }
     private void FillPresentationForm()
     {
@@ -261,7 +341,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanStart() => Main;
     [RelayCommand(CanExecute = nameof(CanStart))] private void StartCategory() { NewCategory = true; CategoryId = ""; CategoryName = ""; CategoryParentId = SelectedCategory?.Category.Id ?? ""; CategoryColor = ""; CategorySort = Categories.Length.ToString(); Sync(); }
-    [RelayCommand(CanExecute = nameof(CanStart))] private void StartProduct() { NewProduct = true; ProductId = ""; ProductName = ""; ProductCategoryId = SelectedCategory?.Category.Id ?? ""; ProductTaxId = "iva-10"; ProductReference = ""; ProductSort = Products.Length.ToString(); ProductPresentationName = "Unidad"; Sync(); }
+    [RelayCommand(CanExecute = nameof(CanStart))] private void StartProduct() { NewProduct = true; ProductId = ""; ProductName = ""; ProductCategoryId = SelectedCategory?.Category.Id ?? ""; ProductTaxId = "iva-10"; ProductReference = ""; ProductSort = Products.Length.ToString(); ProductPresentationName = "Unidad"; _ = ShowPhotoAsync(); Sync(); }
     private bool CanStartPresentation() => Main && SelectedProduct is not null && !NewProduct;
     [RelayCommand(CanExecute = nameof(CanStartPresentation))] private void StartPresentation() { NewPresentation = true; PresentationId = ""; PresentationName = ""; PresentationSort = Presentations.Length.ToString(); PriceText = ""; Sync(); }
     [RelayCommand(CanExecute = nameof(CanStart))] private void StartTariff() { NewTariff = true; TariffId = ""; TariffName = ""; TariffSort = Tariffs.Length.ToString(); Sync(); }
@@ -294,6 +374,45 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanToggleProduct))]
     private Task ToggleProduct() => Command(SelectedProduct!.Product.Active ? "product-deactivate" : "product-reactivate", new { id = SelectedProduct.Product.Id },
         (SelectedProduct.Product.Active ? "Desactivar producto " : "Reactivar producto ") + SelectedProduct.Product.Name);
+
+    // E3.2: imagen del producto. Solo el responsable (el servidor lo impone igual) y sobre un producto ya guardado. El fichero se
+    // comprueba aqui antes de enviar (hasta 2 MB, JPEG, PNG o WebP por sus bytes) y el servidor lo vuelve a validar todo. Se lee y se
+    // envia fuera del hilo de la ventana; la orden va por la tuberia incierta como cualquier otra y despues se relee el catalogo.
+    private bool CanChangeImage() => Main && SelectedProduct is not null && !NewProduct;
+    [RelayCommand(CanExecute = nameof(CanChangeImage))]
+    private Task ChangeImage()
+    {
+        var product = SelectedProduct!.Product;
+        var path = PickImageFile();
+        if (path is null) return Task.CompletedTask;
+        var description = "Cambiar imagen de " + product.Name;
+        return ImageCommand(async api =>
+        {
+            byte[] content;
+            try
+            {
+                ProductImages.CheckSize(new FileInfo(path).Length);   // lo que pasa de 2 MB ni se lee
+                content = await File.ReadAllBytesAsync(path);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            { throw new ArgumentException("No se pudo leer el fichero " + System.IO.Path.GetFileName(path) + ". Comprueba que existe y que no está abierto en otro programa."); }
+            ProductImages.Check(content);
+            await Task.Run(() => api.SetProductImageAsync(product.Id, content, description));
+        }, description);
+    }
+    private bool CanRemoveImage() => Main && SelectedProduct?.Product.ImageSha is not null && !NewProduct;
+    [RelayCommand(CanExecute = nameof(CanRemoveImage))]
+    private Task RemoveImage()
+    {
+        var product = SelectedProduct!.Product; var description = "Quitar imagen de " + product.Name;
+        return ImageCommand(api => api.RemoveProductImageAsync(product.Id, description), description);
+    }
+    private Task ImageCommand(Func<ApiClient, Task> send, string description) => shell.Run(async () =>
+    {
+        await send(shell.Api ?? throw new InvalidOperationException("Sin conexión con el servidor."));
+        shell.Status = description + ": confirmado por el servidor.";
+        await LoadAsync();
+    });
 
     private bool CanSavePresentation() => PresentationEditable && SelectedProduct is not null;
     [RelayCommand(CanExecute = nameof(CanSavePresentation))]

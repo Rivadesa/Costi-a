@@ -27,6 +27,11 @@
        <TextBlock Text="{Binding Organization.ZoneFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}"/>
        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}"/>
+       <!-- E3.2: tarifa con la que cobra la sala (General por defecto). Las tarifas se crean en Catalogo y tarifas; aqui solo se eligen. -->
+       <TextBlock Text="Tarifa de la sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+       <ComboBox x:Name="ZoneTariffBox" ItemsSource="{Binding Organization.TariffChoices}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Organization.ZoneTariffId}"
+                 IsEnabled="{Binding Organization.ZoneEditable}"/>
+       <TextBlock Text="Lo que no tenga precio en esa tarifa se cobra con la General. Las tarifas se crean en Catálogo y tarifas." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
        <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" Width="80" HorizontalAlignment="Left"/>
        <WrapPanel Margin="0,8,0,0"><Button Content="Guardar sala" Style="{StaticResource Primary}" Command="{Binding Organization.SaveZoneCommand}"/>
         <Button x:Name="ToggleZoneButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleZoneCommand}"/></WrapPanel>

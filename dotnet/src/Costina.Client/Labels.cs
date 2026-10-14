@@ -95,6 +95,9 @@ public static class Labels
         ("tax_inactive", "Ese impuesto está desactivado."),
         ("product_unavailable", "Ese producto está desactivado."),
         ("price_missing", "Ese producto no tiene precio vigente."),
+        // E3.2: imagenes de los articulos (el servidor las reconoce por sus bytes).
+        ("image_invalid", "La imagen no es válida: solo se admiten JPEG, PNG o WebP (nunca SVG)."),
+        ("image_too_large", "La imagen ocupa más de 2 MB: redúcela y vuelve a intentarlo."),
         ("presentation_required", "Falta la presentación del producto (botella, copa, por persona…)."),
         ("product_required", "Una degustación o un menú cerrado necesita su producto-menú."),
         ("product_not_allowed", "Una carta no tiene producto-menú: cada plato se cobra al pedirlo."),

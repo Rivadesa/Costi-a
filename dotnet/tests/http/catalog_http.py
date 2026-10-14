@@ -178,6 +178,8 @@ class Catalog(unittest.TestCase):
         self.assertEqual(request('/organization/commands/zone-create', dict(id='terraza-z', name='Terraza', sort=9, tariffId='terraza'))[0], 200)
         self.assertEqual(request('/organization/commands/zone-create', dict(id='z-bad', name='x', tariffId='no-existe'))[0], 404)
         self.assertEqual(next(z for z in ok('/organization')['zones'] if z['id'] == 'terraza-z')['tariffId'], 'terraza')
+        # E3.2: Configuracion elige la tarifa de la sala con las tarifas que trae /organization (sin leer el catalogo).
+        self.assertEqual(next(t for t in ok('/organization')['tariffs'] if t['id'] == 'terraza'), {'id': 'terraza', 'name': 'Terraza', 'sort': 1, 'active': True})
         self.assertEqual(request('/organization/commands/table-create', dict(id='TZ1', name='Terraza 1', capacity=4, zoneId='terraza-z'))[0], 200)
         self.assertEqual(json.loads(command('tariff-deactivate', id='terraza')[1])['error'], 'tariff_in_use')
         # Consumo desde sala en la terraza: precio de la tarifa de la sala HOY (no el programado), congelado con su origen.
@@ -215,6 +217,7 @@ class Catalog(unittest.TestCase):
         self.assertEqual(request('/organization/commands/zone-update', dict(id='terraza-z', tariffId=''))[0], 200)   # vuelve a la general
         self.assertIsNone(next(z for z in ok('/organization')['zones'] if z['id'] == 'terraza-z')['tariffId'])
         self.assertEqual(command('tariff-deactivate', id='terraza')[0], 200)
+        self.assertFalse(next(t for t in ok('/organization')['tariffs'] if t['id'] == 'terraza')['active'])   # E3.2: sigue, marcada
         self.assertEqual(command('price-set', tariffId='terraza', productId='wine', presentationId='glass', priceCents=1)[0], 409)   # tariff_inactive
 
     def test_04_csv_import_creates_and_updates_without_deleting_and_is_idempotent(self):

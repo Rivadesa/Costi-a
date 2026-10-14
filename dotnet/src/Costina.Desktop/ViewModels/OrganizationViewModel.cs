@@ -20,6 +20,12 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     [ObservableProperty] private StationDto? selectedStation;
     // Fichas (formularios). NewX = alta: el codigo se teclea; en edicion el codigo es inmutable.
     [ObservableProperty] private bool newZone; [ObservableProperty] private string zoneId = ""; [ObservableProperty] private string zoneName = ""; [ObservableProperty] private string zoneSort = "0";
+    // E3.2: tarifa de la sala. "" = la General (la sala no tiene tarifa propia); null = el desplegable perdio su eleccion al releer
+    // y entonces la orden no la toca (el servidor conserva la que tenia). Las opciones: General, las tarifas activas y, si una sala
+    // usa una desactivada, esa tambien (marcada) para no cambiarla sin querer.
+    [ObservableProperty] private string? zoneTariffId = "";
+    [ObservableProperty] private TariffDto[] tariffChoices = [GeneralChoice];
+    private static readonly TariffDto GeneralChoice = new("", "General", -1, true);
     [ObservableProperty] private bool newTable; [ObservableProperty] private string tableId = ""; [ObservableProperty] private string tableName = "";
     [ObservableProperty] private string tableCapacity = "4"; [ObservableProperty] private string tableZoneId = ""; [ObservableProperty] private string tableSort = "0";
     [ObservableProperty] private bool newStation; [ObservableProperty] private string stationId = ""; [ObservableProperty] private string stationName = "";
@@ -52,7 +58,7 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     internal void Clear()
     {
         rendering = true;
-        try { Zones = []; Tables = []; Stations = []; SelectedZone = null; SelectedTable = null; SelectedStation = null; NewZone = NewTable = NewStation = false; Summary = "Sin datos de organización todavía."; }
+        try { Zones = []; Tables = []; Stations = []; TariffChoices = [GeneralChoice]; SelectedZone = null; SelectedTable = null; SelectedStation = null; NewZone = NewTable = NewStation = false; Summary = "Sin datos de organización todavía."; }
         finally { rendering = false; }
         Sync();
     }
@@ -71,7 +77,14 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
         try
         {
             var zone = SelectedZone?.Id; var table = SelectedTable?.Id; var station = SelectedStation?.Id;
-            Zones = organization.Zones; Stations = organization.Stations;
+            // E3.2: la lista de salas nombra la tarifa propia de cada sala (la General no se nombra: es la de siempre).
+            var tariffs = organization.Tariffs ?? [];
+            Zones = organization.Zones.Select(z => z with { TariffName = TariffOf(z.TariffId) is { Length: > 0 } own ? tariffs.FirstOrDefault(t => t.Id == own)?.Name ?? own : null }).ToArray();
+            TariffChoices = [GeneralChoice, .. tariffs.Where(t => t.Id != "general" && t.Active),
+                .. Zones.Select(z => TariffOf(z.TariffId)).Where(id => id.Length > 0).Distinct()
+                    .Where(id => !tariffs.Any(t => t.Id == id && t.Active))
+                    .Select(id => tariffs.FirstOrDefault(t => t.Id == id) is { } off ? off with { Name = off.Name + " (desactivada)" } : new TariffDto(id, id, int.MaxValue, false))];
+            Stations = organization.Stations;
             SelectedZone = Zones.FirstOrDefault(z => z.Id == zone) ?? Zones.FirstOrDefault();
             RenderTables();
             SelectedTable = Tables.FirstOrDefault(t => t.Id == table);
@@ -96,7 +109,9 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     partial void OnSelectedTableChanged(TableDto? value) { if (rendering) return; NewTable = false; FillTableForm(); Sync(); }
     partial void OnSelectedStationChanged(StationDto? value) { if (rendering) return; NewStation = false; FillStationForm(); Sync(); }
 
-    private void FillZoneForm() { ZoneId = SelectedZone?.Id ?? ""; ZoneName = SelectedZone?.Name ?? ""; ZoneSort = (SelectedZone?.Sort ?? 0).ToString(); }
+    private void FillZoneForm() { ZoneId = SelectedZone?.Id ?? ""; ZoneName = SelectedZone?.Name ?? ""; ZoneSort = (SelectedZone?.Sort ?? 0).ToString(); ZoneTariffId = TariffOf(SelectedZone?.TariffId); }
+    // Tarifa propia de una sala como codigo; sin tarifa (o la general escrita a mano) = "" (la General).
+    private static string TariffOf(string? tariffId) => tariffId is null or "" or "general" ? "" : tariffId;
     private void FillTableForm()
     {
         TableId = SelectedTable?.Id ?? ""; TableName = SelectedTable?.Name ?? ""; TableCapacity = (SelectedTable?.Capacity ?? 4).ToString();
@@ -130,7 +145,7 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     });
 
     private bool CanStart() => shell.Writable && shell.IsMain;
-    [RelayCommand(CanExecute = nameof(CanStart))] private void StartZone() { NewZone = true; ZoneId = ""; ZoneName = ""; ZoneSort = Zones.Length.ToString(); Sync(); }
+    [RelayCommand(CanExecute = nameof(CanStart))] private void StartZone() { NewZone = true; ZoneId = ""; ZoneName = ""; ZoneSort = Zones.Length.ToString(); ZoneTariffId = ""; Sync(); }
     [RelayCommand(CanExecute = nameof(CanStart))] private void StartTable() { NewTable = true; TableId = ""; TableName = ""; TableCapacity = "4"; TableZoneId = SelectedZone?.Id ?? ""; TableSort = Tables.Length.ToString(); Sync(); }
     [RelayCommand(CanExecute = nameof(CanStart))] private void StartStation() { NewStation = true; StationId = ""; StationName = ""; StationKind = "kitchen"; StationSort = Stations.Length.ToString(); Sync(); }
 
@@ -140,7 +155,9 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     {
         var id = Code(NewZone ? ZoneId : SelectedZone!.Id); var name = ZoneName.Trim(); var sort = Number(ZoneSort, "Orden", 0, 9999);
         if (name.Length == 0) throw new ArgumentException("El nombre de la sala es obligatorio.");
-        return Command(NewZone ? "zone-create" : "zone-update", new { id, name, sort }, (NewZone ? "Crear sala " : "Guardar sala ") + name);
+        // E3.2: tariffId "" = la General, un codigo = esa tarifa, null = sin cambio (zone-update y zone-create ya lo admitian).
+        var tariffId = ZoneTariffId;
+        return Command(NewZone ? "zone-create" : "zone-update", new { id, name, sort, tariffId }, (NewZone ? "Crear sala " : "Guardar sala ") + name);
     }
     private bool CanToggleZone() => shell.Writable && shell.IsMain && SelectedZone is not null && !NewZone;
     [RelayCommand(CanExecute = nameof(CanToggleZone))]
