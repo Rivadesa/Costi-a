@@ -37,8 +37,7 @@ public sealed class DpapiPendingStore : IPendingStore, IDisposable
         var scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             session.TenantId + "\n" + session.CompanyId + "\n" + session.LocationId)))[..16].ToLowerInvariant();
         identity = new(2, "", installation, scope, role);
-        var folder = directory ?? System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina", "pending");
+        var folder = directory ?? System.IO.Path.Combine(DesktopSettings.DataFolder, "pending");   // C1: misma raiz que desktop.json
         Directory.CreateDirectory(folder);
         var reserved = Reserve(folder, $"{installation}-{scope}-{role}");
         slotLock = reserved.Lock; Slot = reserved.Slot; path = reserved.Path;

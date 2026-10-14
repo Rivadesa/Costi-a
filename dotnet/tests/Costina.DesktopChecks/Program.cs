@@ -8,11 +8,23 @@ using Costina.Desktop;
 
 internal static class Program
 {
+    // C1 (revision de seguridad): direccion de servidor de los checks: loopback en un puerto donde no escucha nada. El cierre de sesion
+    // de mejor esfuerzo al salir del modo responsable (inactividad) no llega nunca a un motor, y menos al real de este PC (5088).
+    private const string ChecksEndpoint="http://127.0.0.1:59997";
+
     [STAThread]
     private static int Main()
     {
+        // C1 (revision de seguridad): ANTES de crear la ventana, la carpeta de datos de este equipo (desktop.json, credencial cifrada del
+        // puesto, orden incierta) apunta a un temporal con su propio desktop.json. Los checks nunca leen ni escriben la instalacion real
+        // (%LOCALAPPDATA%\Costina) ni conectan con su servidor; cada cambio de carpeta de abajo vuelve aqui, nunca a la real.
+        var checksRoot=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-desktop-checks-"+Guid.NewGuid().ToString("N"));
+        DesktopSettings.Folder=checksRoot;
+        new DesktopSettings{Endpoint=ChecksEndpoint}.Save();
+        if(!DesktopSettings.Path.StartsWith(checksRoot,StringComparison.Ordinal)||!File.Exists(DesktopSettings.Path)) throw new Exception("The checks must keep their settings in their own temporary folder.");
         var app=new App(); app.InitializeComponent();
         var window=new MainWindow(); window.Show(); window.UpdateLayout();
+        if(window.Shell.Endpoint!=ChecksEndpoint||window.Shell.HasPairedDevice) throw new Exception("The window must start from the checks' own settings, never from this PC's installation: "+window.Shell.Endpoint);
         if(!((Button)window.FindName("ConnectButton")).IsEnabled) throw new Exception("Connection button must be available.");
         if(((TabItem)window.FindName("CheckoutTab")).Visibility!=Visibility.Collapsed) throw new Exception("Checkout visible without authenticated role.");
         if(((TabItem)window.FindName("OrganizationTab")).Visibility!=Visibility.Collapsed) throw new Exception("Configuration visible without authenticated role.");   // E2
@@ -133,7 +145,8 @@ internal static class Program
         deviceStore.Clear();
         deviceStore.Save("dev.abc123.secreto-de-prueba");
         if(deviceStore.Load()!="dev.abc123.secreto-de-prueba") throw new Exception("Device token round trip must be lossless.");
-        var deviceFile=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Costina","device-59998.bin");
+        var deviceFile=System.IO.Path.Combine(checksRoot,"device-59998.bin");   // C1: en la carpeta de los checks, nunca en la real
+        if(!File.Exists(deviceFile)) throw new Exception("The device store must follow the checks' data folder.");
         if(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(deviceFile)).Contains("secreto-de-prueba")) throw new Exception("Device token file must not be plaintext.");
         File.WriteAllBytes(deviceFile,[9,9,9]);
         if(deviceStore.Load() is not null||File.Exists(deviceFile)) throw new Exception("Corrupted device file must be discarded and deleted.");
@@ -163,7 +176,7 @@ internal static class Program
         if(again.Devices.DeviceAddress!="https://costina-server.local:5443") throw new Exception("On loopback the last device address used on this machine is proposed.");
         var lan=new Costina.Desktop.ViewModels.ShellViewModel(); lan.Devices.MemoryFolder=qrFolder; lan.Endpoint="https://otro-servidor.local:5443"; lan.Devices.SuggestAddress();
         if(lan.Devices.DeviceAddress!="https://otro-servidor.local:5443") throw new Exception("A client already on the LAN proposes its own server address.");
-        Directory.Delete(qrFolder,true); DesktopSettings.Folder=null;
+        Directory.Delete(qrFolder,true); DesktopSettings.Folder=checksRoot;
         // E2: pestana Configuracion (solo main). La pantalla se compone SOLO de lo leido; los comandos siguen la misma tuberia y
         // se habilitan por rol y por estado (ocupado, orden pendiente): nunca por reglas de negocio locales.
         var sampleOrganization=new Costina.Client.OrganizationDto(
@@ -364,7 +377,7 @@ internal static class Program
         if(levels.Connected||!levels.Status.Contains("caducado")) throw new Exception("A 401 of the person session returns to Puesto (or to the login card) and explains it: "+levels.Status);
         levels.Clock=()=>DateTimeOffset.UtcNow;
         if(Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().Length<4||!Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().StartsWith("pc-",StringComparison.Ordinal)) throw new Exception("This PC pairs under a stable, readable name.");
-        Directory.Delete(settingsFolder,true); DesktopSettings.Folder=null;
+        Directory.Delete(settingsFolder,true); DesktopSettings.Folder=checksRoot;
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         // Capturas del tema visual (E2): cada pestana del puesto principal compuesta con datos leidos.
         var tabs=workspace;
@@ -490,7 +503,9 @@ internal static class Program
         window.Shell.Booting=false; window.Shell.BootText=""; window.UpdateLayout();
         File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks."
             +Environment.NewLine+"Version: "+Costina.Desktop.ViewModels.ShellViewModel.AppVersion+Environment.NewLine+"Fonts: "+fonts+Environment.NewLine);
-        window.Close();app.Shutdown();Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
+        window.Close();app.Shutdown();
+        try { Directory.Delete(checksRoot,true); } catch(IOException) { }   // la carpeta de los checks; nunca la real
+        Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
     }
 
     // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra

@@ -14,8 +14,11 @@ public sealed class DesktopSettings
 
     // Los checks apuntan la carpeta a un directorio temporal; la aplicacion usa el perfil del usuario.
     public static string? Folder { get; set; }
-    public static string Path => System.IO.Path.Combine(Folder ?? System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina"), "desktop.json");
+    // C1: carpeta de datos de ESTE equipo: preferencias, credencial cifrada del puesto (DpapiDeviceStore) y orden incierta
+    // (DpapiPendingStore). Una sola raiz: con Folder apuntado a un temporal, los checks no leen ni escriben nada de la instalacion real.
+    public static string DataFolder => Folder ?? System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina");
+    public static string Path => System.IO.Path.Combine(DataFolder, "desktop.json");
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     public static DesktopSettings Load()

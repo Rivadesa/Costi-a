@@ -7,11 +7,11 @@ namespace Costina.Desktop;
 // Credencial durable del puesto emparejado, cifrada con DPAPI del usuario actual (mismo criterio
 // que la orden incierta): un fichero por puerto, ilegible en claro, corrupto se descarta y borra.
 // La contrasena del USUARIO nunca pasa por aqui; solo el token del dispositivo emitido en D4.2.
-public sealed class DpapiDeviceStore(Uri endpoint)
+// C1: la carpeta es la de datos de este equipo (DesktopSettings.DataFolder) o la indicada; los checks nunca tocan la real.
+public sealed class DpapiDeviceStore(Uri endpoint, string? folder = null)
 {
     private static readonly byte[] Entropy = "costina-device-v1"u8.ToArray();
-    private readonly string path = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Costina",
+    private readonly string path = System.IO.Path.Combine(folder ?? DesktopSettings.DataFolder,
         // D5.3: un puesto puede emparejarse con servidores de la LAN; el fichero distingue tambien el equipo.
         endpoint.Host == "127.0.0.1" ? $"device-{endpoint.Port}.bin"
             : $"device-{new string(endpoint.Host.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_').ToArray())}-{endpoint.Port}.bin");
