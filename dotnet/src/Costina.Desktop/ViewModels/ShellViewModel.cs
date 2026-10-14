@@ -60,9 +60,11 @@ public sealed partial class ShellViewModel : ObservableObject
     public ShellViewModel()
     {
         Settings = DesktopSettings.Load();
-        Endpoint = Settings.Endpoint; Username = Settings.Username;
         lastActivity = Clock();
         Home = new(this); Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this);
+        // C1 (arreglo): la direccion guardada se asigna DESPUES de crear las vistas. Si es distinta de la de por defecto (todo
+        // puesto adicional: https://NOMBRE:PUERTO), OnEndpointChanged -> Sync() recorre las vistas y antes reventaba (NullReference).
+        Endpoint = Settings.Endpoint; Username = Settings.Username;
     }
 
     // Cambiar la sesion (conectar, desconectar, otro nivel) refresca todas las propiedades derivadas que enlazan menus y vistas.

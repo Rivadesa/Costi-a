@@ -271,6 +271,12 @@ internal static class Program
         new DesktopSettings{Endpoint="https://costina-server.local:5443",Username="jefa",DeviceAddress="https://costina-server.local:5443"}.Save();
         var reloaded=DesktopSettings.Load();
         if(reloaded.Endpoint!="https://costina-server.local:5443"||reloaded.Username!="jefa"||File.ReadAllText(DesktopSettings.Path).Contains("dev.")) throw new Exception("desktop.json round-trips the address and the user and holds no secrets.");
+        // C1 (arreglo): un puesto adicional guarda https://NOMBRE:PUERTO; la ventana arranca con esa direccion (antes: NullReference).
+        File.WriteAllText(DesktopSettings.Path,"{\"endpoint\":\"https://costina-server.local:5443\",\"username\":\"jefa\"}");
+        Costina.Desktop.ViewModels.ShellViewModel workstation;
+        try { workstation=new Costina.Desktop.ViewModels.ShellViewModel(); }
+        catch(Exception e) { throw new Exception("A workstation that saved another server address must start: "+e.GetType().Name+" "+e.Message,e); }
+        if(workstation.Endpoint!="https://costina-server.local:5443"||workstation.Username!="jefa") throw new Exception("The saved address and user are restored at startup: "+workstation.Endpoint+" "+workstation.Username);
         new DesktopSettings{Endpoint="http://127.0.0.1:5088",Username="dev.abc.secreto"}.Save();
         if(DesktopSettings.Load().Username!="jefa") throw new Exception("A value that looks like a credential is never written to desktop.json.");
         File.WriteAllText(DesktopSettings.Path,"{\"endpoint\":\"http://127.0.0.1:5088\",\"username\":\"dev.abc.secreto\"}");
