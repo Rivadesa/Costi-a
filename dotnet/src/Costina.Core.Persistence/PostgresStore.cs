@@ -154,6 +154,22 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
         return Equals(await command.ExecuteScalarAsync(ct), true);
     }
 
+    // B.1: version del esquema GUARDADO, sin exigir que coincida con estos binarios (la copia previa a una actualizacion la
+    // toman los binarios nuevos sobre la base antigua). 1 = esquema unico native_d1 (antes de E1b); null = no hay esquema.
+    public async Task<int?> StoredSchemaVersionAsync(CancellationToken ct = default)
+    {
+        bool core, legacy;
+        await using (var probe = dataSource.CreateCommand("SELECT to_regclass('core.schema_version') IS NOT NULL, to_regclass('native_d1.schema_version') IS NOT NULL"))
+        await using (var reader = await probe.ExecuteReaderAsync(ct))
+        {
+            await reader.ReadAsync(ct);
+            (core, legacy) = (reader.GetBoolean(0), reader.GetBoolean(1));
+        }
+        if (!core) return legacy ? 1 : null;
+        await using var command = dataSource.CreateCommand("SELECT version FROM core.schema_version");
+        return await command.ExecuteScalarAsync(ct) is int version ? version : throw new InvalidDataException("Schema version row missing.");
+    }
+
     // Arranque normal: la base debe estar en la version de estos binarios y tener el esquema de cada modulo compilado.
     public async Task CheckAsync(IEnumerable<string> moduleSchemas, CancellationToken ct = default)
     {

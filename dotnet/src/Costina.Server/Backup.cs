@@ -31,9 +31,12 @@ public sealed class BackupHealth
     public void Failed(string error) { lock (gate) lastError = error; }
 }
 
-public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, string serverVersion, IReadOnlyList<string> schemas)
+public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, string serverVersion, IReadOnlyList<string> schemas, int format = BackupRunner.ManifestFormat)
 {
     public const int ManifestFormat = 2;
+    // B.1: copia de una base que sigue en v1 (native_d1) tomada por binarios nuevos antes de actualizarla: manifiesto de formato 1,
+    // exactamente la forma que RestoreAsync ya sabe verificar y migrar.
+    public static BackupRunner LegacyV1(ServerSettings settings, BusinessScope scope, string serverVersion) => new(settings, scope, serverVersion, ["native_d1"], 1);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     public static string Folder => Path.Combine(ServerSettings.DataRoot, "backups");
     public string? CopyFolder => settings.Get("COSTINA_BACKUP_COPY");
@@ -83,9 +86,9 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
                 string snapshot;
                 await using (var export = new NpgsqlCommand("SELECT pg_export_snapshot()", connection, transaction))
                     snapshot = (string)(await export.ExecuteScalarAsync(ct))!;
-                await using (var identity = new NpgsqlCommand("SELECT id::text FROM core.installation", connection, transaction))
+                await using (var identity = new NpgsqlCommand(format == 1 ? "SELECT id::text FROM native_d1.installation" : "SELECT id::text FROM core.installation", connection, transaction))
                     installation = (string)(await identity.ExecuteScalarAsync(ct))!;
-                tables = await BackupDigest.ComputeAsync(connection, transaction, schemas, ct: ct);
+                tables = await BackupDigest.ComputeAsync(connection, transaction, schemas, qualify: format != 1, ct: ct);
                 // La transaccion sigue abierta mientras pg_dump copia: la copia y las huellas ven exactamente lo mismo.
                 await RunTool("pg_dump", builder, ["--format=custom", ..schemas.Select(s => "--schema=" + PostgresStore.CheckedSchema(s)), "--snapshot=" + snapshot, "--no-password", "--file=" + temporary], ct);
                 await transaction.CommitAsync(ct);
@@ -94,7 +97,7 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             string sha;
             await using (var stream = File.OpenRead(temporary)) sha = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant();
-            var manifest = new BackupManifest(ManifestFormat, createdAt, serverVersion, installation, scope.TenantId, scope.CompanyId, scope.LocationId,
+            var manifest = new BackupManifest(format, createdAt, serverVersion, installation, scope.TenantId, scope.CompanyId, scope.LocationId,
                 name, new FileInfo(temporary).Length, sha, tables);
             var final = Path.Combine(Folder, name);
             File.Move(temporary, final);

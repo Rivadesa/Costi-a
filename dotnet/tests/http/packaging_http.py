@@ -460,8 +460,17 @@ class Packaging(unittest.TestCase):
             'tenantId': 'd5-tenant', 'companyId': 'd5-company', 'locationId': 'd5-location', 'file': v1backup.name,
             'sizeBytes': v1backup.stat().st_size, 'sha256': hashlib.sha256(v1backup.read_bytes()).hexdigest(), 'tables': v1tables}), encoding='utf8')
 
-        # 3. The new binaries refuse to serve a v1 database and `upgrade` transforms it in place, in one transaction.
+        # 3. B.1: the installer updates with the NEW binaries in this order: `backup` of the OLD database, then `upgrade`. The copy is taken
+        # in the old shape (manifest 1, the same digests as the 0.26.0-e1 copy of step 2: same rows). Before B.1 the backup refused
+        # ("schema is not version 6") and every update from an older version stopped there (0.29.0-e4 -> 0.33.0-b1 on a real PC).
         v1env = clean_env(COSTINA_DATA=str(v1root))
+        before = cli('backup', env=v1env)
+        self.assertEqual(before.returncode, 0, before.stdout + before.stderr)
+        self.assertIn('Schema version 1, older than these binaries (6)', before.stdout)
+        copied = sorted((v1root / 'backups').glob('costina-*.backup'))[-1]
+        manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
+        self.assertEqual((manifest['format'], manifest['installationId'], manifest['tables']), (1, installation, v1tables))
+        # The new binaries refuse to serve a v1 database and `upgrade` transforms it in place, in one transaction.
         stale = cli(env=v1env)
         self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
         upgraded = cli('upgrade', env=v1env)
@@ -517,6 +526,28 @@ class Packaging(unittest.TestCase):
             if table == 'core.sessions': continue                                                         # (the login above left a session there)
             self.assertEqual(psql_as(v1super, digest(table)).stdout.strip(), psql_as(restore_super, digest(table)).stdout.strip(), table)
         self.assertNotEqual(cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root))).returncode, 0)   # never overwrites
+        # B.1: a core database in an OLDER version (marked 5 here) is still copied by these binaries (the copy before the upgrade, in
+        # format 2); a NEWER one (7) is refused, because these binaries could not restore it. The mark is put back afterwards.
+        restore_env = clean_env(COSTINA_DATA=str(restore_root))
+        def mark(version):
+            changed = psql_as(restore_super, 'ALTER TABLE core.schema_version DROP CONSTRAINT schema_version_version_check; '
+                                             f'UPDATE core.schema_version SET version={version}; '
+                                             f'ALTER TABLE core.schema_version ADD CONSTRAINT schema_version_version_check CHECK (version = {version})')
+            self.assertEqual(changed.returncode, 0, changed.stderr)
+        mark(5)
+        try:
+            older = cli('backup', env=restore_env)
+            self.assertEqual(older.returncode, 0, older.stdout + older.stderr)
+            self.assertIn('Schema version 5, older than these binaries (6)', older.stdout)
+            copied = sorted((restore_root / 'backups').glob('costina-*.backup'))[-1]
+            manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
+            self.assertEqual((manifest['format'], manifest['installationId']), (2, installation))
+            self.assertIn('core.schema_version', manifest['tables']); self.assertIn('dining.services', manifest['tables'])
+            mark(7)
+            newer = cli('backup', env=restore_env)
+            self.assertNotEqual(newer.returncode, 0); self.assertIn('newer than these binaries', newer.stdout + newer.stderr)
+        finally:
+            mark(6)
         with Server(clean_env(COSTINA_DATA=str(restore_root)), base='http://127.0.0.1:5096'):
             status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5096')
             self.assertEqual(status, 200)
