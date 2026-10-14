@@ -9,7 +9,8 @@
 <Window.CommandBindings><CommandBinding Command="NavigationCommands.GoToPage" CanExecute="CanGoToPage" Executed="GoToPage"/></Window.CommandBindings>
 <DockPanel>
  <!-- Barra de menus clasica de Windows: es la estructura DEFINITIVA del ERP. Lo que aun no existe va deshabilitado con su corte.
-      Cada entrada muestra una vista del area de trabajo (el TabControl de abajo, sin cabeceras). -->
+      Cada entrada muestra una vista del area de trabajo (el TabControl de abajo, sin cabeceras).
+      C1: lo que aun no existe dice "Próximamente"; los codigos de hito no son para quien usa el programa. -->
  <Menu x:Name="MainMenu" DockPanel.Dock="Top">
   <MenuItem Header="_Archivo">
    <MenuItem Header="Inicio" Tag="HomeTab" Click="ShowView"/>
@@ -27,25 +28,25 @@
   <MenuItem Header="Ca_ja" x:Name="CheckoutMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Cuenta / Caja" Tag="CheckoutTab" Click="ShowView"/>
    <Separator/>
-   <MenuItem Header="Apertura y cierre de caja" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
-   <MenuItem Header="Arqueo y turnos" IsEnabled="False" ToolTip="Llega en el Hito 7 (caja completa)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Apertura y cierre de caja" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Arqueo y turnos" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
   <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
    <MenuItem Header="Dispositivos: comanderos y pantallas de cocina" Tag="DevicesTab" Click="ShowView"/>
    <Separator/>
-   <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
-   <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Llega en E5 (Hito 6)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
   <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
    <MenuItem Header="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView"/>
    <MenuItem Header="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView"/>
-   <MenuItem Header="Informes" IsEnabled="False" ToolTip="Tras el Hito 7" ToolTipService.ShowOnDisabled="True"/>
-   <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Módulos posteriores" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Informes" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
   <MenuItem Header="_Fiscalidad" x:Name="FiscalMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
-   <MenuItem Header="Series y facturas" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
-   <MenuItem Header="VERI*FACTU" IsEnabled="False" ToolTip="Llega en el Hito 8 (fiscal)" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="Series y facturas" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
+   <MenuItem Header="VERI*FACTU" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
   </MenuItem>
   <MenuItem Header="Ay_uda">
    <MenuItem Header="Acerca de Costiña" Click="AboutClick"/>

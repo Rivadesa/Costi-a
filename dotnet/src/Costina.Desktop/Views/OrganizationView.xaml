@@ -3,7 +3,7 @@
       Extraida de MainWindow sin cambios; hereda el DataContext del cascaron (ShellViewModel): los enlaces son los mismos. -->
  <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
   <StackPanel Grid.Row="0" Margin="0,0,0,10">
-   <TextBlock Text="Configuración del negocio" Style="{StaticResource PanelTitle}"/>
+   <TextBlock Text="Salas, mesas y estaciones" Style="{StaticResource PanelTitle}"/>
    <TextBlock Text="{Binding Organization.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
    <TextBlock Text="Nada se borra: una sala, mesa o estación se desactiva y conserva su historia; se puede reactivar cuando haga falta." Style="{StaticResource Subtle}"/>
   </StackPanel>
@@ -34,11 +34,11 @@
        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}"/>
        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.TableName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}"/>
        <WrapPanel Margin="0,6,0,0">
-        <StackPanel Margin="0,0,10,0"><TextBlock Text="Aforo" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Plazas" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
         <StackPanel Margin="0,0,10,0"><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
        </WrapPanel>
        <TextBlock Text="Sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
-       <ComboBox ItemsSource="{Binding Organization.ActiveZones}" SelectedValuePath="Id" SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}"/>
+       <ComboBox ItemsSource="{Binding Organization.ActiveZones}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}"/>
        <WrapPanel Margin="0,8,0,0"><Button Content="Guardar mesa" Style="{StaticResource Primary}" Command="{Binding Organization.SaveTableCommand}"/>
         <Button x:Name="ToggleTableButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleTableCommand}"/></WrapPanel>
       </StackPanel></Border>
@@ -50,7 +50,7 @@
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="230"/></Grid.ColumnDefinitions>
      <DockPanel Grid.Column="0">
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Estación" Command="{Binding Organization.StartStationCommand}" Margin="0"/><TextBlock Text="Estaciones" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-      <TextBlock DockPanel.Dock="Bottom" Text="Cocina, pase, barra o sala. Los puestos emparejados se asignan a una estación activa. La estación «pase» existe siempre." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
+      <TextBlock DockPanel.Dock="Bottom" Text="Cocina, pase, barra o sala. Los puestos emparejados se asignan a una estación activa. La estación Pase existe siempre." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
       <ListBox x:Name="StationList" ItemsSource="{Binding Organization.Stations}" SelectedItem="{Binding Organization.SelectedStation}"/>
      </DockPanel>
      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><Border Style="{StaticResource Banner}" VerticalAlignment="Top" Margin="0,0,4,0"><StackPanel>

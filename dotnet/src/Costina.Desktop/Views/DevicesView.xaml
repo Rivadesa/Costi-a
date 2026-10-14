@@ -55,7 +55,7 @@
    <Expander Header="Dirección para los dispositivos y solicitudes recibidas" Margin="0,14,0,0">
     <StackPanel Margin="0,6,0,0">
      <TextBlock Text="Dirección para los dispositivos" Style="{StaticResource FieldLabel}"/>
-     <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se propone sola y se recuerda en este equipo."/>
+     <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre de su certificado. Se propone sola y se recuerda en este equipo."/>
      <TextBlock Text="Solicitudes recibidas" Style="{StaticResource Section}" Margin="0,10,0,4"/>
      <TextBlock Text="Solo se aprueba la solicitud del asistente abierto, que sabe qué va a ser el dispositivo. Cualquier otra solo puede denegarse." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
      <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="100" Margin="0,4,0,4"/>

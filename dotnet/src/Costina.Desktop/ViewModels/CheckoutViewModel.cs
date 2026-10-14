@@ -8,6 +8,10 @@ namespace Costina.Desktop.ViewModels;
 // La habilitacion sale de las affordances del AccountDto; el importe se valida como formato,
 // nunca como regla de negocio (el servidor decide precios y saldos). Un comando solo se construye
 // desde la cuenta leida correctamente que coincide con la seleccionada: nunca se cobra en otra.
+// C1: el desplegable de cuentas muestra el nombre de la mesa y el estado en castellano (AccountRow); la seleccion sigue siendo la
+// cuenta leida (SelectedAccount). Las ordenes pendientes se describen por la mesa, no por el identificador del servicio.
+public sealed record AccountRow(AccountChoice Choice, string Text);
+
 public sealed partial class CheckoutViewModel(ShellViewModel shell) : ObservableObject
 {
     private bool rendering;
@@ -15,6 +19,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     private int generation;
 
     [ObservableProperty] private AccountChoice[] accounts = [];
+    [ObservableProperty] private AccountRow[] accountItems = [];
     [ObservableProperty] private AccountChoice? selectedAccount;
     [ObservableProperty] private Versioned<AccountDto>? account;
     [ObservableProperty] private ChargeDto[] charges = [];
@@ -32,6 +37,19 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     private Versioned<AccountDto>? Context =>
         Account is not null && SelectedAccount?.ServiceId == Account.Data.ServiceId ? Account : null;
     private bool Allowed(string action) => Context?.Data.Actions?.Contains(action) == true;
+
+    partial void OnAccountsChanged(AccountChoice[] value) => AccountItems = value.Select(a => new AccountRow(a, $"{shell.Names.Table(a.TableId)} · {a.StateLabel}")).ToArray();
+    // Totales y estado salen siempre de la cuenta leida: nunca se escriben a mano.
+    partial void OnAccountChanged(Versioned<AccountDto>? value)
+    {
+        if (value is null) return;
+        var a = value.Data;
+        Totals = $"Total {Money.Format(a.TotalCents)}  ·  Pagado {Money.Format(a.PaidCents)}  ·  Pendiente {Money.Format(a.BalanceCents)}  ·  Pagado de más {Money.Format(a.CreditCents)}  ·  Devuelto {Money.Format(a.RefundedCents)}";
+        AccountState = $"Estado: {a.StateLabel} · {a.CoverageLabel}. {Labels.Plural(a.Payments.Length, "pago", "pagos")} y {Labels.Plural(a.Refunds?.Length ?? 0, "devolución", "devoluciones")} de prueba. Cerrar la cuenta no termina el servicio."
+            + (a.State == "Closed" ? " CUENTA CERRADA: para admitir cambios, reábrela con motivo desde este puesto." : "");
+    }
+    // Para las ordenes pendientes: "cuenta de Mesa 1" (Context garantiza que la cuenta seleccionada es la leida).
+    private string Where() => "cuenta de " + shell.Names.Table(SelectedAccount?.TableId);
 
     internal void Sync()
     {
@@ -92,12 +110,8 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         {
             Accounts = choices; SelectedAccount = choices.FirstOrDefault(a => a.ServiceId == accountServiceId);
             Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id + "/" + p.PresentationId == previousProduct) ?? catalog.FirstOrDefault();
-            Account = current; Charges = current?.Data.Charges ?? [];
-            Totals = current is null ? "Sin cuenta seleccionada"
-                : $"Total {Money.Format(current.Data.TotalCents)}  ·  Pagado {Money.Format(current.Data.PaidCents)}  ·  Pendiente {Money.Format(current.Data.BalanceCents)}  ·  Crédito {Money.Format(current.Data.CreditCents)}  ·  Devuelto {Money.Format(current.Data.RefundedCents)}";
-            AccountState = current is null ? ""
-                : $"Estado {current.Data.State}. {current.Data.Payments.Length} pagos y {current.Data.Refunds?.Length ?? 0} devoluciones de prueba. Cerrar la cuenta no termina el servicio."
-                  + (current.Data.State == "Closed" ? " CUENTA CERRADA: para admitir cambios, reábrela con motivo desde este puesto." : "");
+            Account = current; Charges = current?.Data.Charges ?? [];   // OnAccountChanged compone totales y estado
+            if (current is null) { Totals = "Sin cuenta seleccionada"; AccountState = ""; }
         }
         finally { rendering = false; }
         Sync();
@@ -122,7 +136,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         if (!int.TryParse(Quantity, out var count) || count < 1) throw new ArgumentException("Introduce una cantidad positiva.");
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/add-product",
             new { expectedVersion = context.Version, productId = SelectedProduct!.Id, presentationId = SelectedProduct.PresentationId, quantity = count },   // E3: presentacion vendida
-            "Añadir consumo del catálogo · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+            "Añadir consumo del catálogo · " + Where());
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: consumo añadido.";
     });
@@ -135,7 +149,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         var cents = Money.Parse(Amount);
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/payment",
             new { expectedVersion = context.Version, paymentId = Guid.NewGuid().ToString("N"), method = Method, amountCents = cents },
-            "Registrar pago de prueba · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+            "Registrar pago de prueba · " + Where());
         Amount = "";
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: pago de prueba registrado.";
@@ -150,7 +164,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         if (string.IsNullOrWhiteSpace(Note)) throw new ArgumentException("Indica el motivo de la reapertura.");
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/reopen",
             new { expectedVersion = context.Version, reason = Note.Trim() },
-            "Reabrir cuenta con motivo · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+            "Reabrir cuenta con motivo · " + Where());
         Note = "";
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: cuenta reabierta; vuelve a admitir cambios.";
@@ -166,7 +180,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         if (string.IsNullOrWhiteSpace(Note)) throw new ArgumentException("Indica el motivo de la devolución.");
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/refund",
             new { expectedVersion = context.Version, refundId = Guid.NewGuid().ToString("N"), method = Method, amountCents = cents, reason = Note.Trim() },
-            "Devolver crédito · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+            "Devolver lo pagado de más · " + Where());
         Amount = ""; Note = "";
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: devolución registrada.";
@@ -178,7 +192,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     {
         var context = Require();
         await shell.Api!.SendAsync("checkout/services/" + ApiClient.Segment(context.Data.ServiceId) + "/commands/close",
-            new { expectedVersion = context.Version }, "Cerrar cuenta saldada · cuenta " + context.Data.ServiceId[..Math.Min(8, context.Data.ServiceId.Length)]);
+            new { expectedVersion = context.Version }, "Cerrar cuenta saldada · " + Where());
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: cuenta cerrada.";
     });

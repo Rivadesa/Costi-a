@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -153,7 +154,7 @@ internal static class Program
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         window.UpdateLayout();
         if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("FiscalMenu")).Visibility!=Visibility.Visible) throw new Exception("The main desk sees every menu.");
-        if(!window.Shell.ConnectionText.Contains("puesto principal")) throw new Exception("The status bar states who is connected.");
+        if(!window.Shell.ConnectionText.Contains("Responsable")) throw new Exception("The status bar states who is connected: "+window.Shell.ConnectionText);
         if(organization.SelectedZone?.Id!="sala"||organization.ZoneName!="Sala"||organization.Tables.Length!=3) throw new Exception("Rendering must select the first zone and fill its form and tables.");
         if(!organization.SaveZoneCommand.CanExecute(null)||!organization.ToggleZoneCommand.CanExecute(null)) throw new Exception("A selected zone is editable by the main desk.");
         organization.SelectedTable=organization.Tables[2];
@@ -237,9 +238,10 @@ internal static class Program
         var devicesView=(FrameworkElement)window.FindName("DevicesView");
         if(devicesView.FindName("ApproveStationBox") is not null||devicesView.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
         if(!center.StartWaiterCommand.CanExecute(null)||!center.StartKitchenCommand.CanExecute(center.KitchenStations[1])||center.CreateRoomStationCommand.CanExecute(null)) throw new Exception("With a room station the waiter assistant starts and 'create Sala' is not offered.");
-        if(center.Rows.Length!=2||center.Rows[0].Group!="Comanderos"||center.Rows[1].Group!="Pantalla de cocina · Cocina fría"||!center.ListSummary.Contains("1 quitados (ocultos)")) throw new Exception("The list groups active devices and hides the removed ones: "+center.ListSummary);
+        if(center.Rows.Length!=2||center.Rows[0].Group!="Comanderos"||center.Rows[1].Group!="Pantalla de cocina · Cocina fría"||!center.ListSummary.Contains("1 quitado (oculto).")) throw new Exception("The list groups active devices and hides the removed ones: "+center.ListSummary);
         center.ShowRevoked=true;
-        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("quitado",StringComparison.Ordinal)) throw new Exception("Removed devices appear on demand, stated in text.");
+        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)||center.Rows[2].Group!="Pantalla de cocina · Cocina caliente") throw new Exception("Removed devices appear on demand, stated in text.");
+        if(!center.Rows[0].Text.Contains("· Conectado · aprobado por jefa el ")) throw new Exception("Device rows state presence in words and the approver without 'user:': "+center.Rows[0].Text);
         center.ShowRevoked=false;
         center.BeginAssistant("kitchen",center.KitchenStations[1]);
         if(!center.HasAssistant||center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.StartWaiterCommand.CanExecute(null)) throw new Exception("One assistant at a time, with its intent in the title.");
@@ -288,7 +290,7 @@ internal static class Program
             ||Costina.Client.AuthClient.Classify(new Costina.Client.ApiError(502,"health_unavailable"))!=Costina.Client.StartupProblem.Other) throw new Exception("Startup failures are classified: certificate (never retried), unreachable (wait), other.");
         var levels=window.Shell;
         levels.Session=new("service","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]); window.UpdateLayout();
-        if(!levels.IsStation||levels.IsResponsible||levels.LevelText!="Puesto"||!levels.ConnectionText.StartsWith("Puesto:",StringComparison.Ordinal)) throw new Exception("A device session is the Puesto level: "+levels.ConnectionText);
+        if(!levels.IsStation||levels.IsResponsible||levels.LevelText!="Puesto"||!levels.ConnectionText.StartsWith("Puesto: pc-principal · Puesto de sala · Sala 1 · ",StringComparison.Ordinal)) throw new Exception("A device session is the Puesto level: "+levels.ConnectionText);
         if(((MenuItem)window.FindName("CheckoutMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("ErpMenu")).Visibility!=Visibility.Visible) throw new Exception("Every menu is visible at the Puesto level (decision 3: nothing hidden).");
         if(!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("CheckoutTab")||!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("DevicesTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("ServiceTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("HomeTab")) throw new Exception("Caja, configuracion, ERP and devices are the responsible's; dining and home are not.");
         if(levels.LoginCardVisible||levels.ElevationRequested) throw new Exception("Connected as Puesto, no login card until something sensitive is asked.");
@@ -332,7 +334,8 @@ internal static class Program
         var sampleOffers=new Costina.Client.OfferChoice[]{new("LAB-TASTING","Menú de ensayo","tasting",[]),new("LAB-DAILY","Menú del día de ensayo","set-menu",[new("primeros","Primeros",[new("ensalada","Ensalada de la huerta"),new("sopa","Sopa del día")]),new("segundos","Segundos",[new("pescado","Pescado del día")])]),
             new("LAB-CARTA","Carta de ensayo","a-la-carte",[new("entrantes","Entrantes",[],[new("croquetas","unit","Croquetas de la casa","Ración")])])};
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,null,sampleOffers));
-        if(window.Shell.Service.Offers.Length!=3||window.Shell.Service.SelectedOffer?.Id!="LAB-TASTING"||window.Shell.Service.SelectedOffer.ToString()!="Menú de ensayo · degustación") throw new Exception("Offers fill the open form.");
+        if(window.Shell.Service.Offers.Length!=3||window.Shell.Service.SelectedOffer?.Id!="LAB-TASTING"||window.Shell.Service.SelectedOffer.ToString()!="Menú de ensayo · Degustación") throw new Exception("Offers fill the open form.");
+        if(window.Shell.Service.Offers[2].ToString()!="Carta de ensayo · Carta") throw new Exception("A carta is offered as 'Carta', never as its code: "+window.Shell.Service.Offers[2]);   // C1
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,[new("LAB-TASTING","Menú de ensayo")],null));
         if(window.Shell.Service.Offers.Length!=1||window.Shell.Service.Offers[0].Kind!="tasting") throw new Exception("A pre-E4a server with only menus still fills the open form.");
         window.Shell.Service.ApplyConfiguration(new Costina.Client.Configuration(window.Shell.Service.Tables,null,sampleOffers));
@@ -354,26 +357,44 @@ internal static class Program
             new("LAB-DAILY","Menú del día de ensayo","set-menu","menu-lab-daily","lunch","2026-09-01","2026-12-31",31,1,true,[new("primeros","Primeros",0,true,[new("LAB-DAILY","primeros","ensalada","Ensalada de la huerta","cold",null,0,true),new("LAB-DAILY","primeros","sopa","Sopa del día","hot",null,1,false)])]),
             new("VERANO","Degustación de verano","tasting","menu-verano","dinner",null,null,96,2,false,[]),
             new("LAB-CARTA","Carta de ensayo","a-la-carte",null,"any",null,null,127,3,true,[new("entrantes","Entrantes",0,true,[],[new("croquetas","unit","Croquetas de la casa","Ración","cold",0,true)])])};
+        offersView.ItemChoices=[new Costina.Client.ProductChoice("menu-lab-tasting","Menú de ensayo","Por persona",4500,"person","Menús","general"),new Costina.Client.ProductChoice("croquetas","Croquetas de la casa","Ración",900,"unit","Entrantes","general")];
         offersView.Render(sampleOfferDtos,sampleOrganization.Stations);
+        if(offersView.OfferProductText!="Se vende por persona como el producto «Menú de ensayo»: su precio se fija en ERP › Catálogo y tarifas.") throw new Exception("The menu product is named, not coded: "+offersView.OfferProductText);   // C1
         if(offersView.Offers.Length!=4||offersView.SelectedOffer?.Offer.Id!="LAB-TASTING"||offersView.Courses.Length!=2||offersView.SelectedCourse?.Course.Id!="p1"||offersView.Dishes.Length!=2||offersView.IsCarte) throw new Exception("Rendering selects the first offer and lists its courses and dishes.");
         offersView.SelectedOffer=offersView.Offers[3];
-        if(!offersView.IsCarte||offersView.Items.Length!=1||offersView.Items[0].Item.StationId!="cold"||!offersView.OfferProductText.Contains("Carta libre")) throw new Exception("An a la carte offer lists its items per group.");
+        if(!offersView.IsCarte||offersView.Items.Length!=1||offersView.Items[0].Item.StationId!="cold"||!offersView.OfferProductText.StartsWith("Carta: sin producto-menú",StringComparison.Ordinal)) throw new Exception("An a la carte offer lists its items per group.");
+        if(offersView.Items[0].ToString()!="Croquetas de la casa · Ración · Cocina fría · activo"||offersView.Offers[3].ToString()!="Carta de ensayo · Carta · activa"||offersView.OfferKind!="a-la-carte") throw new Exception("Offer rows name kind and station in Spanish: "+offersView.Items[0]);
+        // C1: la ficha de oferta ofrece "Carta" (codigo a-la-carte); una carta nueva no pide precio ni producto-menu.
+        var offerKindBox=(ComboBox)((FrameworkElement)window.FindName("OffersView")).FindName("OfferKindBox");
+        if(!offerKindBox.Items.OfType<ComboBoxItem>().Any(i=>i.Tag as string=="a-la-carte"&&i.Content as string=="Carta")) throw new Exception("The offer kind dropdown offers 'Carta'.");
+        offersView.StartOfferCommand.Execute(null); offersView.OfferKind="a-la-carte";
+        if(offersView.NewMenuOffer||!offersView.OfferProductText.StartsWith("Carta:",StringComparison.Ordinal)) throw new Exception("A new carta asks for no menu product.");
+        offersView.OfferKind="set-menu";
+        if(!offersView.NewMenuOffer||offersView.OfferProductText.StartsWith("Carta:",StringComparison.Ordinal)) throw new Exception("A new menu asks for its price or product.");
         offersView.SelectedOffer=offersView.Offers[0];
         offersView.SelectedOffer=offersView.Offers[1];
         if(offersView.OfferKind!="set-menu"||offersView.OfferService!="lunch"||offersView.OfferValidFrom!="2026-09-01"||offersView.OfferDays[5]||!offersView.OfferDays[0]||offersView.Weekdays!=31) throw new Exception("Selecting an offer fills its form, weekdays included.");
         offersView.SelectedDish=offersView.Dishes[1];
-        if(offersView.DishStationId!="hot"||offersView.SelectedDish.StateLabel!="desactivado") throw new Exception("Selecting a dish fills its form and states its status in text.");
+        if(offersView.DishStationId!="hot"||offersView.SelectedDish.StateLabel!="desactivado"||offersView.DishFormTitle!="Plato: Sopa del día"||offersView.SelectedDish.ToString()!="Sopa del día · Cocina caliente · desactivado") throw new Exception("Selecting a dish fills its form and states its status in text: "+offersView.SelectedDish);
         offersView.StartDishCommand.Execute(null);
         if(!offersView.NewDish||offersView.DishId!=""||offersView.DishStationId!="cold") throw new Exception("A new dish proposes the first active kitchen station.");
         window.Shell.Busy=true;
         if(offersView.SaveOfferCommand.CanExecute(null)||window.Shell.Service.ChooseCommand.CanExecute(null)) throw new Exception("Busy must gate offer commands and choices.");
         window.Shell.Busy=false; offersView.SelectedOffer=offersView.Offers[0]; offersView.SelectedCourse=offersView.Courses[0]; offersView.SelectedDish=offersView.Dishes[0];
-        window.Shell.Service.Courses=[new Costina.Client.CourseDto("c1","Aperitivos","Ready",null,null,null,null,[prep],["serve"])]; window.Shell.Service.SelectedCourse=window.Shell.Service.Courses[0];
-        window.Shell.Service.Preparations=[prep]; window.Shell.Service.ServiceTitle="Mesa M1 · 2 personas · En servicio";
+        // C1: el titulo de la mesa, su fila en la lista y los totales de la cuenta salen de lo leido; ya no se escriben a mano (asi la
+        // captura demuestra el castellano y los nombres de mesa en lugar de taparlos).
+        window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);
+        var servedAt=new DateTimeOffset(2026,10,14,11,5,0,TimeSpan.Zero);
+        window.Shell.Service.Courses=[new Costina.Client.CourseDto("c0","Bienvenida","Served",servedAt,servedAt,servedAt,null,[]),new Costina.Client.CourseDto("c1","Aperitivos","Ready",null,null,null,null,[prep],["serve"])]; window.Shell.Service.SelectedCourse=window.Shell.Service.Courses[1];
+        window.Shell.Service.Preparations=[prep];
+        if(window.Shell.Service.ServiceTitle!="Mesa 1 · 2 personas · En servicio"||window.Shell.Service.BoardItems.Single().Text!="Mesa 1 · 2 personas · En servicio") throw new Exception("The table is named and its state is in Spanish: "+window.Shell.Service.ServiceTitle);
+        if(window.Shell.Service.Courses[1].StateLabel!="Listo para servir"||window.Shell.Service.Courses[0].ServedAtLabel!=servedAt.ToLocalTime().ToString("HH:mm")||prep.StateLabel!="Por empezar"||prep.GuestLabel!="Toda la mesa") throw new Exception("Course and preparation states, guest and served time (local) in Spanish.");
         window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400,"bottle","Bebidas","general"),new Costina.Client.ProductChoice("wine","Vino de ensayo","Copa",950,"glass","Vinos","general")]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
         window.Shell.Checkout.Accounts=[new Costina.Client.AccountChoice("s1","M1","Open")]; window.Shell.Checkout.SelectedAccount=window.Shell.Checkout.Accounts[0];
         window.Shell.Checkout.Charges=[new("ch1","Menú de ensayo",2,15000,false,null,30000),new("ch2","Agua mineral · Botella",1,400,false,null,400)];
-        window.Shell.Checkout.Totals="Total 304,00 € · Pagado 0,00 € · Pendiente 304,00 €";
+        window.Shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",30400,0,30400,0,"Unpaid",window.Shell.Checkout.Charges,[],["add-product","payment"],[]));
+        if(!window.Shell.Checkout.Totals.StartsWith("Total 304,00 €",StringComparison.Ordinal)||!window.Shell.Checkout.Totals.Contains("Pagado de más 0,00 €")||!window.Shell.Checkout.AccountState.StartsWith("Estado: Abierta · Sin pagar. 0 pagos y 0 devoluciones",StringComparison.Ordinal)
+            ||window.Shell.Checkout.AccountItems.Single().Text!="Mesa 1 · Abierta") throw new Exception("The account is named by its table and its totals and state are composed from the read: "+window.Shell.Checkout.AccountState);
         window.Shell.Status="Datos leídos del servidor. Las acciones se habilitan según lo que el servidor anuncia.";
         window.Shell.Home.Visible=true;
         foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
@@ -381,6 +402,9 @@ internal static class Program
             tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout();
             // Las columnas "*" del DataGrid se reparten en una pasada diferida: se vacia la cola del despachador antes de capturar.
             window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+            // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista (las estaciones aun salen por su codigo: C2).
+            var leaked=Texts(window).Where(t=>RawValue.IsMatch(t)).ToArray();
+            if(leaked.Length>0) throw new Exception(tab+" shows raw server values: "+string.Join(" | ",leaked));
             var shot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); shot.Render(window);
             var shotEncoder=new PngBitmapEncoder(); shotEncoder.Frames.Add(BitmapFrame.Create(shot));
             using var shotFile=File.Create("artifacts/desktop/"+file); shotEncoder.Save(shotFile);
@@ -392,5 +416,20 @@ internal static class Program
         using(var file=File.Create("artifacts/desktop/startup.png")) encoder.Save(file);
         File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
         window.Close();app.Shutdown();Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
+    }
+
+    // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra
+    // suelta: dentro de un codigo con guiones (el producto «menu-lab-tasting») no es un estado.
+    private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
+    // Todo el texto pintado (TextBlock) bajo un elemento del arbol visual.
+    private static IEnumerable<string> Texts(DependencyObject root)
+    {
+        var pending=new Stack<DependencyObject>(); pending.Push(root);
+        while(pending.Count>0)
+        {
+            var node=pending.Pop();
+            if(node is TextBlock{Text:{Length:>0} text}) yield return text;
+            for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) pending.Push(VisualTreeHelper.GetChild(node,i));
+        }
     }
 }

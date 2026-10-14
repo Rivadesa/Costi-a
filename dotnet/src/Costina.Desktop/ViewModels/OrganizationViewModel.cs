@@ -31,9 +31,10 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     public bool HasZones => Zones.Length > 0;
     public bool HasTables => Tables.Length > 0;
     public bool HasStations => Stations.Length > 0;
-    public string ZoneFormTitle => NewZone ? "Nueva sala" : SelectedZone is null ? "Selecciona una sala" : "Sala " + SelectedZone.Id;
-    public string TableFormTitle => NewTable ? "Nueva mesa" : SelectedTable is null ? "Selecciona una mesa" : "Mesa " + SelectedTable.Id;
-    public string StationFormTitle => NewStation ? "Nueva estación" : SelectedStation is null ? "Selecciona una estación" : "Estación " + SelectedStation.Id;
+    // C1: titulos por el nombre; el codigo solo en el campo "Código" de la ficha.
+    public string ZoneFormTitle => NewZone ? "Nueva sala" : SelectedZone is null ? "Selecciona una sala" : "Sala: " + SelectedZone.Name;
+    public string TableFormTitle => NewTable ? "Nueva mesa" : SelectedTable is null ? "Selecciona una mesa" : "Mesa: " + SelectedTable.Name;
+    public string StationFormTitle => NewStation ? "Nueva estación" : SelectedStation is null ? "Selecciona una estación" : "Estación: " + SelectedStation.Name;
     public bool ZoneEditable => shell.Writable && shell.IsMain && (NewZone || SelectedZone is not null);
     public bool TableEditable => shell.Writable && shell.IsMain && (NewTable || SelectedTable is not null);
     public bool StationEditable => shell.Writable && shell.IsMain && (NewStation || SelectedStation is not null);
@@ -76,7 +77,7 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
             SelectedTable = Tables.FirstOrDefault(t => t.Id == table);
             SelectedStation = Stations.FirstOrDefault(s => s.Id == station);
             var activeTables = Zones.Sum(z => z.Tables.Count(t => t.Active));
-            Summary = $"{Zones.Count(z => z.Active)} salas activas · {activeTables} mesas activas · {Stations.Count(s => s.Active)} estaciones activas";
+            Summary = $"{Labels.Plural(Zones.Count(z => z.Active), "sala activa", "salas activas")} · {Labels.Plural(activeTables, "mesa activa", "mesas activas")} · {Labels.Plural(Stations.Count(s => s.Active), "estación activa", "estaciones activas")}";
         }
         finally { rendering = false; }
         if (!NewZone) FillZoneForm(); if (!NewTable) FillTableForm(); if (!NewStation) FillStationForm();
@@ -139,26 +140,26 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     {
         var id = Code(NewZone ? ZoneId : SelectedZone!.Id); var name = ZoneName.Trim(); var sort = Number(ZoneSort, "Orden", 0, 9999);
         if (name.Length == 0) throw new ArgumentException("El nombre de la sala es obligatorio.");
-        return Command(NewZone ? "zone-create" : "zone-update", new { id, name, sort }, (NewZone ? "Crear sala " : "Guardar sala ") + id);
+        return Command(NewZone ? "zone-create" : "zone-update", new { id, name, sort }, (NewZone ? "Crear sala " : "Guardar sala ") + name);
     }
     private bool CanToggleZone() => shell.Writable && shell.IsMain && SelectedZone is not null && !NewZone;
     [RelayCommand(CanExecute = nameof(CanToggleZone))]
     private Task ToggleZone() => Command(SelectedZone!.Active ? "zone-deactivate" : "zone-reactivate", new { id = SelectedZone.Id },
-        (SelectedZone.Active ? "Desactivar sala " : "Reactivar sala ") + SelectedZone.Id);
+        (SelectedZone.Active ? "Desactivar sala " : "Reactivar sala ") + SelectedZone.Name);
 
     private bool CanSaveTable() => TableEditable;
     [RelayCommand(CanExecute = nameof(CanSaveTable))]
     private Task SaveTable()
     {
         var id = Code(NewTable ? TableId : SelectedTable!.Id); var name = TableName.Trim();
-        var capacity = Number(TableCapacity, "Aforo", 1, 60); var sort = Number(TableSort, "Orden", 0, 9999); var zoneId = Code(TableZoneId);
+        var capacity = Number(TableCapacity, "Plazas", 1, 60); var sort = Number(TableSort, "Orden", 0, 9999); var zoneId = Code(TableZoneId);
         if (name.Length == 0) throw new ArgumentException("El nombre de la mesa es obligatorio.");
-        return Command(NewTable ? "table-create" : "table-update", new { id, name, capacity, zoneId, sort }, (NewTable ? "Crear mesa " : "Guardar mesa ") + id);
+        return Command(NewTable ? "table-create" : "table-update", new { id, name, capacity, zoneId, sort }, (NewTable ? "Crear mesa " : "Guardar mesa ") + name);
     }
     private bool CanToggleTable() => shell.Writable && shell.IsMain && SelectedTable is not null && !NewTable;
     [RelayCommand(CanExecute = nameof(CanToggleTable))]
     private Task ToggleTable() => Command(SelectedTable!.Active ? "table-deactivate" : "table-reactivate", new { id = SelectedTable.Id },
-        (SelectedTable.Active ? "Desactivar mesa " : "Reactivar mesa ") + SelectedTable.Id);
+        (SelectedTable.Active ? "Desactivar mesa " : "Reactivar mesa ") + SelectedTable.Name);
 
     private bool CanSaveStation() => StationEditable;
     [RelayCommand(CanExecute = nameof(CanSaveStation))]
@@ -166,10 +167,10 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     {
         var id = Code(NewStation ? StationId : SelectedStation!.Id); var name = StationName.Trim(); var sort = Number(StationSort, "Orden", 0, 9999);
         if (name.Length == 0) throw new ArgumentException("El nombre de la estación es obligatorio.");
-        return Command(NewStation ? "station-create" : "station-update", new { id, name, kind = StationKind, sort }, (NewStation ? "Crear estación " : "Guardar estación ") + id);
+        return Command(NewStation ? "station-create" : "station-update", new { id, name, kind = StationKind, sort }, (NewStation ? "Crear estación " : "Guardar estación ") + name);
     }
     private bool CanToggleStation() => shell.Writable && shell.IsMain && SelectedStation is not null && !NewStation && SelectedStation.Id != "pase";
     [RelayCommand(CanExecute = nameof(CanToggleStation))]
     private Task ToggleStation() => Command(SelectedStation!.Active ? "station-deactivate" : "station-reactivate", new { id = SelectedStation.Id },
-        (SelectedStation.Active ? "Desactivar estación " : "Reactivar estación ") + SelectedStation.Id);
+        (SelectedStation.Active ? "Desactivar estación " : "Reactivar estación ") + SelectedStation.Name);
 }

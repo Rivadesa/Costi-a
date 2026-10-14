@@ -41,7 +41,7 @@
        <TextBlock DockPanel.Dock="Bottom" Text="Un producto se vende siempre por una presentación (botella, copa, ración…). Sin precio vigente en la tarifa general no se vende." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
        <ListBox x:Name="PresentationList" ItemsSource="{Binding Catalog.Presentations}" SelectedItem="{Binding Catalog.SelectedPresentation}"/>
       </DockPanel>
-      <TextBlock DockPanel.Dock="Bottom" Text="No hay productos que mostrar: cambia la categoría o la búsqueda, crea uno con «＋ Producto» o importa un CSV con «Costina.Server import-catalog»." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding Catalog.HasProducts, Converter={StaticResource NotBool2Vis}}"/>
+      <TextBlock DockPanel.Dock="Bottom" Text="No hay productos que mostrar: cambia la categoría o la búsqueda, crea uno con «＋ Producto» o importa el catálogo desde un fichero en el equipo servidor." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding Catalog.HasProducts, Converter={StaticResource NotBool2Vis}}"/>
       <ListBox x:Name="ProductList" ItemsSource="{Binding Catalog.Products}" SelectedItem="{Binding Catalog.SelectedProduct}"/>
      </DockPanel>
      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
@@ -99,7 +99,7 @@
        <WrapPanel Margin="0,8,0,0"><Button Content="Guardar tarifa" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveTariffCommand}"/>
         <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleTariffCommand}"/></WrapPanel>
       </StackPanel></Border>
-      <TextBlock DockPanel.Dock="Bottom" Text="La tarifa «general» existe siempre. Cada sala puede usar otra (Configuración › Salas): sin precio en ella se aplica la general." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+      <TextBlock DockPanel.Dock="Bottom" Text="La tarifa General existe siempre. Una sala puede usar otra tarifa: sin precio en ella se aplica la General." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
       <ListBox x:Name="TariffList" ItemsSource="{Binding Catalog.Tariffs}" SelectedItem="{Binding Catalog.SelectedTariff}"/>
      </DockPanel>
      <DockPanel Grid.Row="2">

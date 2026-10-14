@@ -19,7 +19,7 @@
   <WrapPanel Margin="0,4,0,12">
    <Button x:Name="HomeDiningButton" Content="Comedor y cocina" Command="NavigationCommands.GoToPage" CommandParameter="ServiceTab" Style="{StaticResource Primary}" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Cuenta / Caja" Command="NavigationCommands.GoToPage" CommandParameter="CheckoutTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
-   <Button Content="Configuración" Command="NavigationCommands.GoToPage" CommandParameter="OrganizationTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+   <Button Content="Salas, mesas y estaciones" Command="NavigationCommands.GoToPage" CommandParameter="OrganizationTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Catálogo y tarifas" Command="NavigationCommands.GoToPage" CommandParameter="CatalogTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Oferta: cartas y menús" Command="NavigationCommands.GoToPage" CommandParameter="OffersTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button x:Name="HomeDevicesButton" Content="Dispositivos" Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>

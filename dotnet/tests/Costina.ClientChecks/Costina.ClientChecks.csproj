@@ -1,1 +1,3 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Costina.Client/Costina.Client.csproj" /></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Costina.Client/Costina.Client.csproj" />
+<!-- C1: los enums del dominio dan TODOS los valores que el servidor puede enviar; el vocabulario (Labels) se comprueba contra ellos. -->
+<ProjectReference Include="../../src/Costina.Core.Domain/Costina.Core.Domain.csproj" /><ProjectReference Include="../../src/Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" /></ItemGroup></Project>

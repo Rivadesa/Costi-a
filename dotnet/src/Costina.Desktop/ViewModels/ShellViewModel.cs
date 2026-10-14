@@ -37,6 +37,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public OrganizationViewModel Organization { get; }   // E2: Configuracion (solo main)
     public CatalogViewModel Catalog { get; }             // E3: ERP > Catalogo y tarifas (solo main)
     public OffersViewModel Offers { get; }               // E4a: ERP > Oferta: cartas y menus (solo main)
+    // C1: nombres de mesa de la configuracion leida al conectar (Service.ApplyConfiguration); el codigo queda de respaldo.
+    public Names Names => Service.Names;
 
     [ObservableProperty] private string endpoint = "http://127.0.0.1:5088";
     [ObservableProperty] private string username = "";
@@ -83,18 +85,26 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool HasBlocked => Blocked is not null;
     public bool CanOpen => Session?.Actions?.Contains("open") == true;
     public bool TabsEnabled => Connected && !Busy;
-    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales).
-    public string ConnectionText => Session is null ? "Sin conexión" : $"{LevelText}: {Session.Actor ?? Session.Role} · {Session.Role switch { "main" => "puesto principal", "service" => "sala", "kitchen" => "cocina", var r => r }} · {Endpoint}" + (Session.Demo ? " · DEMO" : "");
+    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales). C1: el actor sin user:/device:
+    // y el rol con el vocabulario comun (Responsable, Puesto de sala, Pantalla de cocina), sin repetir el nivel.
+    public string ConnectionText
+    {
+        get
+        {
+            if (Session is null) return "Sin conexión";
+            var role = Labels.SessionRole(Session.Role); var actor = Labels.Actor(Session.Actor);
+            string?[] parts = [$"{LevelText}: {(actor.Length > 0 ? actor : role)}", actor.Length > 0 && role != LevelText ? role : null,
+                Session.StationName, Endpoint, Session.Demo ? "DEMO" : null];
+            return string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+        }
+    }
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     // Tarjeta de entrada: sin conexion (y sin arrancar), o cuando una vista sensible pide al responsable.
     public bool LoginCardVisible => (!Connected && !Booting) || RequestedView is not null;
     public string LoginTitle => RequestedView is null ? "Entrar como responsable" : $"Entrar como responsable para abrir {ViewTitle(RequestedView)}";
-    public static string ViewTitle(string view) => view switch
-    {
-        "CheckoutTab" => "Cuenta / Caja", "OrganizationTab" => "Configuración", "CatalogTab" => "Catálogo y tarifas",
-        "OffersTab" => "Oferta: cartas y menús", "DevicesTab" => "Dispositivos", "HomeTab" => "Inicio", _ => view
-    };
+    // C1: el nombre de cada vista sale del vocabulario comun (el mismo de la barra lateral y de los accesos de Inicio).
+    public static string ViewTitle(string view) => Labels.View(view);
     // Lo sensible (caja, configuracion, ERP, dispositivos) exige a una persona identificada; el servidor lo impone ademas (403).
     public static bool RequiresResponsible(string view) => view is "CheckoutTab" or "OrganizationTab" or "CatalogTab" or "OffersTab" or "DevicesTab";
     public string PendingText => Pending is null ? "" :
@@ -134,7 +144,9 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             Status = e switch
             {
-                ApiError a => $"El servidor rechazó o no confirmó la petición: {a.Message}. Actualiza antes de una nueva acción.",
+                // C1: el codigo del rechazo en una frase clara; uno desconocido sale con su codigo entre parentesis y una respuesta
+                // sin codigo reconocible (request_failed: proxy, error interno) con su estado HTTP.
+                ApiError a => Labels.Rejection(a.Code) + (a.Code == "request_failed" ? $" (HTTP {a.Status})" : "") + " Actualiza antes de una nueva acción.",
                 HttpRequestException or TaskCanceledException => "Servidor sin respuesta. Los datos pueden estar desactualizados. Una orden pendiente NO está confirmada.",
                 ArgumentException or InvalidOperationException => e.Message,
                 _ => "No se pudo interpretar la respuesta. Comprueba la versión y actualiza; no dupliques la orden."
@@ -188,7 +200,7 @@ public sealed partial class ShellViewModel : ObservableObject
         if (IsMain && Organization.Visible) await Organization.LoadAsync();
         if (IsMain && Catalog.Visible) await Catalog.LoadAsync();
         if (IsMain && Offers.Visible) await Offers.LoadAsync();
-        ReadTime = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
+        ReadTime = $"Datos leídos del servidor a las {DateTimeOffset.Now:HH:mm:ss}.";
     }
 
     internal Uri ParseEndpoint()
@@ -215,7 +227,7 @@ public sealed partial class ShellViewModel : ObservableObject
                     switch (AuthClient.Classify(e))
                     {
                         case StartupProblem.Certificate:
-                            Status = $"No se puede confiar en el certificado del servidor {uri.Host}. Instala la CA de la instalación en este equipo (LEEME del servidor) o revisa la dirección. No se reintenta.";
+                            Status = $"No se puede confiar en el certificado del servidor {uri.Host}. Instala en este equipo el certificado de la instalación (LÉEME del servidor) o revisa la dirección. No se reintenta.";
                             return;
                         case StartupProblem.Other:
                             Status = $"En {uri} responde algo que no es el motor de Costiña. Revisa la dirección del servidor.";
@@ -311,7 +323,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 {
                     new DpapiDeviceStore(uri).Save(collect.DeviceToken!);
                     Settings.Endpoint = Endpoint.Trim(); Settings.Save();
-                    PairingStatus = $"Puesto emparejado como {collect.Role}/{collect.Station}.";
+                    PairingStatus = $"Emparejado como {Labels.SessionRole(collect.Role ?? "")}.";   // la estacion, por su nombre, al conectar
                     Sync();
                     await Run(() => ConnectWithToken(uri, collect.DeviceToken!, isUserSession: false));
                     return;
@@ -356,8 +368,8 @@ public sealed partial class ShellViewModel : ObservableObject
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
                 : (identity.Demo ? "DEMOSTRACIÓN · DATOS FICTICIOS · " : "") +
-                  (isUserSession ? $"Responsable {identity.Actor ?? identity.Role}: acceso a todos los apartados. Tras {(int)Inactivity.TotalMinutes} minutos sin actividad se vuelve al nivel Puesto."
-                                 : $"Puesto {identity.Actor ?? identity.Role}" + (identity.StationName is { Length: > 0 } s ? $" · {s}" : "") + ": toma comandas. Caja, configuración y dispositivos piden la contraseña del responsable.")
+                  (isUserSession ? $"Responsable {Labels.Actor(identity.Actor)}".TrimEnd() + $": acceso a todos los apartados. Tras {(int)Inactivity.TotalMinutes} minutos sin actividad se vuelve al nivel Puesto."
+                                 : $"Puesto {Labels.Actor(identity.Actor)}".TrimEnd() + (identity.StationName is { Length: > 0 } s ? $" · {s}" : "") + ": toma comandas. Caja, configuración y dispositivos piden la contraseña del responsable.")
                   + $" · servidor {identity.ServerVersion}";
         }
         catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
@@ -374,11 +386,12 @@ public sealed partial class ShellViewModel : ObservableObject
             realtime.Reconnected += () => Application.Current.Dispatcher.BeginInvoke(QueueRefresh);
             realtime.StateChanged += state => Application.Current.Dispatcher.BeginInvoke(() =>
             {
+                // C1: empieza por la etiqueta corta del vocabulario comun; la explicacion va detras.
                 RealtimeState = state switch
                 {
-                    "connected" => "Tiempo real activo: los cambios de otros puestos aparecen sin pulsar Actualizar.",
-                    "reconnecting" => "Tiempo real reconectando. Los datos pueden estar desactualizados.",
-                    _ => "Tiempo real desconectado: se reintenta cada 30 s. Mientras tanto usa Actualizar; los datos no se refrescan solos."
+                    "connected" => Labels.Realtime(state) + ": los cambios de otros puestos aparecen sin pulsar Actualizar.",
+                    "reconnecting" => Labels.Realtime(state) + " Los datos pueden estar desactualizados.",
+                    _ => Labels.Realtime("closed") + " cada 30 s. Mientras tanto usa Actualizar; los datos no se refrescan solos."
                 };
                 if (state == "closed") ScheduleRealtimeRetry(); else realtimeRetry?.Stop();
             });
@@ -387,7 +400,7 @@ public sealed partial class ShellViewModel : ObservableObject
         catch
         {
             await StopRealtime();
-            RealtimeState = "Tiempo real no disponible en este servidor. Usa el botón Actualizar.";
+            RealtimeState = Labels.Realtime("unavailable") + " en este servidor. Usa el botón Actualizar.";
         }
     }
 

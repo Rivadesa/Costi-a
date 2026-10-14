@@ -19,10 +19,13 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // Fila de la lista: el dispositivo, su grupo (comanderos / pantalla por estacion) y si es este mismo PC (corte B).
     public sealed record DeviceRow(DeviceRowDto Device, string Group, bool IsThisPc)
     {
-        public string Text => (IsThisPc ? "ESTE PC · " : "") + $"{Device.Name} · {Device.StateLabel} · aprobado por {Device.ApprovedBy} el {Device.CreatedAt.ToLocalTime():dd/MM/yyyy}";
+        public string Text => (IsThisPc ? "ESTE PC · " : "") + $"{Device.Name} · {Device.StateLabel} · aprobado por {Labels.Actor(Device.ApprovedBy)} el {Device.CreatedAt.ToLocalTime():dd/MM/yyyy}";
     }
 
     private bool rendering;
+    // C1: nombres de TODAS las estaciones leidas (tambien las desactivadas) para rotular los grupos; sin nombre, el codigo.
+    private StationDto[] knownStations = [];   // todas las leidas, tambien las desactivadas (el sondeo vuelve a pintar con ellas)
+    private Names stationNames = Names.Empty;
     private DispatcherTimer? poll;
     private DateTimeOffset? codeExpiresAt;
     private bool addressSuggested;
@@ -91,7 +94,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
-            Stations = []; RoomStations = []; KitchenStations = []; SelectedRoomStation = null; Pending = []; SelectedPending = null;
+            Stations = []; knownStations = []; stationNames = Names.Empty; RoomStations = []; KitchenStations = []; SelectedRoomStation = null; Pending = []; SelectedPending = null;
             Devices = []; Rows = []; SelectedRow = null; ListSummary = ""; RemovalCandidate = null;
             AssistantTitle = ""; AssistantText = ""; IntentRole = ""; IntentStationId = ""; IntentStationName = ""; PairingId = ""; PairingCode = "";
             Recognised = null; DuplicateWarning = ""; codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
@@ -116,7 +119,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
-            Stations = allStations.Where(s => s.Active).ToArray();
+            knownStations = allStations; Stations = allStations.Where(s => s.Active).ToArray(); stationNames = new Names(stations: allStations);
             RoomStations = Stations.Where(s => s.Kind is "Room" or "Bar").ToArray();
             KitchenStations = Stations.Where(s => s.Kind is "Kitchen" or "Pass" or "Bar").ToArray();
             if (SelectedRoomStation is null || RoomStations.All(s => s.Id != SelectedRoomStation.Id)) SelectedRoomStation = RoomStations.FirstOrDefault();
@@ -138,11 +141,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     private void RebuildRows()
     {
         var me = shell.Session?.Actor;   // "device:<nombre>" cuando este PC trabaja como puesto (corte B)
-        var names = Stations.ToDictionary(s => s.Id, s => s.Name, StringComparer.Ordinal);
         string Group(DeviceRowDto d) => d.Role switch
         {
             "service" => "Comanderos",
-            "kitchen" => "Pantalla de cocina · " + (names.TryGetValue(d.Station, out var name) ? name : d.Station),
+            "kitchen" => "Pantalla de cocina · " + stationNames.Station(d.Station),
             "main" => "Dispositivos antiguos con rol principal (quítalos y conéctalos de nuevo)",
             var other => other
         };
@@ -154,9 +156,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         var selected = SelectedRow?.Device.Id; SelectedRow = Rows.FirstOrDefault(r => r.Device.Id == selected);
         if (RemovalCandidate is { } candidate && Rows.All(r => r.Device.Id != candidate.Device.Id)) RemovalCandidate = null;
         var active = Devices.Where(d => d.Active).ToArray();
+        var removed = Devices.Length - active.Length;
         ListSummary = active.Length == 0 ? "Todavía no hay dispositivos conectados."
-            : $"{active.Count(d => d.Role == "service")} comanderos y {active.Count(d => d.Role == "kitchen")} pantallas de cocina activos; {active.Count(d => d.Online)} con conexión ahora."
-              + (Devices.Length > active.Length && !ShowRevoked ? $" {Devices.Length - active.Length} quitados (ocultos)." : "");
+            : $"Activos: {Labels.Plural(active.Count(d => d.Role == "service"), "comandero", "comanderos")} y {Labels.Plural(active.Count(d => d.Role == "kitchen"), "pantalla de cocina", "pantallas de cocina")}; {active.Count(d => d.Online)} con conexión ahora."
+              + (removed > 0 && !ShowRevoked ? " " + Labels.Plural(removed, "quitado (oculto)", "quitados (ocultos)") + "." : "");
     }
     partial void OnShowRevokedChanged(bool value) { if (!rendering) RebuildRows(); }
     partial void OnSelectedRowChanged(DeviceRow? value) { if (!rendering) Sync(); }
@@ -202,7 +205,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             var address = PairingLink.ParseDeviceAddress(DeviceAddress);
             var url = PairingLink.Build(address, PairingCode);
             PairingQr = QrImage.Render(url); PairingUrl = url;
-            QrInfo = "Apunta la cámara del dispositivo a este QR: abre la aplicación con el código ya puesto (el dispositivo debe tener instalada la CA de este servidor).";
+            QrInfo = "Apunta la cámara del dispositivo a este QR: abre la aplicación con el código ya puesto (el dispositivo debe tener instalado el certificado de este servidor).";
             Remember(address);
         }
         catch (ArgumentException e)
@@ -323,7 +326,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         {
             var pendingRows = await shell.Api.GetAsync<PairingPendingDto[]>("auth/pairings/pending");
             if (shell.Busy || !HasAssistant) return;
-            Render(Stations, pendingRows, Devices);
+            Render(knownStations, pendingRows, Devices);
         }
         catch (Exception error) when (error is ApiError or System.Net.Http.HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { }
     }

@@ -1,13 +1,14 @@
 <UserControl x:Class="Costina.Desktop.Views.CheckoutView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
  <!-- C1: Cuenta / Caja (nucleo, solo main).
-      Extraida de MainWindow sin cambios; hereda el DataContext del cascaron (ShellViewModel): los enlaces son los mismos. -->
+      Extraida de MainWindow; hereda el DataContext del cascaron (ShellViewModel). Las cuentas se muestran por el nombre de su mesa
+      y su estado en castellano (AccountItems); la seleccion sigue siendo la cuenta leida. -->
  <Border Style="{StaticResource Card}" Margin="0,4,0,0">
   <DockPanel>
    <StackPanel DockPanel.Dock="Top">
     <TextBlock Text="Cuenta / Caja" Style="{StaticResource PanelTitle}"/>
     <TextBlock Text="Registro operativo de ensayo: no emite facturas ni realiza cargos bancarios. Solo el puesto principal." Style="{StaticResource Subtle}" Margin="0,4,0,12"/>
     <TextBlock Text="Cuenta" Style="{StaticResource FieldLabel}"/>
-    <ComboBox ItemsSource="{Binding Checkout.Accounts}" SelectedItem="{Binding Checkout.SelectedAccount}" Margin="0,0,0,8" MaxWidth="520" HorizontalAlignment="Left" MinWidth="360"/>
+    <ComboBox x:Name="AccountBox" ItemsSource="{Binding Checkout.AccountItems}" DisplayMemberPath="Text" SelectedValuePath="Choice" SelectedValue="{Binding Checkout.SelectedAccount}" Margin="0,0,0,8" MaxWidth="520" HorizontalAlignment="Left" MinWidth="360"/>
     <TextBlock Text="{Binding Checkout.Totals}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource Forest}" Margin="0,4,0,10"/>
     <WrapPanel><ComboBox ItemsSource="{Binding Checkout.Products}" SelectedItem="{Binding Checkout.SelectedProduct}" Width="340"/>
      <TextBox Text="{Binding Checkout.Quantity, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="10,0,10,0"/>
@@ -20,7 +21,7 @@
      <Button Content="Cerrar cuenta saldada" Command="{Binding Checkout.CloseAccountCommand}"/>
     </WrapPanel>
     <WrapPanel Margin="0,6,0,0"><TextBox Text="{Binding Checkout.Note, UpdateSourceTrigger=PropertyChanged}" Width="300" ToolTip="Motivo obligatorio para reabrir o devolver" Margin="0,0,10,0"/>
-     <Button Content="Devolver crédito (importe y motivo)" Style="{StaticResource DangerButton}" Command="{Binding Checkout.RefundCommand}"/>
+     <Button Content="Devolver lo pagado de más (importe y motivo)" Style="{StaticResource DangerButton}" Command="{Binding Checkout.RefundCommand}"/>
      <Button Content="Reabrir cuenta con motivo" Command="{Binding Checkout.ReopenCommand}"/>
     </WrapPanel>
     <TextBlock Text="{Binding Checkout.AccountState}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>

@@ -21,12 +21,15 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
     internal void Sync()
     {
         var session = shell.Session;
+        // C1: rol y actor con el vocabulario comun (Labels): "Responsable: jefa", "Puesto de sala pc-barra · Sala 1"; sin user:/device:.
+        var actor = session is null ? "" : Labels.Actor(session.Actor);
+        var station = session?.StationName is { Length: > 0 } s ? " · " + s : "";
         WhoText = session is null ? "" : session.Role switch
         {
-            "main" => $"Responsable: {session.Actor ?? session.Role}. Acceso a todos los apartados.",
-            "service" => $"Puesto de sala {session.Actor ?? ""}{(session.StationName is { Length: > 0 } s ? " · " + s : "")}: toma comandas. Cobrar, configurar o conectar dispositivos pide la contraseña del responsable.",
-            "kitchen" => $"Pantalla de cocina {session.Actor ?? ""}{(session.StationName is { Length: > 0 } s ? " · " + s : "")}.",
-            var role => role
+            "main" => (actor.Length > 0 ? $"{Labels.SessionRole("main")}: {actor}" : Labels.SessionRole("main")) + ". Acceso a todos los apartados.",
+            "service" => $"{Labels.SessionRole("service")} {actor}".TrimEnd() + station + ": toma comandas. Cobrar, configurar o conectar dispositivos pide la contraseña del responsable.",
+            "kitchen" => $"{Labels.SessionRole("kitchen")} {actor}".TrimEnd() + station + ".",
+            var role => Labels.SessionRole(role)
         };
         if (session is null) { ServerText = ""; CertificateWarning = ""; BackupText = ""; DevicesSummary = ""; }
         else if (ServerText.Length == 0)
@@ -56,9 +59,9 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
             : "Copias de seguridad automáticas desactivadas (laboratorio).";
         var expires = diagnostics.Tls?.ServerCertificateExpiresAt;
         CertificateWarning = expires is null ? "" : expires.Value <= moment
-            ? $"EL CERTIFICADO DEL SERVIDOR CADUCÓ el {expires.Value.ToLocalTime():dd/MM/yyyy}: tablets y puestos adicionales no pueden conectar. Renuévalo con «Costina.Server.exe renew-tls» (D5.3)."
+            ? $"EL CERTIFICADO DEL SERVIDOR CADUCÓ el {expires.Value.ToLocalTime():dd/MM/yyyy}: tablets y puestos adicionales no pueden conectar. Hay que renovarlo en el equipo servidor (LÉEME de la instalación)."
             : expires.Value - moment < CertificateWarningWindow
-            ? $"El certificado del servidor caduca el {expires.Value.ToLocalTime():dd/MM/yyyy} (en {(int)(expires.Value - moment).TotalDays} días). Renuévalo antes con «Costina.Server.exe renew-tls»: si caduca, tablets y puestos adicionales dejan de conectar."
+            ? $"El certificado del servidor caduca el {expires.Value.ToLocalTime():dd/MM/yyyy} (en {Labels.Plural((int)(expires.Value - moment).TotalDays, "día", "días")}). Renuévalo antes en el equipo servidor (LÉEME de la instalación): si caduca, tablets y puestos adicionales dejan de conectar."
             : "";
     }
 
@@ -69,9 +72,7 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         var screens = active.Where(d => d.Role == "kitchen").ToArray();
         var legacy = active.Count(d => d.Role == "main");
         DevicesSummary = active.Length == 0 ? "Ningún dispositivo conectado todavía. Conecta comanderos y pantallas de cocina desde «Dispositivos»."
-            : $"{Plural(waiters.Length, "comandero", "comanderos")} ({waiters.Count(d => d.Online)} con conexión ahora) · {Plural(screens.Length, "pantalla de cocina", "pantallas de cocina")} ({screens.Count(d => d.Online)} con conexión ahora)"
-              + (legacy > 0 ? $" · {Plural(legacy, "dispositivo antiguo con rol principal", "dispositivos antiguos con rol principal")}: conviene quitarlos y conectarlos de nuevo" : "");
+            : $"{Labels.Plural(waiters.Length, "comandero", "comanderos")} ({waiters.Count(d => d.Online)} con conexión ahora) · {Labels.Plural(screens.Length, "pantalla de cocina", "pantallas de cocina")} ({screens.Count(d => d.Online)} con conexión ahora)"
+              + (legacy > 0 ? $" · {Labels.Plural(legacy, "dispositivo antiguo con rol principal", "dispositivos antiguos con rol principal")}: conviene quitarlos y conectarlos de nuevo" : "");
     }
-
-    private static string Plural(int count, string one, string many) => count == 1 ? $"1 {one}" : $"{count} {many}";
 }
