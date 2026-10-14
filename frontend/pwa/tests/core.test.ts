@@ -107,6 +107,11 @@ describe('persistent storage request (D6.6)', () => {
     const strict = { granted: true, async persisted(this: { granted: boolean }) { return false }, async persist(this: { granted: boolean }) { return this.granted } }
     expect(await requestPersistence(strict)).toBe('persisted')
   })
+  it('over the simple connection (plain http) says so and asks nothing (B.2)', async () => {
+    const { requestPersistence, PERSISTENCE_HINT } = await import('../src/storage')
+    expect(await requestPersistence({ persist: async () => { throw new Error('must not ask over http') } }, false)).toBe('plain-http')
+    expect(PERSISTENCE_HINT['plain-http']).toMatch(/sin cifrar/)
+  })
 })
 
 describe('startup (corte A, F8)', () => {

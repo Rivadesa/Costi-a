@@ -94,6 +94,14 @@ try {
         Assert ($rule.Enabled -eq 'True' -and $rule.Direction -eq 'Inbound' -and $rule.Action -eq 'Allow') 'Unexpected firewall rule.'
         Assert ("$($rule.Profile)" -notmatch 'Public' -and "$($rule.Profile)" -match 'Private') "Firewall profile must exclude public networks: $($rule.Profile)"
         Assert (($rule | Get-NetFirewallPortFilter).LocalPort -eq '5443') 'Firewall rule must open only the HTTPS port.'
+        # B.2: la raiz PUBLICA tambien es legible por el servicio (sin ella GET /ca.crt daba 404 en una instalacion real).
+        $caCrt = & icacls.exe (Join-Path $dataRoot 'tls\ca.crt') | Out-String
+        Assert ($caCrt -match 'NT SERVICE\\Costina') "ca.crt must be readable by the service: $caCrt"
+        # B.2 (ADR-014): la conexion sencilla tiene su propia regla, solo en el puerto 5089 y nunca en redes publicas.
+        $simple = Get-NetFirewallRule -DisplayName 'Costina-HTTP-LAN'
+        Assert ($simple.Enabled -eq 'True' -and $simple.Direction -eq 'Inbound' -and $simple.Action -eq 'Allow') 'Unexpected simple-connection firewall rule.'
+        Assert ("$($simple.Profile)" -notmatch 'Public' -and "$($simple.Profile)" -match 'Private') "Simple-connection profile must exclude public networks: $($simple.Profile)"
+        Assert (($simple | Get-NetFirewallPortFilter).LocalPort -eq '5089') 'The simple-connection rule must open only port 5089.'
     }
     Check 'the service starts without any user session and serves the installation' {
         Start-Service Costina
@@ -113,6 +121,21 @@ try {
             $health = Invoke-RestMethod "https://${name}:5443/health" -TimeoutSec 10
             Assert ($health.mode -eq 'installation') "HTTPS health failed for $name"
         }
+        # B.2: el servicio sirve la raiz publica para instalarla en un dispositivo, identica al fichero.
+        $served = Invoke-WebRequest 'https://localhost:5443/ca.crt' -UseBasicParsing -TimeoutSec 10
+        Assert ($served.StatusCode -eq 200) "GET /ca.crt answered $($served.StatusCode)"
+        Assert ([Convert]::ToBase64String($served.RawContentStream.ToArray()) -eq [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $dataRoot 'tls\ca.crt')))) 'GET /ca.crt differs from tls\ca.crt.'
+    }
+    Check 'the simple connection listens on 5089 and stays off until the responsible switches it on' {
+        $status = 0
+        try { Invoke-WebRequest 'http://localhost:5089/health' -UseBasicParsing -TimeoutSec 10 | Out-Null } catch { $status = [int]$_.Exception.Response.StatusCode }
+        Assert ($status -eq 503) "Off by default: expected 503, got $status"
+        $headers = @{Authorization = "Bearer $((Login).token)"; 'Idempotency-Key' = [guid]::NewGuid().ToString() }
+        $on = Invoke-RestMethod "$api/installation/commands/lan-http-set" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"enabled":true}'
+        Assert ($on.lanHttp.enabled -and $on.lanHttp.port -eq 5089) 'lan-http-set did not switch it on.'
+        Assert ((Invoke-RestMethod 'http://localhost:5089/health' -TimeoutSec 10).mode -eq 'installation') 'The simple connection did not serve once on.'
+        $headers['Idempotency-Key'] = [guid]::NewGuid().ToString()
+        Invoke-RestMethod "$api/installation/commands/lan-http-set" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"enabled":false}' | Out-Null
     }
     Check 'login and main-only diagnostics work through the service' {
         $login = Login
@@ -173,6 +196,7 @@ try {
         for ($i = 0; $i -lt 30 -and (Get-Service Costina -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
         Assert (-not (Get-Service Costina -ErrorAction SilentlyContinue)) 'The service is still registered.'
         Assert (-not (Get-NetFirewallRule -DisplayName 'Costina-HTTPS-LAN' -ErrorAction SilentlyContinue)) 'The firewall rule must be removed with the service.'
+        Assert (-not (Get-NetFirewallRule -DisplayName 'Costina-HTTP-LAN' -ErrorAction SilentlyContinue)) 'The simple-connection rule must be removed with the service.'
         Assert (Test-Path (Join-Path $dataRoot 'tls\ca.key')) 'Uninstalling the service removed the local CA.'
         Assert (Test-Path (Join-Path $dataRoot 'config\server.json')) 'Uninstalling the service removed the configuration.'
         Assert (Test-Path (Join-Path $dataRoot 'config\owner.json')) 'Uninstalling the service removed the owner configuration.'

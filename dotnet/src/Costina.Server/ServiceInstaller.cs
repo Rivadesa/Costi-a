@@ -45,6 +45,7 @@ public static class ServiceInstaller
         Directory.CreateDirectory(BackupRunner.Folder);
         await Run("icacls.exe",[BackupRunner.Folder,"/inheritance:r","/grant:r",LocalSystem+":(OI)(CI)F",Administrators+":(OI)(CI)F",Account+":(OI)(CI)M"]);
         await ProtectTlsAsync();
+        await OpenLanHttpAsync(settings);
         Console.WriteLine($"Service {Name} registered as {Account} (delayed automatic start, restart on failure). Start it with: sc start {Name}");
     }
 
@@ -56,13 +57,15 @@ public static class ServiceInstaller
             await Task.Delay(1000);
         await Run("sc.exe",["delete",Name]);
         await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+FirewallRule],tolerateFailure:true);
+        await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+LanHttpFirewallRule],tolerateFailure:true);
         Console.WriteLine($"Service {Name} removed. The data root {ServerSettings.DataRoot} was not touched.");
     }
 
     public const string FirewallRule="Costina-HTTPS-LAN";
+    public const string LanHttpFirewallRule="Costina-HTTP-LAN";
 
     // D5.3: material TLS y apertura de la LAN. tls\ solo para SYSTEM y Administradores; el servicio
-    // lee UNICAMENTE server.pfx (nunca la clave de la CA). La regla de firewall abre solo el puerto
+    // lee UNICAMENTE server.pfx y la raiz PUBLICA ca.crt (B.2: sin ella GET /ca.crt daba 404), nunca la clave de la CA. La regla de firewall abre solo el puerto
     // HTTPS y solo en redes privadas o de dominio: jamas en una red publica. Idempotente; se invoca
     // desde install-service y desde provision-tls/renew-tls, en cualquier orden.
     public static async Task ProtectTlsAsync()
@@ -74,9 +77,22 @@ public static class ServiceInstaller
         try { await Run("sc.exe",["query",Name]); } catch(InvalidOperationException) { registered=false; }
         if(!registered) return;
         await Run("icacls.exe",[LocalTls.ServerPfx,"/grant",Account+":R"]);
+        if(File.Exists(LocalTls.CaCertificate)) await Run("icacls.exe",[LocalTls.CaCertificate,"/grant",Account+":R"]);
         var port=new ServerSettings(false).Get("COSTINA_TLS_PORT") ?? "5443";
         await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+FirewallRule],tolerateFailure:true);
         await Run("netsh.exe",["advfirewall","firewall","add","rule","name="+FirewallRule,"dir=in","action=allow",
+            "protocol=TCP","localport="+port,"profile=private,domain"]);
+    }
+
+    // B.2 (ADR-014): la conexion sencilla (HTTP por la red local) tiene su propia regla, tambien SOLO en redes privadas o de
+    // dominio. Abrir el puerto no la enciende: apagada, el motor contesta por el solo con su aviso; la enciende el responsable.
+    public static async Task OpenLanHttpAsync(ServerSettings settings)
+    {
+        RequireWindows();
+        var port=settings.Get("COSTINA_LAN_HTTP_PORT") ?? LanHttp.DefaultPort.ToString();
+        await Run("netsh.exe",["advfirewall","firewall","delete","rule","name="+LanHttpFirewallRule],tolerateFailure:true);
+        if(port=="0") return;
+        await Run("netsh.exe",["advfirewall","firewall","add","rule","name="+LanHttpFirewallRule,"dir=in","action=allow",
             "protocol=TCP","localport="+port,"profile=private,domain"]);
     }
 

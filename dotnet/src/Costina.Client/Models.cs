@@ -28,6 +28,16 @@ public sealed record DeviceRowDto(string Id, string Name, string Role, string St
 public sealed record TlsInfo(bool Enabled, int? Port = null, DateTimeOffset? ServerCertificateExpiresAt = null, string? Names = null, string? CaFingerprintSha256 = null);
 public sealed record BackupInfo(bool Automatic, DateTimeOffset? LastSuccessAt = null, string? LastFile = null, string? LastError = null);
 public sealed record DiagnosticsDto(string Mode, string Version, DateTimeOffset StartedAt, TlsInfo? Tls = null, BackupInfo? Backup = null, bool RunningAsService = false);
+// B.2 (ADR-014): estado de la red del servidor (GET /installation/network, solo main): conexion sencilla, direcciones IPv4 privadas
+// (Suggested = la del adaptador de la red del local) y redes de Windows con su tipo (public / private / domain).
+public sealed record LanHttpInfo(bool Enabled, int? Port = null, bool Listening = false);
+public sealed record LanAddressDto(string Address, string Adapter, bool Gateway, bool Virtual, bool Suggested);
+public sealed record LanNetworkDto(string Name, string Category);
+public sealed record NetworkDto(LanHttpInfo LanHttp, TlsInfo? Tls = null, LanAddressDto[]? Addresses = null, LanNetworkDto[]? Networks = null)
+{
+    public string? SuggestedIp => (Addresses ?? []).FirstOrDefault(a => a.Suggested)?.Address;
+    public LanNetworkDto[] PublicNetworks => (Networks ?? []).Where(n => n.Category == "public").ToArray();
+}
 // Resultado de conciliar una clave de idempotencia: si el servidor la aplico, devuelve su respuesta guardada.
 public sealed record CommandLookup(string Key, bool Found, JsonElement? Response = null);
 // E2: la mesa operativa lleva su sala (ZoneId/ZoneName son opcionales: un servidor anterior no los envia).

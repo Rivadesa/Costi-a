@@ -14,4 +14,6 @@ GRANT INSERT, UPDATE ON core.product_images TO costina_runtime;
 GRANT INSERT, UPDATE ON core.offers, core.offer_courses, core.offer_dishes, core.offer_items TO costina_runtime;
 GRANT INSERT, UPDATE ON core.sessions, core.devices, core.pairings TO costina_runtime;
 GRANT INSERT ON core.commands, core.audit, core.outbox, core.users TO costina_runtime;
-GRANT UPDATE (published_at) ON core.outbox TO costina_runtime
+GRANT UPDATE (published_at) ON core.outbox TO costina_runtime;
+-- B.2: la orden lan-http-set (solo el responsable, auditada) cambia unicamente ese ajuste de la instalacion.
+GRANT UPDATE (lan_http) ON core.installation TO costina_runtime
