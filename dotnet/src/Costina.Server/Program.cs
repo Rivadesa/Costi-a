@@ -32,7 +32,17 @@ if(args.Length == 1 && args[0] == "uninstall-service") { await ServiceInstaller.
 // D5.6: resumen de solo lectura de la instalacion (guion fisico y soporte). Sin credenciales ni secretos.
 if(args.Length == 1 && args[0] == "status") { await StatusReport.RunAsync(settings); return; }
 // D5.5: backend del instalador de Windows (toda la logica aqui, probada en CI; el instalador solo copia y llama).
-if(args.Length == 1 && args[0] == "setup-server") { await ServerSetup.InstallAsync(settings); return; }
+if(args.Length == 1 && args[0] == "setup-server")
+{
+    // B.1: un fallo sale con su motivo y codigo 1 (antes, una excepcion sin capturar: el instalador mostraba el codigo -532462766).
+    try { await ServerSetup.InstallAsync(settings); }
+    catch(Exception e)
+    {
+        Console.WriteLine("SETUP FAILED: " + e.Message);
+        Environment.ExitCode = 1;
+    }
+    return;
+}
 if(args.Length == 1 && args[0] == "stop-services") { await ServerSetup.StopServicesAsync(); return; }
 if(args.Length == 1 && args[0] == "remove-server") { await ServerSetup.RemoveAsync(settings); return; }
 // D5.3: CA local y certificado del servidor para HTTPS en la LAN. renew-tls reemite sin tocar los dispositivos.
@@ -151,12 +161,20 @@ if(args.Length == 2 && args[0] == "import-catalog")
 }
 if(args.Length == 1 && args[0] == "backup")
 {
-    await store.CheckAsync(schemaNames);
-    var manual = new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas);
+    // B.1: el instalador actualiza con "backup" y despues "upgrade", ambos con los binarios NUEVOS: la copia previa se toma sobre
+    // una base que aun esta en una version ANTERIOR. Se admite cualquier version guardada hasta la de estos binarios (v1 con el
+    // manifiesto de formato 1); nunca una mas nueva, porque estos binarios no sabrian restaurarla.
+    var stored = await store.StoredSchemaVersionAsync()
+        ?? throw new InvalidDataException("Run the explicit schema initialization first (init, or init-lab in the laboratory).");
+    if(stored > PostgresStore.SchemaVersion)
+        throw new InvalidDataException($"The database schema is version {stored}, newer than these binaries ({PostgresStore.SchemaVersion}): take the backup with binaries that match the database.");
+    if(stored == PostgresStore.SchemaVersion) await store.CheckAsync(schemaNames);
+    var manual = stored == 1 ? BackupRunner.LegacyV1(settings,scope,BuildInfo.Version) : new BackupRunner(settings,scope,BuildInfo.Version,backupSchemas);
     var written = await manual.BackupAsync(connectionString);
     var replicated = await manual.ReplicateAsync(written);
     Console.WriteLine($"Backup {written.File} written under {BackupRunner.Folder} ({written.SizeBytes} bytes, sha256 {written.Sha256})."
-        + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk."));
+        + (replicated == true ? " Replicated to the second destination." : " No second destination configured (COSTINA_BACKUP_COPY): a copy on the same disk does not survive losing the disk.")
+        + (stored < PostgresStore.SchemaVersion ? $" Schema version {stored}, older than these binaries ({PostgresStore.SchemaVersion}): this is the copy before the upgrade and it restores with these binaries." : ""));
     return;
 }
 if(args.Length != 0)
