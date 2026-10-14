@@ -55,9 +55,9 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
     // C1: estado corto del tiempo real (connected, reconnecting, closed, unavailable, inactive): punto y palabra de la barra de estado.
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(RealtimeShort), nameof(RealtimeDot))] private string realtimeLink = "inactive";
-    [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
+    [ObservableProperty] private string readTime = "Sin lectura del servidor todavía (F5 para leer).";
     // Arranque (B1): mientras el servidor levanta tras encender el equipo, la ventana lo dice y espera.
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible), nameof(ShowFirstRun), nameof(ShowBoot))] private bool booting;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible), nameof(ShowFirstRun), nameof(ShowBoot), nameof(ServerDot), nameof(ServerStateText))] private bool booting;
     [ObservableProperty] private string bootText = "";
     // Elevacion (B3): la vista sensible pedida mientras se es Puesto; se abre sola al entrar el responsable.
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible))] [NotifyPropertyChangedFor(nameof(LoginTitle))] [NotifyPropertyChangedFor(nameof(ElevationRequested), nameof(ElevationMode))] private string? requestedView;
@@ -103,13 +103,16 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         get
         {
-            if (Session is null) return "Sin conexión";
-            var role = Labels.SessionRole(Session.Role); var actor = Labels.Actor(Session.Actor);
+            if (Session is null) return "Nadie ha entrado en este PC";   // C1: como el lienzo (antes "Sin conexion" junto a "Servidor listo": se contradecia)
+            var role = RoleText(Session.Role); var actor = Labels.Actor(Session.Actor);
             string?[] parts = [$"{LevelText}: {(actor.Length > 0 ? actor : role)}", actor.Length > 0 && role != LevelText ? role : null,
                 Session.StationName, Endpoint, Session.Demo ? "DEMO" : null];
             return string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
         }
     }
+    // C1 (revision): rol de la sesion con el vocabulario comun. Un dispositivo antiguo con rol principal (nivel Puesto) no es una
+    // persona: se rotula como dispositivo, "Principal (antiguo)", nunca "Responsable".
+    public string RoleText(string role) => IsStation && role == "main" ? Labels.DeviceRole(role) : Labels.SessionRole(role);
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     // Tarjeta de entrada: sin conexion (y sin arrancar), o cuando una vista sensible pide al responsable.
@@ -120,15 +123,17 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool ShowBoot => !Connected && Booting;
     public bool ElevationMode => Connected && RequestedView is not null;
     // C1: barra de estado y Primeros pasos: punto (ok, warn, danger, off) y palabra; el detalle de un fallo va en Status.
-    public string ServerDot => Connected || ServerReady == true ? "ok" : ServerReady == false ? "danger" : "off";
-    public string ServerStateText => Connected ? "Servidor conectado" : ServerReady switch { true => "Servidor listo", false => "Servidor sin respuesta", null => "Servidor sin comprobar" };
+    // Mientras el arranque espera al servidor la barra lo dice igual que la capa de arranque (no "sin comprobar").
+    public string ServerDot => Connected || ServerReady == true ? "ok" : Booting ? "warn" : ServerReady == false ? "danger" : "off";
+    public string ServerStateText => Connected ? "Servidor conectado" : ServerReady == true ? "Servidor listo" : Booting ? "Esperando al servidor"
+        : ServerReady == false ? "Servidor sin respuesta" : "Servidor sin comprobar";
     public string FirstRunServerText => ServerReady switch
     {
         true => $"El servidor está listo {ServerPlace}",
         false => $"No se pudo conectar con el servidor {ServerPlace}",
         null => $"Servidor configurado {ServerPlace}"
     };
-    private string ServerPlace => Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out var uri) ? uri.IsLoopback ? "en este equipo" : $"en {uri.Host}" : "(dirección no válida)";
+    internal string ServerPlace => Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out var uri) ? uri.IsLoopback ? "en este equipo" : $"en {uri.Host}" : "(dirección no válida)";
     public string RealtimeShort => Labels.Realtime(RealtimeLink);
     public string RealtimeDot => RealtimeLink switch { "connected" => "ok", "reconnecting" or "closed" => "warn", _ => "off" };
     // C1: pastilla de la barra superior: nivel y quien (la estacion para un puesto). Vacia sin sesion.
@@ -196,8 +201,10 @@ public sealed partial class ShellViewModel : ObservableObject
             Status = e switch
             {
                 // C1: el codigo del rechazo en una frase clara; uno desconocido sale con su codigo entre parentesis y una respuesta
-                // sin codigo reconocible (request_failed: proxy, error interno) con su estado HTTP.
-                ApiError a => Labels.Rejection(a.Code) + (a.Code == "request_failed" ? $" (HTTP {a.Status})" : "") + " Actualiza antes de una nueva acción.",
+                // sin codigo reconocible (request_failed: proxy, error interno) con su estado HTTP. Con la orden aun pendiente no hay
+                // rechazo que contar: no se sabe si se aplico (el aviso de la orden sin confirmar dice como seguir).
+                ApiError a when Api?.Pending is not null => Labels.Failure(a.Code, a.Status, stillPending: true),
+                ApiError a => Labels.Failure(a.Code, a.Status, stillPending: false) + " Actualiza antes de una nueva acción.",
                 HttpRequestException or TaskCanceledException => "Servidor sin respuesta. Los datos pueden estar desactualizados. Una orden pendiente NO está confirmada.",
                 ArgumentException or InvalidOperationException => e.Message,
                 _ => "No se pudo interpretar la respuesta. Comprueba la versión y actualiza; no dupliques la orden."
@@ -260,7 +267,9 @@ public sealed partial class ShellViewModel : ObservableObject
         return uri;
     }
     // F4: 'Conectar puesto emparejado' se reevalua al teclear. C1: otra direccion es otro servidor: lo comprobado del anterior no vale.
-    partial void OnEndpointChanged(string value) { ServerReady = null; Sync(); }
+    // C1 (revision): el lugar del servidor de Primeros pasos depende de la direccion, no solo de ServerReady (que solo cambia con la
+    // primera tecla): se avisa en cada cambio.
+    partial void OnEndpointChanged(string value) { ServerReady = null; OnPropertyChanged(nameof(FirstRunServerText)); Sync(); }
 
     // ---- Arranque (B1): esperar al servidor sin rendirse en frio, distinguir red de certificado, conectar solo como puesto ----
     public async Task StartAsync(CancellationToken ct = default)
@@ -516,7 +525,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
         Home.Clear(); Service.Clear(); Checkout.Clear(); Devices.Clear(); Organization.Clear(); Catalog.Clear(); Offers.Clear();
         Status = "Desconectado. La contraseña no se guarda en disco.";
-        ReadTime = "Sin lectura actual del servidor.";
+        ReadTime = "Sin lectura del servidor todavía (F5 para leer).";
         Sync();
     }
 

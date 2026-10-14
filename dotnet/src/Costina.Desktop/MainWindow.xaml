@@ -12,6 +12,8 @@
 <!-- C1: los botones de las vistas navegan con GoToPage y el nombre de la vista (CommandParameter); el menu y la barra lateral siguen con
      Click=ShowView. Los caminos aplican la misma logica, elevacion del responsable incluida. -->
 <Window.CommandBindings><CommandBinding Command="NavigationCommands.GoToPage" CanExecute="CanGoToPage" Executed="GoToPage"/></Window.CommandBindings>
+<!-- Raiz: el cascaron (DockPanel) y, encima de TODO (barra superior y barra de estado incluidas), el velo de la entrada del responsable. -->
+<Grid x:Name="WindowRoot">
 <DockPanel>
  <!-- Barra superior: la barra de menus clasica (estructura DEFINITIVA del ERP: 7 entradas, mismos nombres y orden, lo que aun no existe
       deshabilitado y "Próximamente") y, a la derecha, quien esta conectado y el paso entre niveles. -->
@@ -82,7 +84,7 @@
       del ensamblado. -->
  <StatusBar x:Name="MainStatusBar" DockPanel.Dock="Bottom">
   <StatusBarItem><StackPanel Orientation="Horizontal"><Ellipse Style="{StaticResource Dot}" Tag="{Binding ServerDot}"/><TextBlock Text="{Binding ServerStateText}"/></StackPanel></StatusBarItem>
-  <StatusBarItem Margin="10,0,0,0" ToolTip="{Binding RealtimeState}"><StackPanel Orientation="Horizontal"><Ellipse Style="{StaticResource Dot}" Tag="{Binding RealtimeDot}"/><TextBlock Text="{Binding RealtimeShort}"/></StackPanel></StatusBarItem>
+  <StatusBarItem Margin="10,0,0,0" ToolTip="{Binding RealtimeState}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"><StackPanel Orientation="Horizontal"><Ellipse Style="{StaticResource Dot}" Tag="{Binding RealtimeDot}"/><TextBlock Text="{Binding RealtimeShort}"/></StackPanel></StatusBarItem>
   <StatusBarItem Margin="10,0,0,0"><TextBlock x:Name="ConnectionLine" Text="{Binding ConnectionText}" TextTrimming="CharacterEllipsis"/></StatusBarItem>
   <StatusBarItem Margin="10,0,0,0" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding ReadTime}" TextTrimming="CharacterEllipsis"/></StatusBarItem>
   <StatusBarItem HorizontalAlignment="Right"><TextBlock x:Name="VersionLine" Text="{Binding VersionText}"/></StatusBarItem>
@@ -137,7 +139,14 @@
    <!-- Avisos (InfoBar). Estado: compacto, solo cuando hay algo que decir y se puede cerrar. Orden sin confirmar y orden ilegible:
         mientras existan (bloquean operar). -->
    <StackPanel x:Name="Notices" DockPanel.Dock="Top" Margin="24,4,24,0">
-    <ContentControl x:Name="StatusBarInfo" Style="{StaticResource InfoBar}" Padding="12,5,6,5" Margin="0,12,0,0" Visibility="{Binding Status, Converter={StaticResource Text2Vis}}">
+    <!-- Con la entrada del responsable abierta sobre el velo, el aviso va en la propia tarjeta: aqui se recoge (nunca dos veces lo mismo). -->
+    <ContentControl x:Name="StatusBarInfo" Padding="12,5,6,5" Margin="0,12,0,0">
+     <ContentControl.Style>
+      <Style TargetType="ContentControl" BasedOn="{StaticResource InfoBar}">
+       <Setter Property="Visibility" Value="{Binding Status, Converter={StaticResource Text2Vis}}"/>
+       <Style.Triggers><DataTrigger Binding="{Binding ElevationMode}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+      </Style>
+     </ContentControl.Style>
      <DockPanel>
       <Button DockPanel.Dock="Right" Style="{StaticResource Ghost}" Margin="8,0,0,0" Padding="6" MinHeight="0" VerticalAlignment="Center" Click="DismissStatus" ToolTip="Cerrar el aviso"
               AutomationProperties.Name="Cerrar el aviso"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconClose}"/></Button>
@@ -261,8 +270,7 @@
               <Border DockPanel.Dock="Left" Style="{StaticResource IconBox}" Margin="0,0,14,0"><Path Style="{StaticResource Icon}" Data="{StaticResource IconLock}" HorizontalAlignment="Center"/></Border>
               <TextBlock x:Name="LoginTitleText" Text="{Binding LoginTitle}" Style="{StaticResource PanelTitle}" VerticalAlignment="Center"/>
              </DockPanel>
-             <TextBlock Text="Usuario y contraseña del responsable. La contraseña no se guarda en disco y la sesión caduca sola; el puesto sigue operativo mientras tanto."
-                        Style="{StaticResource Body}" Margin="0,12,0,0"/>
+             <TextBlock Text="La contraseña no se guarda en disco y la sesión caduca sola." Style="{StaticResource Body}" Margin="0,12,0,0"/>
             </StackPanel>
             <Grid>
              <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -272,7 +280,10 @@
             <Grid Margin="0,14,0,0">
              <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
              <Button x:Name="ConnectButton" Content="Entrar" Style="{StaticResource Primary}" IsEnabled="{Binding ConnectEnabled}" Click="ConnectClick"
-                     HorizontalAlignment="Stretch" MinHeight="40" FontSize="15" Margin="0"/>
+                     HorizontalAlignment="Stretch" MinHeight="40" FontSize="15" Margin="0">
+              <!-- Boton grande de la entrada: esquinas de 10 como en el lienzo (Fluent lee ControlCornerRadius como recurso dinamico). -->
+              <Button.Resources><CornerRadius x:Key="ControlCornerRadius">10</CornerRadius></Button.Resources>
+             </Button>
              <Button x:Name="CancelElevationButton" Grid.Column="1" Content="Seguir como puesto" Style="{StaticResource Ghost}" Command="{Binding CancelElevationCommand}"
                      MinHeight="40" Margin="8,0,0,0" Visibility="{Binding ElevationRequested, Converter={StaticResource Bool2Vis}}"/>
             </Grid>
@@ -356,13 +367,14 @@
    </ScrollViewer>
   </Grid>
 
-  <!-- Entrada del responsable pedida desde el nivel Puesto (corte B): la tarjeta, centrada sobre un velo que tapa el area de trabajo.
-       Escape o "Seguir como puesto" la cierran. -->
-  <Grid x:Name="ElevationLayer" Grid.ColumnSpan="2" Visibility="{Binding ElevationMode, Converter={StaticResource Bool2Vis}}">
-   <Border Background="{StaticResource Scrim}"/>
-   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <Decorator x:Name="ElevationLoginHost" Width="520" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-   </ScrollViewer>
-  </Grid>
  </Grid>
-</DockPanel></Window>
+</DockPanel>
+ <!-- Entrada del responsable pedida desde el nivel Puesto (corte B): la tarjeta, centrada sobre un velo que tapa TODA la ventana (menus,
+      barra lateral, vistas y barra de estado: es modal). Escape o "Seguir como puesto" la cierran. -->
+ <Grid x:Name="ElevationLayer" Visibility="{Binding ElevationMode, Converter={StaticResource Bool2Vis}}">
+  <Border Background="{StaticResource Scrim}"/>
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <Decorator x:Name="ElevationLoginHost" Width="520" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+  </ScrollViewer>
+ </Grid>
+</Grid></Window>

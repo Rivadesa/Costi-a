@@ -72,8 +72,11 @@ internal static class Program
         shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:[]);
         if(shell.HasDining) throw new Exception("Without the dining module there is no dining tab.");   // ADR-012
         shell.Session=new("service","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
-        var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start","review-preparation"],null,true);
-        var dto=new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"]);
+        // C1 (revision): las muestras llevan restricciones (una alergia conocida y un tipo desconocido, que sale crudo) para que la
+        // captura del comedor pinte y compruebe el flujo de alergias.
+        Costina.Client.GuestRestrictionDto[] sampleRestrictions=[new("r1",null,"Allergy","gluten","Severe"),new("r2",2,"Anaphylaxis","cacahuete","Critical")];
+        var prep=new Costina.Client.PreparationDto("i1","Plato","hot",1,null,true,"Fired",["preparation-start","review-preparation"],sampleRestrictions,true);
+        var dto=new Costina.Client.DiningDto("s1","M1",2,"InService",[],["pause","fire-next"],sampleRestrictions,true);
         var entry=new Costina.Client.BoardEntry(3,dto,new("o1","M1","s1","Occupied",null,["release"]),1);
         shell.Service.Board=[entry]; shell.Service.SelectedEntry=entry;   // sin Api la seleccion no dispara lecturas
         shell.Service.Dining=new(3,dto);
@@ -191,7 +194,9 @@ internal static class Program
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         window.UpdateLayout();
         if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("FiscalMenu")).Visibility!=Visibility.Visible) throw new Exception("The main desk sees every menu.");
-        if(!window.Shell.ConnectionText.Contains("Responsable")) throw new Exception("The status bar states who is connected: "+window.Shell.ConnectionText);
+        // La sesion simulada aqui no lleva persona (sin token de responsable): para la ventana es un puesto con el rol principal antiguo y
+        // asi se rotula (revision C1). La persona (Responsable: jefa) se comprueba abajo, en los niveles, con AssumeResponsible.
+        if(!window.Shell.ConnectionText.StartsWith("Puesto: Principal (antiguo) · ",StringComparison.Ordinal)) throw new Exception("The status bar states who is connected: "+window.Shell.ConnectionText);
         // C1: con sesion, Primeros pasos se recoge y aparece la barra lateral; Comedor y cocina solo con el modulo de comedor.
         if(firstRun.Visibility!=Visibility.Collapsed||((FrameworkElement)window.FindName("SideNavBar")).Visibility!=Visibility.Visible) throw new Exception("Connected: no Primeros pasos, the sidebar is shown.");
         var navService=(Button)window.FindName("NavService");
@@ -199,6 +204,16 @@ internal static class Program
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:[]); window.UpdateLayout();
         if(navService.Visibility!=Visibility.Collapsed||((MenuItem)window.FindName("DiningMenu")).Visibility!=Visibility.Collapsed) throw new Exception("Without the dining module there is no Comedor in the sidebar (nor in the menu).");
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]); window.UpdateLayout();
+        // C1 (revision): durante una operacion la barra lateral no cambia de vista ni con el teclado (Tab + Intro llega como Click); sin
+        // operacion, el mismo Click si la abre.
+        var tabsControl=(TabControl)window.FindName("Tabs"); var navCatalog=(Button)window.FindName("NavCatalog");
+        tabsControl.SelectedItem=(TabItem)window.FindName("HomeTab"); window.Shell.Busy=true;
+        navCatalog.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        if(tabsControl.SelectedItem!=(TabItem)window.FindName("HomeTab")) throw new Exception("While busy the sidebar must not change the view (keyboard included).");
+        window.Shell.Busy=false;
+        navCatalog.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        if(tabsControl.SelectedItem!=(TabItem)window.FindName("CatalogTab")) throw new Exception("Not busy, the sidebar opens the view.");
+        tabsControl.SelectedItem=(TabItem)window.FindName("HomeTab");
         if(organization.SelectedZone?.Id!="sala"||organization.ZoneName!="Sala"||organization.Tables.Length!=3) throw new Exception("Rendering must select the first zone and fill its form and tables.");
         if(!organization.SaveZoneCommand.CanExecute(null)||!organization.ToggleZoneCommand.CanExecute(null)) throw new Exception("A selected zone is editable by the main desk.");
         organization.SelectedTable=organization.Tables[2];
@@ -237,6 +252,13 @@ internal static class Program
         catalogView.PriceTariffId="terraza";
         if(catalogView.PriceText!="12,00") throw new Exception("Changing the tariff shows its price in force.");
         if(!catalogView.SetPriceCommand.CanExecute(null)||!catalogView.StartPresentationCommand.CanExecute(null)) throw new Exception("A selected presentation can be priced by the main desk.");
+        // C1 (regresion de bde15b1): el desplegable de tarifa escribe null cuando su lista se vacia. Elegir despues otra presentacion no
+        // revienta y muestra el precio general; fijar un precio sin tarifa se rechaza antes de enviar nada.
+        catalogView.PriceTariffId=null!; catalogView.SelectedPresentation=catalogView.Presentations[1];
+        if(catalogView.PriceText!="42,00") throw new Exception("Without a tariff chosen the price form shows the general price: "+catalogView.PriceText);
+        try { catalogView.SetPriceCommand.ExecuteAsync(null).GetAwaiter().GetResult(); throw new Exception("Pricing without a tariff must be refused."); }
+        catch(ArgumentException) { }
+        catalogView.PriceTariffId="general"; catalogView.SelectedPresentation=catalogView.Presentations[0];
         catalogView.AllCategories=true; catalogView.Search="rapolao";
         if(catalogView.Products.Length!=1||catalogView.Products[0].Product.Id!="3760") throw new Exception("Search filters by name or reference.");
         catalogView.Search=""; catalogView.SelectedTariff=catalogView.Tariffs[0];
@@ -260,13 +282,14 @@ internal static class Program
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]); window.UpdateLayout();
         if(workspace.SelectedItem!=(TabItem)window.FindName("HomeTab")) throw new Exception("Connecting selects Inicio first.");
         var home=window.Shell.Home;
-        if(!home.WhoText.StartsWith("Responsable",StringComparison.Ordinal)) throw new Exception("Inicio states who is connected: "+home.WhoText);
+        // Sesion simulada sin persona (ver arriba): Inicio la nombra como dispositivo antiguo; la persona se comprueba en los niveles.
+        if(!home.WhoText.StartsWith("Principal (antiguo)",StringComparison.Ordinal)) throw new Exception("Inicio states who is connected: "+home.WhoText);
         home.ApplyDevices([new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d2","tablet-sala-2","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null),
             new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null,true),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))]);
         if(home.DevicesSummary!="2 comanderos (1 con conexión ahora) · 1 pantalla de cocina (1 con conexión ahora)") throw new Exception("Inicio summarises active devices and presence: "+home.DevicesSummary);
         var soon=new Costina.Client.DiagnosticsDto("installation","0.33.0-b1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
-        if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerText.Contains("costina-server.local")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
+        if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
         if(home.HasCertificateWarning) throw new Exception("No warning for a certificate with months left.");
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(-1)}});
@@ -335,6 +358,11 @@ internal static class Program
         var levels=window.Shell;
         levels.Session=new("service","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]); window.UpdateLayout();
         if(!levels.IsStation||levels.IsResponsible||levels.LevelText!="Puesto"||!levels.ConnectionText.StartsWith("Puesto: pc-principal · Puesto de sala · Sala 1 · ",StringComparison.Ordinal)) throw new Exception("A device session is the Puesto level: "+levels.ConnectionText);
+        // C1 (revision): un dispositivo antiguo con rol principal es un dispositivo, no una persona: nunca se rotula "Responsable".
+        levels.Session=new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"device:pc-viejo",Modules:["dining"]);
+        if(!levels.ConnectionText.StartsWith("Puesto: pc-viejo · Principal (antiguo) · ",StringComparison.Ordinal)||levels.ConnectionText.Contains("Responsable")||!levels.Home.WhoText.StartsWith("Principal (antiguo) pc-viejo",StringComparison.Ordinal))
+            throw new Exception("A legacy main device is labelled as a device: "+levels.ConnectionText+" / "+levels.Home.WhoText);
+        levels.Session=new("service","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]); window.UpdateLayout();
         if(((MenuItem)window.FindName("CheckoutMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("ErpMenu")).Visibility!=Visibility.Visible) throw new Exception("Every menu is visible at the Puesto level (decision 3: nothing hidden).");
         if(!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("CheckoutTab")||!Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("DevicesTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("ServiceTab")||Costina.Desktop.ViewModels.ShellViewModel.RequiresResponsible("HomeTab")) throw new Exception("Caja, configuracion, ERP and devices are the responsible's; dining and home are not.");
         if(levels.LoginCardVisible||levels.ElevationRequested) throw new Exception("Connected as Puesto, no login card until something sensitive is asked.");
@@ -342,9 +370,11 @@ internal static class Program
         if(!levels.ElevationRequested||!levels.LoginCardVisible||!levels.LoginTitle.Contains("Cuenta / Caja")||!levels.ConnectEnabled) throw new Exception("Asking for a sensitive view opens the responsible login naming the view: "+levels.LoginTitle);
         window.UpdateLayout();
         if(((Border)window.FindName("LoginCard")).Visibility!=Visibility.Visible||((Button)window.FindName("CancelElevationButton")).Visibility!=Visibility.Visible) throw new Exception("The login card and 'seguir como puesto' are shown.");
-        var elevationShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); elevationShot.Render(window);
-        var elevationEncoder=new PngBitmapEncoder(); elevationEncoder.Frames.Add(BitmapFrame.Create(elevationShot));
-        using(var elevationFile=File.Create("artifacts/desktop/elevation.png")) elevationEncoder.Save(elevationFile);
+        // C1 (revision): con la tarjeta abierta el aviso va solo en ella (no dos veces) y el velo tapa TODA la ventana (menus y barra de estado).
+        if(((FrameworkElement)window.FindName("StatusBarInfo")).Visibility!=Visibility.Collapsed||levels.Status.Length==0) throw new Exception("While the login card is up the request is said once, in the card.");
+        if(((FrameworkElement)window.FindName("ElevationLayer")).ActualHeight!=((FrameworkElement)window.Content).ActualHeight) throw new Exception("The scrim covers the whole window, top bar and status bar included.");
+        RefuseRaw(window,"elevation");
+        Save(Shot(window),"elevation.png");
         levels.CancelElevationCommand.Execute(null);
         if(levels.ElevationRequested||levels.LoginCardVisible||levels.ConnectEnabled) throw new Exception("'Seguir como puesto' closes the card and keeps the station connected.");
         // C1: los accesos de Inicio viven en su vista y navegan con GoToPage: nacen habilitados y siguen la logica del menu.
@@ -364,7 +394,7 @@ internal static class Program
         if(loginCard.Parent!=window.FindName("FirstRunLoginHost")||((FrameworkElement)window.FindName("ElevationLayer")).Visibility!=Visibility.Collapsed) throw new Exception("Cancelling puts the login card back in Primeros pasos and lifts the scrim.");
         var opened=""; levels.ViewRequested+=name=>opened=name;
         levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
-        if(!levels.IsResponsible||levels.LevelText!="Responsable"||!levels.LeaveResponsibleCommand.CanExecute(null)) throw new Exception("A person session is the Responsable level.");
+        if(!levels.IsResponsible||levels.LevelText!="Responsable"||!levels.LeaveResponsibleCommand.CanExecute(null)||!levels.ConnectionText.StartsWith("Responsable: jefa · ",StringComparison.Ordinal)||!levels.Home.WhoText.StartsWith("Responsable: jefa",StringComparison.Ordinal)) throw new Exception("A person session is the Responsable level: "+levels.ConnectionText);
         levels.RequestElevation("CatalogTab");
         if(opened!="CatalogTab"||levels.ElevationRequested) throw new Exception("A responsible asking for a sensitive view just gets it.");
         var moment=new DateTimeOffset(2026,10,13,12,0,0,TimeSpan.Zero); levels.Clock=()=>moment; levels.NoteActivity();
@@ -455,7 +485,8 @@ internal static class Program
         catalogView.Render(sampleCatalog); catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
-        window.Shell.Status="Datos leídos del servidor. Las acciones se habilitan según lo que el servidor anuncia.";
+        window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
+        window.Shell.Service.Restrictions=dto.Restrictions!;
         window.Shell.Home.Visible=true;
         foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
         {
@@ -463,14 +494,14 @@ internal static class Program
             // Las columnas "*" del DataGrid se reparten en una pasada diferida: se vacia la cola del despachador antes de capturar.
             window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
             // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista (las estaciones aun salen por su codigo: C2).
-            var leaked=Texts(window).Where(t=>RawValue.IsMatch(t)).ToArray();
-            if(leaked.Length>0) throw new Exception(tab+" shows raw server values: "+string.Join(" | ",leaked));
-            var shot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); shot.Render(window);
+            RefuseRaw(window,tab);
+            if(tab=="ServiceTab"&&(!Texts(window).Any(t=>t.Contains("ALERGIA gluten (grave)",StringComparison.Ordinal))||!Texts(window).Any(t=>t.Contains("Anaphylaxis cacahuete (Critical)",StringComparison.Ordinal))))
+                throw new Exception("Comedor paints the allergy in words and an unknown restriction raw (never softened).");
+            var shot=Shot(window);
             // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
             // margen entre la barra lateral y la vista.
             if(Pixel(shot,workspace.TranslatePoint(new Point(-12,12),window)) is var gutter&&gutter!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception(tab+": the window background must be opaque #F3F4F6, found "+gutter);
-            var shotEncoder=new PngBitmapEncoder(); shotEncoder.Frames.Add(BitmapFrame.Create(shot));
-            using var shotFile=File.Create("artifacts/desktop/"+file); shotEncoder.Save(shotFile);
+            Save(shot,file);
         }
         // C1: la barra lateral se pliega a iconos (boton de abajo) y se despliega de nuevo; plegada, sus elementos siguen ahi con su ayuda.
         // (Se parte de la barra desplegada: en una pantalla estrecha, como la del CI, la ventana la pliega sola por debajo de 1270 px.)
@@ -479,9 +510,7 @@ internal static class Program
         navToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
         if(!window.Shell.SideNavCompact||sideNavBar.ActualWidth>64||((Button)window.FindName("NavCatalog")).ToolTip as string!="Catálogo y tarifas") throw new Exception("The sidebar folds to icons, each with its name as a tooltip: "+sideNavBar.ActualWidth);
         window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
-        var compactShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); compactShot.Render(window);
-        var compactEncoder=new PngBitmapEncoder(); compactEncoder.Frames.Add(BitmapFrame.Create(compactShot));
-        using(var compactFile=File.Create("artifacts/desktop/sidebar-compact.png")) compactEncoder.Save(compactFile);
+        Save(Shot(window),"sidebar-compact.png");
         navToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
         if(window.Shell.SideNavCompact||sideNavBar.ActualWidth<200) throw new Exception("The sidebar unfolds again.");
         // C1: startup.png es Primeros pasos tal como lo ve un PC recien arrancado: sin aviso pendiente y con el servidor ya comprobado
@@ -489,17 +518,22 @@ internal static class Program
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.Shell.Status=""; window.Shell.Session=null; window.Shell.ServerReady=true; window.UpdateLayout();
         if(firstRun.Visibility!=Visibility.Visible||!firstRun.IsAncestorOf(loginCard)||((FrameworkElement)window.FindName("SideNavBar")).Visibility!=Visibility.Collapsed) throw new Exception("Disconnected again: Primeros pasos with the login card, no sidebar.");
         if(!window.Shell.FirstRunServerText.StartsWith("El servidor está listo ",StringComparison.Ordinal)||window.Shell.ServerDot!="ok") throw new Exception("Primeros pasos states the server: "+window.Shell.FirstRunServerText);
-        var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
-        image.Render(window);
+        if(window.Shell.ConnectionText!="Nadie ha entrado en este PC") throw new Exception("Before anyone enters the status bar says so: "+window.Shell.ConnectionText);
+        // C1 (revision): al teclear otra direccion, la linea del servidor de Primeros pasos la sigue en CADA cambio (no solo en el primero).
+        var firstRunServer=(TextBlock)window.FindName("FirstRunServer");
+        window.Shell.ServerReady=false; window.Shell.Endpoint="https://otro.local:5443"; window.Shell.Endpoint="https://tercero.local:5443";
+        if(firstRunServer.Text!="Servidor configurado en tercero.local") throw new Exception("Primeros pasos follows every edit of the server address: "+firstRunServer.Text);
+        window.Shell.Endpoint=ChecksEndpoint; window.Shell.ServerReady=true; window.UpdateLayout();
+        RefuseRaw(window,"startup");
+        var image=Shot(window);
         if(Pixel(image,firstRun.TranslatePoint(new Point(8,8),window)) is var firstRunBackground&&firstRunBackground!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception("Primeros pasos must paint the opaque #F3F4F6, found "+firstRunBackground);
-        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
-        using(var file=File.Create("artifacts/desktop/startup.png")) encoder.Save(file);
+        Save(image,"startup.png");
         // C1: mientras arranca y espera al servidor (corte B) la ventana lo dice en su propia capa, sin Primeros pasos ni entrada.
+        window.Shell.ServerReady=null;   // como al encender: el servidor aun no ha respondido
         window.Shell.Booting=true; window.Shell.BootText="Arrancando el servidor (12 s). Tras encender el equipo puede tardar de uno a tres minutos."; window.UpdateLayout();
+        if(window.Shell.ServerStateText!="Esperando al servidor"||window.Shell.ServerDot!="warn") throw new Exception("While booting the status bar says it waits for the server: "+window.Shell.ServerStateText);
         if(((FrameworkElement)window.FindName("BootPanel")).Visibility!=Visibility.Visible||firstRun.Visibility!=Visibility.Collapsed||loginCard.Visibility!=Visibility.Collapsed) throw new Exception("While booting only the boot panel is shown.");
-        var bootShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); bootShot.Render(window);
-        var bootEncoder=new PngBitmapEncoder(); bootEncoder.Frames.Add(BitmapFrame.Create(bootShot));
-        using(var bootFile=File.Create("artifacts/desktop/booting.png")) bootEncoder.Save(bootFile);
+        Save(Shot(window),"booting.png");
         window.Shell.Booting=false; window.Shell.BootText=""; window.UpdateLayout();
         File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks."
             +Environment.NewLine+"Version: "+Costina.Desktop.ViewModels.ShellViewModel.AppVersion+Environment.NewLine+"Fonts: "+fonts+Environment.NewLine);
@@ -510,7 +544,30 @@ internal static class Program
 
     // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra
     // suelta: dentro de un codigo con guiones (el producto «menu-lab-tasting») no es un estado.
-    private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
+    // Revision C1: tambien tipos de estacion, servicios de oferta y codigos de accion (una orden pendiente se describe en castellano).
+    private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte|Kitchen|Pass|Room|lunch|dinner|fire-next|cancel-unstarted|add-dish|preparation-start|preparation-ready|review-preparation)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
+    private static void RefuseRaw(Window window,string what)
+    {
+        var leaked=Texts(window).Where(t=>RawValue.IsMatch(t)).ToArray();
+        if(leaked.Length>0) throw new Exception(what+" shows raw server values: "+string.Join(" | ",leaked));
+    }
+    // C1 (revision): captura del AREA DE CLIENTE. La ventana mide tambien el marco y la captura salia con una franja transparente a la
+    // derecha y abajo; se recorta al contenido (que empieza en el origen de la ventana) y se exige que sea opaca hasta la esquina.
+    private static BitmapSource Shot(Window window)
+    {
+        var client=(FrameworkElement)window.Content;
+        if(client.TranslatePoint(new Point(0,0),window)!=new Point(0,0)) throw new Exception("The window content must start at the client origin.");
+        var full=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); full.Render(window);
+        var shot=new CroppedBitmap(full,new Int32Rect(0,0,Math.Min((int)client.ActualWidth,full.PixelWidth),Math.Min((int)client.ActualHeight,full.PixelHeight)));
+        shot.Freeze();
+        if(Pixel(shot,new Point(shot.PixelWidth-1,shot.PixelHeight-1)).A!=255||Pixel(shot,new Point(shot.PixelWidth-1,0)).A!=255) throw new Exception("The capture must be opaque up to its corners.");
+        return shot;
+    }
+    private static void Save(BitmapSource image,string file)
+    {
+        var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
+        using var stream=File.Create("artifacts/desktop/"+file); encoder.Save(stream);
+    }
     // C1: color de un pixel de una captura (coordenadas del cliente de la ventana).
     private static Color Pixel(BitmapSource image,Point at)
     {

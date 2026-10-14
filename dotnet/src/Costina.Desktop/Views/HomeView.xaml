@@ -16,9 +16,10 @@
    <TextBlock Text="{Binding Home.CertificateWarning}" TextWrapping="Wrap"/>
   </ContentControl>
   <!-- Estado: servidor, tiempo real y copia de seguridad (esta solo la ve el responsable: sale del diagnostico). -->
-  <Border Style="{StaticResource Card}" Margin="0,0,0,18" Padding="18,14">
+  <Border Style="{StaticResource Card}" Margin="0,0,0,18">
    <StackPanel>
-    <DockPanel Margin="0,0,0,6">
+    <!-- Linea corta para quien trabaja; la direccion, el modo y los puertos, en la ayuda emergente (revision C1). -->
+    <DockPanel Margin="0,0,0,6" ToolTip="{Binding Home.ServerDetail}" Background="Transparent">
      <Path DockPanel.Dock="Left" Style="{StaticResource Icon}" Data="{StaticResource IconMonitor}" Stroke="{StaticResource InkSoft}" Margin="0,0,12,0"/>
      <TextBlock Text="{Binding Home.ServerText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
     </DockPanel>
@@ -35,11 +36,14 @@
    </StackPanel>
   </Border>
   <TextBlock Text="Apartados" Style="{StaticResource Section}"/>
-  <WrapPanel Margin="0,0,0,6">
-   <WrapPanel.Resources>
-    <Style TargetType="Button" BasedOn="{StaticResource ShortcutTile}"><Setter Property="Width" Value="312"/><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="MinHeight" Value="76"/></Style>
-   </WrapPanel.Resources>
-   <Button x:Name="HomeDiningButton" Style="{StaticResource ShortcutTilePrimary}" Width="312" Margin="0,0,12,12" MinHeight="76" Content="Comedor y cocina" local:Ui.Icon="{StaticResource IconDining}"
+  <!-- Tres columnas que se estiran con la ventana (y con la barra lateral plegada): los accesos cuadran con las tarjetas de arriba y de
+       abajo. UniformGrid salta los accesos recogidos (Comedor sin el modulo de comedor). El margen derecho negativo compensa el hueco
+       de la ultima columna. -->
+  <UniformGrid Columns="3" Margin="0,0,-12,6">
+   <UniformGrid.Resources>
+    <Style TargetType="Button" BasedOn="{StaticResource ShortcutTile}"><Setter Property="Margin" Value="0,0,12,12"/><Setter Property="MinHeight" Value="76"/></Style>
+   </UniformGrid.Resources>
+   <Button x:Name="HomeDiningButton" Style="{StaticResource ShortcutTilePrimary}" Margin="0,0,12,12" MinHeight="76" Content="Comedor y cocina" local:Ui.Icon="{StaticResource IconDining}"
            local:Ui.Hint="Mesas, pases, cocina por estación y alergias." Command="NavigationCommands.GoToPage" CommandParameter="ServiceTab" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Cuenta / Caja" local:Ui.Icon="{StaticResource IconCheckout}" local:Ui.Hint="Cuenta de cada mesa, cobros y cierre."
            Command="NavigationCommands.GoToPage" CommandParameter="CheckoutTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
@@ -51,7 +55,7 @@
            Command="NavigationCommands.GoToPage" CommandParameter="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button x:Name="HomeDevicesButton" Content="Dispositivos" local:Ui.Icon="{StaticResource IconDevices}" local:Ui.Hint="Comanderos y pantallas de cocina."
            Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
-  </WrapPanel>
+  </UniformGrid>
   <Border Style="{StaticResource Card}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"><StackPanel>
    <TextBlock Text="Dispositivos" Style="{StaticResource PanelTitle}" FontSize="16"/>
    <TextBlock Text="{Binding Home.DevicesSummary}" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="{Binding Home.DevicesSummary, Converter={StaticResource Text2Vis}}"/>

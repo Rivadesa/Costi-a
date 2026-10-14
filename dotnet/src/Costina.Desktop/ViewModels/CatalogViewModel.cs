@@ -13,7 +13,11 @@ namespace Costina.Desktop.ViewModels;
 public sealed record CategoryRow(CategoryDto Category, int Depth)
 {
     public string StateLabel => Labels.Active(Category.Active, feminine: true);
-    public override string ToString() => new string(' ', Depth * 4) + Category.Name + " · " + StateLabel;
+    // C1 (revision): la lista pinta Label con una sangria de margen (Indent), en la letra de la aplicacion; el ToString con espacios
+    // queda de respaldo (y para los checks).
+    public string Label => Category.Name + " · " + StateLabel;
+    public System.Windows.Thickness Indent => new(Depth * 16, 0, 0, 0);
+    public override string ToString() => new string(' ', Depth * 4) + Label;
 }
 public sealed record ProductRow(ProductDto Product, string CategoryName, string PriceText)
 {

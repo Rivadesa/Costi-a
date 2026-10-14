@@ -20,6 +20,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     public sealed record DeviceRow(DeviceRowDto Device, string Group, bool IsThisPc)
     {
         public string Text => (IsThisPc ? "ESTE PC · " : "") + $"{Device.Name} · {Device.StateLabel} · aprobado por {Labels.Actor(Device.ApprovedBy)} el {Device.CreatedAt.ToLocalTime():dd/MM/yyyy}";
+        // C1 (revision): punto de presencia junto al texto (que ya lo dice con palabras): verde con conexion, gris sin ella o quitado.
+        public string PresenceDot => Device.Active && Device.Online ? "ok" : "off";
     }
 
     private bool rendering;

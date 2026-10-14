@@ -61,7 +61,7 @@ public static class Labels
     // Rechazos del servidor (codigo de ApiError) en frases claras. El resto sale con su codigo para poder consultarlo.
     private static readonly Vocabulary Rejections = new(
         ("version_conflict", "Otro puesto ha cambiado estos datos a la vez."),
-        ("storage_conflict", "El servidor no pudo guardar por un conflicto momentáneo."),
+        ("storage_conflict", "El servidor tuvo un conflicto al guardar: puede haberse aplicado o no."),
         ("idempotency_conflict", "El servidor ya tenía esa misma orden con otro contenido."),
         ("operation_unconfirmed", "El servidor no pudo confirmar la operación: puede haberse aplicado o no."),
         ("request_failed", "El servidor no dio una respuesta reconocible."),
@@ -184,6 +184,12 @@ public static class Labels
         var text = Rejections[code];
         return text != code ? text : $"El servidor rechazó la operación (código {code}).";
     }
+    // C1 (revision): aviso de una operacion fallida. Si la orden SIGUE PENDIENTE (5xx, conflicto de almacenamiento, respuesta sin el
+    // eco de su clave...) no se sabe si se aplico: nunca se dice que el servidor la rechazo. Solo un rechazo definitivo, que ya cerro
+    // la orden, se cuenta como rechazo; una respuesta sin codigo reconocible lleva ademas su estado HTTP.
+    public static string Failure(string code, int status, bool stillPending) => stillPending
+        ? $"El servidor no confirmó la operación: puede haberse aplicado o no (código {code})."
+        : Rejection(code) + (code == "request_failed" ? $" (HTTP {status.ToString(CultureInfo.InvariantCulture)})" : "");
 
     // Actor de auditoria (D4.1): "user:jefa" y "device:pc-barra" se muestran como "jefa" y "pc-barra"; el actor de laboratorio
     // ("lab-main") como "laboratorio". Cualquier otra forma, tal cual.

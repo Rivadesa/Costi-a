@@ -23,6 +23,9 @@
  <SolidColorBrush x:Key="StrokeStrong" Color="#CDD2D8"/>
  <SolidColorBrush x:Key="Ink" Color="#1A1D21"/>
  <SolidColorBrush x:Key="InkSoft" Color="#5A616B"/>
+ <!-- Texto de un control deshabilitado (campos, botones principales, barra lateral): gris claro, distinto del texto vivo. -->
+ <SolidColorBrush x:Key="InkDisabled" Color="#8A9099"/>
+ <SolidColorBrush x:Key="FillDisabled" Color="#EEF0F2"/>
  <SolidColorBrush x:Key="Hover" Color="#0D000000"/>
  <SolidColorBrush x:Key="Scrim" Color="#80111827"/>
 
@@ -64,6 +67,14 @@
  <SolidColorBrush x:Key="ExpanderContentBackground" Color="#F9FAFB"/>
  <SolidColorBrush x:Key="DataGridRowSelectedBackgroundThemeBrush" Color="#E2EFEC"/>
  <SolidColorBrush x:Key="DataGridRowSelectedForegroundThemeBrush" Color="#1A1D21"/>
+ <!-- Deshabilitados (revision C1): Fluent los deja translucidos (#4DF9F9F9) y sin Mica desaparecen sobre una ficha #F5F6F8; un campo
+      deshabilitado con valor parecia vivo. Relleno gris opaco y borde suave; el texto lo pone Controls.xaml (InkDisabled). -->
+ <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#EEF0F2"/>
+ <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#E2E5E9"/>
+ <SolidColorBrush x:Key="ComboBoxBackgroundDisabled" Color="#EEF0F2"/>
+ <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#E2E5E9"/>
+ <!-- Esquinas de botones, campos y desplegables (Fluent: 4 px; el lienzo: 8). Fluent la lee como recurso dinamico en todos ellos. -->
+ <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
 
  <!-- 6. Densidad de ERP (Fluent mide 32 px por control; listas y barra de estado se compactan). -->
  <Thickness x:Key="ListBoxItemPadding">10,6,10,6</Thickness>

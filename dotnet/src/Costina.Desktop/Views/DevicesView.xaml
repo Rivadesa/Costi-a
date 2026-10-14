@@ -1,9 +1,16 @@
 <UserControl x:Class="Costina.Desktop.Views.DevicesView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
  <!-- C1: Dispositivos (nucleo, solo main; corte A): conectar comanderos y pantallas de cocina.
       Hereda el DataContext del cascaron (ShellViewModel). C1: aspecto nuevo (tarjetas, avisos con icono) con la distribucion de siempre.
-      Los botones de pantalla de cocina buscan el comando en el DataContext de la ventana (RelativeSource Window). -->
- <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-  <Border Grid.Column="0" Style="{StaticResource Card}"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+      Los botones de pantalla de cocina buscan el comando en el DataContext de la ventana (RelativeSource Window).
+      Revision C1: cabecera de la vista como las demas; la tarjeta de conectar mide lo que su contenido (sin hueco blanco debajo); una
+      pantalla de cocina por estacion en botones iguales con icono; cada dispositivo con su punto de presencia. -->
+ <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <StackPanel Grid.ColumnSpan="3" Style="{StaticResource PageHeader}">
+   <TextBlock Text="Dispositivos" Style="{StaticResource PageTitle}"/>
+   <TextBlock Text="Comanderos y pantallas de cocina de este local: conectarlos con un código de un solo uso, ver si tienen conexión y quitarlos." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+  </StackPanel>
+  <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Card}" VerticalAlignment="Top"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
    <TextBlock Text="Conectar un dispositivo" Style="{StaticResource PanelTitle}"/>
    <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,4,0,10" TextWrapping="Wrap"/>
    <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}">
@@ -22,9 +29,13 @@
     </WrapPanel>
     <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,14,0,4"/>
     <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">
+     <!-- Cada boton mide su nombre (antes un ancho minimo de 160 dejaba la tercera estacion sola en otra linea). -->
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
      <ItemsControl.ItemTemplate><DataTemplate>
-      <Button Content="{Binding Name}" MinWidth="160" Command="{Binding DataContext.Devices.StartKitchenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+      <Button Command="{Binding DataContext.Devices.StartKitchenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+              ToolTip="Conectar la pantalla de cocina de esta estación">
+       <StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconQr}" Margin="0,0,8,0"/><TextBlock Text="{Binding Name}"/></StackPanel>
+      </Button>
      </DataTemplate></ItemsControl.ItemTemplate>
     </ItemsControl>
    </StackPanel>
@@ -63,7 +74,7 @@
     </StackPanel>
    </Expander>
   </StackPanel></ScrollViewer></Border>
-  <Border Grid.Column="2" Style="{StaticResource Card}"><DockPanel>
+  <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource Card}"><DockPanel>
    <StackPanel DockPanel.Dock="Top">
     <TextBlock Text="Dispositivos conectados" Style="{StaticResource PanelTitle}"/>
     <TextBlock Text="{Binding Devices.ListSummary}" TextWrapping="Wrap" Style="{StaticResource Subtle}" Margin="0,4,0,6"/>
@@ -79,7 +90,8 @@
     </DockPanel></ContentControl>
     <Button x:Name="RemoveButton" Content="Quitar el dispositivo seleccionado" Style="{StaticResource DangerButton}" Command="{Binding Devices.AskRemoveCommand}" HorizontalAlignment="Left"/>
    </StackPanel>
-   <ListBox x:Name="DeviceList" ItemsSource="{Binding Devices.Rows}" SelectedItem="{Binding Devices.SelectedRow}" DisplayMemberPath="Text">
+   <ListBox x:Name="DeviceList" ItemsSource="{Binding Devices.Rows}" SelectedItem="{Binding Devices.SelectedRow}">
+    <ListBox.ItemTemplate><DataTemplate><DockPanel><Ellipse Style="{StaticResource Dot}" Tag="{Binding PresenceDot}" Margin="0,6,8,0" VerticalAlignment="Top"/><TextBlock Text="{Binding Text}" TextWrapping="Wrap"/></DockPanel></DataTemplate></ListBox.ItemTemplate>
     <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Style="{StaticResource Section}" Margin="6,10,0,2"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
    </ListBox>
   </DockPanel></Border>

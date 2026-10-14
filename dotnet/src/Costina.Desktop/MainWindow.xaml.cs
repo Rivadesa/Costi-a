@@ -73,6 +73,9 @@ public partial class MainWindow : Window
     }
     private void ShowView(string name)
     {
+        // C1 (revision): durante una operacion no se cambia de vista por ningun camino. Los menus y las vistas ya estan deshabilitados
+        // (TabsEnabled); la barra lateral solo ignora el raton, y sin esta guarda el teclado (Tab + Intro) abria una vista que nadie leia.
+        if (!shell.TabsEnabled) return;
         if (FindName(name) is not TabItem view) return;
         if (ShellViewModel.RequiresResponsible(name) && !shell.IsMain) { shell.RequestElevation(name); return; }
         Tabs.SelectedItem = view;

@@ -375,6 +375,25 @@ await Check("vocabulary: server rejections in clear Spanish; an unknown one keep
     }
     Expect(Labels.Rejection("brand_new_rule")=="El servidor rechazó la operación (código brand_new_rule).","unknown rejection: "+Labels.Rejection("brand_new_rule"));
     return Task.CompletedTask;});
+// C1 (revision): el aviso de una orden fallida sale del MISMO estado que la orden: si sigue pendiente (5xx, conflicto de
+// almacenamiento) no se sabe si se aplico y nunca se dice "rechazo"; un rechazo definitivo (ya cerrado) si es un rechazo.
+await Check("vocabulary: an uncertain failure is never told as a rejection",async()=>{
+    foreach(var (status,body) in new[]{(409,"{\"error\":\"storage_conflict\"}"),(503,"{\"error\":\"brand_new_rule\"}"),(502,"<html>gateway</html>")})
+    {
+        using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(status,body,r))));
+        var error=(ApiError?)null;
+        try { await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start"); } catch(ApiError e) { error=e; }
+        Expect(error is not null&&client.Pending is not null,"an inconclusive answer keeps the command: "+status);
+        var text=Labels.Failure(error!.Code,error.Status,client.Pending is not null);
+        Expect(text=="El servidor no confirmó la operación: puede haberse aplicado o no (código "+error.Code+").","uncertain failure: "+text);
+    }
+    using var definitive=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
+    var rejected=(ApiError?)null;
+    try { await definitive.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start"); } catch(ApiError e) { rejected=e; }
+    Expect(rejected is not null&&definitive.Pending is null,"a definitive rejection closes the command");
+    Expect(Labels.Failure(rejected!.Code,rejected.Status,definitive.Pending is not null)==Labels.Rejection("version_conflict"),"definitive rejection: "+Labels.Failure(rejected.Code,rejected.Status,false));
+    Expect(Labels.Failure("request_failed",502,false)=="El servidor no dio una respuesta reconocible. (HTTP 502)"&&!Labels.Rejection("storage_conflict").Contains("no pudo guardar",StringComparison.Ordinal),"read failure and storage conflict wording");
+});
 await Check("vocabulary: course states carry the skip reason, the missing choice and the empty group",()=>{
     var chosen=new PreparationDto("sopa-1","Sopa","hot",1,1,true,"Pending");
     Expect(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]).StateLabel=="Omitido: sin hambre","skip reason");

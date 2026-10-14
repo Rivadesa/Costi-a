@@ -42,7 +42,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string dishQuantity = "1";
     [ObservableProperty] private string pax = "2";
     [ObservableProperty] private string reason = "";
-    [ObservableProperty] private GuestRestrictionDto[] restrictions = [];
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasRestrictions))] private GuestRestrictionDto[] restrictions = [];
+    public bool HasRestrictions => Restrictions.Length > 0;
     [ObservableProperty] private GuestRestrictionDto? selectedRestriction;
     [ObservableProperty] private bool restrictionsPendingAck;
     [ObservableProperty] private string restrictionGuest = "";

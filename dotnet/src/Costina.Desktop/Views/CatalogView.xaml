@@ -9,12 +9,17 @@
    <TextBlock Text="Nada se borra: productos, categorías, tarifas e impuestos se desactivan y conservan su historia. El precio que se cobra queda congelado en cada cuenta con su producto, presentación y tarifa." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
   </StackPanel>
   <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="5*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="11*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="5*"/></Grid.ColumnDefinitions>
-   <!-- Categorias -->
-   <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14">
-    <DockPanel>
-     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Categoría" Command="{Binding Catalog.StartCategoryCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Categorías" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-     <CheckBox DockPanel.Dock="Top" Content="Ver todos los productos" IsChecked="{Binding Catalog.AllCategories}" Margin="0,0,0,8"/>
-     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
+   <!-- Categorias: el arbol (sangria por nivel) con un alto que se lee y, debajo, su ficha, que se desplaza si no cabe. -->
+   <Border Grid.Column="0" Style="{StaticResource CardDense}">
+    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="2*" MinHeight="140"/><RowDefinition Height="3*"/></Grid.RowDefinitions>
+     <DockPanel Grid.Row="0" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Categoría" Command="{Binding Catalog.StartCategoryCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Categorías" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+     <CheckBox Grid.Row="1" Content="Ver todos los productos" IsChecked="{Binding Catalog.AllCategories}" Margin="0,0,0,8"/>
+     <TextBlock Grid.Row="2" Text="Aún no hay categorías. Crea la primera con «＋ Categoría» o importa un fichero." Style="{StaticResource Subtle}" Margin="0,0,0,8" Visibility="{Binding Catalog.HasCategories, Converter={StaticResource NotBool2Vis}}"/>
+     <ListBox Grid.Row="3" x:Name="CategoryList" ItemsSource="{Binding Catalog.Categories}" SelectedItem="{Binding Catalog.SelectedCategory}">
+      <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" Margin="{Binding Indent}"/></DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+     <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,10,0,0">
+     <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,0,14,0"><StackPanel>
       <TextBlock Text="{Binding Catalog.CategoryFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
       <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}"/>
       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.CategoryName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}"/>
@@ -27,12 +32,11 @@
       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar categoría" Style="{StaticResource Primary}" Command="{Binding Catalog.SaveCategoryCommand}"/>
        <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Catalog.ToggleCategoryCommand}"/></WrapPanel>
      </StackPanel></Border>
-     <TextBlock DockPanel.Dock="Bottom" Text="Aún no hay categorías. Crea la primera con «＋ Categoría» o importa un fichero." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Catalog.HasCategories, Converter={StaticResource NotBool2Vis}}"/>
-     <ListBox x:Name="CategoryList" ItemsSource="{Binding Catalog.Categories}" SelectedItem="{Binding Catalog.SelectedCategory}" FontFamily="Consolas, Segoe UI"/>
-    </DockPanel>
+     </ScrollViewer>
+    </Grid>
    </Border>
    <!-- Productos y presentaciones -->
-   <Border Grid.Column="2" Style="{StaticResource Card}" Padding="14">
+   <Border Grid.Column="2" Style="{StaticResource CardDense}">
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="240"/></Grid.ColumnDefinitions>
      <DockPanel Grid.Column="0">
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Producto" Command="{Binding Catalog.StartProductCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Productos" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
@@ -45,7 +49,8 @@
       <TextBlock DockPanel.Dock="Bottom" Text="No hay productos que mostrar: cambia la categoría o la búsqueda, crea uno con «＋ Producto» o importa el catálogo desde un fichero en el equipo servidor." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding Catalog.HasProducts, Converter={StaticResource NotBool2Vis}}"/>
       <ListBox x:Name="ProductList" ItemsSource="{Binding Catalog.Products}" SelectedItem="{Binding Catalog.SelectedProduct}"/>
      </DockPanel>
-     <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
+     <!-- Margen derecho de 14: la barra de desplazamiento de Fluent se superpone; asi no tapa el borde de las fichas. -->
+     <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,14,0">
       <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,0,0,10"><StackPanel>
        <TextBlock Text="{Binding Catalog.ProductFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}"/>
@@ -86,8 +91,9 @@
     </Grid>
    </Border>
    <!-- Tarifas e impuestos: listas cortas y fichas en una columna que se desplaza si no cabe (nunca se corta). -->
-   <Border Grid.Column="4" Style="{StaticResource Card}" Padding="14">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
+   <!-- Columna estrecha: hueco de 10 para la barra de desplazamiento (con 14 no cabia "Desactivar / reactivar"). -->
+   <Border Grid.Column="4" Style="{StaticResource CardDense}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,10,0">
      <DockPanel Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Tarifa" Command="{Binding Catalog.StartTariffCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Tarifas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
      <ListBox x:Name="TariffList" ItemsSource="{Binding Catalog.Tariffs}" SelectedItem="{Binding Catalog.SelectedTariff}" MaxHeight="132"/>
      <TextBlock Text="La tarifa General existe siempre. Una sala puede usar otra tarifa: sin precio en ella se aplica la General." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>

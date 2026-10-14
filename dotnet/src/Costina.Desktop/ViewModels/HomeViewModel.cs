@@ -10,7 +10,10 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
 {
     public static readonly TimeSpan CertificateWarningWindow = TimeSpan.FromDays(30);
 
+    // C1 (revision): una linea corta para quien trabaja (version y donde esta el servidor); la direccion, el modo y los puertos van en
+    // el detalle (ayuda emergente de esa linea).
     [ObservableProperty] private string serverText = "";
+    [ObservableProperty] private string serverDetail = "";
     [ObservableProperty] private string whoText = "";
     [ObservableProperty] private string backupText = "";
     [ObservableProperty] private string devicesSummary = "";
@@ -26,17 +29,21 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         var station = session?.StationName is { Length: > 0 } s ? " · " + s : "";
         WhoText = session is null ? "" : session.Role switch
         {
+            "main" when shell.IsStation => $"{shell.RoleText("main")} {actor}".TrimEnd() + station + ": dispositivo antiguo con rol principal. Conviene quitarlo y conectar este PC de nuevo desde Dispositivos.",
             "main" => (actor.Length > 0 ? $"{Labels.SessionRole("main")}: {actor}" : Labels.SessionRole("main")) + ". Acceso a todos los apartados.",
             "service" => $"{Labels.SessionRole("service")} {actor}".TrimEnd() + station + ": toma comandas. Cobrar, configurar o conectar dispositivos pide la contraseña del responsable.",
             "kitchen" => $"{Labels.SessionRole("kitchen")} {actor}".TrimEnd() + station + ".",
             var role => Labels.SessionRole(role)
         };
-        if (session is null) { ServerText = ""; CertificateWarning = ""; BackupText = ""; DevicesSummary = ""; }
+        if (session is null) { ServerText = ""; ServerDetail = ""; CertificateWarning = ""; BackupText = ""; DevicesSummary = ""; }
         else if (ServerText.Length == 0)
-            ServerText = $"Servidor {session.ServerVersion} en {shell.Endpoint}" + (session.Demo ? " · DEMOSTRACIÓN · DATOS FICTICIOS" : "");
+        {
+            ServerText = $"Servidor {session.ServerVersion} {shell.ServerPlace}" + (session.Demo ? " · DEMOSTRACIÓN · DATOS FICTICIOS" : "");
+            ServerDetail = $"Servidor {session.ServerVersion} en {shell.Endpoint}";
+        }
     }
 
-    internal void Clear() { ServerText = ""; WhoText = ""; BackupText = ""; DevicesSummary = ""; CertificateWarning = ""; }
+    internal void Clear() { ServerText = ""; ServerDetail = ""; WhoText = ""; BackupText = ""; DevicesSummary = ""; CertificateWarning = ""; }
 
     internal async Task LoadAsync()
     {
@@ -51,7 +58,9 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
     public void ApplyDiagnostics(DiagnosticsDto diagnostics, DateTimeOffset? now = null)
     {
         var moment = now ?? DateTimeOffset.UtcNow;
-        ServerText = $"Servidor {diagnostics.Version} ({(diagnostics.Mode == "installation" ? "instalación" : "laboratorio")}{(diagnostics.RunningAsService ? ", servicio de Windows" : "")}) en {shell.Endpoint}"
+        ServerText = $"Servidor {diagnostics.Version} {shell.ServerPlace}" + (diagnostics.Mode == "installation" ? "" : " · laboratorio")
+            + (shell.Session?.Demo == true ? " · DEMOSTRACIÓN · DATOS FICTICIOS" : "");
+        ServerDetail = $"Servidor {diagnostics.Version} ({(diagnostics.Mode == "installation" ? "instalación" : "laboratorio")}{(diagnostics.RunningAsService ? ", servicio de Windows" : "")}) en {shell.Endpoint}"
             + (diagnostics.Tls is { Enabled: true } tls ? $" · HTTPS en la red local por el puerto {tls.Port}" + (tls.Names is { Length: > 0 } ? $" ({tls.Names})" : "") : " · solo en este equipo (sin HTTPS en la red)");
         BackupText = diagnostics.Backup is null ? "" : diagnostics.Backup.Automatic
             ? (diagnostics.Backup.LastSuccessAt is { } at ? $"Última copia de seguridad: {at.ToLocalTime():dd/MM HH:mm}." : "Todavía no hay ninguna copia de seguridad.")

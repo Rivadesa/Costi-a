@@ -131,12 +131,14 @@ El mismo aspecto, la misma paleta y el mismo vocabulario en `frontend/pwa` (`lab
 | Oferta | Degustación · Menú cerrado · Carta |
 | Servicio de la oferta | Comida y cena · Comida · Cena |
 | Rol | Responsable · Puesto de sala · Pantalla de cocina |
+| Tipo de dispositivo | Comandero · Pantalla de cocina · Principal (antiguo) |
 | Dispositivo | Conectado · Sin conexión · Quitado el … |
 | Tiempo real | Tiempo real activo · Reconectando… · Sin tiempo real, reintentando |
 
 Reglas de uso:
 - Para la gente en mesa se dice «personas». «Plazas» es la capacidad de una mesa. La cifra del Inicio se llama «Comensales».
 - Se escriben los nombres de mesa y estación, no sus códigos; el código solo aparece en el campo «Código» de las fichas.
+- El mismo rol `service` tiene dos palabras a propósito (revisión de C1): como **sesión** en el puesto principal es «Puesto de sala» (este PC trabajando como puesto); como **dispositivo** en la lista de Dispositivos es «Comandero» (una tablet). Un dispositivo antiguo con rol `main` es «Principal (antiguo)», nunca «Responsable»: responsable es solo una persona con su contraseña.
 
 Decidido por el agente con la delegación del promotor; se puede cambiar cualquier palabra antes de C3. Los textos que el servidor da a los rechazos más comunes (versión cruzada, mesa ocupada, cuenta sin saldar, pases sin servir, restricciones sin revisar, estación equivocada…) se reescriben como frases claras. Los demás salen como «El servidor rechazó la operación (código X)».
 

@@ -10,14 +10,14 @@
   </StackPanel>
   <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="4*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
    <!-- Ofertas -->
-   <Border Grid.Column="0" Style="{StaticResource Card}" Padding="14">
+   <Border Grid.Column="0" Style="{StaticResource CardDense}">
     <DockPanel>
      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Oferta" Command="{Binding Offers.StartOfferCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Ofertas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-     <!-- C1: la lista de ofertas conserva su alto (tres o cuatro filas) y la ficha, larga, se desplaza debajo si no cabe. -->
-     <ListBox x:Name="OfferList" DockPanel.Dock="Top" Height="132" ItemsSource="{Binding Offers.Offers}" SelectedItem="{Binding Offers.SelectedOffer}"/>
+     <!-- C1: la lista de ofertas conserva su alto (cuatro filas enteras de 33 px) y la ficha, larga, se desplaza debajo si no cabe. -->
+     <ListBox x:Name="OfferList" DockPanel.Dock="Top" Height="144" ItemsSource="{Binding Offers.Offers}" SelectedItem="{Binding Offers.SelectedOffer}"/>
      <TextBlock DockPanel.Dock="Top" Text="Aún no hay ofertas. Crea la primera con «＋ Oferta»." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Offers.HasOffers, Converter={StaticResource NotBool2Vis}}"/>
      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
+      <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,14,0"><StackPanel>
        <TextBlock Text="{Binding Offers.OfferFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
        <WrapPanel>
         <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" Width="130"/></StackPanel>
@@ -51,7 +51,7 @@
     </DockPanel>
    </Border>
    <!-- Pases -->
-   <Border Grid.Column="2" Style="{StaticResource Card}" Padding="14">
+   <Border Grid.Column="2" Style="{StaticResource CardDense}">
     <DockPanel>
      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Pase" Command="{Binding Offers.StartCourseCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Pases de la oferta" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
      <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
@@ -69,7 +69,7 @@
     </DockPanel>
    </Border>
    <!-- Platos -->
-   <Border Grid.Column="4" Style="{StaticResource Card}" Padding="14">
+   <Border Grid.Column="4" Style="{StaticResource CardDense}">
     <DockPanel>
      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Plato" Command="{Binding Offers.StartDishCommand}" Style="{StaticResource AddButton}" Visibility="{Binding Offers.IsNotCarte, Converter={StaticResource Bool2Vis}}"/><TextBlock Text="Platos del pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
      <!-- E4b: en una carta, el grupo lleva items del catalogo (producto + presentacion con estacion) -->

@@ -8,8 +8,14 @@
  <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
   <Setter Property="Margin" Value="0,4,8,4"/><Setter Property="MinHeight" Value="32"/><Setter Property="FontWeight" Value="SemiBold"/>
  </Style>
- <!-- Accion principal: el boton de acento de Fluent (verde, texto blanco, estados coherentes). -->
+ <!-- Accion principal: el boton de acento de Fluent (verde, texto blanco, estados coherentes). Deshabilitado, Fluent lo pinta como un
+      bloque gris #C8C8C8 con texto blanco (contraste 1,6:1, parece un fallo): se ve como cualquier otro boton deshabilitado. -->
  <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+  <Style.Resources>
+   <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="#F5F6F8"/>
+   <SolidColorBrush x:Key="AccentButtonBorderBrushDisabled" Color="#E2E5E9"/>
+   <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#8A9099"/>
+  </Style.Resources>
   <Setter Property="Margin" Value="0,4,8,4"/><Setter Property="MinHeight" Value="32"/><Setter Property="FontWeight" Value="SemiBold"/>
  </Style>
  <!-- Peligro (irreversible o desactivar): contorno rojo; el relleno rojo queda para la confirmacion final (DangerFilled). -->
@@ -61,10 +67,18 @@
   <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorderBrush}"/>
  </Style>
 
+ <!-- Campos de texto: Fluent solo grisea el texto del contenedor interior y el texto de un campo deshabilitado seguia negro (parecia
+      editable). El color del texto es el Foreground del propio TextBox. -->
+ <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+  <Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource InkDisabled}"/></Trigger></Style.Triggers>
+ </Style>
+
  <!-- Casillas: Fluent les pone 120 px de ancho minimo (pensado para tactil); aqui van en filas densas (dias de la semana). -->
  <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"><Setter Property="MinWidth" Value="0"/></Style>
  <!-- Celda de tabla cuyo texto puede ser largo (restricciones, revision): se parte en vez de cortarse. -->
  <Style x:Key="WrapCell" TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+ <!-- Cantidades e importes: alineados a la derecha para que las cifras cuadren (celda y cabecera). -->
+ <Style x:Key="NumberCell" TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
 
  <!-- Listas: fondo blanco (Fluent las pinta grises) y filas compactas. La fila se re-plantilla solo para que el texto largo se parta
       (la plantilla Fluent no lo hace) y para marcar la seleccion con fondo suave y barra de acento, como la barra lateral. -->
@@ -120,6 +134,8 @@
   <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/>
   <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="12"/><Setter Property="MinHeight" Value="32"/>
  </Style>
+ <!-- Cabecera de una columna de cifras: la de Fluent (la que pintan las demas cabeceras), alineada a la derecha. -->
+ <Style x:Key="NumberHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource DefaultDataGridColumnHeaderStyle}"><Setter Property="HorizontalContentAlignment" Value="Right"/></Style>
  <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
   <Setter Property="IsReadOnly" Value="True"/><Setter Property="CanUserAddRows" Value="False"/><Setter Property="AutoGenerateColumns" Value="False"/>
   <Setter Property="HeadersVisibility" Value="Column"/><Setter Property="GridLinesVisibility" Value="Horizontal"/>
