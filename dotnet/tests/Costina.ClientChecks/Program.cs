@@ -53,6 +53,15 @@ await Check("pairing link carries only the code, in the fragment",()=>{
     return Task.CompletedTask;});
 foreach(var sample in new[]{"","   ","costina-server","http://127.0.0.1:5088","http://192.168.1.10:5088","https://costina-server.local:5443/app","https://user@costina-server.local:5443","https://costina-server.local:443","https://costina-server.local:5443/?x=1"})
     await Check("reject device address '"+sample+"'",()=>Throws<ArgumentException>(()=>{PairingLink.ParseDeviceAddress(sample);return Task.CompletedTask;}));
+// B.2 (ADR-014): con la conexion sencilla, http://IPv4-PRIVADA:PUERTO; nunca un nombre, una IP publica o loopback.
+await Check("simple connection link uses the private IPv4 over http",()=>{
+    var address=PairingLink.ParseDeviceAddress(" http://192.168.0.81:5089 ",simpleConnection:true);
+    Assert(PairingLink.Build(address,"AbC123_def-456")=="http://192.168.0.81:5089/app/#pair=AbC123_def-456");
+    Assert(PairingLink.SimpleAddress("10.0.0.5",5089)=="http://10.0.0.5:5089");
+    Assert(PairingLink.ParseDeviceAddress("https://costina-server.local:5443",simpleConnection:true).Scheme=="https");   // https sigue valiendo
+    return Task.CompletedTask;});
+foreach(var sample in new[]{"http://costina-server.local:5089","http://8.8.8.8:5089","http://127.0.0.1:5089","http://172.32.0.1:5089","http://192.168.0.81:80","http://192.168.0.81:5089/app","http://user@192.168.0.81:5089","http://192.168.0.81:5089/?x=1","http://[fd00::1]:5089"})
+    await Check("reject simple address '"+sample+"'",()=>Throws<ArgumentException>(()=>{PairingLink.ParseDeviceAddress(sample,simpleConnection:true);return Task.CompletedTask;}));
 foreach(var sample in new[]{"","corto","con espacio dentro","<img src=x onerror=1>","codigo/con/barras","código-con-acento",new string('a',129)})
     await Check("reject pairing code '"+sample[..Math.Min(sample.Length,24)]+"'",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample);return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{

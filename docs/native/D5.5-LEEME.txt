@@ -22,7 +22,10 @@ EN EL SERVIDOR, AL TERMINAR
         "C:\Program Files\Costina\server\Costina.Server.exe" first-user
   2. El motor arranca solo con el equipo, sin iniciar sesion. En este equipo la aplicacion usa
         http://127.0.0.1:5088
-  3. Los demas equipos y tablets usan   https://NOMBRE-DE-ESTE-EQUIPO.local:5443
+  3. Moviles y tablets SIN INSTALAR NADA: en la aplicacion, Inicio > Dispositivos, el responsable
+     activa la "conexion sencilla" y el QR lleva http://IP-DE-ESTE-EQUIPO:5089. Va SIN CIFRAR: usala
+     solo con un Wi-Fi exclusivo del personal. La red de Windows debe ser "Privada", no "Publica".
+     Los demas equipos (y tablets que lo prefieran) usan   https://NOMBRE-DE-ESTE-EQUIPO.local:5443
      Antes deben confiar en la CA local: copia C:\ProgramData\Costina\tls\ca.crt en un USB y
      compara SIEMPRE su huella SHA-256 con la del servidor: C:\ProgramData\Costina\tls\ca-fingerprint.txt
   4. Copias: cada dia en backups\. Una copia en el mismo disco no sobrevive a perder el disco:

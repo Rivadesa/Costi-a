@@ -11,15 +11,31 @@ public static class PairingLink
         => endpoint.IsAbsoluteUri && endpoint.Scheme == "https" ? endpoint.GetLeftPart(UriPartial.Authority) : "";
 
     // Misma regla que D5.3 (ApiClient.ValidateEndpoint), sin la excepcion de loopback: una tablet nunca llega a 127.0.0.1.
-    public static Uri ParseDeviceAddress(string? input)
+    // B.2 (ADR-014): con la conexion sencilla encendida en el servidor (simpleConnection) vale ademas http://IP:PUERTO, SOLO con una
+    // IPv4 privada escrita tal cual: un nombre podria resolverse fuera del local y, si el dispositivo ya visito ese nombre por https,
+    // su navegador lo forzaria a https (HSTS) y no llegaria nunca.
+    public static Uri ParseDeviceAddress(string? input, bool simpleConnection = false)
     {
         if (string.IsNullOrWhiteSpace(input) || !Uri.TryCreate(input.Trim(), UriKind.Absolute, out var uri))
-            throw new ArgumentException("Escribe la dirección con la que los dispositivos llegan al servidor: https://NOMBRE:PUERTO.");
+            throw new ArgumentException(simpleConnection
+                ? "Escribe la dirección con la que los dispositivos llegan al servidor: http://IP:PUERTO (conexión sencilla) o https://NOMBRE:PUERTO."
+                : "Escribe la dirección con la que los dispositivos llegan al servidor: https://NOMBRE:PUERTO.");
+        if (simpleConnection && uri.Scheme == "http") { ValidateSimpleAddress(uri); return uri; }
         ApiClient.ValidateEndpoint(uri);
         if (uri.Scheme != "https")
             throw new ArgumentException("Los dispositivos solo llegan al servidor por https://NOMBRE:PUERTO; 127.0.0.1 solo vale en el propio servidor.");
         return uri;
     }
+
+    // B.2: http://IPv4-PRIVADA:PUERTO, sin rutas, credenciales, consulta ni fragmento. Nunca loopback (una tablet no llega ahi).
+    public static void ValidateSimpleAddress(Uri uri)
+    {
+        var ok = uri.Scheme == "http" && uri.HostNameType == UriHostNameType.IPv4 && System.Net.IPAddress.TryParse(uri.Host, out var ip)
+            && ip.GetAddressBytes() is var b && (b[0] == 10 || (b[0] == 172 && b[1] is >= 16 and <= 31) || (b[0] == 192 && b[1] == 168))
+            && uri.Port is >= 1024 and <= 65535 && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.AbsolutePath == "/";
+        if (!ok) throw new ArgumentException("La conexión sencilla solo admite http://IP:PUERTO con la IP privada del servidor en la red del local (192.168…, 10… o 172.16–31…), sin rutas ni credenciales.");
+    }
+    public static string SimpleAddress(string ipv4, int port) => $"http://{ipv4}:{port}";
 
     // Mismo alfabeto cerrado que acepta la PWA (pairing.ts): nada que no sea un codigo entra en una URL.
     public static bool IsCode(string? code)

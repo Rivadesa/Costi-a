@@ -24,6 +24,7 @@ SERVER = Path(sys.argv[1]).resolve()
 sys.argv = sys.argv[:1]
 PORT = os.environ.get('COSTINA_TEST_PORT', '5088')   # ver native_http
 BASE = 'http://127.0.0.1:' + PORT
+LAN_PORT = os.environ.get('COSTINA_TEST_LAN_PORT', str(int(PORT) + 11))   # B.2: conexion sencilla (ver pairing_http)
 BOOTSTRAP = os.environ['COSTINA_DB']          # CI superuser: used only by provision
 DATABASE = os.environ['PGDATABASE']
 DATA = Path(os.environ.get('COSTINA_TEST_DATA') or tempfile.mkdtemp(prefix='costina-data-'))
@@ -32,6 +33,9 @@ PASSWORD = 'packaging-password-123'
 def clean_env(**extra):
     env = {k: v for k, v in os.environ.items() if not k.startswith('COSTINA_')}
     env['COSTINA_DATA'] = str(DATA)
+    # B.2: una instalacion abre por defecto la conexion sencilla en 5089 (todas las interfaces). En las pruebas, solo donde se pide:
+    # en un PC de desarrollo con Costina instalado ese puerto es de la instalacion real.
+    env['COSTINA_LAN_HTTP_PORT'] = '0'
     if os.environ.get('COSTINA_PG_BIN'): env['COSTINA_PG_BIN'] = os.environ['COSTINA_PG_BIN']   # pg_dump del mismo major que el servidor
     env.update(extra)
     return env
@@ -162,7 +166,7 @@ class Packaging(unittest.TestCase):
         upgraded = cli('upgrade', env=env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
         self.assertEqual(psql_as(BOOTSTRAP, "SELECT string_agg(nspname || ':' || nspowner::regrole::text, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core:costina_owner,dining:costina_owner')
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '7')   # E3.2: esquema v7
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '8')   # B.2: esquema v8
 
     def test_04_runtime_role_has_no_ddl_and_cannot_touch_the_audit_trail(self):
         runtime = self.config('server.json')['COSTINA_DB']
@@ -185,7 +189,7 @@ class Packaging(unittest.TestCase):
         self.assertIn('runtime role', started.stdout + started.stderr)
 
     def test_06_installation_serves_from_file_configuration_with_the_runtime_role(self):
-        env = clean_env()
+        env = clean_env(COSTINA_LAN_HTTP_PORT=LAN_PORT)
         created = cli('create-user', 'jefa', 'main', env=env, stdin=PASSWORD)
         self.assertEqual(created.returncode, 0, created.stderr)
         with Server(env):
@@ -215,6 +219,20 @@ class Packaging(unittest.TestCase):
             self.assertTrue(diagnostics['backup']['automatic'] and diagnostics['backup']['lastSuccessAt'])
             self.assertTrue((DATA / 'backups' / diagnostics['backup']['lastFile']).exists())
             self.assertFalse(diagnostics['backup']['secondDestinationConfigured'])
+            # B.2 (ADR-014): conexion sencilla, apagada al instalar; el responsable la enciende con el rol de ejecucion (grants) y se
+            # aplica sin reiniciar. Aqui se llega por loopback; en la red, solo desde direcciones privadas.
+            lan = 'http://127.0.0.1:' + LAN_PORT
+            def lan_status(path):
+                try:
+                    with urllib.request.urlopen(lan + path, timeout=5) as r: return r.status
+                except urllib.error.HTTPError as e: return e.code
+            self.assertEqual(lan_status('/health'), 503)
+            self.assertEqual(diagnostics['lanHttp'], {'enabled': False, 'listening': True, 'port': int(LAN_PORT)})
+            switch = '/api/native/v1/installation/commands/lan-http-set'
+            self.assertEqual(call(switch, {'enabled': True}, token=login['token'])[0], 200)
+            self.assertEqual(lan_status('/health'), 200)
+            self.assertEqual(call(switch, {'enabled': False}, token=login['token'])[0], 200)
+            self.assertEqual(lan_status('/health'), 503)
             self.assertEqual(call('/api/native/v1/auth/logout', {}, token=login['token'])[0], 200)
         logs = list((DATA / 'logs').glob('server-*.log'))
         self.assertEqual(len(logs), 1)
@@ -482,7 +500,7 @@ class Packaging(unittest.TestCase):
         v1env = clean_env(COSTINA_DATA=str(v1root))
         before = cli('backup', env=v1env)
         self.assertEqual(before.returncode, 0, before.stdout + before.stderr)
-        self.assertIn('Schema version 1, older than these binaries (7)', before.stdout)
+        self.assertIn('Schema version 1, older than these binaries (8)', before.stdout)
         copied = sorted((v1root / 'backups').glob('costina-*.backup'))[-1]
         manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
         self.assertEqual((manifest['format'], manifest['installationId'], manifest['tables']), (1, installation, v1tables))
@@ -491,9 +509,12 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
         upgraded = cli('upgrade', env=v1env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
-        self.assertIn('upgraded to version 7', upgraded.stdout)                                           # v1 -> ... -> v7 encadenadas
+        self.assertIn('upgraded to version 8', upgraded.stdout)                                           # v1 -> ... -> v8 encadenadas
         self.assertEqual(psql_as(v1super, "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core,dining')
-        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '7')   # v1 -> ... -> v7
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '8')   # v1 -> ... -> v8
+        # B.2 (v8): la conexion sencilla llega apagada y el rol de ejecucion solo puede cambiar esa columna de la instalacion.
+        self.assertEqual(psql_as(v1super, "SELECT lan_http || ':' || has_column_privilege('costina_runtime', 'core.installation', 'lan_http', 'UPDATE') || ':' || "
+                                          "has_column_privilege('costina_runtime', 'core.installation', 'modules', 'UPDATE') FROM core.installation").stdout.strip(), 'false:true:false')
         # E3.2 (v7): la tabla de imagenes existe, vacia, y el rol de ejecucion puede ponerlas pero nunca borrarlas.
         self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || has_table_privilege('costina_runtime', 'core.product_images', 'INSERT') || ':' || "
                                           "has_table_privilege('costina_runtime', 'core.product_images', 'DELETE') FROM core.product_images").stdout.strip(), '0:true:false')
@@ -538,35 +559,35 @@ class Packaging(unittest.TestCase):
         restore_root, _, restore_super = scaffold('costina_restore_v1_d1_test', 5096)
         restored = cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root)))
         self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
-        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 7', restored.stdout)
+        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 8', restored.stdout)
         tables = schema_tables(v1super)
         self.assertEqual(tables, schema_tables(restore_super))
         for table in tables:                                                                              # same rows as the upgraded original
             if table == 'core.sessions': continue                                                         # (the login above left a session there)
             self.assertEqual(psql_as(v1super, digest(table)).stdout.strip(), psql_as(restore_super, digest(table)).stdout.strip(), table)
         self.assertNotEqual(cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root))).returncode, 0)   # never overwrites
-        # B.1: a core database in an OLDER version (marked 6 here, the one before E3.2) is still copied by these binaries (the copy before
-        # the upgrade, in format 2); a NEWER one (8) is refused, because these binaries could not restore it. The mark is put back afterwards.
+        # B.1: a core database in an OLDER version (marked 7 here, the one before B.2) is still copied by these binaries (the copy before
+        # the upgrade, in format 2); a NEWER one (9) is refused, because these binaries could not restore it. The mark is put back afterwards.
         restore_env = clean_env(COSTINA_DATA=str(restore_root))
         def mark(version):
             changed = psql_as(restore_super, 'ALTER TABLE core.schema_version DROP CONSTRAINT schema_version_version_check; '
                                              f'UPDATE core.schema_version SET version={version}; '
                                              f'ALTER TABLE core.schema_version ADD CONSTRAINT schema_version_version_check CHECK (version = {version})')
             self.assertEqual(changed.returncode, 0, changed.stderr)
-        mark(6)
+        mark(7)
         try:
             older = cli('backup', env=restore_env)
             self.assertEqual(older.returncode, 0, older.stdout + older.stderr)
-            self.assertIn('Schema version 6, older than these binaries (7)', older.stdout)
+            self.assertIn('Schema version 7, older than these binaries (8)', older.stdout)
             copied = sorted((restore_root / 'backups').glob('costina-*.backup'))[-1]
             manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
             self.assertEqual((manifest['format'], manifest['installationId']), (2, installation))
             self.assertIn('core.schema_version', manifest['tables']); self.assertIn('dining.services', manifest['tables'])
-            mark(8)
+            mark(9)
             newer = cli('backup', env=restore_env)
             self.assertNotEqual(newer.returncode, 0); self.assertIn('newer than these binaries', newer.stdout + newer.stderr)
         finally:
-            mark(7)
+            mark(8)
         with Server(clean_env(COSTINA_DATA=str(restore_root)), base='http://127.0.0.1:5096'):
             status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5096')
             self.assertEqual(status, 200)

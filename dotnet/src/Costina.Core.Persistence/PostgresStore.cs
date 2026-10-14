@@ -22,7 +22,7 @@ public sealed record ModuleSchema(string Name, string Schema, string Grants)
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
 {
-    public const int SchemaVersion = 7;
+    public const int SchemaVersion = 8;
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}$")] private static partial Regex SchemaName();
     public static string CheckedSchema(string name)
         => SchemaName().IsMatch(name) && name != "public" ? name : throw new ArgumentException("Invalid schema name: " + name);
@@ -200,6 +200,13 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
         await using var command = dataSource.CreateCommand("SELECT id FROM core.installation");
         return await command.ExecuteScalarAsync(ct) is Guid id ? id
             : throw new InvalidDataException("Installation identity missing; run init once more.");
+    }
+
+    // B.2 (ADR-014): conexion sencilla por la red local (HTTP sin cifrar hacia los dispositivos). Apagada por defecto.
+    public async Task<bool> LanHttpAsync(CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand("SELECT lan_http FROM core.installation");
+        return await command.ExecuteScalarAsync(ct) is true;
     }
 
     // E1b: modulos ACTIVOS de esta instalacion (core.installation.modules). NULL = todos los compilados en el binario.

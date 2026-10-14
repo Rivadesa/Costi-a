@@ -229,10 +229,14 @@ builder.Host.UseWindowsService(options=>options.ServiceName=ServiceInstaller.Nam
 builder.Logging.AddFilter("Microsoft.AspNetCore",LogLevel.Warning);
 if(!laboratory) builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(ServerSettings.DataRoot,"logs")));
 var startedAt=DateTimeOffset.UtcNow;
-// D5.3: HTTP solo en loopback, siempre. La LAN se sirve UNICAMENTE por HTTPS y solo si la instalacion
-// tiene certificado (provision-tls). El laboratorio nunca abre la LAN.
+// D5.3: el puerto HTTP principal solo en loopback, siempre. La LAN se sirve por HTTPS si la instalacion tiene certificado
+// (provision-tls) y, desde B.2 (ADR-014), por la conexion sencilla cuando el responsable la enciende. El laboratorio nunca abre la LAN.
 var tlsPort = int.Parse(settings.Get("COSTINA_TLS_PORT") ?? "5443");
 if(tlsPort is < 1024 or > 65535 || tlsPort == port) throw new ArgumentException("Invalid TLS port.");
+// B.2 (ADR-014): conexion sencilla por la red local (HTTP sin cifrar), en su propio puerto y apagada hasta que el responsable
+// la enciende. El laboratorio solo la abre si se pide, y nunca fuera del propio equipo.
+var lanHttpPort = LanHttp.Port(settings,laboratory,port,tlsPort);
+var lanHttp = new LanHttpState(lanHttpPort,lanHttpPort>0);
 X509Certificate2? tlsCertificate = null;
 if(File.Exists(LocalTls.ServerPfx))
 {
@@ -249,6 +253,7 @@ builder.WebHost.ConfigureKestrel(options=>
 {
     options.Listen(IPAddress.Loopback,port);
     if(tlsCertificate is not null) options.ListenAnyIP(tlsPort,listen=>listen.UseHttps(tlsCertificate));
+    if(lanHttp.Listening) { if(laboratory) options.Listen(IPAddress.Loopback,lanHttp.Port); else options.ListenAnyIP(lanHttp.Port); }
     // Tope de todo el motor; solo la orden product-image-set lo sube, para su propia peticion (CatalogOperations.ImageCommandBody).
     options.Limits.MaxRequestBodySize=Requests.MaxCommandBody;
 });
@@ -278,8 +283,10 @@ if(!await identityStore.AnyUserAsync())
     notices.Add("AVISO: no hay usuarios en este ambito. Crea el primero con: Costina.Server.exe create-user <usuario> main");
 // Los avisos de arranque salen por el logger: consola en laboratorio, fichero cuando es un servicio.
 foreach(var notice in notices) app.Logger.LogWarning("{Notice}",notice);
+lanHttp.Enabled = await store.LanHttpAsync();
 // D6.1: la PWA operativa se sirve en /app/ desde este mismo origen (solo si el build la incluye). Va ANTES del
 // control de identidad: son ficheros estaticos publicos; cualquier dato sigue pasando por /api con credencial.
+LanHttp.Gate(app,lanHttp);   // B.2: antes que la PWA y la identidad (apagada, el puerto sencillo no sirve nada mas que su aviso)
 var pwaHosted = PwaHosting.Map(app);
 app.UseRouting();
 app.Use(async (context,next)=>
@@ -505,7 +512,8 @@ app.MapGet(prefix+"/commands/{key}",async (HttpContext c,string key)=>{
 // E2: organizacion editable del nucleo (solo puesto principal). E3: catalogo y tarifas.
 app.MapOrganizationRoutes(store,source,scope,modules);
 app.MapCatalogRoutes(store,source,scope);
-app.MapOfferRoutes(store,source,scope);   // E4a: oferta (degustaciones, menus cerrados)
+app.MapOfferRoutes(store,source,scope);
+app.MapLanHttpRoutes(store,scope,lanHttp,tlsPort,tlsCertificate is not null);   // B.2: conexion sencilla por la red local   // E4a: oferta (degustaciones, menus cerrados)
 // ADR-012: cada modulo activo registra sus rutas bajo su prefijo (y, durante una version, bajo el anterior como alias).
 var hosted=modules.Select(m=>(Module:m,Host:new ModuleHost(store,source,scope,prefix+"/"+m.Name,prefix))).ToList();
 foreach(var (module,host) in hosted) module.MapRoutes(app,host);
@@ -532,6 +540,7 @@ app.MapGet(prefix+"/diagnostics",(Func<HttpContext,Task<IResult>>)(async c=>{
         tls=new {enabled=tlsCertificate is not null,port=tlsCertificate is null ? (int?)null : tlsPort,
             serverCertificateExpiresAt=tlsCertificate is null ? (DateTimeOffset?)null : new DateTimeOffset(tlsCertificate.NotAfter.ToUniversalTime()),
             names=tlsCertificate?.GetNameInfo(X509NameType.DnsName,false),caFingerprintSha256=caFingerprint},
+        lanHttp=new {enabled=lanHttp.Enabled,listening=lanHttp.Listening,port=lanHttp.Listening ? lanHttp.Port : (int?)null},
         backup=Backup()
     });
 })).WithMetadata(new RouteAccess("main"));

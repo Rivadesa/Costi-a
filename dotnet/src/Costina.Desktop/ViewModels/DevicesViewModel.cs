@@ -88,6 +88,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         NewCodeCommand.NotifyCanExecuteChanged(); ApproveCommand.NotifyCanExecuteChanged(); DenyCommand.NotifyCanExecuteChanged(); CancelCommand.NotifyCanExecuteChanged();
         AskRemoveCommand.NotifyCanExecuteChanged(); ConfirmRemoveCommand.NotifyCanExecuteChanged(); CancelRemoveCommand.NotifyCanExecuteChanged();
         KeepThisPcConnectedCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(ThisPcText));
+        AskEnableSimpleCommand.NotifyCanExecuteChanged(); ConfirmEnableSimpleCommand.NotifyCanExecuteChanged(); CancelEnableSimpleCommand.NotifyCanExecuteChanged();
+        DisableSimpleCommand.NotifyCanExecuteChanged();
     }
 
     internal void Clear()
@@ -100,6 +102,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             Devices = []; Rows = []; SelectedRow = null; ListSummary = ""; RemovalCandidate = null;
             AssistantTitle = ""; AssistantText = ""; IntentRole = ""; IntentStationId = ""; IntentStationName = ""; PairingId = ""; PairingCode = "";
             Recognised = null; DuplicateWarning = ""; codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
+            Network = null; ConfirmingSimple = false;
         }
         finally { rendering = false; }
     }
@@ -107,6 +110,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     internal async Task LoadAsync()
     {
         if (shell.Api is null || !shell.IsMain) return;
+        await ReadNetworkAsync();
         if (!addressSuggested) await SuggestAddressAsync();
         var pendingRows = await shell.Api.GetAsync<PairingPendingDto[]>("auth/pairings/pending");
         var deviceRows = await shell.Api.GetAsync<DeviceRowDto[]>("auth/devices");
@@ -195,6 +199,80 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     }
     private string OwnAddress() => Uri.TryCreate(shell.Endpoint.Trim(), UriKind.Absolute, out var endpoint) ? PairingLink.SuggestDeviceAddress(endpoint) : "";
 
+    // ---- B.2 (ADR-014): conexion sencilla por la red del local (HTTP sin cifrar, con la IP de este PC) ----
+    // El servidor dice si la tiene, si esta encendida, su puerto, la IP de la red del local y el tipo de cada red de Windows. Con la
+    // conexion sencilla encendida el QR lleva http://IP:PUERTO y el dispositivo no necesita ningun certificado. La enciende y la apaga
+    // el responsable (la vista ya lo exige y el servidor responde 403 a cualquier otro); encenderla se confirma en dos pasos.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SimpleAvailable))] [NotifyPropertyChangedFor(nameof(SimpleOn))] [NotifyPropertyChangedFor(nameof(SimpleOff))] [NotifyPropertyChangedFor(nameof(OfferSimple))]
+    [NotifyPropertyChangedFor(nameof(SimpleText))] [NotifyPropertyChangedFor(nameof(NetworkWarning))] [NotifyPropertyChangedFor(nameof(HasNetworkWarning))]
+    private NetworkDto? network;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(OfferSimple))] private bool confirmingSimple;
+    public bool SimpleAvailable => Network?.LanHttp is { Listening: true, Port: not null };
+    public bool SimpleOn => SimpleAvailable && Network!.LanHttp.Enabled;
+    public bool SimpleOff => SimpleAvailable && !Network!.LanHttp.Enabled;
+    public bool OfferSimple => SimpleOff && !ConfirmingSimple;   // mientras se confirma, solo la barra de confirmacion
+    public string SimpleText => !SimpleAvailable ? ""
+        : SimpleOn ? (SimpleAddressNow() is { } address
+            ? $"Conexión sencilla activa: móviles y tablets entran por {address} con solo leer el QR, sin instalar nada. El tráfico viaja sin cifrar por la red del local: úsala solo con el Wi-Fi del personal, nunca con el de los clientes."
+            : "Conexión sencilla activa, pero no se encuentra la IP de este servidor en la red del local: comprueba que está conectado por cable o Wi-Fi.")
+        : "Para conectar móviles y tablets sin instalar ningún certificado, activa la conexión sencilla: entran por la IP de este PC con solo leer el QR.";
+    public string NetworkWarning
+    {
+        get
+        {
+            var exposed = Network?.PublicNetworks ?? [];
+            if (exposed.Length == 0) return "";
+            var names = string.Join(", ", exposed.Select(n => "«" + n.Name + "»"));
+            return $"La red {names} del servidor está marcada como «Pública» en Windows: así ningún móvil ni tablet puede llegar a él. En el PC servidor, abre Configuración › Red e Internet, entra en la conexión y cambia «Tipo de perfil de red» a «Privada» (solo si es la red de confianza del local).";
+        }
+    }
+    public bool HasNetworkWarning => NetworkWarning.Length > 0;
+    private string? SimpleAddressNow() => SimpleOn && Network!.SuggestedIp is { } ip ? PairingLink.SimpleAddress(ip, Network.LanHttp.Port!.Value) : null;
+
+    private async Task ReadNetworkAsync()
+    {
+        try { ApplyNetwork(await shell.Api!.GetAsync<NetworkDto>("installation/network")); }
+        catch (Exception e) when (e is ApiError or System.Net.Http.HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { ApplyNetwork(null); }
+    }
+
+    // Composicion pura (los checks la ejercitan sin servidor): con la conexion sencilla encendida la direccion para los dispositivos
+    // pasa a ser http://IP:PUERTO; al apagarla, una direccion http deja de valer y se vuelve a proponer la https de siempre.
+    public void ApplyNetwork(NetworkDto? value)
+    {
+        Network = value;
+        if (SimpleAddressNow() is { } simple) { if (!DeviceAddress.StartsWith("http://", StringComparison.Ordinal)) DeviceAddress = simple; }
+        else if (DeviceAddress.StartsWith("http://", StringComparison.Ordinal)) { DeviceAddress = ""; addressSuggested = false; }   // LoadAsync vuelve a proponer la https
+        RefreshQr();
+        Sync();
+    }
+
+    private bool CanAskEnableSimple() => shell.Writable && shell.IsMain && SimpleOff && !ConfirmingSimple;
+    [RelayCommand(CanExecute = nameof(CanAskEnableSimple))]
+    private void AskEnableSimple() { ConfirmingSimple = true; Sync(); }
+
+    private bool CanCancelEnableSimple() => ConfirmingSimple;
+    [RelayCommand(CanExecute = nameof(CanCancelEnableSimple))]
+    private void CancelEnableSimple() { ConfirmingSimple = false; Sync(); }
+
+    private bool CanConfirmEnableSimple() => shell.Writable && shell.IsMain && SimpleOff && ConfirmingSimple;
+    [RelayCommand(CanExecute = nameof(CanConfirmEnableSimple))]
+    private Task ConfirmEnableSimple() => SetSimple(true);
+
+    private bool CanDisableSimple() => shell.Writable && shell.IsMain && SimpleOn;
+    [RelayCommand(CanExecute = nameof(CanDisableSimple))]
+    private Task DisableSimple() => SetSimple(false);
+
+    private Task SetSimple(bool enabled) => shell.Run(async () =>
+    {
+        ConfirmingSimple = false;
+        await shell.Api!.SendAsync("installation/commands/lan-http-set", new { enabled }, enabled ? "Activar la conexión sencilla" : "Desactivar la conexión sencilla");
+        shell.Status = enabled
+            ? "Conexión sencilla activada: el QR lleva ya la IP de este servidor. Úsala solo con el Wi-Fi del personal."
+            : "Conexión sencilla desactivada: los dispositivos que entraban por ella dejan de llegar hasta que se active de nuevo.";
+        await LoadAsync();
+    });
+
     partial void OnPairingCodeChanged(string value) => RefreshQr();
     partial void OnDeviceAddressChanged(string value) => RefreshQr();
 
@@ -204,16 +282,18 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         if (PairingCode.Length == 0) { PairingQr = null; PairingUrl = ""; QrInfo = QrIdle; return; }
         try
         {
-            var address = PairingLink.ParseDeviceAddress(DeviceAddress);
+            var address = PairingLink.ParseDeviceAddress(DeviceAddress, SimpleOn);
             var url = PairingLink.Build(address, PairingCode);
             PairingQr = QrImage.Render(url); PairingUrl = url;
-            QrInfo = "Apunta la cámara del dispositivo a este QR: abre la aplicación con el código ya puesto (el dispositivo debe tener instalado el certificado de este servidor).";
+            QrInfo = address.Scheme == "http"
+                ? "Apunta la cámara del dispositivo a este QR y abre el enlace en el navegador (Chrome o Safari): la aplicación se abre con el código ya puesto. No hay que instalar nada (conexión sencilla)."
+                : "Apunta la cámara del dispositivo a este QR: abre la aplicación con el código ya puesto (el dispositivo debe tener instalado el certificado de este servidor).";
             Remember(address);
         }
         catch (ArgumentException e)
         {
             PairingQr = null; PairingUrl = "";
-            QrInfo = "Sin QR: " + e.Message + " Escribe en «Dirección para los dispositivos» la dirección https del servidor. El código se puede teclear igualmente.";
+            QrInfo = "Sin QR: " + e.Message + (SimpleOn ? " Escribe en «Dirección para los dispositivos» http://IP:PUERTO de este servidor." : " Escribe en «Dirección para los dispositivos» la dirección https del servidor, o activa la conexión sencilla.") + " El código se puede teclear igualmente.";
         }
     }
 

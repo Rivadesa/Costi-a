@@ -12,7 +12,24 @@
   </StackPanel>
   <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Card}" VerticalAlignment="Top"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
    <TextBlock Text="Conectar un dispositivo" Style="{StaticResource PanelTitle}"/>
-   <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,4,0,10" TextWrapping="Wrap"/>
+   <!-- B.2 (ADR-014): red de Windows en "Publica" (nadie llega) y conexion sencilla (HTTP con la IP de este PC, sin certificado). -->
+   <ContentControl x:Name="NetworkWarningBar" Style="{StaticResource DangerBar}" Margin="0,8,0,0" Visibility="{Binding Devices.HasNetworkWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Devices.NetworkWarning}" TextWrapping="Wrap"/></ContentControl>
+   <ContentControl x:Name="SimpleOffBar" Style="{StaticResource InfoBar}" Margin="0,8,0,0" Visibility="{Binding Devices.OfferSimple, Converter={StaticResource Bool2Vis}}"><DockPanel>
+    <Button DockPanel.Dock="Right" x:Name="EnableSimpleButton" Content="Activar la conexión sencilla" Command="{Binding Devices.AskEnableSimpleCommand}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+    <TextBlock Text="{Binding Devices.SimpleText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+   </DockPanel></ContentControl>
+   <ContentControl x:Name="SimpleConfirmBar" Style="{StaticResource WarnBar}" Margin="0,8,0,0" Visibility="{Binding Devices.ConfirmingSimple, Converter={StaticResource Bool2Vis}}"><DockPanel>
+    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+     <Button x:Name="ConfirmSimpleButton" Content="Sí, activar" Style="{StaticResource Primary}" Command="{Binding Devices.ConfirmEnableSimpleCommand}"/>
+     <Button Content="No" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelEnableSimpleCommand}" Margin="4,0,0,0"/>
+    </StackPanel>
+    <TextBlock Text="Con la conexión sencilla, el tráfico entre este PC y los dispositivos viaja SIN CIFRAR por la red del local: quien esté conectado a esa misma red podría verlo. Actívala solo si móviles y tablets usan un Wi-Fi exclusivo del personal, nunca el de los clientes." TextWrapping="Wrap" VerticalAlignment="Center"/>
+   </DockPanel></ContentControl>
+   <ContentControl x:Name="SimpleOnBar" Style="{StaticResource WarnBar}" Margin="0,8,0,0" Visibility="{Binding Devices.SimpleOn, Converter={StaticResource Bool2Vis}}"><DockPanel>
+    <Button DockPanel.Dock="Right" x:Name="DisableSimpleButton" Content="Desactivar" Command="{Binding Devices.DisableSimpleCommand}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+    <TextBlock Text="{Binding Devices.SimpleText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+   </DockPanel></ContentControl>
+   <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,10,0,10" TextWrapping="Wrap"/>
    <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}">
     <TextBlock Text="Comandero (sala)" Style="{StaticResource Section}"/>
     <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
@@ -66,7 +83,7 @@
    <Expander Header="Dirección para los dispositivos y solicitudes recibidas" Margin="0,14,0,0">
     <StackPanel Margin="0,6,0,0">
      <TextBlock Text="Dirección para los dispositivos" Style="{StaticResource FieldLabel}"/>
-     <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre de su certificado. Se propone sola y se recuerda en este equipo."/>
+     <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="Con la conexión sencilla, http://IP:PUERTO de este servidor en la red del local; si no, https://NOMBRE:PUERTO, el nombre de su certificado. Se propone sola y se recuerda en este equipo."/>
      <TextBlock Text="Solicitudes recibidas" Style="{StaticResource Section}" Margin="0,10,0,4"/>
      <TextBlock Text="Solo se aprueba la solicitud del asistente abierto, que sabe qué va a ser el dispositivo. Cualquier otra solo puede denegarse." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
      <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="100" Margin="0,4,0,4"/>

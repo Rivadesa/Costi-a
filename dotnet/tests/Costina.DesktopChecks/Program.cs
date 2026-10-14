@@ -181,6 +181,23 @@ internal static class Program
         if(again.Devices.DeviceAddress!="https://costina-server.local:5443") throw new Exception("On loopback the last device address used on this machine is proposed.");
         var lan=new Costina.Desktop.ViewModels.ShellViewModel(); lan.Devices.MemoryFolder=qrFolder; lan.Endpoint="https://otro-servidor.local:5443"; lan.Devices.SuggestAddress();
         if(lan.Devices.DeviceAddress!="https://otro-servidor.local:5443") throw new Exception("A client already on the LAN proposes its own server address.");
+        // B.2 (ADR-014): con la conexion sencilla encendida el QR lleva http://IP:PUERTO con la IP de la red del local (nunca la de un
+        // adaptador virtual) y nada que instalar; al apagarla la direccion http deja de valer. Con la red de Windows en "Publica" se avisa.
+        var simple=new Costina.Desktop.ViewModels.ShellViewModel(); simple.Devices.MemoryFolder=qrFolder; simple.Devices.PairingCode="AbC123_def-456";
+        simple.Devices.ApplyNetwork(SimpleOn);
+        if(!simple.Devices.SimpleOn||simple.Devices.SimpleOff||simple.Devices.HasNetworkWarning) throw new Exception("The simple connection is on and the network is private.");
+        if(simple.Devices.DeviceAddress!="http://192.168.0.81:5089"||simple.Devices.PairingUrl!="http://192.168.0.81:5089/app/#pair=AbC123_def-456"||!simple.Devices.HasQr)
+            throw new Exception("With the simple connection the QR carries the LAN IP of the server over http: "+simple.Devices.PairingUrl);
+        if(!simple.Devices.QrInfo.Contains("No hay que instalar nada",StringComparison.Ordinal)||!simple.Devices.SimpleText.Contains("sin cifrar",StringComparison.Ordinal)) throw new Exception("The screen says nothing has to be installed and that traffic is not encrypted.");
+        simple.Devices.DeviceAddress="http://costina-server.local:5089";
+        if(simple.Devices.HasQr) throw new Exception("Over http only a private IPv4 is a device address, never a name (HSTS, resolution outside the venue).");
+        simple.Devices.DeviceAddress="http://192.168.0.81:5089";
+        simple.Devices.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
+        if(simple.Devices.DeviceAddress.StartsWith("http://",StringComparison.Ordinal)||simple.Devices.HasQr||!simple.Devices.SimpleOff) throw new Exception("Switched off, an http device address is dropped and there is no QR with it.");
+        if(!simple.Devices.NetworkWarning.Contains("«Red 8»",StringComparison.Ordinal)||!simple.Devices.NetworkWarning.Contains("Privada",StringComparison.Ordinal)) throw new Exception("A public Windows network is named, with the way out: "+simple.Devices.NetworkWarning);
+        if(simple.Devices.AskEnableSimpleCommand.CanExecute(null)) throw new Exception("Without a responsible session the simple connection cannot be switched on.");
+        simple.Devices.ApplyNetwork(null);
+        if(simple.Devices.SimpleOn||simple.Devices.SimpleOff||simple.Devices.HasNetworkWarning||simple.Devices.SimpleText.Length!=0) throw new Exception("A server without the simple connection paints nothing about it.");
         Directory.Delete(qrFolder,true); DesktopSettings.Folder=checksRoot;
         // E2: pestana Configuracion (solo main). La pantalla se compone SOLO de lo leido; los comandos siguen la misma tuberia y
         // se habilitan por rol y por estado (ocupado, orden pendiente): nunca por reglas de negocio locales.
@@ -654,6 +671,7 @@ internal static class Program
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
         center.Render(stationsForDevices,[pendingOther],activeDevices);
+        center.ApplyNetwork(SimpleOn);   // B.2: la captura de Dispositivos muestra la conexion sencilla activa
         home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
         window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
         window.Shell.Service.Restrictions=dto.Restrictions!;
@@ -673,6 +691,19 @@ internal static class Program
             if(Pixel(shot,workspace.TranslatePoint(new Point(-12,12),window)) is var gutter&&gutter!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception(tab+": the window background must be opaque #F3F4F6, found "+gutter);
             Save(shot,file);
         }
+        // B.2: Dispositivos con la red de Windows en "Publica" y la conexion sencilla apagada, ofrecida y pidiendo confirmacion.
+        center.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
+        if(!center.AskEnableSimpleCommand.CanExecute(null)) throw new Exception("The responsible can ask to switch the simple connection on.");
+        center.AskEnableSimpleCommand.Execute(null);
+        if(!center.ConfirmingSimple||center.AskEnableSimpleCommand.CanExecute(null)||!center.ConfirmEnableSimpleCommand.CanExecute(null)) throw new Exception("Switching it on is confirmed in a second step.");
+        tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+        window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+        RefuseRaw(window,"DevicesTab");
+        foreach(var bar in new[]{"NetworkWarningBar","SimpleConfirmBar"})
+            if(((FrameworkElement)((FrameworkElement)window.FindName("DevicesView")).FindName(bar)).Visibility!=Visibility.Visible) throw new Exception(bar+" must be visible.");
+        if(((FrameworkElement)((FrameworkElement)window.FindName("DevicesView")).FindName("SimpleOnBar")).Visibility==Visibility.Visible||((FrameworkElement)((FrameworkElement)window.FindName("DevicesView")).FindName("SimpleOffBar")).Visibility==Visibility.Visible) throw new Exception("While confirming, only the confirmation bar is painted (it is off).");
+        Save(Shot(window),"devices-simple-off.png");
+        center.CancelEnableSimpleCommand.Execute(null); center.ApplyNetwork(SimpleOn);
         // C1: la barra lateral se pliega a iconos (boton de abajo) y se despliega de nuevo; plegada, sus elementos siguen ahi con su ayuda.
         // (Se parte de la barra desplegada: en una pantalla estrecha, como la del CI, la ventana la pliega sola por debajo de 1270 px.)
         tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.Shell.SideNavCompact=false; window.UpdateLayout();
@@ -723,6 +754,10 @@ internal static class Program
     }
     // C1 (revision): captura del AREA DE CLIENTE. La ventana mide tambien el marco y la captura salia con una franja transparente a la
     // derecha y abajo; se recorta al contenido (que empieza en el origen de la ventana) y se exige que sea opaca hasta la esquina.
+    // B.2: red de ejemplo del servidor: conexion sencilla encendida, la IP del local sugerida y un adaptador virtual descartado.
+    private static readonly Costina.Client.NetworkDto SimpleOn=new(new(true,5089,true),new(true,5443),
+        [new("192.168.0.81","Ethernet",true,false,true),new("192.168.56.1","VirtualBox Host-Only Network",false,true,false)],[new("Red 8","private")]);
+
     private static BitmapSource Shot(Window window)
     {
         var client=(FrameworkElement)window.Content;

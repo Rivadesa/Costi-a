@@ -1,11 +1,11 @@
--- Esquema del NUCLEO, version 7 (E1b..E3.2, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v7. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- Esquema del NUCLEO, version 8 (E1b..B.2, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v8. Una base anterior la transforman antes, encadenados y en la misma transaccion,
 -- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion), upgrade-v4.sql (catalogo y tarifas),
 -- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos), upgrade-v6.sql (carta libre: items por
--- grupo y estacion del producto) y upgrade-v7.sql (imagenes de los articulos). Nunca toca las tablas de "public".
+-- grupo y estacion del producto) upgrade-v7.sql (imagenes de los articulos) y upgrade-v8.sql (conexion sencilla por la red local). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 7));
-INSERT INTO core.schema_version VALUES (7) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 8));
+INSERT INTO core.schema_version VALUES (8) ON CONFLICT DO NOTHING;
 -- E3: CATALOGO Y TARIFAS (impuestos, categorias jerarquicas, productos, presentaciones vendibles, tarifas, precios con
 -- vigencia): datos maestros relacionales; nunca se borran, se desactivan. Precios con impuestos incluidos (PVP).
 CREATE TABLE IF NOT EXISTS core.taxes (
@@ -152,10 +152,12 @@ CREATE TABLE IF NOT EXISTS core.audit (
 -- D3.4: identidad estable de la instalacion (una sola fila, creada una vez). El cliente separa por
 -- ella su orden durable: un pendiente de otra instalacion en el mismo puerto nunca se reenvia.
 -- E1b: modules = modulos ACTIVOS en esta instalacion; NULL = todos los compilados en el binario.
+-- B.2 (ADR-014): lan_http = conexion sencilla (HTTP sin cifrar) para los dispositivos de la red local; apagada por defecto.
 CREATE TABLE IF NOT EXISTS core.installation (
  id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(),
  single boolean NOT NULL DEFAULT true UNIQUE CHECK (single),
- modules text[] NULL
+ modules text[] NULL,
+ lan_http boolean NOT NULL DEFAULT false
 );
 INSERT INTO core.installation (id) SELECT gen_random_uuid() WHERE NOT EXISTS (SELECT 1 FROM core.installation);
 -- D4.1 (#26, F06): identidad RELACIONAL, nunca JSONB. Usuarios con contrasena (PBKDF2, solo el
