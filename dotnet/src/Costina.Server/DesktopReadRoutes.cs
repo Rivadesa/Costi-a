@@ -50,6 +50,16 @@ public static class DesktopReadRoutes
         app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Json(
             await reads.Sellables(scope,DateOnly.FromDateTime(DateTime.Now),c.RequestAborted)
         ))).WithMetadata(new RouteAccess("main","service"));
+        // E3.2: imagen vigente de un articulo, para cualquier identidad valida (una foto no es dinero). Bytes tal cual se guardaron,
+        // con su tipo, ETag = huella y cache PRIVADA que revalida (la URL es del producto: la imagen puede cambiar); 304 si el cliente
+        // ya tiene esa huella; nosniff para que nadie la interprete como otra cosa; 404 sin imagen o quitada. No es JSON: la guarda
+        // anti-dinero de la PWA no entra aqui y los catalogos solo llevan imageSha.
+        app.MapGet(prefix+"/catalog/images/{productId}",(Func<HttpContext,string,Task<IResult>>)(async (c,productId)=>{
+            var image=await reads.ActiveImage(scope,productId,c.RequestAborted) ?? throw new StoreNotFound();
+            c.Response.Headers.CacheControl="private, no-cache";
+            c.Response.Headers.XContentTypeOptions="nosniff";
+            return Results.Bytes(image.Content,image.ContentType,entityTag:new Microsoft.Net.Http.Headers.EntityTagHeaderValue("\""+image.Sha256+"\""));
+        })).WithMetadata(new RouteAccess("main","service","kitchen"));
         // Caja: el mismo listado con el precio de la tarifa GENERAL como referencia; el importe real lo fija el servidor con la
         // tarifa de la sala de la cuenta al anadir el consumo.
         app.MapGet(prefix+"/checkout/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Json(

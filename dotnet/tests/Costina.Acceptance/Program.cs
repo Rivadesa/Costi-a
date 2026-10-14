@@ -165,6 +165,36 @@ internal static class Program
             Equal("el-rapolao-2023", Catalog.Slug("El Rapolao 2023"));
             Equal("anada-cinco-x", Catalog.Slug("Añada · cinco (x)"));
         });
+        // E3.2: imagenes de los articulos. Solo JPEG, PNG y WebP reconocidos por la firma de sus bytes (no por la extension ni por lo
+        // que se declare), hasta 2 MB; el tipo declarado tiene que coincidir; la huella es el SHA-256 del contenido.
+        Test("product images are recognised by their signature and carry their own fingerprint", () => {
+            byte[] Bytes(byte[] head, int size) { var b = new byte[size]; head.CopyTo(b, 0); for (var i = head.Length; i < size; i++) b[i] = (byte)(i * 7); return b; }
+            var jpeg = Bytes([0xFF, 0xD8, 0xFF, 0xE0], 64);
+            var png = Bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 64);
+            var webp = Bytes([.. "RIFF"u8, 56, 0, 0, 0, .. "WEBP"u8], 64);
+            Equal(("image/jpeg", "image/png", "image/webp"), (Catalog.ImageType(jpeg), Catalog.ImageType(png), Catalog.ImageType(webp)));
+            var image = Catalog.Image(" wine ", " IMAGE/PNG ", png);
+            Equal(("wine", "image/png", 64), (image.ProductId, image.ContentType, image.Bytes));
+            Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(png)), image.Sha256);
+            Equal("image/webp", Catalog.Image("wine", "image/webp", webp).ContentType);
+            Equal(Catalog.MaxImageBytes, Catalog.Image("wine", "image/jpeg", Bytes([0xFF, 0xD8, 0xFF], Catalog.MaxImageBytes)).Bytes);   // justo 2 MB: vale
+        });
+        Test("product images reject SVG, disguised HTML, other formats, a wrong declared type, empty and over 2 MB", () => {
+            var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
+            Rule("image_invalid", () => Catalog.Image("wine", "image/svg+xml", "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>"u8.ToArray()));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/png", "<html><body>no soy un png</body></html>"u8.ToArray()));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/gif", "GIF89a\u0001\u0000\u0001\u0000"u8.ToArray()));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/webp", "RIFF\u0010\u0000\u0000\u0000WAVEfmt "u8.ToArray()));   // RIFF que no es WebP
+            Rule("image_invalid", () => Catalog.Image("wine", "image/jpeg", png));      // los bytes son PNG
+            Rule("image_invalid", () => Catalog.Image("wine", null, png));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/png", []));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/png", null));
+            Rule("image_invalid", () => Catalog.Image("wine", "image/jpeg", [0xFF, 0xD8]));   // firma incompleta
+            var big = new byte[Catalog.MaxImageBytes + 1]; png.CopyTo(big, 0);
+            Rule("image_too_large", () => Catalog.Image("wine", "image/png", big));
+            Rule("image_too_large", () => Catalog.ImageSize(Catalog.MaxImageBytes + 1L));
+            Rule("invalid_code", () => Catalog.Image("con espacio", "image/png", png));
+        });
         // E4a: menu cerrado = pase con eleccion por comensal antes de disparar; ofertas vigentes por fecha, dia y servicio.
         Test("a set-menu course needs a choice per guest before it fires and closes once fired", () => {
             var service = new DiningService("s", Scope, "M1", 2, [new("primeros", "Primeros", [], ChoiceRequired: true), new("postre", "Postre", [new("tarta", "Tarta", "pastry")])], "LAB-DAILY");

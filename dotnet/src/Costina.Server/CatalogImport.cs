@@ -7,17 +7,75 @@ using Costina.Core.Persistence;
 namespace Costina.Server;
 
 // E3: importacion del catalogo desde un fichero CSV (exportacion de Verial, de la tienda web o alta masiva a mano).
-// Cabecera obligatoria; columnas reconocidas: code, reference, name, category, parent, presentation, price, tax, active.
+// Cabecera obligatoria; columnas reconocidas: code, reference, name, category, parent, presentation, price, tax, active, image (E3.2).
 // Separador ';' o ',' (se detecta en la cabecera), UTF-8 (con o sin BOM), campos entrecomillados admitidos.
 // Nunca borra ni desactiva: crea lo que no existe (categorias, productos, presentaciones) y actualiza nombre, categoria,
 // impuesto y referencia; el precio se fija en la tarifa GENERAL desde hoy solo si cambia. Todo en UNA transaccion e
 // idempotente por la huella del fichero (misma clave de comando -> misma respuesta, sin volver a aplicar nada).
-public sealed record ImportRow(int Line,string Code,string? Reference,string Name,string? Category,string? Parent,string Presentation,long PriceCents,string Tax,bool Active);
-public sealed record ImportSummary(int Rows,int ProductsCreated,int ProductsUpdated,int CategoriesCreated,int PresentationsCreated,int PricesSet);
+// E3.2: columna opcional 'image' = nombre de un fichero JPEG, PNG o WebP DENTRO de la carpeta del CSV (puede ir en una subcarpeta;
+// nunca una ruta absoluta, '..' ni un enlace). Se valida igual que una imagen subida (firma de bytes, 2 MB) y solo se fija si su
+// huella difiere de la guardada; una celda vacia nunca quita la imagen que ya hay. El motor no sale a Internet: las fotos las
+// descarga antes tools/catalog/woocommerce-to-csv.py --images. La huella de la importacion cubre el CSV Y cada imagen citada.
+public sealed record ImportRow(int Line,string Code,string? Reference,string Name,string? Category,string? Parent,string Presentation,long PriceCents,string Tax,bool Active,string? Image=null);
+public sealed record ImportSummary(int Rows,int ProductsCreated,int ProductsUpdated,int CategoriesCreated,int PresentationsCreated,int PricesSet,int ImagesSet=0);
+// Imagen de una fila ya validada: fichero dentro de la carpeta del CSV, su tipo por la firma y su huella. Los bytes no se guardan
+// en memoria (un catalogo grande no cabe): se vuelven a leer en la transaccion solo si hay que fijarla, y deben seguir siendo los mismos.
+public sealed record ImportImage(int Line,string Code,string Name,string Path,string ContentType,string Sha256);
 
 public static class CatalogImport
 {
     public static string Fingerprint(byte[] content) => Convert.ToHexStringLower(SHA256.HashData(content));
+    // Sin imagenes, la huella de siempre (un fichero anterior repite su misma clave). Con imagenes, la del CSV mas la de cada imagen
+    // citada, en orden: una foto cambiada con el CSV igual es OTRA importacion, no una repeticion que "no cambia nada".
+    public static string Fingerprint(byte[] content,IReadOnlyList<ImportImage> images) => images.Count==0 ? Fingerprint(content)
+        : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Fingerprint(content)+"\n"+string.Join("\n",images.Select(i=>i.Line+":"+i.Sha256)))));
+
+    // Tipo DECLARADO por la extension; el dominio exige despues que coincida con la firma de los bytes.
+    private static string ImageTypeOf(string path) => System.IO.Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", ".webp" => "image/webp",
+        _ => throw new RuleViolation("image_invalid","the image must be a .jpg, .jpeg, .png or .webp file.")
+    };
+
+    // El nombre es RELATIVO a la carpeta del CSV y nunca sale de ella: ni ruta absoluta, ni unidad o flujo alternativo (':'),
+    // ni '..', ni enlaces (fichero o carpeta intermedia). Un fichero de catalogo no puede hacer leer al motor nada de fuera.
+    public static string ImagePath(string folder,string name)
+    {
+        var relative=name.Trim().Replace('\\','/');
+        if(relative.Length is 0 or >255 || relative.Contains(':') || relative.StartsWith('/') || System.IO.Path.IsPathRooted(relative)
+            || relative.Any(char.IsControl) || relative.Split('/').Any(s=>s==".."))
+            throw new ArgumentException($"image '{name}' must be a file name inside the CSV's folder (no absolute path, drive or '..').");
+        var root=System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(folder))+System.IO.Path.DirectorySeparatorChar;
+        var full=System.IO.Path.GetFullPath(System.IO.Path.Combine(root,relative.Replace('/',System.IO.Path.DirectorySeparatorChar)));
+        var comparison=OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if(!full.StartsWith(root,comparison)) throw new ArgumentException($"image '{name}' is outside the CSV's folder.");
+        if(!File.Exists(full)) throw new ArgumentException($"image file '{name}' was not found in the CSV's folder.");
+        for(var current=full;current.Length>root.Length;current=System.IO.Path.GetDirectoryName(current)!)
+            if((File.GetAttributes(current)&FileAttributes.ReparsePoint)!=0) throw new ArgumentException($"image '{name}' goes through a link: copy the file instead.");
+        return full;
+    }
+
+    // Valida cada imagen citada ANTES de abrir la transaccion (un error dice su linea y no se aplica nada) y calcula su huella.
+    public static List<ImportImage> Images(IReadOnlyList<ImportRow> rows,string folder)
+    {
+        var images=new List<ImportImage>();
+        foreach(var row in rows.Where(r=>r.Image is not null))
+        {
+            try
+            {
+                var path=ImagePath(folder,row.Image!);
+                var type=ImageTypeOf(path);
+                Catalog.ImageSize(new FileInfo(path).Length);
+                var image=Catalog.Image(row.Code,type,File.ReadAllBytes(path));
+                images.Add(new(row.Line,row.Code,row.Image!,path,image.ContentType,image.Sha256));
+            }
+            catch(Exception e) when(e is RuleViolation or ArgumentException or IOException or UnauthorizedAccessException)
+            {
+                throw new ArgumentException($"Line {row.Line} ({row.Code}): {e.Message}");
+            }
+        }
+        return images;
+    }
 
     public static List<ImportRow> Parse(string text)
     {
@@ -41,7 +99,7 @@ public static class CatalogImport
             var price=Optional("price") ?? throw new ArgumentException($"Line {i+1}: price is missing.");
             var activeText=(Optional("active") ?? "1").ToLowerInvariant();
             rows.Add(new(i+1,code,reference,name,Optional("category"),Optional("parent"),presentation,Cents(price,i+1),Optional("tax") ?? "10",
-                activeText is not ("0" or "false" or "no" or "n")));
+                activeText is not ("0" or "false" or "no" or "n"),Optional("image")));
         }
         return rows;
     }
@@ -77,12 +135,13 @@ public static class CatalogImport
         return fields;
     }
 
-    public static async Task<ImportSummary> Apply(Unit unit,IReadOnlyList<ImportRow> rows,DateOnly today)
+    public static async Task<ImportSummary> Apply(Unit unit,IReadOnlyList<ImportRow> rows,DateOnly today,IReadOnlyList<ImportImage>? images=null)
     {
         var taxes=await unit.Taxes();
         var categories=(await unit.Categories()).ToDictionary(c=>c.Id,StringComparer.Ordinal);
         var products=(await unit.Products()).ToDictionary(p=>p.Id,StringComparer.Ordinal);
-        int created=0,updated=0,newCategories=0,newPresentations=0,prices=0;
+        var imageOf=(images ?? []).ToDictionary(i=>i.Line);
+        int created=0,updated=0,newCategories=0,newPresentations=0,prices=0,newImages=0;
         // E3.1: una categoria se reconoce por NOMBRE y PADRE, no solo por el nombre: en una bodega real la misma region cuelga
         // de varios tipos (Rioja en Tintos y en Blancos) y por nombre se mezclaban. Sin padre en el fichero, o para el propio padre
         // (cuyo abuelo no se conoce), vale cualquier categoria con ese nombre, la raiz primero. Una nueva toma el codigo del nombre
@@ -130,13 +189,21 @@ public static class CatalogImport
                 long? current=null;
                 try { current=(await unit.PriceFor(Catalog.GeneralTariff,row.Code,presentationId,today)).Cents; } catch(RuleViolation) { }
                 if(current!=row.PriceCents && await unit.SetPrice(Catalog.Price(Catalog.GeneralTariff,row.Code,presentationId,today,row.PriceCents))) prices++;
+                // E3.2: la imagen solo se fija si su huella difiere de la guardada (activa o no: una imagen quitada a mano sigue quitada
+                // mientras el fichero traiga la misma, como un producto desactivado a mano). Sin imagen en la fila no se toca nada.
+                if(imageOf.TryGetValue(row.Line,out var file) && (await unit.ImageOf(row.Code))?.Sha256!=file.Sha256)
+                {
+                    var image=Catalog.Image(row.Code,file.ContentType,await File.ReadAllBytesAsync(file.Path));
+                    if(image.Sha256!=file.Sha256) throw new ArgumentException($"image '{file.Name}' changed while importing; run the import again.");
+                    if(await unit.SetImage(image)) newImages++;
+                }
             }
-            catch(Exception e) when(e is RuleViolation or ArgumentException or StoreConflict or StoreNotFound)
+            catch(Exception e) when(e is RuleViolation or ArgumentException or StoreConflict or StoreNotFound or IOException or UnauthorizedAccessException)
             {
                 throw new ArgumentException($"Line {row.Line} ({row.Code}): {e.Message}");
             }
         }
-        return new(rows.Count,created,updated,newCategories,newPresentations,prices);
+        return new(rows.Count,created,updated,newCategories,newPresentations,prices,newImages);
     }
     private static decimal? RateOf(string text)
         => decimal.TryParse(text.Replace(',','.').TrimEnd('%').Trim(),NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out var rate) ? rate : null;

@@ -1,11 +1,11 @@
--- Esquema del NUCLEO, version 6 (E1b..E4b, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
--- Idempotente sobre una base ya en v6. Una base anterior la transforman antes, encadenados y en la misma transaccion,
+-- Esquema del NUCLEO, version 7 (E1b..E3.2, ADR-012): esquema "core" mas un esquema por modulo (schema.sql de cada modulo).
+-- Idempotente sobre una base ya en v7. Una base anterior la transforman antes, encadenados y en la misma transaccion,
 -- upgrade-v2.sql (native_d1 -> core + dining), upgrade-v3.sql (organizacion), upgrade-v4.sql (catalogo y tarifas),
--- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos) y upgrade-v6.sql (carta libre: items por
--- grupo y estacion del producto). Nunca toca las tablas de "public".
+-- upgrade-v5.sql (oferta: menus como productos + ofertas con pases y platos), upgrade-v6.sql (carta libre: items por
+-- grupo y estacion del producto) y upgrade-v7.sql (imagenes de los articulos). Nunca toca las tablas de "public".
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 6));
-INSERT INTO core.schema_version VALUES (6) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS core.schema_version (version integer PRIMARY KEY CHECK (version = 7));
+INSERT INTO core.schema_version VALUES (7) ON CONFLICT DO NOTHING;
 -- E3: CATALOGO Y TARIFAS (impuestos, categorias jerarquicas, productos, presentaciones vendibles, tarifas, precios con
 -- vigencia): datos maestros relacionales; nunca se borran, se desactivan. Precios con impuestos incluidos (PVP).
 CREATE TABLE IF NOT EXISTS core.taxes (
@@ -105,6 +105,20 @@ CREATE TABLE IF NOT EXISTS core.offer_items (
  FOREIGN KEY (tenant, company, location, product_id, presentation_id) REFERENCES core.presentations (tenant, company, location, product_id, id)
 );
 ALTER TABLE core.products ADD COLUMN IF NOT EXISTS station_id text NULL;
+-- E3.2: imagen vigente de cada articulo (una por producto), en la base: entra sola en copias y restauracion. Nunca se borra:
+-- quitarla la marca inactiva y una nueva la sustituye. JPEG, PNG o WebP de hasta 2 MB; la huella es siempre la del contenido.
+CREATE TABLE IF NOT EXISTS core.product_images (
+ tenant text NOT NULL, company text NOT NULL, location text NOT NULL, product_id text NOT NULL,
+ content bytea NOT NULL CHECK (octet_length(content) BETWEEN 1 AND 2097152),
+ content_type text NOT NULL CHECK (content_type IN ('image/jpeg','image/png','image/webp')),
+ sha256 text NOT NULL CHECK (sha256 = encode(sha256(content), 'hex')),
+ bytes integer NOT NULL CHECK (bytes = octet_length(content)),
+ active boolean NOT NULL DEFAULT true,
+ updated_at timestamptz NOT NULL DEFAULT now(), updated_by text NOT NULL,
+ PRIMARY KEY (tenant, company, location, product_id),
+ FOREIGN KEY (tenant, company, location, product_id) REFERENCES core.products (tenant, company, location, id)
+);
+ALTER TABLE core.product_images ALTER COLUMN content SET STORAGE EXTERNAL;
 -- Cuenta (ventas): agregado del NUCLEO. service_id es la referencia OPACA que el modulo que la abrio le dio (nunca una
 -- clave foranea a una tabla de modulo: el nucleo no depende de ningun modulo); table_id es la mesa (organizacion, nucleo)
 -- en la que se abrio, o '' si el origen no tiene mesa. Con ella el puesto principal lista las cuentas sin leer al modulo.

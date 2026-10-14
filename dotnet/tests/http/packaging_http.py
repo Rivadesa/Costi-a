@@ -4,6 +4,7 @@ Runs FIRST in the battery against the fresh *_d1_test CI database: it provisions
 roles once and exports their connections (GITHUB_ENV) so every later suite exercises the engine
 with the runtime role, which has no DDL and cannot rewrite or delete the audit trail.
 """
+import base64
 import hashlib
 import json
 import os
@@ -83,6 +84,13 @@ def call(path, data=None, token=None, base=None):
         with urllib.request.urlopen(req, timeout=15) as r: return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e: return e.code, None
 
+def fetch(path, token, base=None):
+    """GET que devuelve los bytes tal cual y sus cabeceras (E3.2: la imagen de un articulo no es JSON)."""
+    req = urllib.request.Request((base or BASE) + path, headers={'Authorization': 'Bearer ' + token})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r: return r.status, r.read(), r.headers
+    except urllib.error.HTTPError as e: return e.code, e.read(), e.headers
+
 class Server:
     def __init__(self, env, base=None): self.env = env; self.base = base or BASE
     def __enter__(self):
@@ -154,7 +162,7 @@ class Packaging(unittest.TestCase):
         upgraded = cli('upgrade', env=env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
         self.assertEqual(psql_as(BOOTSTRAP, "SELECT string_agg(nspname || ':' || nspowner::regrole::text, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core:costina_owner,dining:costina_owner')
-        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '6')   # E4b: esquema v6
+        self.assertEqual(psql_as(BOOTSTRAP, "SELECT version FROM core.schema_version").stdout.strip(), '7')   # E3.2: esquema v7
 
     def test_04_runtime_role_has_no_ddl_and_cannot_touch_the_audit_trail(self):
         runtime = self.config('server.json')['COSTINA_DB']
@@ -165,7 +173,7 @@ class Packaging(unittest.TestCase):
                           'DELETE FROM core.outbox', "UPDATE core.outbox SET type='x'",
                           "UPDATE core.users SET role='main'", 'DELETE FROM core.sessions',
                           'TRUNCATE dining.services', 'CREATE TABLE dining.intruder (id int)', 'DELETE FROM dining.configuration',
-                          'CREATE SCHEMA other'):
+                          'DELETE FROM core.product_images', 'CREATE SCHEMA other'):   # E3.2: las imagenes se desactivan, nunca se borran
             result = psql_as(runtime, forbidden)
             self.assertNotEqual(result.returncode, 0, forbidden)
             self.assertTrue('permission denied' in result.stderr or 'must be owner' in result.stderr, (forbidden, result.stderr))
@@ -318,9 +326,13 @@ class Packaging(unittest.TestCase):
     def test_06c_backup_restores_the_same_records_on_a_clean_installation(self):
         """D5.4: a REAL restore, verified by content, on another data root and another empty database."""
         env = clean_env()
+        image = b'\x89PNG\r\n\x1a\n' + os.urandom(64 * 1024)                  # E3.2: la foto de un articulo viaja en la copia, en la base
         with Server(env):                                                     # a few more rows than a lone user
             _, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD})
             self.assertEqual(call('/api/native/v1/auth/pairings', {}, token=login['token'])[0], 200)
+            status, stored = call('/api/native/v1/erp/catalog/commands/product-image-set',
+                                  {'productId': 'water', 'contentType': 'image/png', 'data': base64.b64encode(image).decode('ascii')}, token=login['token'])
+            self.assertEqual((status, stored and stored['sha256']), (200, hashlib.sha256(image).hexdigest()))
         copies = Path(tempfile.mkdtemp(prefix='costina-second-disk-'))
         made = cli('backup', env=clean_env(COSTINA_BACKUP_COPY=str(copies)))
         self.assertEqual(made.returncode, 0, made.stderr)
@@ -332,6 +344,7 @@ class Packaging(unittest.TestCase):
         self.assertEqual((manifest['tables']['dining.services']['rows'], manifest['tables']['dining.occupancies']['rows'],
                           manifest['tables']['core.products']['rows'], manifest['tables']['core.offers']['rows']), (1, 1, 7, 3))   # E3/E4: catalogo y oferta relacionales
         self.assertEqual((manifest['tables']['core.zones']['rows'], manifest['tables']['core.tables']['rows'], manifest['tables']['core.stations']['rows']), (1, 8, 4))   # E2: organizacion relacional
+        self.assertEqual(manifest['tables']['core.product_images']['rows'], 1)                              # E3.2: con su huella, como cualquier tabla
         self.assert_private(newest)
         self.assertEqual((copies / newest.name).read_bytes(), newest.read_bytes())          # second destination really holds it
 
@@ -375,6 +388,9 @@ class Packaging(unittest.TestCase):
             self.assertEqual(status, 200)
             status, session = call('/api/native/v1/session', token=again['token'], base='http://127.0.0.1:5094')
             self.assertEqual(session['installationId'], manifest['installationId'])
+            # E3.2: la imagen restaurada se sirve con los mismos bytes y la misma huella.
+            status, body, headers = fetch('/api/native/v1/catalog/images/water', again['token'], base='http://127.0.0.1:5094')
+            self.assertEqual((status, body, headers['ETag']), (200, image, '"' + hashlib.sha256(image).hexdigest() + '"'))
 
     def test_06d_active_modules_live_in_the_installation_row(self):
         """E1b (ADR-012): the installation decides its active modules (core.installation.modules); COSTINA_MODULES only narrows a laboratory."""
@@ -466,7 +482,7 @@ class Packaging(unittest.TestCase):
         v1env = clean_env(COSTINA_DATA=str(v1root))
         before = cli('backup', env=v1env)
         self.assertEqual(before.returncode, 0, before.stdout + before.stderr)
-        self.assertIn('Schema version 1, older than these binaries (6)', before.stdout)
+        self.assertIn('Schema version 1, older than these binaries (7)', before.stdout)
         copied = sorted((v1root / 'backups').glob('costina-*.backup'))[-1]
         manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
         self.assertEqual((manifest['format'], manifest['installationId'], manifest['tables']), (1, installation, v1tables))
@@ -475,9 +491,12 @@ class Packaging(unittest.TestCase):
         self.assertNotEqual(stale.returncode, 0); self.assertIn('upgrade', stale.stdout + stale.stderr)
         upgraded = cli('upgrade', env=v1env)
         self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
-        self.assertIn('upgraded to version 6', upgraded.stdout)                                           # v1 -> ... -> v6 encadenadas
+        self.assertIn('upgraded to version 7', upgraded.stdout)                                           # v1 -> ... -> v7 encadenadas
         self.assertEqual(psql_as(v1super, "SELECT string_agg(nspname, ',' ORDER BY nspname) FROM pg_namespace WHERE nspname IN ('core','dining','native_d1')").stdout.strip(), 'core,dining')
-        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '6')   # v1 -> ... -> v6
+        self.assertEqual(psql_as(v1super, 'SELECT version FROM core.schema_version').stdout.strip(), '7')   # v1 -> ... -> v7
+        # E3.2 (v7): la tabla de imagenes existe, vacia, y el rol de ejecucion puede ponerlas pero nunca borrarlas.
+        self.assertEqual(psql_as(v1super, "SELECT count(*) || ':' || has_table_privilege('costina_runtime', 'core.product_images', 'INSERT') || ':' || "
+                                          "has_table_privilege('costina_runtime', 'core.product_images', 'DELETE') FROM core.product_images").stdout.strip(), '0:true:false')
         self.assertEqual(psql_as(v1super, "SELECT string_agg(table_id, ',') FROM core.accounts").stdout.strip(), 'M1')              # the table travelled into the account
         # E4a (v5): el menu JSONB del modulo pasa a producto-menu del catalogo + oferta 'tasting' del nucleo con sus pases y platos.
         self.assertEqual(psql_as(v1super, "SELECT count(*) FROM dining.configuration").stdout.strip(), '0')
@@ -519,35 +538,35 @@ class Packaging(unittest.TestCase):
         restore_root, _, restore_super = scaffold('costina_restore_v1_d1_test', 5096)
         restored = cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root)))
         self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
-        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 6', restored.stdout)
+        self.assertIn('Restored and verified', restored.stdout); self.assertIn('upgraded to version 7', restored.stdout)
         tables = schema_tables(v1super)
         self.assertEqual(tables, schema_tables(restore_super))
         for table in tables:                                                                              # same rows as the upgraded original
             if table == 'core.sessions': continue                                                         # (the login above left a session there)
             self.assertEqual(psql_as(v1super, digest(table)).stdout.strip(), psql_as(restore_super, digest(table)).stdout.strip(), table)
         self.assertNotEqual(cli('restore', str(v1backup), env=clean_env(COSTINA_DATA=str(restore_root))).returncode, 0)   # never overwrites
-        # B.1: a core database in an OLDER version (marked 5 here) is still copied by these binaries (the copy before the upgrade, in
-        # format 2); a NEWER one (7) is refused, because these binaries could not restore it. The mark is put back afterwards.
+        # B.1: a core database in an OLDER version (marked 6 here, the one before E3.2) is still copied by these binaries (the copy before
+        # the upgrade, in format 2); a NEWER one (8) is refused, because these binaries could not restore it. The mark is put back afterwards.
         restore_env = clean_env(COSTINA_DATA=str(restore_root))
         def mark(version):
             changed = psql_as(restore_super, 'ALTER TABLE core.schema_version DROP CONSTRAINT schema_version_version_check; '
                                              f'UPDATE core.schema_version SET version={version}; '
                                              f'ALTER TABLE core.schema_version ADD CONSTRAINT schema_version_version_check CHECK (version = {version})')
             self.assertEqual(changed.returncode, 0, changed.stderr)
-        mark(5)
+        mark(6)
         try:
             older = cli('backup', env=restore_env)
             self.assertEqual(older.returncode, 0, older.stdout + older.stderr)
-            self.assertIn('Schema version 5, older than these binaries (6)', older.stdout)
+            self.assertIn('Schema version 6, older than these binaries (7)', older.stdout)
             copied = sorted((restore_root / 'backups').glob('costina-*.backup'))[-1]
             manifest = json.loads(Path(str(copied) + '.json').read_text(encoding='utf8'))
             self.assertEqual((manifest['format'], manifest['installationId']), (2, installation))
             self.assertIn('core.schema_version', manifest['tables']); self.assertIn('dining.services', manifest['tables'])
-            mark(7)
+            mark(8)
             newer = cli('backup', env=restore_env)
             self.assertNotEqual(newer.returncode, 0); self.assertIn('newer than these binaries', newer.stdout + newer.stderr)
         finally:
-            mark(6)
+            mark(7)
         with Server(clean_env(COSTINA_DATA=str(restore_root)), base='http://127.0.0.1:5096'):
             status, login = call('/api/native/v1/auth/login', {'username': 'jefa', 'password': PASSWORD}, base='http://127.0.0.1:5096')
             self.assertEqual(status, 200)
