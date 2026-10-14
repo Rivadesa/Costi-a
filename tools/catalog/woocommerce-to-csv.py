@@ -4,12 +4,14 @@
 Uso:  python tools/catalog/woocommerce-to-csv.py https://costinagourmet.com [--category 881] [--tax 21] [--out catalogo.csv]
 
 Columnas: reference (SKU = codigo de articulo del ERP de origen), name, category, parent, presentation, price, tax, active.
-La categoria es la hoja mas profunda del producto dentro de la raiz indicada (p. ej. "Rias Baixas") y parent su padre
-("Blancos"); asi el importador reconstruye dos niveles del arbol. Formato (atributo "Formato", p. ej. "0.75 L") -> presentation
+La categoria es la hoja mas profunda del producto dentro de la raiz indicada (p. ej. "Rias Baixas") y parent el tipo del que
+cuelga, la categoria inmediatamente bajo la raiz ("Blancos"); asi el importador reconstruye dos niveles del arbol y distingue la
+misma region en tipos distintos (E3.1). Una hoja mas honda (Vinos Dulces > Portugal > Madeira) queda bajo su tipo (Vinos Dulces > Madeira). Formato (atributo "Formato", p. ej. "0.75 L") -> presentation
 "Botella 0.75 L"; sin formato -> "Unidad". El precio es el de la tienda (con impuestos). Sin stock en la web -> active=0.
 """
 import argparse
 import csv
+import html
 import json
 import sys
 import urllib.parse
@@ -73,11 +75,13 @@ def main():
         seen.add(p['id'])
         own = [c['id'] for c in p.get('categories', []) if c['id'] in allowed and c['id'] != args.category]
         leaf = max(own, key=level) if own else None
-        name_of = lambda cid: cats[cid]['name'] if cid in cats else ''
+        name_of = lambda cid: html.unescape(cats[cid]['name']) if cid in cats else ''   # la Store API entrega entidades HTML (&#8217;, &amp;)
         parent = cats[leaf]['parent'] if leaf else None
+        while parent and parent in cats and cats[parent]['parent'] in allowed and cats[parent]['parent'] != args.category:
+            parent = cats[parent]['parent']   # el tipo bajo la raiz, no un nivel intermedio (E3.1)
         fmt = next((a['terms'][0]['name'] for a in p.get('attributes', []) if a.get('name', '').lower() == 'formato' and a.get('terms')), None)
         price = int(p['prices']['price']) / (10 ** int(p['prices'].get('currency_minor_unit', 2)))
-        rows.append({'reference': p.get('sku') or str(p['id']), 'name': p['name'], 'category': name_of(leaf) if leaf else '',
+        rows.append({'reference': p.get('sku') or str(p['id']), 'name': html.unescape(p['name']), 'category': name_of(leaf) if leaf else '',
                      'parent': name_of(parent) if parent and parent != args.category else '',
                      'presentation': 'Botella ' + fmt if fmt else 'Unidad', 'price': f'{price:.2f}'.replace('.', ','),
                      'tax': args.tax, 'active': '1' if p.get('is_in_stock', True) else '0'})
