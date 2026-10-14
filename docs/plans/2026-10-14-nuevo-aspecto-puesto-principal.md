@@ -96,7 +96,7 @@ Commits en este orden:
      - letra resuelta.
    - Capturas nuevas.
 
-### C2 — Inicio en panel y Comedor con plano de mesas (versión `0.35.0-c2`)
+### C2 — Inicio en panel y Comedor con plano de mesas (versión `0.36.0-c2`; la `0.35.0` la tomó E3.2)
 
 - **Motor, solo añade**: `GET /configuration` lleva `stations` (`id`, `name`, `kind`, `active`) para que un puesto y la PWA vean los nombres de las estaciones. Hoy `/organization` es solo del responsable.
 - **Inicio**:
@@ -112,6 +112,14 @@ Commits en este orden:
   - `RefreshAll` relee `/configuration`, para que una mesa creada aparezca sin reconectar;
   - los datos de ejemplo de los checks pasan a ser coherentes (hoy la captura del comedor mezcla M3 y M1 a mano).
 - Caja, Catálogo, Oferta, Configuración y Dispositivos se reordenan para el ancho que deja la barra lateral (ficha a la derecha y listas con buscador), con capturas.
+- **Lo que dejaron C1 y E3.2 para C2:**
+  - la columna «Estación» de las elaboraciones muestra el código (`hot`) hasta que `/configuration` traiga `stations`;
+  - en la captura del Comedor, el texto largo de restricciones se corta en su celda;
+  - el Comedor aún no tiene cabecera de página;
+  - `Labels.Course` solo detecta «Falta elegir plato» parcial si recibe el número de personas (el plano puede pasarlo);
+  - Catálogo (ya con fotos y miniaturas, E3.2), Oferta y Salas siguen densos a 1.280 px;
+  - las cifras `Kpi` tienen estilo pero no datos;
+  - el resto de botones de vistas con `GoToPage` necesitan que su vista responda `CanExecute` (ver `HomeView`).
 
 ### C3 — Comanderos y pantallas de cocina (PWA)
 
