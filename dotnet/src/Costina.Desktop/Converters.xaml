@@ -4,4 +4,6 @@
       Views/) se construyen antes de colgar de la ventana y no verian sus recursos (XamlParseException al cargar). -->
  <BooleanToVisibilityConverter x:Key="Bool2Vis"/>
  <local:InvertedBool2Vis x:Key="NotBool2Vis"/>
+ <local:Text2Vis x:Key="Text2Vis"/>
+ <local:SameViewConverter x:Key="SameView"/>
 </ResourceDictionary>

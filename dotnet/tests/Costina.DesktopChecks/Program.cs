@@ -28,6 +28,30 @@ internal static class Program
         if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Collapsed||((MenuItem)window.FindName("DiningMenu")).Visibility!=Visibility.Collapsed) throw new Exception("Role menus are hidden without a session.");
         if(((TabItem)window.FindName("ServiceTab")).ActualHeight!=0) throw new Exception("Tab headers must not be painted: the menu selects the view.");
         if(((TabControl)window.FindName("Tabs")).IsEnabled) throw new Exception("Unauthenticated operations enabled.");
+        // C1 (plan 2026-10-14): aspecto Fluent claro con nuestros tokens. El acento es el verde del lienzo en TODO equipo (no el azul de la
+        // personalizacion de Windows), la ventana pinta un fondo opaco y la letra es Segoe UI Variable Text (se registra el fichero que
+        // resolvio, para explicar diferencias entre capturas locales y de CI).
+        foreach(var key in new[]{"AccentFillColorDefaultBrush","AccentButtonBackground","Accent"})
+            if(Application.Current.FindResource(key) is not SolidColorBrush{Color:var accent}||accent!=Color.FromRgb(0x0E,0x7A,0x5F)) throw new Exception("The accent brush "+key+" must resolve to #0E7A5F.");
+        if(window.Background is not SolidColorBrush{Color:var windowBackground}||windowBackground!=Color.FromRgb(0xF3,0xF4,0xF6)) throw new Exception("The window background must be the opaque #F3F4F6.");
+        if(window.FontFamily.Source!="Segoe UI Variable Text, Segoe UI"||window.FontSize!=14) throw new Exception("Body font: "+window.FontFamily.Source+" "+window.FontSize);
+        var fonts=string.Join(" | ",new[]{window.FontFamily,(FontFamily)Application.Current.FindResource("DisplayFont")}.Select(f=>
+            new Typeface(f,FontStyles.Normal,FontWeights.Normal,FontStretches.Normal).TryGetGlyphTypeface(out var glyph)?f.Source+" -> "+glyph.FontUri.LocalPath:f.Source+" -> (sin resolver)"));
+        Console.WriteLine("Fonts: "+fonts);
+        if(!fonts.Contains(".tt",StringComparison.OrdinalIgnoreCase)) throw new Exception("The body and title fonts must resolve to a font file: "+fonts);
+        // C1: sin sesion se ve Primeros pasos (con la tarjeta de entrada en su paso 1) y no hay barra lateral ni aviso de estado vacio.
+        var firstRun=(FrameworkElement)window.FindName("FirstRunPanel");
+        var loginCard=(Border)window.FindName("LoginCard");
+        if(firstRun.Visibility!=Visibility.Visible||!firstRun.IsAncestorOf(loginCard)) throw new Exception("Without a session the Primeros pasos panel is shown and hosts the login card.");
+        if(((FrameworkElement)window.FindName("SideNavBar")).Visibility!=Visibility.Collapsed||((FrameworkElement)window.FindName("StatusBarInfo")).Visibility!=Visibility.Collapsed) throw new Exception("Without a session there is no sidebar, and an empty status takes no room.");
+        // C1: barra lateral con sus tres secciones (los mismos apartados y nombres de vista que el menu); lo que aun no existe, deshabilitado.
+        var sideNav=(StackPanel)window.FindName("SideNav");
+        var sections=sideNav.Children.OfType<StackPanel>().Select(s=>s.Children.OfType<TextBlock>().First().Text).ToArray();
+        if(!sections.SequenceEqual(new[]{"Servicio","Gestión","Próximamente"})) throw new Exception("Sidebar sections: "+string.Join(",",sections));
+        var navTags=sideNav.Children.OfType<StackPanel>().Take(2).SelectMany(s=>s.Children.OfType<Button>()).Select(b=>b.Tag as string).ToArray();
+        if(!navTags.SequenceEqual(new[]{"HomeTab","ServiceTab","CheckoutTab","CatalogTab","OffersTab","OrganizationTab","DevicesTab"})) throw new Exception("Sidebar items open the same views as the menu: "+string.Join(",",navTags));
+        var soonItems=((StackPanel)window.FindName("NavSoonSection")).Children.OfType<Button>().ToArray();
+        if(soonItems.Length!=3||soonItems.Any(b=>b.IsEnabled||b.ToolTip as string!="Próximamente"||b.Tag is not null)) throw new Exception("Próximamente items are disabled and say so.");
         // D3.1: la habilitacion es un mapeo puro de las affordances del servidor, sin reglas locales.
         // D3.4 (F01): ademas, solo hay contexto accionable cuando la fila seleccionada coincide con la entidad leida.
         var shell=new Costina.Desktop.ViewModels.ShellViewModel();
@@ -155,6 +179,13 @@ internal static class Program
         window.UpdateLayout();
         if(((MenuItem)window.FindName("ConfigurationMenu")).Visibility!=Visibility.Visible||((MenuItem)window.FindName("FiscalMenu")).Visibility!=Visibility.Visible) throw new Exception("The main desk sees every menu.");
         if(!window.Shell.ConnectionText.Contains("Responsable")) throw new Exception("The status bar states who is connected: "+window.Shell.ConnectionText);
+        // C1: con sesion, Primeros pasos se recoge y aparece la barra lateral; Comedor y cocina solo con el modulo de comedor.
+        if(firstRun.Visibility!=Visibility.Collapsed||((FrameworkElement)window.FindName("SideNavBar")).Visibility!=Visibility.Visible) throw new Exception("Connected: no Primeros pasos, the sidebar is shown.");
+        var navService=(Button)window.FindName("NavService");
+        if(navService.Visibility!=Visibility.Visible) throw new Exception("The Comedor sidebar item exists with the dining module.");
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:[]); window.UpdateLayout();
+        if(navService.Visibility!=Visibility.Collapsed||((MenuItem)window.FindName("DiningMenu")).Visibility!=Visibility.Collapsed) throw new Exception("Without the dining module there is no Comedor in the sidebar (nor in the menu).");
+        window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]); window.UpdateLayout();
         if(organization.SelectedZone?.Id!="sala"||organization.ZoneName!="Sala"||organization.Tables.Length!=3) throw new Exception("Rendering must select the first zone and fill its form and tables.");
         if(!organization.SaveZoneCommand.CanExecute(null)||!organization.ToggleZoneCommand.CanExecute(null)) throw new Exception("A selected zone is editable by the main desk.");
         organization.SelectedTable=organization.Tables[2];
@@ -309,6 +340,15 @@ internal static class Program
         System.Windows.Input.NavigationCommands.GoToPage.Execute(homeDevices.CommandParameter,homeDevices);
         if(!levels.ElevationRequested||!levels.LoginTitle.Contains("Dispositivos")||workspace.SelectedItem!=(TabItem)window.FindName("HomeTab")) throw new Exception("A sensitive Inicio shortcut at the Puesto level asks for the responsible and keeps Inicio: "+levels.LoginTitle);
         levels.CancelElevationCommand.Execute(null);
+        // C1: la barra lateral aplica la misma logica: Caja desde el nivel Puesto pide al responsable, la tarjeta se abre centrada sobre
+        // un velo y la vista NO cambia; el resaltado sigue a la vista abierta (Inicio), no al elemento pulsado.
+        var navCheckout=(Button)window.FindName("NavCheckout");
+        navCheckout.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
+        if(!levels.ElevationRequested||!levels.LoginTitle.Contains("Cuenta / Caja")||workspace.SelectedItem!=(TabItem)window.FindName("HomeTab")||levels.CurrentView!="HomeTab") throw new Exception("The Caja sidebar item at the Puesto level asks for the responsible and keeps Inicio: "+levels.CurrentView);
+        if(Costina.Desktop.Ui.GetCurrent(navCheckout)||!Costina.Desktop.Ui.GetCurrent((Button)window.FindName("NavHome"))) throw new Exception("The sidebar highlights the open view, not the clicked item.");
+        if(loginCard.Parent!=window.FindName("ElevationLoginHost")||((FrameworkElement)window.FindName("ElevationLayer")).Visibility!=Visibility.Visible||firstRun.Visibility!=Visibility.Collapsed) throw new Exception("At the Puesto level the login card opens centred over a scrim, not in Primeros pasos.");
+        levels.CancelElevationCommand.Execute(null); window.UpdateLayout();
+        if(loginCard.Parent!=window.FindName("FirstRunLoginHost")||((FrameworkElement)window.FindName("ElevationLayer")).Visibility!=Visibility.Collapsed) throw new Exception("Cancelling puts the login card back in Primeros pasos and lifts the scrim.");
         var opened=""; levels.ViewRequested+=name=>opened=name;
         levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
         if(!levels.IsResponsible||levels.LevelText!="Responsable"||!levels.LeaveResponsibleCommand.CanExecute(null)) throw new Exception("A person session is the Responsable level.");
@@ -395,6 +435,13 @@ internal static class Program
         window.Shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",30400,0,30400,0,"Unpaid",window.Shell.Checkout.Charges,[],["add-product","payment"],[]));
         if(!window.Shell.Checkout.Totals.StartsWith("Total 304,00 €",StringComparison.Ordinal)||!window.Shell.Checkout.Totals.Contains("Pagado de más 0,00 €")||!window.Shell.Checkout.AccountState.StartsWith("Estado: Abierta · Sin pagar. 0 pagos y 0 devoluciones",StringComparison.Ordinal)
             ||window.Shell.Checkout.AccountItems.Single().Text!="Mesa 1 · Abierta") throw new Exception("The account is named by its table and its totals and state are composed from the read: "+window.Shell.Checkout.AccountState);
+        // C1: las capturas muestran cada vista con sus datos de ejemplo (las comprobaciones de niveles las vaciaron al salir del modo
+        // responsable) y con un responsable identificado, como en el uso real. Solo datos: ninguna asercion anterior cambia.
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.34.0-c1",Actor:"user:jefa",Modules:["dining"]));
+        organization.Render(sampleOrganization);
+        catalogView.Render(sampleCatalog); catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
+        center.Render(stationsForDevices,[pendingOther],activeDevices);
+        home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
         window.Shell.Status="Datos leídos del servidor. Las acciones se habilitan según lo que el servidor anuncia.";
         window.Shell.Home.Visible=true;
         foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
@@ -406,21 +453,55 @@ internal static class Program
             var leaked=Texts(window).Where(t=>RawValue.IsMatch(t)).ToArray();
             if(leaked.Length>0) throw new Exception(tab+" shows raw server values: "+string.Join(" | ",leaked));
             var shot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); shot.Render(window);
+            // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
+            // margen entre la barra lateral y la vista.
+            if(Pixel(shot,workspace.TranslatePoint(new Point(-12,12),window)) is var gutter&&gutter!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception(tab+": the window background must be opaque #F3F4F6, found "+gutter);
             var shotEncoder=new PngBitmapEncoder(); shotEncoder.Frames.Add(BitmapFrame.Create(shot));
             using var shotFile=File.Create("artifacts/desktop/"+file); shotEncoder.Save(shotFile);
         }
-        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.Shell.Session=null; window.UpdateLayout();
+        // C1: la barra lateral se pliega a iconos (boton de abajo) y se despliega de nuevo; plegada, sus elementos siguen ahi con su ayuda.
+        // (Se parte de la barra desplegada: en una pantalla estrecha, como la del CI, la ventana la pliega sola por debajo de 1270 px.)
+        tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.Shell.SideNavCompact=false; window.UpdateLayout();
+        var sideNavBar=(FrameworkElement)window.FindName("SideNavBar"); var navToggle=(Button)window.FindName("SideNavToggle");
+        navToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
+        if(!window.Shell.SideNavCompact||sideNavBar.ActualWidth>64||((Button)window.FindName("NavCatalog")).ToolTip as string!="Catálogo y tarifas") throw new Exception("The sidebar folds to icons, each with its name as a tooltip: "+sideNavBar.ActualWidth);
+        window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+        var compactShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); compactShot.Render(window);
+        var compactEncoder=new PngBitmapEncoder(); compactEncoder.Frames.Add(BitmapFrame.Create(compactShot));
+        using(var compactFile=File.Create("artifacts/desktop/sidebar-compact.png")) compactEncoder.Save(compactFile);
+        navToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
+        if(window.Shell.SideNavCompact||sideNavBar.ActualWidth<200) throw new Exception("The sidebar unfolds again.");
+        // C1: startup.png es Primeros pasos tal como lo ve un PC recien arrancado: sin aviso pendiente y con el servidor ya comprobado
+        // (lo haria StartAsync; los checks no tocan la red).
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.Shell.Status=""; window.Shell.Session=null; window.Shell.ServerReady=true; window.UpdateLayout();
+        if(firstRun.Visibility!=Visibility.Visible||!firstRun.IsAncestorOf(loginCard)||((FrameworkElement)window.FindName("SideNavBar")).Visibility!=Visibility.Collapsed) throw new Exception("Disconnected again: Primeros pasos with the login card, no sidebar.");
+        if(!window.Shell.FirstRunServerText.StartsWith("El servidor está listo ",StringComparison.Ordinal)||window.Shell.ServerDot!="ok") throw new Exception("Primeros pasos states the server: "+window.Shell.FirstRunServerText);
         var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
         image.Render(window);
+        if(Pixel(image,firstRun.TranslatePoint(new Point(8,8),window)) is var firstRunBackground&&firstRunBackground!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception("Primeros pasos must paint the opaque #F3F4F6, found "+firstRunBackground);
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
         using(var file=File.Create("artifacts/desktop/startup.png")) encoder.Save(file);
-        File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks.");
+        // C1: mientras arranca y espera al servidor (corte B) la ventana lo dice en su propia capa, sin Primeros pasos ni entrada.
+        window.Shell.Booting=true; window.Shell.BootText="Arrancando el servidor (12 s). Tras encender el equipo puede tardar de uno a tres minutos."; window.UpdateLayout();
+        if(((FrameworkElement)window.FindName("BootPanel")).Visibility!=Visibility.Visible||firstRun.Visibility!=Visibility.Collapsed||loginCard.Visibility!=Visibility.Collapsed) throw new Exception("While booting only the boot panel is shown.");
+        var bootShot=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32); bootShot.Render(window);
+        var bootEncoder=new PngBitmapEncoder(); bootEncoder.Frames.Add(BitmapFrame.Create(bootShot));
+        using(var bootFile=File.Create("artifacts/desktop/booting.png")) bootEncoder.Save(bootFile);
+        window.Shell.Booting=false; window.Shell.BootText=""; window.UpdateLayout();
+        File.WriteAllText("artifacts/desktop/window-checks.txt","Startup, viewmodel affordance/context-mapping and durable-store isolation checks passed. Actual WPF window rendered. No live backend interaction claimed by these checks."
+            +Environment.NewLine+"Version: "+Costina.Desktop.ViewModels.ShellViewModel.AppVersion+Environment.NewLine+"Fonts: "+fonts+Environment.NewLine);
         window.Close();app.Shutdown();Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
     }
 
     // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra
     // suelta: dentro de un codigo con guiones (el producto «menu-lab-tasting») no es un estado.
     private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
+    // C1: color de un pixel de una captura (coordenadas del cliente de la ventana).
+    private static Color Pixel(BitmapSource image,Point at)
+    {
+        var bgra=new byte[4]; image.CopyPixels(new Int32Rect((int)at.X,(int)at.Y,1,1),bgra,4,0);
+        return Color.FromArgb(bgra[3],bgra[2],bgra[1],bgra[0]);
+    }
     // Todo el texto pintado (TextBlock) bajo un elemento del arbol visual.
     private static IEnumerable<string> Texts(DependencyObject root)
     {

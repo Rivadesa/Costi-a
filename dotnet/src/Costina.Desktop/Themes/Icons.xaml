@@ -1,0 +1,55 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- C1: iconos de trazo propios como geometrias XAML (caja de 20 x 20; se pintan con trazo de 1,75 y extremos redondos, ver el
+      estilo Icon de Components.xaml). No se usa la fuente Segoe Fluent Icons: no existe en Windows 10 y no se puede redistribuir.
+      Son los del lienzo aprobado (viewBox 24) escalados a 20 (factor 20/24); el comentario de cada uno dice que representa. -->
+ <!-- Inicio -->
+ <Geometry x:Key="IconHome">M2.5,8.75 L10,2.5 l7.5,6.25 M4.167,7.917 V17.5 h11.667 V7.917 M8.333,17.5 v-5 h3.333 v5</Geometry>
+ <!-- Comedor y cocina -->
+ <Geometry x:Key="IconDining">M5.833,2.5 v6.667 M3.333,2.5 v4.167 a2.5,2.5 0 0 0 5,0 V2.5 M5.833,9.167 v8.333 M15,2.5 c-1.667,1.25 -2.5,3.333 -2.5,5.833 h2.5 v9.167</Geometry>
+ <!-- Cuenta / Caja -->
+ <Geometry x:Key="IconCheckout">M4.167,5.833 H15.833 A1.667,1.667 0 0 1 17.5,7.5 V15 A1.667,1.667 0 0 1 15.833,16.667 H4.167 A1.667,1.667 0 0 1 2.5,15 V7.5 A1.667,1.667 0 0 1 4.167,5.833 Z M2.5,9.167 h15 M5.833,12.5 h2.5 M6.667,5.833 V3.333 h6.667 v2.5</Geometry>
+ <!-- Catalogo y tarifas (etiqueta) -->
+ <Geometry x:Key="IconCatalog">M2.5,10 V3.333 h6.667 l8.333,8.333 l-6.667,6.667 Z M5,7.083 A1.25,1.25 0 1 0 7.5,7.083 A1.25,1.25 0 1 0 5,7.083 Z</Geometry>
+ <!-- Oferta: cartas y menus (libro) -->
+ <Geometry x:Key="IconOffers">M4.167,3.333 a0.833,0.833 0 0 1 0.833,-0.833 h10.833 v12.5 H5 a1.667,1.667 0 0 0 -1.667,1.667 M3.333,16.667 V4.167 M7.5,6.667 h5 M7.5,10 h3.333</Geometry>
+ <!-- Salas, mesas y estaciones (plano) -->
+ <Geometry x:Key="IconOrganization">M3.75,3.333 H7.083 A1.25,1.25 0 0 1 8.333,4.583 V7.917 A1.25,1.25 0 0 1 7.083,9.167 H3.75 A1.25,1.25 0 0 1 2.5,7.917 V4.583 A1.25,1.25 0 0 1 3.75,3.333 Z M12.917,3.333 H16.25 A1.25,1.25 0 0 1 17.5,4.583 V7.917 A1.25,1.25 0 0 1 16.25,9.167 H12.917 A1.25,1.25 0 0 1 11.667,7.917 V4.583 A1.25,1.25 0 0 1 12.917,3.333 Z M3.75,12.5 H7.083 A1.25,1.25 0 0 1 8.333,13.75 V15.417 A1.25,1.25 0 0 1 7.083,16.667 H3.75 A1.25,1.25 0 0 1 2.5,15.417 V13.75 A1.25,1.25 0 0 1 3.75,12.5 Z M12.917,12.5 H16.25 A1.25,1.25 0 0 1 17.5,13.75 V15.417 A1.25,1.25 0 0 1 16.25,16.667 H12.917 A1.25,1.25 0 0 1 11.667,15.417 V13.75 A1.25,1.25 0 0 1 12.917,12.5 Z</Geometry>
+ <!-- Dispositivos (tablet) -->
+ <Geometry x:Key="IconDevices">M5.833,1.667 H14.167 A1.667,1.667 0 0 1 15.833,3.333 V16.667 A1.667,1.667 0 0 1 14.167,18.333 H5.833 A1.667,1.667 0 0 1 4.167,16.667 V3.333 A1.667,1.667 0 0 1 5.833,1.667 Z M9.167,15 h1.667</Geometry>
+ <!-- Reservas (calendario) -->
+ <Geometry x:Key="IconReservations">M4.167,4.167 H15.833 A1.667,1.667 0 0 1 17.5,5.833 V15.833 A1.667,1.667 0 0 1 15.833,17.5 H4.167 A1.667,1.667 0 0 1 2.5,15.833 V5.833 A1.667,1.667 0 0 1 4.167,4.167 Z M2.5,8.333 h15 M6.667,2.5 v3.333 M13.333,2.5 v3.333</Geometry>
+ <!-- Stock y compras (caja) -->
+ <Geometry x:Key="IconStock">M2.5,6.667 l7.5,-4.167 l7.5,4.167 l-7.5,4.167 Z M2.5,6.667 v6.667 l7.5,4.167 l7.5,-4.167 V6.667 M10,10.833 v6.667</Geometry>
+ <!-- Fiscalidad (tique) -->
+ <Geometry x:Key="IconFiscal">M5,1.667 h10 v16.667 l-2.5,-1.667 l-2.5,1.667 l-2.5,-1.667 l-2.5,1.667 Z M7.5,5.833 h5 M7.5,9.167 h5</Geometry>
+ <!-- Conectar dispositivo (QR) -->
+ <Geometry x:Key="IconQr">M2.5,2.5 H8.333 V8.333 H2.5 Z M11.667,2.5 H17.5 V8.333 H11.667 Z M2.5,11.667 H8.333 V17.5 H2.5 Z M11.667,11.667 h2.5 v2.5 h-2.5 Z M16.667,11.667 v5.833 h-5</Geometry>
+ <!-- Anadir -->
+ <Geometry x:Key="IconPlus">M10,4.167 v11.667 M4.167,10 h11.667</Geometry>
+ <!-- Comensales -->
+ <Geometry x:Key="IconPeople">M5,6.667 A2.5,2.5 0 1 0 10,6.667 A2.5,2.5 0 1 0 5,6.667 Z M2.5,16.667 a5,5 0 0 1 10,0 M13.333,4.167 a2.5,2.5 0 0 1 0,5 M15,16.667 a5,5 0 0 0 -2.5,-4.333</Geometry>
+ <!-- Pases en cocina -->
+ <Geometry x:Key="IconFlame">M10,2.5 c0.833,2.5 4.167,4.167 4.167,8.333 a4.167,4.167 0 0 1 -8.333,0 c0,-1.667 0.833,-2.917 1.667,-3.75 c0,1.667 0.833,2.5 1.667,2.5 c0,-2.5 -0.833,-4.167 0.833,-7.083 Z</Geometry>
+ <!-- Aviso / alergia (triangulo) -->
+ <Geometry x:Key="IconAlert">M10,2.5 L1.667,16.667 h16.667 Z M10,8.333 v3.333 M10,14.167 h0.008</Geometry>
+ <!-- Certificado -->
+ <Geometry x:Key="IconShield">M10,2.5 L3.333,5 v5 c0,4.167 2.917,6.667 6.667,7.5 c3.75,-0.833 6.667,-3.333 6.667,-7.5 V5 Z</Geometry>
+ <!-- Copia de seguridad -->
+ <Geometry x:Key="IconDatabase">M3.333,4.167 A6.667,2.5 0 1 0 16.667,4.167 A6.667,2.5 0 1 0 3.333,4.167 Z M3.333,4.167 v11.667 c0,1.417 3,2.5 6.667,2.5 s6.667,-1.083 6.667,-2.5 V4.167 M3.333,10 c0,1.417 3,2.5 6.667,2.5 s6.667,-1.083 6.667,-2.5</Geometry>
+ <!-- Ir -->
+ <Geometry x:Key="IconChevronRight">M7.5,5 l5,5 l-5,5</Geometry>
+ <!-- Volver / plegar -->
+ <Geometry x:Key="IconChevronLeft">M12.5,5 l-5,5 l5,5</Geometry>
+ <!-- Este PC / servidor -->
+ <Geometry x:Key="IconMonitor">M4.167,3.333 H15.833 A1.667,1.667 0 0 1 17.5,5 V11.667 A1.667,1.667 0 0 1 15.833,13.333 H4.167 A1.667,1.667 0 0 1 2.5,11.667 V5 A1.667,1.667 0 0 1 4.167,3.333 Z M6.667,16.667 h6.667 M10,13.333 v3.333</Geometry>
+ <!-- Responsable (candado) -->
+ <Geometry x:Key="IconLock">M5.833,9.167 H14.167 A1.667,1.667 0 0 1 15.833,10.833 V15.833 A1.667,1.667 0 0 1 14.167,17.5 H5.833 A1.667,1.667 0 0 1 4.167,15.833 V10.833 A1.667,1.667 0 0 1 5.833,9.167 Z M6.667,9.167 V5.833 a3.333,3.333 0 0 1 6.667,0 v3.333</Geometry>
+ <!-- Informacion -->
+ <Geometry x:Key="IconInfo">M2.5,10 A7.5,7.5 0 1 0 17.5,10 A7.5,7.5 0 1 0 2.5,10 Z M10,9.167 v4.167 M10,6.667 h0.008</Geometry>
+ <!-- Hecho -->
+ <Geometry x:Key="IconCheck">M4.167,10.417 l3.75,3.75 L15.833,5.833</Geometry>
+ <!-- Cerrar -->
+ <Geometry x:Key="IconClose">M5,5 l10,10 M15,5 L5,15</Geometry>
+ <!-- Plegar la barra lateral -->
+ <Geometry x:Key="IconSidebar">M4.167,3.333 H15.833 A1.667,1.667 0 0 1 17.5,5 V15 A1.667,1.667 0 0 1 15.833,16.667 H4.167 A1.667,1.667 0 0 1 2.5,15 V5 A1.667,1.667 0 0 1 4.167,3.333 Z M7.5,3.333 v13.333</Geometry>
+</ResourceDictionary>

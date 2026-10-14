@@ -17,7 +17,8 @@ public sealed class InvertedBool2Vis : IValueConverter
 }
 
 // Solo pegamento de presentacion: DataContext, PasswordBox (no enlazable a proposito, la clave
-// no pasa por bindings ni se guarda), pestanas de administracion y guardas de cierre. Cero reglas de negocio:
+// no pasa por bindings ni se guarda), vistas del area de trabajo, barra lateral (C1), sitio de la tarjeta de entrada (C1) y
+// guardas de cierre. Cero reglas de negocio:
 // toda la habilitacion viene de las affordances del servidor a traves de los viewmodels.
 public partial class MainWindow : Window
 {
@@ -31,7 +32,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent(); DataContext = shell;
         // Al conectar (o cambiar de rol) el area de trabajo muestra la primera vista que ese rol puede ver.
-        shell.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.Session)) SelectFirstVisibleView(); };
+        shell.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ShellViewModel.Session)) SelectFirstVisibleView();
+            if (e.PropertyName is nameof(ShellViewModel.ElevationMode) or null or "") PlaceLoginCard();
+        };
+        PlaceLoginCard();
         // Corte B: la vista sensible pedida se abre sola cuando el responsable ha entrado.
         shell.ViewRequested += name => { if (FindName(name) is TabItem view) Tabs.SelectedItem = view; };
         // Corte B (B3): cualquier teclado o raton cuenta como actividad; cada minuto se comprueba si el responsable lleva
@@ -72,10 +78,33 @@ public partial class MainWindow : Window
         Tabs.SelectedItem = view;
     }
     private void ElevateClick(object sender, RoutedEventArgs e) => shell.RequestElevation("HomeTab");
+    // C1: barra lateral plegada a iconos o desplegada; el aviso de estado se puede cerrar (vuelve con el siguiente mensaje).
+    // Mas estrecha que la ventana por defecto (1280 px) la barra se pliega sola: las vistas de gestion no caben con ella desplegada.
+    // Si la persona la pliega o despliega a mano, manda su eleccion.
+    private const double SideNavFoldBelow = 1270;
+    private bool sideNavChosen;
+    private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!sideNavChosen) shell.SideNavCompact = e.NewSize.Width < SideNavFoldBelow;
+    }
+    private void ToggleSideNav(object sender, RoutedEventArgs e) { sideNavChosen = true; shell.SideNavCompact = !shell.SideNavCompact; }
+    private void DismissStatus(object sender, RoutedEventArgs e) => shell.Status = "";
+
+    // C1: la tarjeta de entrada es UNA (LoginCard, con ConnectButton, AccessKey, el desplegable de otro servidor y PairCode): sin sesion
+    // vive en el paso 1 de Primeros pasos; cuando un apartado sensible la pide desde el nivel Puesto se abre centrada sobre un velo.
+    // Solo cambia de sitio: sus nombres, enlaces y la contrasena escrita siguen siendo los mismos.
+    private void PlaceLoginCard()
+    {
+        var host = shell.ElevationMode ? ElevationLoginHost : FirstRunLoginHost;
+        if (ReferenceEquals(LoginCard.Parent, host)) return;
+        if (LoginCard.Parent is Decorator previous) previous.Child = null;
+        host.Child = LoginCard;
+        if (shell.ElevationMode) Dispatcher.BeginInvoke(() => AccessKey.Focus(), DispatcherPriority.Input);
+    }
     private void AccessKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) ConnectClick(sender, e); }
     private void ExitClick(object sender, RoutedEventArgs e) => Close();
     private void AboutClick(object sender, RoutedEventArgs e) => MessageBox.Show(this,
-        $"Costiña · puesto principal\nVersión {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)}\n\nServidor: {shell.Endpoint}\n{shell.ConnectionText}",
+        $"Costiña · puesto principal\nVersión {ShellViewModel.AppVersion}\n\nServidor: {shell.Endpoint}\n{shell.ConnectionText}",
         "Acerca de Costiña", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private async void ConnectClick(object sender, RoutedEventArgs e)
@@ -89,6 +118,8 @@ public partial class MainWindow : Window
         // C1: solo el cambio de vista del area de trabajo. Cualquier selector interior (ComboBox, ListBox, DataGrid o un
         // TabControl anidado en una vista) burbujea hasta aqui con su propio OriginalSource y se ignora.
         if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
+        // C1: la barra lateral resalta la vista que de verdad se muestra (no el boton pulsado).
+        shell.CurrentView = (Tabs.SelectedItem as TabItem)?.Name;
         shell.Home.Visible = Tabs.SelectedItem == HomeTab;
         shell.Checkout.Visible = Tabs.SelectedItem == CheckoutTab;
         shell.Devices.Visible = Tabs.SelectedItem == DevicesTab;

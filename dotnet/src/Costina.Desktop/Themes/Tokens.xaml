@@ -1,0 +1,74 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+ <!-- C1 (plan 2026-10-14, seccion 1 y 2): tokens del aspecto nuevo. Se combina DESPUES de Fluent.Light.xaml, asi que una clave
+      de aqui gana a la de Fluent. Fondo neutro, tarjetas blancas, acento verde; rojo solo para alergias y peligro, ambar para
+      avisos; el color nunca va solo: todo estado lleva su texto. -->
+
+ <!-- 1. Acento propio en todos los equipos: se sustituyen los 7 colores de acento de Windows. Fluent claro rellena con Dark1,
+      asi que Dark1 es el verde del lienzo. Cambiar SystemAccentColor* o pinceles sueltos NO basta (prueba de Fluent). -->
+ <Color x:Key="{x:Static SystemColors.AccentColorKey}">#12906F</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorLight1Key}">#2FA683</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorLight2Key}">#6FC2A7</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorLight3Key}">#A8DCCB</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorDark1Key}">#0E7A5F</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorDark2Key}">#0A5A46</Color>
+ <Color x:Key="{x:Static SystemColors.AccentColorDark3Key}">#063A2D</Color>
+
+ <!-- 2. Neutros. WindowBackground es la clave que usa la ventana Fluent sin Mica (App: DisableFluentThemeWindowBackdrop). -->
+ <SolidColorBrush x:Key="WindowBackground" Color="#F3F4F6"/>
+ <SolidColorBrush x:Key="Chrome" Color="#FBFBFC"/>
+ <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="Surface2" Color="#F5F6F8"/>
+ <SolidColorBrush x:Key="Stroke" Color="#E2E5E9"/>
+ <SolidColorBrush x:Key="StrokeStrong" Color="#CDD2D8"/>
+ <SolidColorBrush x:Key="Ink" Color="#1A1D21"/>
+ <SolidColorBrush x:Key="InkSoft" Color="#5A616B"/>
+ <SolidColorBrush x:Key="Hover" Color="#0D000000"/>
+ <SolidColorBrush x:Key="Scrim" Color="#80111827"/>
+
+ <!-- 3. Acento y estados. Soft = fondo; Line = borde; Text = texto sobre el fondo soft (contraste AA). -->
+ <SolidColorBrush x:Key="Accent" Color="#0E7A5F"/>
+ <SolidColorBrush x:Key="AccentSoft" Color="#E2EFEC"/>
+ <SolidColorBrush x:Key="AccentLine" Color="#A8DCCB"/>
+ <SolidColorBrush x:Key="AccentText" Color="#0C6B54"/>
+ <SolidColorBrush x:Key="Ok" Color="#1E8E5A"/>
+ <SolidColorBrush x:Key="OkText" Color="#17744A"/>
+ <SolidColorBrush x:Key="Warn" Color="#C98A1B"/>
+ <SolidColorBrush x:Key="WarnSoft" Color="#FDF1DE"/>
+ <SolidColorBrush x:Key="WarnLine" Color="#F2D7A9"/>
+ <SolidColorBrush x:Key="WarnText" Color="#8A4B0A"/>
+ <SolidColorBrush x:Key="Danger" Color="#B42318"/>
+ <SolidColorBrush x:Key="DangerSoft" Color="#FDECEA"/>
+ <SolidColorBrush x:Key="DangerLine" Color="#F4C7C2"/>
+ <SolidColorBrush x:Key="DangerText" Color="#A3231A"/>
+ <SolidColorBrush x:Key="Info" Color="#2F6BC2"/>
+ <SolidColorBrush x:Key="InfoSoft" Color="#EAF1FB"/>
+ <SolidColorBrush x:Key="InfoLine" Color="#C9D8F2"/>
+ <SolidColorBrush x:Key="InfoText" Color="#1D4C9C"/>
+
+ <!-- 4. Letra. "Segoe UI Variable" a secas NO se resuelve en WPF (cae a Segoe UI): los nombres buenos son Text y Display.
+      Sin estilo global de TextBlock: la letra y el tamano van en la ventana y se heredan (el estilo global rompia el color
+      del texto de los botones). -->
+ <FontFamily x:Key="BodyFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+ <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+
+ <!-- 5. Ajustes de Fluent. Sin Mica los rellenos translucidos de Fluent no tienen nada debajo: se hacen opacos. -->
+ <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#F5F6F8"/>
+ <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#EDEFF2"/>
+ <SolidColorBrush x:Key="TextControlBackground" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="ComboBoxBackground" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#F9FAFB"/>
+ <SolidColorBrush x:Key="ListBoxBackground" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="#FFFFFF"/>
+ <SolidColorBrush x:Key="ExpanderContentBackground" Color="#F9FAFB"/>
+ <SolidColorBrush x:Key="DataGridRowSelectedBackgroundThemeBrush" Color="#E2EFEC"/>
+ <SolidColorBrush x:Key="DataGridRowSelectedForegroundThemeBrush" Color="#1A1D21"/>
+
+ <!-- 6. Densidad de ERP (Fluent mide 32 px por control; listas y barra de estado se compactan). -->
+ <Thickness x:Key="ListBoxItemPadding">10,6,10,6</Thickness>
+ <Thickness x:Key="StatusBarItemPadding">4,2,4,2</Thickness>
+ <Thickness x:Key="DataGridColumnHeaderPadding">10,0,10,0</Thickness>
+ <sys:Double x:Key="NavWidth">232</sys:Double>
+ <sys:Double x:Key="NavCompactWidth">60</sys:Double>
+</ResourceDictionary>
