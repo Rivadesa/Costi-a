@@ -372,6 +372,24 @@ internal static class Program
         if(imageRemoved.Path!="erp/catalog/commands/product-image-remove"||imageRemoved.Body!="{\"productId\":\"wine\"}") throw new Exception("product-image-remove carries only the product: "+imageRemoved.Body);
         if(catalogView.ProductPhoto is not null||catalogView.PhotoText!="Sin imagen"||catalogView.RemoveImageCommand.CanExecute(null)||catalogView.Products.Single(p=>p.Product.Id=="wine").Thumbnail is not null)
             throw new Exception("After removing, the form and the row show the placeholder: "+catalogView.PhotoText);
+        // Revision E3.2: la fila es una clase y compara por referencia. Teclear en la busqueda o tocar "Ver todos los productos" con la
+        // vista abierta conserva el producto elegido (por su codigo); si la busqueda lo deja fuera se deselecciona del todo y ni
+        // "Fijar precio" ni desactivar la presentacion quedan activos sobre un producto que ya no esta elegido (antes: excepcion).
+        var searchBox=(TextBox)catalogPanel.FindName("ProductSearch");
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="wine"); window.UpdateLayout();
+        searchBox.Text="ensayo"; window.UpdateLayout();
+        if(catalogView.SelectedProduct?.Product.Id!="wine"||!ReferenceEquals(productList.SelectedItem,catalogView.SelectedProduct)||catalogView.ProductFormTitle!="Producto: Vino de ensayo"
+            ||catalogView.SelectedPresentation is null||!catalogView.SetPriceCommand.CanExecute(null)||!catalogView.TogglePresentationCommand.CanExecute(null))
+            throw new Exception("A search that still matches keeps the selected product: "+(catalogView.SelectedProduct?.Product.Id??"null"));
+        catalogView.AllCategories=false; window.UpdateLayout(); catalogView.AllCategories=true; window.UpdateLayout();
+        if(catalogView.SelectedProduct?.Product.Id!="wine"||!ReferenceEquals(productList.SelectedItem,catalogView.SelectedProduct)) throw new Exception("'Ver todos los productos' keeps the selected product.");
+        searchBox.Text="rapolao"; window.UpdateLayout();
+        if(catalogView.SelectedProduct is not null||productList.SelectedItem is not null||catalogView.ProductFormTitle!="Selecciona un producto"||catalogView.ProductName!=""
+            ||catalogView.PhotoText!="Sin producto seleccionado."||catalogView.Presentations.Length!=0||catalogView.SelectedPresentation is not null
+            ||catalogView.SetPriceCommand.CanExecute(null)||catalogView.TogglePresentationCommand.CanExecute(null)||catalogView.ChangeImageCommand.CanExecute(null))
+            throw new Exception("A search that hides the selected product deselects it completely: "+catalogView.ProductFormTitle);
+        searchBox.Text=""; window.UpdateLayout();
+        if(catalogView.Products.Length!=4||catalogView.SelectedProduct is not null) throw new Exception("Clearing the search lists every product again.");
         // Configuracion > Salas: la tarifa de cada sala. Desplegable con la General y las tarifas activas; la lista nombra la tarifa propia.
         var organizationPanel=(FrameworkElement)window.FindName("OrganizationView");
         var zoneTariffBox=(ComboBox)organizationPanel.FindName("ZoneTariffBox");
@@ -391,11 +409,22 @@ internal static class Program
         if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"organization/commands/zone-update",Body:"{\"id\":\"sala\",\"name\":\"Sala\",\"sort\":0,\"tariffId\":\"terraza\"}"}) throw new Exception("A zone saves its tariff by code: "+server.Requests.Last(r=>r.Method=="POST").Body);
         organization.StartZoneCommand.Execute(null); window.UpdateLayout();
         if(organization.ZoneTariffId!=""||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"}) throw new Exception("A new zone starts with the General tariff.");
-        // Una sala que conserva una tarifa desactivada la ve marcada (no se cambia sin querer); un servidor anterior (sin tarifas) muestra el codigo.
-        organization.Render(sampleOrganization with {Zones=[..sampleOrganization.Zones,new("jardin","Jardín",2,false,[],"eventos")]});
-        if(!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","Terraza","Eventos (desactivada)"])||organization.Zones[2].ToString()!="Jardín · tarifa Eventos · 0 mesas activas · desactivada") throw new Exception("A deactivated tariff still used by a zone is offered, marked.");
-        organization.Render(sampleOrganization with {Tariffs=null});
-        if(!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","terraza"])||!organization.Zones[1].ToString().Contains("tarifa terraza")) throw new Exception("An older server without tariffs still shows the zone's tariff by code.");
+        // Una sala que conserva una tarifa desactivada la ve marcada en SU ficha (no se cambia sin querer); ni una sala nueva ni otra sala
+        // la ofrecen (el servidor la rechazaria: tariff_inactive). Un servidor anterior (sin tarifas) muestra el codigo de la tarifa de la sala.
+        string Choices()=>string.Join(",",organization.TariffChoices.Select(t=>t.Name));
+        organization.Render(sampleOrganization with {Zones=[..sampleOrganization.Zones,new("jardin","Jardín",2,false,[],"eventos")]}); window.UpdateLayout();
+        if(Choices()!="General,Terraza"||organization.Zones[2].ToString()!="Jardín · tarifa Eventos · 0 mesas activas · desactivada") throw new Exception("A new zone is offered the General and the active tariffs only: "+Choices());
+        organization.SelectedZone=organization.Zones[2]; window.UpdateLayout();
+        if(Choices()!="General,Terraza,Eventos (desactivada)"||organization.ZoneTariffId!="eventos"||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"Eventos (desactivada)"})
+            throw new Exception("A deactivated tariff still used by a zone is offered, marked, in that zone's form: "+Choices());
+        organization.SelectedZone=organization.Zones[0]; window.UpdateLayout();
+        if(Choices()!="General,Terraza"||organization.ZoneTariffId!=""||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"}) throw new Exception("Another zone is never offered a deactivated tariff: "+Choices());
+        organization.SelectedZone=organization.Zones[2]; window.UpdateLayout(); organization.SelectedZone=organization.Zones[1]; window.UpdateLayout();
+        if(Choices()!="General,Terraza"||organization.ZoneTariffId!="terraza"||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"Terraza"}) throw new Exception("Leaving that zone drops the deactivated tariff from the choices: "+Choices());
+        organization.Render(sampleOrganization with {Tariffs=null}); window.UpdateLayout();
+        if(Choices()!="General,terraza"||organization.ZoneTariffId!="terraza"||!organization.Zones[1].ToString().Contains("tarifa terraza")) throw new Exception("An older server without tariffs still shows the zone's tariff by code: "+Choices());
+        organization.SelectedZone=organization.Zones[0]; window.UpdateLayout();
+        if(Choices()!="General") throw new Exception("An older server offers only the General to a zone without its own tariff: "+Choices());
         window.Shell.Busy=true;
         if(organization.SaveZoneCommand.CanExecute(null)) throw new Exception("Busy gates saving a zone.");
         window.Shell.Busy=false;

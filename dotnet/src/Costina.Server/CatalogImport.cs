@@ -45,7 +45,9 @@ public static class CatalogImport
         if(relative.Length is 0 or >255 || relative.Contains(':') || relative.StartsWith('/') || System.IO.Path.IsPathRooted(relative)
             || relative.Any(char.IsControl) || relative.Split('/').Any(s=>s==".."))
             throw new ArgumentException($"image '{name}' must be a file name inside the CSV's folder (no absolute path, drive or '..').");
-        var root=System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(folder))+System.IO.Path.DirectorySeparatorChar;
+        // La raiz de una unidad ("E:\", un CSV en una memoria USB) ya acaba en separador y no se recorta: no se le anade otro.
+        var folderPath=System.IO.Path.GetFullPath(folder);
+        var root=System.IO.Path.EndsInDirectorySeparator(folderPath) ? folderPath : folderPath+System.IO.Path.DirectorySeparatorChar;
         var full=System.IO.Path.GetFullPath(System.IO.Path.Combine(root,relative.Replace('/',System.IO.Path.DirectorySeparatorChar)));
         var comparison=OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if(!full.StartsWith(root,comparison)) throw new ArgumentException($"image '{name}' is outside the CSV's folder.");

@@ -130,7 +130,8 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     public bool CategoryEditable => Main && (NewCategory || SelectedCategory is not null);
     public bool ProductEditable => Main && (NewProduct || SelectedProduct is not null);
     public bool PresentationEditable => Main && (NewPresentation || SelectedPresentation is not null);
-    public bool PriceEditable => Main && SelectedPresentation is not null && !NewPresentation;
+    // E3.2 (revision): precio y desactivar presentacion exigen tambien el producto elegido (la orden lo lleva).
+    public bool PriceEditable => Main && SelectedProduct is not null && SelectedPresentation is not null && !NewPresentation;
     public bool TariffEditable => Main && (NewTariff || SelectedTariff is not null);
     public bool TaxEditable => Main && (NewTax || SelectedTax is not null);
 
@@ -244,8 +245,30 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         rendering = true; try { RenderProducts(); SelectedProduct = null; RenderPresentations(); SelectedPresentation = null; } finally { rendering = false; }
         NewProduct = false; FillProductForm(); NewPresentation = false; FillPresentationForm(); Sync();
     }
-    partial void OnAllCategoriesChanged(bool value) { if (rendering) return; rendering = true; try { RenderProducts(); } finally { rendering = false; } Sync(); }
-    partial void OnSearchChanged(string value) { if (rendering) return; rendering = true; try { RenderProducts(); } finally { rendering = false; } Sync(); }
+    partial void OnAllCategoriesChanged(bool value) { if (rendering) return; Refilter(); }
+    partial void OnSearchChanged(string value) { if (rendering) return; Refilter(); }
+    // E3.2 (revision): la fila del producto es una clase (su miniatura avisa al llegar) y compara por referencia, asi que al rehacer
+    // la lista la ListBox ya no encuentra la fila elegida y la deja en null. Buscar o marcar "Ver todos" vuelve a elegir el MISMO
+    // producto por su codigo (ficha y presentaciones siguen como estaban); si el filtro lo deja fuera, se deselecciona del todo:
+    // ficha, foto y presentaciones limpias, nunca una ficha ni un precio de un producto que ya no esta elegido.
+    private void Refilter()
+    {
+        var product = SelectedProduct?.Product.Id;
+        rendering = true;
+        try
+        {
+            RenderProducts();
+            SelectedProduct = Products.FirstOrDefault(p => p.Product.Id == product);
+            if (product is not null && SelectedProduct is null) { RenderPresentations(); SelectedPresentation = null; }
+        }
+        finally { rendering = false; }
+        if (product is not null && SelectedProduct is null)
+        {
+            if (!NewProduct) FillProductForm();
+            NewPresentation = false; FillPresentationForm();
+        }
+        Sync();
+    }
     partial void OnSelectedProductChanged(ProductRow? value)
     {
         if (rendering) return;
@@ -422,7 +445,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         var name = Name(PresentationName); var sort = Number(PresentationSort, "Orden", 0, 9999);
         return Command(NewPresentation ? "presentation-create" : "presentation-update", new { productId, id, name, sort }, (NewPresentation ? "Crear presentación " : "Guardar presentación ") + name + " de " + SelectedProduct.Product.Name);
     }
-    private bool CanTogglePresentation() => Main && SelectedPresentation is not null && !NewPresentation;
+    private bool CanTogglePresentation() => Main && SelectedProduct is not null && SelectedPresentation is not null && !NewPresentation;
     [RelayCommand(CanExecute = nameof(CanTogglePresentation))]
     private Task TogglePresentation() => Command(SelectedPresentation!.Presentation.Active ? "presentation-deactivate" : "presentation-reactivate",
         new { productId = SelectedProduct!.Product.Id, id = SelectedPresentation.Presentation.Id },

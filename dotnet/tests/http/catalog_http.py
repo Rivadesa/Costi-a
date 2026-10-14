@@ -56,6 +56,14 @@ def declared_only(path, length):
     finally:
         connection.close()
 
+def subst_drive(folder):
+    """Windows: una unidad virtual (subst) libre sobre `folder` ('Q:'...), o None si no queda letra."""
+    for letter in 'QRSTUVWXYZ':
+        drive = letter + ':'
+        if not os.path.exists(drive + '\\') and subprocess.run(['subst', drive, str(folder)], capture_output=True).returncode == 0:
+            return drive
+    return None
+
 def catalog():
     return ok('/erp/catalog')
 
@@ -381,7 +389,8 @@ class Catalog(unittest.TestCase):
 
     def test_07_import_takes_images_from_the_csv_folder_and_never_from_outside(self):
         """E3.2: columna 'image' = fichero de la carpeta del CSV. Crea, es idempotente (la huella cubre CSV e imagenes), una foto
-        cambiada con el mismo CSV cambia solo esa imagen, una celda vacia no quita nada, y nada sale de la carpeta."""
+        cambiada con el mismo CSV cambia solo esa imagen, una celda vacia no quita nada, nada sale de la carpeta y un CSV en la raiz
+        de una unidad (memoria USB) tambien vale."""
         base = Path(tempfile.mkdtemp(prefix='costina-images-'))
         folder = base / 'bodega'; (folder / 'fotos').mkdir(parents=True)
         tinto, blanco = png(3000), jpeg(4000)
@@ -436,6 +445,21 @@ class Catalog(unittest.TestCase):
             refused = import_csv(folder / 'mal.csv')
             self.assertNotEqual(refused.returncode, 0, name); self.assertIn('Line 3 (3795)', refused.stdout + refused.stderr, name)
         self.assertEqual(h.sql("SELECT count(*) FROM core.products WHERE tenant='d1-tenant' AND id IN ('3793','3794','3795')"), '0')
+        # Un CSV en la RAIZ de una unidad (una memoria USB: E:\catalogo.csv junto a E:\catalogo-imagenes\) encuentra sus fotos.
+        # Solo en Windows: una unidad virtual (subst) sobre una carpeta temporal, que se quita al acabar.
+        if os.name == 'nt':
+            usb = base / 'usb'; (usb / 'catalogo-imagenes').mkdir(parents=True)
+            memoria = webp(2500)
+            (usb / 'catalogo-imagenes' / 'verial-3796.webp').write_bytes(memoria)
+            (usb / 'catalogo.csv').write_text(header + '\n3796;Blanco de la memoria;Blancos;Botella;9,00;21;catalogo-imagenes/verial-3796.webp\n', encoding='utf8')
+            drive = subst_drive(usb)
+            self.assertIsNotNone(drive, 'no free drive letter for subst')
+            try:
+                at_root = import_csv(drive + '\\catalogo.csv')
+            finally:
+                subprocess.run(['subst', drive, '/d'], capture_output=True)
+            self.assertEqual(at_root.returncode, 0, at_root.stdout + at_root.stderr); self.assertIn('images set 1.', at_root.stdout)
+            self.assertEqual(product('3796')['imageSha'], sha(memoria))
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)
