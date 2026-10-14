@@ -226,6 +226,40 @@ class Catalog(unittest.TestCase):
         failed = run(unknown)
         self.assertNotEqual(failed.returncode, 0); self.assertIn("tax '7'", failed.stdout + failed.stderr)
 
+    def test_04b_csv_import_keeps_the_same_region_apart_under_each_type(self):
+        """E3.1: en una bodega real la misma region cuelga de varios tipos (Rioja en Tintos y en Blancos). El importador reconoce
+        la categoria por nombre Y padre: cada vino queda bajo su tipo y un segundo fichero con los mismos nombres no crea nada nuevo."""
+        folder = Path(tempfile.mkdtemp(prefix='costina-catalog-'))
+        csv = folder / 'bodega.csv'
+        csv.write_text('\n'.join(['reference;name;category;parent;presentation;price;tax;active',
+                                  '3780;Rioja tinto de prueba;Rioja;Tintos;Botella;20,00;21;1',
+                                  '3781;Rioja blanco de prueba;Rioja;Blancos;Botella;18,00;21;1',
+                                  '3782;Albarino de prueba;Rías Baixas;Blancos;Botella;15,00;21;1',
+                                  '3783;Mencia de prueba;Rías Baixas;Tintos;Botella;16,00;21;1']) + '\n', encoding='utf8')
+        run = lambda path: subprocess.run(['dotnet', str(h.SERVER), 'import-catalog', str(path)], env=h.ENV, capture_output=True, text=True, encoding='utf8')
+        first = run(csv)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn('categories created 5;', first.stdout)                         # Blancos, Rioja x2 y Rias Baixas x2 (Tintos ya existia)
+        categories = {c['id']: c for c in catalog()['categories']}
+        def under(reference):
+            category = categories[product(reference)['categoryId']]
+            return category['name'], categories[category['parentId']]['name']
+        self.assertEqual([under(r) for r in ('3780', '3781', '3782', '3783')],
+                         [('Rioja', 'Tintos'), ('Rioja', 'Blancos'), ('Rías Baixas', 'Blancos'), ('Rías Baixas', 'Tintos')])
+        self.assertNotEqual(product('3780')['categoryId'], product('3781')['categoryId'])
+        self.assertNotEqual(product('3782')['categoryId'], product('3783')['categoryId'])
+        self.assertEqual(categories['tintos']['parentId'], 'vinos')                 # el tipo existente se reutiliza donde esta
+        # Otro fichero con los mismos tipos y regiones reutiliza esas categorias; una fila sin padre usa la que ya existe con ese nombre.
+        more = folder / 'mas.csv'
+        more.write_text('\n'.join(['reference;name;category;parent;presentation;price;tax;active',
+                                   '3784;Otro Rioja blanco;Rioja;Blancos;Botella;19,00;21;1',
+                                   '3785;Sin tipo;Blancos;;Botella;9,00;21;1']) + '\n', encoding='utf8')
+        second = run(more)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertIn('categories created 0;', second.stdout)
+        self.assertEqual(product('3784')['categoryId'], product('3781')['categoryId'])
+        self.assertEqual(categories[product('3785')['categoryId']]['name'], 'Blancos')
+
     def test_05_commands_are_idempotent_and_audited(self):
         key = 'catalog-' + os.urandom(6).hex()
         status, body = request('/erp/catalog/commands/category-create', dict(id='postres', name='Postres'), key=key)

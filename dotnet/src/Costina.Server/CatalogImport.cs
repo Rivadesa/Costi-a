@@ -83,17 +83,25 @@ public static class CatalogImport
         var categories=(await unit.Categories()).ToDictionary(c=>c.Id,StringComparer.Ordinal);
         var products=(await unit.Products()).ToDictionary(p=>p.Id,StringComparer.Ordinal);
         int created=0,updated=0,newCategories=0,newPresentations=0,prices=0;
+        // E3.1: una categoria se reconoce por NOMBRE y PADRE, no solo por el nombre: en una bodega real la misma region cuelga
+        // de varios tipos (Rioja en Tintos y en Blancos) y por nombre se mezclaban. Sin padre en el fichero, o para el propio padre
+        // (cuyo abuelo no se conoce), vale cualquier categoria con ese nombre, la raiz primero. Una nueva toma el codigo del nombre
+        // y, si ya esta usado, el del padre y el nombre ("blancos-rioja") o un sufijo.
         async Task<string?> EnsureCategory(string? name,string? parentName,int line)
         {
             if(name is null) return null;
-            var parentId=await EnsureCategory(parentName,null,line);
+            var parentId=parentName is null ? null : await EnsureCategory(parentName,null,line);
+            var same=categories.Values.Where(c=>string.Equals(c.Name,name.Trim(),StringComparison.OrdinalIgnoreCase));
+            var match=parentName is not null ? same.FirstOrDefault(c=>c.ParentId==parentId)
+                : same.OrderBy(c=>c.ParentId is null ? 0 : 1).ThenBy(c=>c.Id,StringComparer.Ordinal).FirstOrDefault();
+            if(match is not null) return match.Id;
             var id=Catalog.Slug(name);
-            if(!categories.ContainsKey(id))
-            {
-                var category=Catalog.Category(id,name,parentId,null,categories.Count);
-                Catalog.Depth(id,parentId,x=>categories.GetValueOrDefault(x)?.ParentId);
-                await unit.InsertCategory(category); categories[id]=category; newCategories++;
-            }
+            if(categories.ContainsKey(id) && parentName is not null) id=Catalog.Slug(parentName+" "+name);
+            var stem=id.Length>Organization.MaxCodeLength-3 ? id[..(Organization.MaxCodeLength-3)].TrimEnd('-') : id;
+            for(var n=2;categories.ContainsKey(id);n++) id=stem+"-"+n;
+            var category=Catalog.Category(id,name,parentId,null,categories.Count);
+            Catalog.Depth(id,parentId,x=>categories.GetValueOrDefault(x)?.ParentId);
+            await unit.InsertCategory(category); categories[id]=category; newCategories++;
             return id;
         }
         foreach(var row in rows)
