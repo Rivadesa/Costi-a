@@ -3,6 +3,19 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Costina.Client;
+// C1: enums del dominio (todos los valores que el servidor puede enviar) para recorrer el vocabulario.
+using AccountState = Costina.Core.Domain.AccountState;
+using PaymentCoverage = Costina.Core.Domain.PaymentCoverage;
+using OfferKind = Costina.Core.Domain.OfferKind;
+using OfferService = Costina.Core.Domain.OfferService;
+using StationKind = Costina.Core.Domain.StationKind;
+using DiningState = Costina.Modules.Dining.Domain.DiningState;
+using CourseState = Costina.Modules.Dining.Domain.CourseState;
+using PreparationState = Costina.Modules.Dining.Domain.PreparationState;
+using OccupancyState = Costina.Modules.Dining.Domain.OccupancyState;
+using RestrictionKind = Costina.Modules.Dining.Domain.RestrictionKind;
+using RestrictionSeverity = Costina.Modules.Dining.Domain.RestrictionSeverity;
+using ReviewDecision = Costina.Modules.Dining.Domain.ReviewDecision;
 
 var results = new List<object>(); int passed=0, failed=0;
 void Assert(bool value) { if(!value) throw new Exception("Assertion failed"); }
@@ -117,8 +130,8 @@ await Check("device rows and session accept an older server without online or st
     var web=new JsonSerializerOptions(JsonSerializerDefaults.Web);
     var online=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d1\",\"name\":\"tablet\",\"role\":\"service\",\"station\":\"sala-1\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":null,\"online\":true}",web)!;
     var older=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d2\",\"name\":\"kds\",\"role\":\"kitchen\",\"station\":\"cold\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":\"2026-10-06T11:00:00Z\"}",web)!;
-    Assert(online.Online&&online.Active&&online.StateLabel=="CONECTADO AHORA"&&online.RoleLabel=="Comandero");
-    Assert(!older.Online&&!older.Active&&older.StateLabel.StartsWith("quitado",StringComparison.Ordinal)&&older.RoleLabel=="Pantalla de cocina");
+    Assert(online.Online&&online.Active&&online.StateLabel=="Conectado"&&online.RoleLabel=="Comandero"&&online.ToString().EndsWith("aprobado por jefa",StringComparison.Ordinal));
+    Assert(!older.Online&&!older.Active&&older.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)&&older.RoleLabel=="Pantalla de cocina");
     var named=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\",\"stationName\":\"Cocina fría\"}",web)!;
     var unnamed=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\"}",web)!;
     Assert(named.StationName=="Cocina fría"&&unnamed.StationName is null);
@@ -238,7 +251,8 @@ await Check("organization read decodes zones with tables and stations",async()=>
         return Task.FromResult(Response(200,"{\"zones\":[{\"id\":\"sala\",\"name\":\"Sala\",\"sort\":0,\"active\":true,\"tables\":[{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12,\"zoneId\":\"sala\",\"sort\":0,\"active\":true}]}],\"stations\":[{\"id\":\"pase\",\"name\":\"Pase\",\"kind\":\"Pass\",\"sort\":0,\"active\":true}]}"));
     }));
     var org=await client.GetAsync<OrganizationDto>("organization");
-    Assert(org.Zones.Single().Tables.Single().Capacity==12&&org.Stations.Single().KindLabel=="Pase"&&org.Zones[0].ToString().Contains("1 mesas activas"));
+    Assert(org.Zones.Single().Tables.Single().Capacity==12&&org.Stations.Single().KindLabel=="Pase"&&org.Zones[0].ToString().Contains("1 mesa activa ·"));
+    Assert(org.Zones[0].Tables[0].ToString()=="Mesa 1 · 12 plazas · activa"&&org.Stations[0].ToString()=="Pase · Pase · activa");   // C1: nombres, no codigos
 });
 await Check("organization command travels with an idempotency key and is persisted before sending",async()=>{
     var store=new MemoryStore(); string? key=null;
@@ -282,6 +296,127 @@ await Check("table choice shows its zone when the server sends it",()=>{
     var legacy=JsonSerializer.Deserialize<TableChoice>("{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Assert(withZone.ToString()=="Sala · Mesa 1"&&legacy.ToString()=="Mesa 1"); return Task.CompletedTask;
 });
+// C1 (plan 2026-10-14, seccion 4): vocabulario. TODOS los valores que el dominio puede enviar tienen su texto en castellano,
+// distinto del valor crudo; una orden en minusculas (fire-next, a-la-carte, adapt) da el mismo texto que la lectura; un valor
+// DESCONOCIDO vuelve tal cual: nunca se rebaja (una restriccion nueva no puede salir como "Preferencia (leve)").
+void Expect(bool ok,string what){ if(!ok) throw new Exception(what); }
+static string Kebab(string name)=>string.Concat(name.Select((c,i)=>i>0&&char.IsUpper(c)?"-"+char.ToLowerInvariant(c):char.ToLowerInvariant(c).ToString()));
+static string[] Lower<T>() where T:struct,Enum=>Enum.GetNames<T>().Select(n=>n.ToLowerInvariant()).ToArray();
+string[] actions=["open","start","fire-next","serve","pause","resume","complete","cancel-unstarted","skip","ready","choose","add-dish",
+    "preparation-start","preparation-ready","review-preparation","declare-restriction","remove-restriction","release",
+    "add-product","add-consumption","payment","void-charge","refund","close","reopen"];
+var vocabulary=new (string Family,string[] Codes,Func<string,string> Label)[]{
+    ("servicio",Enum.GetNames<DiningState>(),Labels.Dining),
+    ("pase",Enum.GetNames<CourseState>(),Labels.Course),
+    ("elaboracion",Enum.GetNames<PreparationState>(),Labels.Preparation),
+    ("ocupacion",Enum.GetNames<OccupancyState>(),Labels.Occupancy),
+    ("cuenta",Enum.GetNames<AccountState>(),Labels.Account),
+    ("cobertura",Enum.GetNames<PaymentCoverage>(),Labels.Coverage),
+    ("tipo de restriccion",Enum.GetNames<RestrictionKind>(),Labels.RestrictionKind),
+    ("tipo de restriccion (orden)",Lower<RestrictionKind>(),Labels.RestrictionKind),
+    ("gravedad",Enum.GetNames<RestrictionSeverity>(),Labels.Severity),
+    ("gravedad (orden)",Lower<RestrictionSeverity>(),Labels.Severity),
+    ("revision de cocina",Enum.GetNames<ReviewDecision>(),Labels.Review),
+    ("revision de cocina (orden)",Lower<ReviewDecision>(),Labels.Review),
+    ("tipo de estacion",Enum.GetNames<StationKind>(),Labels.StationKind),
+    ("tipo de estacion (orden)",Lower<StationKind>(),Labels.StationKind),
+    ("tipo de oferta",Enum.GetNames<OfferKind>().Select(Kebab).ToArray(),Labels.OfferKind),
+    ("tipo de oferta (enum)",Enum.GetNames<OfferKind>(),Labels.OfferKind),
+    ("servicio de la oferta",Lower<OfferService>(),Labels.OfferService),
+    ("metodo de pago",["card","cash","other"],Labels.PaymentMethod),
+    ("rol de dispositivo",["service","kitchen","main"],Labels.DeviceRole),
+    ("rol de sesion",["main","service","kitchen"],Labels.SessionRole),
+    ("tiempo real",["connected","reconnecting","closed","unavailable","inactive"],Labels.Realtime),
+    ("accion",actions,Labels.Action),
+    ("vista",["HomeTab","ServiceTab","CheckoutTab","CatalogTab","OffersTab","OrganizationTab","DevicesTab"],Labels.View)};
+foreach(var (family,codes,label) in vocabulary)
+    await Check("vocabulary: every "+family+" value has a Spanish label",()=>{
+        Expect(codes.Length>0,family+": no values to check");
+        foreach(var code in codes)
+        {
+            var text=label(code);
+            Expect(text.Trim().Length>0&&!string.Equals(text,code,StringComparison.OrdinalIgnoreCase),$"{family}: '{code}' has no Spanish label ('{text}')");
+            Expect(label("valor-desconocido-"+code)=="valor-desconocido-"+code,$"{family}: an unknown value must come back raw");
+        }
+        return Task.CompletedTask;});
+await Check("vocabulary: the exact words of the plan table",()=>{
+    Expect(string.Join("|",Enum.GetNames<DiningState>().Select(Labels.Dining))=="Sentados|En servicio|En pausa|Terminado|Cancelado","servicio");
+    Expect(string.Join("|",Enum.GetNames<CourseState>().Select(Labels.Course))=="Sin enviar|En cocina|En preparación|Listo para servir|Servido|Omitido","pase");
+    Expect(string.Join("|",Enum.GetNames<PreparationState>().Select(Labels.Preparation))=="Sin enviar|Por empezar|En preparación|Lista","elaboracion");
+    Expect(string.Join("|",Enum.GetNames<AccountState>().Select(Labels.Account))=="Abierta|Cerrada","cuenta");
+    Expect(string.Join("|",Enum.GetNames<PaymentCoverage>().Select(Labels.Coverage))=="Sin pagar|Pago parcial|Pagada|Pagado de más","cobertura");
+    Expect(string.Join("|",new[]{"card","cash","other"}.Select(Labels.PaymentMethod))=="Tarjeta|Efectivo|Otro","pago");
+    Expect(string.Join("|",new[]{"tasting","set-menu","a-la-carte"}.Select(Labels.OfferKind))=="Degustación|Menú cerrado|Carta","oferta");
+    Expect(string.Join("|",new[]{"any","lunch","dinner"}.Select(Labels.OfferService))=="Comida y cena|Comida|Cena","servicio de la oferta");
+    Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Pantalla de cocina","rol");
+    Expect(string.Join("|",new[]{"connected","reconnecting","closed"}.Select(Labels.Realtime))=="Tiempo real activo|Reconectando…|Sin tiempo real, reintentando","tiempo real");
+    Expect(Labels.Guest(null)=="Toda la mesa"&&Labels.Guest(3)=="Comensal 3","comensal");
+    Expect(Labels.Presence(true,null)=="Conectado"&&Labels.Presence(false,null)=="Sin conexión","presencia");
+    var removedAt=new DateTimeOffset(2026,10,14,21,30,0,TimeSpan.Zero);
+    Expect(Labels.Presence(true,removedAt)=="Quitado el "+removedAt.ToLocalTime().ToString("dd/MM HH:mm",System.Globalization.CultureInfo.InvariantCulture),"quitado, en hora local");
+    return Task.CompletedTask;});
+await Check("vocabulary: an unknown restriction is shown raw, never as a mild preference",()=>{
+    var odd=new GuestRestrictionDto("r1",2,"Anaphylaxis","cacahuete","Critical");
+    Expect(odd.KindLabel=="Anaphylaxis"&&odd.SeverityLabel=="Critical"&&odd.ToString()=="Comensal 2 · Anaphylaxis cacahuete (Critical)","unknown restriction: "+odd);
+    var known=new GuestRestrictionDto("r2",null,"Allergy","gluten","Severe");
+    Expect(known.ToString()=="Toda la mesa · ALERGIA gluten (grave)","known restriction: "+known);
+    var prep=new PreparationDto("p1","Plato","hot",1,null,true,"Fired",null,[odd,known]);
+    Expect(prep.RestrictionsText.Contains("⚠ Anaphylaxis cacahuete (Critical)")&&!prep.RestrictionsText.Contains("leve")&&!prep.RestrictionsText.Contains("Preferencia"),"preparation text: "+prep.RestrictionsText);
+    Expect(Labels.RestrictionKind("")==""&&Labels.Severity("Grave!")=="Grave!","raw, even when odd");
+    return Task.CompletedTask;});
+await Check("vocabulary: server rejections in clear Spanish; an unknown one keeps its code",()=>{
+    foreach(var code in new[]{"version_conflict","table_occupied","account_not_balanced","unfinished_courses","restrictions_unreviewed","restrictions_unacknowledged",
+        "wrong_station","account_closed","account_not_closed","refund_exceeds_credit","forbidden","choice_missing","course_empty","no_pending_course","active_course",
+        "service_finished","not_found","duplicate_code","table_in_use","reserved_station","reserved_tariff","offer_unavailable","price_missing",
+        "station_kind_mismatch","device_role_not_allowed","storage_conflict","operation_unconfirmed","request_failed"})
+    {
+        var text=Labels.Rejection(code);
+        Expect(text!=code&&!text.Contains("(código",StringComparison.Ordinal)&&!text.Contains('_'),"rejection without a sentence: "+code+" -> "+text);
+    }
+    Expect(Labels.Rejection("brand_new_rule")=="El servidor rechazó la operación (código brand_new_rule).","unknown rejection: "+Labels.Rejection("brand_new_rule"));
+    return Task.CompletedTask;});
+// C1 (revision): el aviso de una orden fallida sale del MISMO estado que la orden: si sigue pendiente (5xx, conflicto de
+// almacenamiento) no se sabe si se aplico y nunca se dice "rechazo"; un rechazo definitivo (ya cerrado) si es un rechazo.
+await Check("vocabulary: an uncertain failure is never told as a rejection",async()=>{
+    foreach(var (status,body) in new[]{(409,"{\"error\":\"storage_conflict\"}"),(503,"{\"error\":\"brand_new_rule\"}"),(502,"<html>gateway</html>")})
+    {
+        using var client=Client(new Handler((r,_)=>Task.FromResult(Rejection(status,body,r))));
+        var error=(ApiError?)null;
+        try { await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start"); } catch(ApiError e) { error=e; }
+        Expect(error is not null&&client.Pending is not null,"an inconclusive answer keeps the command: "+status);
+        var text=Labels.Failure(error!.Code,error.Status,client.Pending is not null);
+        Expect(text=="El servidor no confirmó la operación: puede haberse aplicado o no (código "+error.Code+").","uncertain failure: "+text);
+    }
+    using var definitive=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(409,"{\"error\":\"version_conflict\"}",r))));
+    var rejected=(ApiError?)null;
+    try { await definitive.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start"); } catch(ApiError e) { rejected=e; }
+    Expect(rejected is not null&&definitive.Pending is null,"a definitive rejection closes the command");
+    Expect(Labels.Failure(rejected!.Code,rejected.Status,definitive.Pending is not null)==Labels.Rejection("version_conflict"),"definitive rejection: "+Labels.Failure(rejected.Code,rejected.Status,false));
+    Expect(Labels.Failure("request_failed",502,false)=="El servidor no dio una respuesta reconocible. (HTTP 502)"&&!Labels.Rejection("storage_conflict").Contains("no pudo guardar",StringComparison.Ordinal),"read failure and storage conflict wording");
+});
+await Check("vocabulary: course states carry the skip reason, the missing choice and the empty group",()=>{
+    var chosen=new PreparationDto("sopa-1","Sopa","hot",1,1,true,"Pending");
+    Expect(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]).StateLabel=="Omitido: sin hambre","skip reason");
+    Expect(new CourseDto("c","Entrantes","Pending",null,null,null,null,[],Optional:true).StateLabel=="Sin platos pedidos","empty carta group");
+    Expect(new CourseDto("c","Primeros","Pending",null,null,null,null,[],ChoiceRequired:true).StateLabel=="Falta elegir plato","nobody chose");
+    var partly=new CourseDto("c","Primeros","Pending",null,null,null,null,[chosen],ChoiceRequired:true);
+    Expect(Labels.Course(partly,2)=="Falta elegir plato"&&Labels.Course(partly,1)=="Sin enviar","with the headcount, a partial choice is still missing");
+    Expect(new CourseDto("c","Primeros","Fired",null,null,null,null,[chosen]).StateLabel=="En cocina","fired");
+    var at=new DateTimeOffset(2026,10,14,11,5,0,TimeSpan.Zero);
+    var served=new CourseDto("c","Primeros","Served",at,at,at,null,[]);
+    Expect(served.ServedAtLabel==at.ToLocalTime().ToString("HH:mm",System.Globalization.CultureInfo.InvariantCulture),"served time in LOCAL time: "+served.ServedAtLabel);
+    Expect(TimeZoneInfo.Local.GetUtcOffset(at)==TimeSpan.Zero||served.ServedAtLabel!="11:05","served time must not be the UTC clock");
+    Expect(new CourseDto("c","Primeros","Pending",null,null,null,null,[]).ServedAtLabel=="","not served yet");
+    return Task.CompletedTask;});
+await Check("vocabulary: actors without prefixes, plurals, active and names with the code as fallback",()=>{
+    Expect(Labels.Actor("user:jefa")=="jefa"&&Labels.Actor("device:pc-barra")=="pc-barra"&&Labels.Actor("lab-main")=="laboratorio"&&Labels.Actor(null)==""&&Labels.Actor("otro")=="otro","actor");
+    Expect(Labels.Plural(1,"mesa activa","mesas activas")=="1 mesa activa"&&Labels.Plural(0,"plato","platos")=="0 platos"&&Labels.Plural(3,"plato","platos")=="3 platos","plural");
+    Expect(Labels.Active(true,true)=="activa"&&Labels.Active(false,true)=="desactivada"&&Labels.Active(true,false)=="activo"&&Labels.Active(false,false)=="desactivado","active");
+    var names=new Names([new TableChoice("M1","Mesa 1",4,"sala","Sala")],[new StationDto("cold","Cocina fría","Kitchen",1,false)]);
+    Expect(names.Table("M1")=="Mesa 1"&&names.Table("M9")=="M9"&&names.Station("cold")=="Cocina fría"&&names.Station("hot")=="hot"&&Names.Empty.Table(null)=="","names");
+    Expect(new AccountChoice("s1","M1","Open").StateLabel=="Abierta"&&new OfferChoice("c","Carta de ensayo","a-la-carte",[]).ToString()=="Carta de ensayo · Carta","account and offer choices");
+    Expect(new BoardEntry(1,new DiningDto("s1","M1",1,"InService",[]),new OccupancyDto("o1","M1","s1","Occupied",null),1).ToString()=="M1 · 1 persona · En servicio","board entry fallback");
+    return Task.CompletedTask;});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;

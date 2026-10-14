@@ -1,0 +1,102 @@
+<UserControl x:Class="Costina.Desktop.Views.OffersView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- C1: ERP > Oferta: cartas y menus (nucleo, E4a, solo main).
+      Hereda el DataContext del cascaron (ShellViewModel); C1: aspecto nuevo con la distribucion de siempre (C2 la reordena). El desplegable Tipo envia el codigo (Tag) y
+      muestra el texto: degustacion, menu cerrado o carta (C1: antes no habia "Carta" y una carta salia en blanco). -->
+ <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <StackPanel Grid.Row="0" Style="{StaticResource PageHeader}">
+   <TextBlock Text="Oferta: cartas y menús" Style="{StaticResource PageTitle}"/>
+   <TextBlock Text="{Binding Offers.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+   <TextBlock Text="Una degustación sirve todos sus platos; en un menú cerrado cada comensal elige un plato por pase antes de enviarlo a cocina; en una carta cada grupo lleva platos del catálogo que se cobran al pedirlos. Nada se borra: se desactiva." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+  </StackPanel>
+  <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="4*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+   <!-- Ofertas -->
+   <Border Grid.Column="0" Style="{StaticResource CardDense}">
+    <DockPanel>
+     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Oferta" Command="{Binding Offers.StartOfferCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Ofertas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+     <!-- C1: la lista de ofertas conserva su alto (cuatro filas enteras de 33 px) y la ficha, larga, se desplaza debajo si no cabe. -->
+     <ListBox x:Name="OfferList" DockPanel.Dock="Top" Height="144" ItemsSource="{Binding Offers.Offers}" SelectedItem="{Binding Offers.SelectedOffer}"/>
+     <TextBlock DockPanel.Dock="Top" Text="Aún no hay ofertas. Crea la primera con «＋ Oferta»." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Offers.HasOffers, Converter={StaticResource NotBool2Vis}}"/>
+     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,14,0"><StackPanel>
+       <TextBlock Text="{Binding Offers.OfferFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+       <WrapPanel>
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" Width="130"/></StackPanel>
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
+         <ComboBox x:Name="OfferKindBox" SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferKind}" IsEnabled="{Binding Offers.OfferEditable}" Width="150"><ComboBoxItem Tag="tasting">Degustación</ComboBoxItem><ComboBoxItem Tag="set-menu">Menú cerrado</ComboBoxItem><ComboBoxItem Tag="a-la-carte">Carta</ComboBoxItem></ComboBox></StackPanel>
+        <StackPanel><TextBlock Text="Servicio" Style="{StaticResource FieldLabel}"/>
+         <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferService}" IsEnabled="{Binding Offers.OfferEditable}" Width="150"><ComboBoxItem Tag="any">Comida y cena</ComboBoxItem><ComboBoxItem Tag="lunch">Comida</ComboBoxItem><ComboBoxItem Tag="dinner">Cena</ComboBoxItem></ComboBox></StackPanel>
+       </WrapPanel>
+       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Offers.OfferName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}"/>
+       <WrapPanel Margin="0,6,0,0">
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Desde (AAAA-MM-DD)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferValidFrom, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" Width="118"/></StackPanel>
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Hasta" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferValidTo, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" Width="118"/></StackPanel>
+        <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" Width="60"/></StackPanel>
+       </WrapPanel>
+       <TextBlock Text="Días" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+       <WrapPanel IsEnabled="{Binding Offers.OfferEditable}">
+        <CheckBox Content="L" IsChecked="{Binding Offers.OfferDays[0]}" Margin="0,0,6,0"/><CheckBox Content="M" IsChecked="{Binding Offers.OfferDays[1]}" Margin="0,0,6,0"/><CheckBox Content="X" IsChecked="{Binding Offers.OfferDays[2]}" Margin="0,0,8,0"/>
+        <CheckBox Content="J" IsChecked="{Binding Offers.OfferDays[3]}" Margin="0,0,6,0"/><CheckBox Content="V" IsChecked="{Binding Offers.OfferDays[4]}" Margin="0,0,6,0"/><CheckBox Content="S" IsChecked="{Binding Offers.OfferDays[5]}" Margin="0,0,6,0"/><CheckBox Content="D" IsChecked="{Binding Offers.OfferDays[6]}"/>
+       </WrapPanel>
+       <StackPanel Visibility="{Binding Offers.NewMenuOffer, Converter={StaticResource Bool2Vis}}">
+        <WrapPanel Margin="0,6,0,0">
+         <StackPanel Margin="0,0,10,0"><TextBlock Text="Precio por persona (€, IVA incl.)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferPrice, UpdateSourceTrigger=PropertyChanged}" Width="100"/></StackPanel>
+         <StackPanel><TextBlock Text="o producto existente" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.OfferProductId, UpdateSourceTrigger=PropertyChanged}" Width="140" ToolTip="Código de un producto del catálogo que tenga la presentación «Por persona»"/></StackPanel>
+        </WrapPanel>
+       </StackPanel>
+       <TextBlock Text="{Binding Offers.OfferProductText}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar oferta" Style="{StaticResource Primary}" Command="{Binding Offers.SaveOfferCommand}"/>
+        <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleOfferCommand}"/></WrapPanel>
+      </StackPanel></Border>
+     </ScrollViewer>
+    </DockPanel>
+   </Border>
+   <!-- Pases -->
+   <Border Grid.Column="2" Style="{StaticResource CardDense}">
+    <DockPanel>
+     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Pase" Command="{Binding Offers.StartCourseCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Pases de la oferta" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
+      <TextBlock Text="{Binding Offers.CourseFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+      <WrapPanel>
+       <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.CourseId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewCourse}" Width="120"/></StackPanel>
+       <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.CourseSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" Width="60"/></StackPanel>
+      </WrapPanel>
+      <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Offers.CourseName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}"/>
+      <WrapPanel Margin="0,8,0,0"><Button Content="Guardar pase" Style="{StaticResource Primary}" Command="{Binding Offers.SaveCourseCommand}"/>
+       <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleCourseCommand}"/></WrapPanel>
+     </StackPanel></Border>
+     <TextBlock DockPanel.Dock="Bottom" Text="Una oferta se puede abrir cuando tiene al menos un pase activo con un plato activo." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+     <ListBox x:Name="OfferCourseList" ItemsSource="{Binding Offers.Courses}" SelectedItem="{Binding Offers.SelectedCourse}"/>
+    </DockPanel>
+   </Border>
+   <!-- Platos -->
+   <Border Grid.Column="4" Style="{StaticResource CardDense}">
+    <DockPanel>
+     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Plato" Command="{Binding Offers.StartDishCommand}" Style="{StaticResource AddButton}" Visibility="{Binding Offers.IsNotCarte, Converter={StaticResource Bool2Vis}}"/><TextBlock Text="Platos del pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+     <!-- E4b: en una carta, el grupo lleva items del catalogo (producto + presentacion con estacion) -->
+     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0" Visibility="{Binding Offers.IsCarte, Converter={StaticResource Bool2Vis}}"><StackPanel>
+      <TextBlock Text="Añadir a la carta" FontWeight="SemiBold" Margin="0,0,0,6"/>
+      <TextBlock Text="Producto y presentación del catálogo (necesita estación de cocina)" Style="{StaticResource FieldLabel}"/>
+      <ComboBox ItemsSource="{Binding Offers.ItemChoices}" SelectedItem="{Binding Offers.SelectedItemChoice}"/>
+      <WrapPanel Margin="0,8,0,0"><Button Content="Añadir al grupo" Style="{StaticResource Primary}" Command="{Binding Offers.AddItemCommand}"/>
+       <Button Content="Retirar / volver" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleItemCommand}"/></WrapPanel>
+     </StackPanel></Border>
+     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
+      <TextBlock Text="{Binding Offers.DishFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+      <WrapPanel>
+       <StackPanel Margin="0,0,10,0"><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.DishId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewDish}" Width="120"/></StackPanel>
+       <StackPanel><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Offers.DishSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}" Width="60"/></StackPanel>
+      </WrapPanel>
+      <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Offers.DishName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}"/>
+      <TextBlock Text="Estación de cocina" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+      <ComboBox ItemsSource="{Binding Offers.ActiveStations}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Offers.DishStationId}" IsEnabled="{Binding Offers.DishEditable}"/>
+      <TextBlock Text="Producto del catálogo (opcional, para stock)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Offers.DishProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}"/>
+      <WrapPanel Margin="0,8,0,0"><Button Content="Guardar plato" Style="{StaticResource Primary}" Command="{Binding Offers.SaveDishCommand}"/>
+       <Button Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleDishCommand}"/></WrapPanel>
+     </StackPanel></Border>
+     <ListBox x:Name="OfferItemList" DockPanel.Dock="Top" ItemsSource="{Binding Offers.Items}" SelectedItem="{Binding Offers.SelectedItem}" MaxHeight="220" Visibility="{Binding Offers.IsCarte, Converter={StaticResource Bool2Vis}}"/>
+     <ListBox x:Name="OfferDishList" ItemsSource="{Binding Offers.Dishes}" SelectedItem="{Binding Offers.SelectedDish}" Visibility="{Binding Offers.IsNotCarte, Converter={StaticResource Bool2Vis}}"/>
+    </DockPanel>
+   </Border>
+  </Grid>
+ </Grid>
+</UserControl>

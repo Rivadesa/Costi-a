@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><Description>Typed client for the authenticated Costina local laboratory API. No direct database access.</Description></PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <!-- 10.0.13: GHSA-334f-vvp4-7g6p (13-10-2026) en SignalR.Common 10.0.0-10.0.12; con la auditoria de NuGet como error rompia toda restauracion. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
   </ItemGroup>
 </Project>

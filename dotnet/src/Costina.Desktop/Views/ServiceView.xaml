@@ -1,0 +1,125 @@
+<UserControl x:Class="Costina.Desktop.Views.ServiceView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="clr-namespace:Costina.Desktop">
+ <!-- C1: Comedor y cocina (modulo Dining), con el aspecto nuevo y la distribucion de siempre (C2 trae el plano de mesas y la ficha).
+      Hereda el DataContext del cascaron (ShellViewModel). Los estados se enlazan a sus etiquetas en castellano (StateLabel, GuestLabel,
+      ServedAtLabel en hora local) y las mesas por su nombre (BoardItems); nunca al valor crudo.
+      La estacion de cada elaboracion sigue saliendo por su codigo hasta C2, cuando /configuration traiga los nombres de estacion. -->
+ <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border Grid.Column="0" Style="{StaticResource CardDense}">
+   <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
+     <TextBlock Text="Abrir mesa" Style="{StaticResource Section}"/>
+     <ComboBox ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" Margin="0,0,0,6" HorizontalAlignment="Stretch"/>
+     <ComboBox ItemsSource="{Binding Service.Offers}" SelectedItem="{Binding Service.SelectedOffer}" Margin="0,0,0,6" HorizontalAlignment="Stretch" ToolTip="Oferta vigente: degustación, menú cerrado o carta"/>
+     <DockPanel><Button DockPanel.Dock="Right" Content="Abrir" Style="{StaticResource Primary}" Command="{Binding Service.OpenCommand}" Margin="0"/>
+      <StackPanel Orientation="Horizontal"><TextBlock Text="Personas" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="64"/></StackPanel></DockPanel>
+     <TextBlock Text="Mesas ocupadas" Style="{StaticResource Section}" Margin="0,18,0,8"/>
+    </StackPanel>
+    <ListBox x:Name="BoardList" ItemsSource="{Binding Service.BoardItems}" DisplayMemberPath="Text" SelectedValuePath="Entry" SelectedValue="{Binding Service.SelectedEntry}" BorderThickness="0" Padding="0" Background="Transparent"/>
+   </DockPanel>
+  </Border>
+  <Border Grid.Column="2" Style="{StaticResource Card}">
+   <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel Grid.Row="0" Margin="0,0,0,10"><TextBlock Text="{Binding Service.ServiceTitle}" Style="{StaticResource PageTitle}" FontSize="22"/>
+     <TextBlock Text="Seguimiento operativo. Sin precios, cuenta ni pagos." Style="{StaticResource Subtle}" Margin="0,2,0,0"/></StackPanel>
+    <StackPanel Grid.Row="1" Margin="0,0,0,6">
+     <ContentControl Style="{StaticResource AllergyBar}" Margin="0,0,0,10" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}">
+      <TextBlock TextWrapping="Wrap"
+       Text="CAMBIO DE RESTRICCIONES SIN REVISAR POR COCINA — cada elaboración marcada PENDIENTE DE REVISIÓN exige una decisión (no afecta / adaptar / rehacer) antes de validar, servir o disparar."/>
+     </ContentControl>
+     <!-- Restricciones (flujo de alergias, revision C1): la lista declarada (o "sin restricciones": una lista vacia parecia un campo) con
+          "Retirar" a su lado (actua sobre la elegida) y, debajo, la declaracion con cada campo etiquetado. -->
+     <TextBlock Text="Restricciones" Style="{StaticResource Section}" Margin="0,0,0,4"/>
+     <DockPanel Margin="0,0,0,6">
+      <Button DockPanel.Dock="Right" Content="Retirar con motivo" Style="{StaticResource DangerButton}" Command="{Binding Service.RemoveRestrictionCommand}" VerticalAlignment="Top" Margin="8,0,0,0"
+              ToolTip="Retira la restricción elegida en la lista; el motivo va abajo, en «Motivo»"/>
+      <TextBlock Text="Sin restricciones declaradas." Style="{StaticResource Subtle}" FontSize="13" VerticalAlignment="Center" Visibility="{Binding Service.HasRestrictions, Converter={StaticResource NotBool2Vis}}"/>
+      <ListBox ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" MaxHeight="78" Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}"/>
+     </DockPanel>
+     <WrapPanel>
+      <StackPanel Margin="0,0,8,0"><TextBlock Text="Comensal" Style="{StaticResource FieldLabel}"/>
+       <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" Width="64" ToolTip="Número de comensal; vacío = toda la mesa"/></StackPanel>
+      <StackPanel Margin="0,0,8,0"><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
+       <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}">
+        <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
+       </ComboBox></StackPanel>
+      <StackPanel Margin="0,0,8,0"><TextBlock Text="Sustancia o preferencia" Style="{StaticResource FieldLabel}"/>
+       <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}" Width="170"/></StackPanel>
+      <StackPanel Margin="0,0,8,0"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
+       <ComboBox Width="118" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}">
+        <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
+       </ComboBox></StackPanel>
+      <Button Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}" VerticalAlignment="Bottom" Margin="0"/>
+     </WrapPanel>
+    </StackPanel>
+    <WrapPanel Grid.Row="2" Margin="0,2,0,2">
+     <Button Content="Iniciar servicio" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="start"/>
+     <Button Content="Enviar siguiente pase" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="fire-next"/>
+     <Button Content="Marcar servido" Command="{Binding Service.ActCommand}" CommandParameter="serve"/>
+     <Button Content="Pausar" Command="{Binding Service.ActCommand}" CommandParameter="pause"/>
+     <Button Content="Reanudar" Command="{Binding Service.ActCommand}" CommandParameter="resume"/>
+    </WrapPanel>
+    <DockPanel Grid.Row="3" Margin="0,4,0,8">
+     <!-- E4a: eleccion de plato por comensal en un pase de menu cerrado (solo si el servidor anuncia 'choose' en el pase) -->
+     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Margin="0,8,0,0" Visibility="{Binding Service.CanChoose, Converter={StaticResource Bool2Vis}}"><StackPanel>
+      <TextBlock Text="Menú cerrado: cada comensal elige su plato antes de enviar el pase" FontWeight="SemiBold"/>
+      <TextBlock Text="{Binding Service.ChoicesText}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,6"/>
+      <WrapPanel><TextBlock Text="Comensal" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.ChoiceGuest, UpdateSourceTrigger=PropertyChanged}" Width="52"/>
+       <ComboBox ItemsSource="{Binding Service.ChoiceDishes}" SelectedItem="{Binding Service.SelectedChoiceDish}" Width="220" Margin="8,0,8,0"/>
+       <Button Content="Elegir plato" Style="{StaticResource Primary}" Command="{Binding Service.ChooseCommand}"/></WrapPanel>
+     </StackPanel></Border>
+     <!-- E4b: pedir un plato de la carta en un grupo pendiente (solo si el servidor anuncia 'add-dish' en el pase) -->
+     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Margin="0,8,0,0" Visibility="{Binding Service.CanAddDish, Converter={StaticResource Bool2Vis}}"><StackPanel>
+      <TextBlock Text="Carta: pedir platos de este grupo (se apuntan en la cuenta al pedirlos)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+      <WrapPanel><ComboBox ItemsSource="{Binding Service.DishItems}" SelectedItem="{Binding Service.SelectedDishItem}" Width="260"/>
+       <TextBlock Text="Comensal" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishGuest, UpdateSourceTrigger=PropertyChanged}" Width="52" ToolTip="Vacío = toda la mesa"/>
+       <TextBlock Text="Cantidad" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishQuantity, UpdateSourceTrigger=PropertyChanged}" Width="52" Margin="0,0,8,0"/>
+       <Button Content="Pedir plato" Style="{StaticResource Primary}" Command="{Binding Service.AddDishCommand}"/></WrapPanel>
+     </StackPanel></Border>
+     <DataGrid ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}"><DataGrid.Columns>
+      <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding StateLabel}" Width="150"/>
+      <DataGridTextColumn Header="Servido" Binding="{Binding ServedAtLabel}" Width="100"/>
+     </DataGrid.Columns></DataGrid>
+    </DockPanel>
+    <!-- Cocina: dos lineas con su etiqueta a la izquierda (revision C1: "Revision" quedaba suelta al final de la primera). -->
+    <Grid Grid.Row="4" Visibility="{Binding IsKitchen, Converter={StaticResource Bool2Vis}}">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <TextBlock Text="Cocina / pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+     <WrapPanel Grid.Column="1">
+      <Button Content="Iniciar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
+      <Button Content="Elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
+      <Button Content="Validar pase listo" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="ready"/>
+     </WrapPanel>
+     <TextBlock Grid.Row="1" Text="Nota de revisión" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+     <WrapPanel Grid.Row="1" Grid.Column="1">
+      <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="0,4,8,4" ToolTip="Obligatoria: qué se ha revisado o cambiado tras el cambio de restricciones"/>
+      <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected"/>
+      <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt"/>
+      <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake"/>
+     </WrapPanel>
+    </Grid>
+    <DataGrid Grid.Row="5" ItemsSource="{Binding Service.Preparations}" SelectedItem="{Binding Service.SelectedPreparation}" Margin="0,4,0,0" FontSize="13"><DataGrid.Columns>
+     <DataGridTextColumn Header="Preparación" Binding="{Binding Name}" Width="*" MinWidth="104" ElementStyle="{StaticResource WrapCell}"/><DataGridTextColumn Header="Estación" Binding="{Binding StationId}" Width="90"/>
+     <DataGridTextColumn Header="Comensal" Binding="{Binding GuestLabel}" Width="96" ElementStyle="{StaticResource WrapCell}"/><DataGridTextColumn Header="Estado" Binding="{Binding StateLabel}" Width="108" ElementStyle="{StaticResource WrapCell}"/>
+     <DataGridTextColumn Header="Restricciones" Binding="{Binding RestrictionsText}" Width="*" MinWidth="112" ElementStyle="{StaticResource WrapCell}"/>
+     <!-- Una revision pendiente es una senal de seguridad por plato: en rojo y seminegrita, ademas de su texto (nunca solo color). -->
+     <DataGridTextColumn Header="Revisión" Binding="{Binding ReviewText}" Width="130">
+      <DataGridTextColumn.ElementStyle>
+       <Style TargetType="TextBlock" BasedOn="{StaticResource WrapCell}">
+        <Style.Triggers><DataTrigger Binding="{Binding ReviewPending}" Value="True"><Setter Property="Foreground" Value="{StaticResource DangerText}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
+       </Style>
+      </DataGridTextColumn.ElementStyle>
+     </DataGridTextColumn>
+    </DataGrid.Columns></DataGrid>
+    <StackPanel Grid.Row="6" Margin="0,10,0,0">
+     <TextBlock Text="Motivo (pausa, omisión o liberación)" Style="{StaticResource FieldLabel}"/>
+     <TextBox Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" ToolTip="Motivo para pausa, omisión o liberación"/>
+     <WrapPanel Margin="0,2,0,0"><Button Content="Omitir pase con motivo" Command="{Binding Service.ActCommand}" CommandParameter="skip"/>
+      <Button Content="Terminar servicio" Command="{Binding Service.ActCommand}" CommandParameter="complete"/>
+      <Button Content="Liberar mesa" Style="{StaticResource DangerButton}" Command="{Binding Service.ReleaseCommand}"/></WrapPanel>
+    </StackPanel>
+   </Grid>
+  </Border>
+ </Grid>
+</UserControl>

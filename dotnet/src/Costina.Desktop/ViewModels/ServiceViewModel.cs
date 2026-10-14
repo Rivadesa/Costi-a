@@ -8,6 +8,10 @@ namespace Costina.Desktop.ViewModels;
 // affordances del DTO del servidor (Allowed): este viewmodel no reconstruye ninguna regla.
 // La seleccion solicitada y la entidad leida son estados distintos: un comando solo se construye
 // desde un contexto leido correctamente que coincide con lo que el operador ve seleccionado.
+// C1: la lista de mesas ocupadas muestra el nombre de la mesa y el estado en castellano (BoardRow); la seleccion sigue siendo
+// la entrada leida (SelectedEntry), asi que el contexto de los comandos no cambia.
+public sealed record BoardRow(BoardEntry Entry, string Text);
+
 public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableObject
 {
     private bool rendering;
@@ -15,6 +19,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private int generation;      // invalida lecturas obsoletas cuando cambia el destino
 
     [ObservableProperty] private BoardEntry[] board = [];
+    [ObservableProperty] private BoardRow[] boardItems = [];
     [ObservableProperty] private BoardEntry? selectedEntry;
     [ObservableProperty] private Versioned<DiningDto>? dining;
     [ObservableProperty] private CourseDto[] courses = [];
@@ -37,7 +42,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string dishQuantity = "1";
     [ObservableProperty] private string pax = "2";
     [ObservableProperty] private string reason = "";
-    [ObservableProperty] private GuestRestrictionDto[] restrictions = [];
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasRestrictions))] private GuestRestrictionDto[] restrictions = [];
+    public bool HasRestrictions => Restrictions.Length > 0;
     [ObservableProperty] private GuestRestrictionDto? selectedRestriction;
     [ObservableProperty] private bool restrictionsPendingAck;
     [ObservableProperty] private string restrictionGuest = "";
@@ -46,6 +52,21 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string restrictionSeverity = "severe";
     [ObservableProperty] private string reviewNote = "";
     [ObservableProperty] private string serviceTitle = "Selecciona una mesa";
+
+    // C1: nombres de mesa de la configuracion leida (GET /configuration); sin nombre conocido queda el codigo.
+    public Names Names { get; private set; } = Names.Empty;
+    partial void OnTablesChanged(TableChoice[] value)
+    {
+        Names = new Names(value);
+        BoardItems = Rows(Board);
+        if (Dining is not null) ServiceTitle = Title(Dining.Data);
+    }
+    partial void OnBoardChanged(BoardEntry[] value) => BoardItems = Rows(value);
+    // El titulo sale siempre de la mesa leida: nunca se escribe a mano (los checks lo comprueban asi).
+    partial void OnDiningChanged(Versioned<DiningDto>? value) { if (value is not null) ServiceTitle = Title(value.Data); }
+    private BoardRow[] Rows(BoardEntry[] entries) => entries.Select(e => new BoardRow(e, Title(e.Service))).ToArray();
+    private string Title(DiningDto dining) => $"{Names.Table(dining.TableId)} · {Labels.Plural(dining.Pax, "persona", "personas")} · {dining.StateLabel}";
+    private string TableOf(Versioned<DiningDto> context) => Names.Table(context.Data.TableId);
 
     // Contexto inmutable de un comando: identidad y version de la MISMA entidad leida correctamente,
     // y solo si coincide con la fila seleccionada. Null = no hay nada accionable.
@@ -148,8 +169,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         {
             Board = fresh; SelectedEntry = fresh.FirstOrDefault(b => b.Service.Id == serviceId);
             Dining = current;
-            ServiceTitle = current is null ? "Sin mesas ocupadas. Puedes abrir una mesa."
-                : $"{current.Data.TableId} · {current.Data.Pax} personas · {current.Data.State}";
+            ServiceTitle = current is null ? "Sin mesas ocupadas. Puedes abrir una mesa." : Title(current.Data);
             Courses = current?.Data.Courses ?? [];
             Restrictions = current?.Data.Restrictions ?? [];
             RestrictionsPendingAck = current?.Data.RestrictionsPendingAck ?? false;
@@ -187,7 +207,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (!int.TryParse(DishQuantity, out var quantity) || quantity < 1 || quantity > 20) throw new ArgumentException("Cantidad: entre 1 y 20.");
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/add-dish",
             new { expectedVersion = context.Version, courseId = SelectedCourse!.Id, productId = SelectedDishItem!.ProductId, presentationId = SelectedDishItem.PresentationId, guestPosition = guest, quantity },
-            $"Pedir {quantity} × {SelectedDishItem.Name} en {SelectedCourse.Name} · {context.Data.TableId}");
+            $"Pedir {quantity} × {SelectedDishItem.Name} en {SelectedCourse.Name} · {TableOf(context)}");
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: plato pedido y apuntado en la cuenta.";
     });
@@ -200,7 +220,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (!int.TryParse(ChoiceGuest, out var guest) || guest < 1 || guest > context.Data.Pax) throw new ArgumentException("Comensal: un número entre 1 y " + context.Data.Pax + ".");
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/choose",
             new { expectedVersion = context.Version, courseId = SelectedCourse!.Id, guestPosition = guest, dishId = SelectedChoiceDish!.Id },
-            $"Elegir {SelectedChoiceDish.Name} para el comensal {guest} · {context.Data.TableId}");
+            $"Elegir {SelectedChoiceDish.Name} para el comensal {guest} · {TableOf(context)}");
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: elección registrada.";
     });
@@ -228,9 +248,9 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         await shell.Api!.SendAsync(
             "dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/" + action,
             new { expectedVersion = context.Version, courseId = SelectedCourse?.Id, itemId = SelectedPreparation?.Id, reason = Reason },
-            action + " · " + context.Data.TableId);
+            Labels.Action(action) + " · " + TableOf(context));   // C1: la orden pendiente se describe en castellano y con el nombre de la mesa
         await shell.RefreshAll();
-        shell.Status = "Operación confirmada por el servidor: " + action;
+        shell.Status = "Operación confirmada por el servidor: " + Labels.Action(action) + ".";
     });
 
     private bool CanOpenTable() => shell.Writable && shell.CanOpen && SelectedTable is not null && SelectedOffer is not null;
@@ -260,7 +280,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/declare-restriction",
             new { expectedVersion = context.Version, guestPosition = guest, kind = RestrictionKind,
                   substance = RestrictionSubstance.Trim(), severity = RestrictionSeverity },
-            "Declarar restricción de comensal · " + context.Data.TableId);
+            "Declarar restricción de comensal · " + TableOf(context));
         RestrictionSubstance = "";
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: restricción declarada.";
@@ -274,7 +294,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (string.IsNullOrWhiteSpace(Reason)) throw new ArgumentException("Introduce el motivo de la retirada.");
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/remove-restriction",
             new { expectedVersion = context.Version, restrictionId = SelectedRestriction!.Id, reason = Reason },
-            "Retirar restricción con motivo · " + context.Data.TableId);
+            "Retirar restricción con motivo · " + TableOf(context));
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: restricción retirada.";
     });
@@ -289,10 +309,10 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (string.IsNullOrWhiteSpace(ReviewNote)) throw new ArgumentException("Indica qué se ha revisado o cambiado (nota obligatoria).");
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/review-preparation",
             new { expectedVersion = context.Version, courseId = SelectedCourse?.Id, itemId = preparation.Id, decision, note = ReviewNote.Trim() },
-            "Revisión de cocina (" + decision + ") · " + preparation.Name + " · " + context.Data.TableId);
+            "Revisión de cocina (" + Labels.Review(decision) + ") · " + preparation.Name + " · " + TableOf(context));
         ReviewNote = "";
         await shell.RefreshAll();
-        shell.Status = "Cocina ha registrado su decisión sobre " + preparation.Name + ": " + decision + ".";
+        shell.Status = "Cocina ha registrado su decisión sobre " + preparation.Name + ": " + Labels.Review(decision) + ".";
     });
 
     private bool CanRelease() => shell.Writable && Allowed("release");
@@ -303,8 +323,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (string.IsNullOrWhiteSpace(Reason)) throw new ArgumentException("Introduce el motivo de liberación.");
         var entry = SelectedEntry!;   // Context garantiza que es la misma mesa que el detalle leido
         await shell.Api!.SendAsync("dining/occupancy/" + ApiClient.Segment(context.Data.Id) + "/release",
-            new { expectedVersion = entry.OccupancyVersion, reason = Reason }, "Liberar mesa sin cambiar su cuenta · " + context.Data.TableId);
+            new { expectedVersion = entry.OccupancyVersion, reason = Reason }, "Liberar mesa sin cambiar su cuenta · " + TableOf(context));
         await shell.RefreshAll();
-        shell.Status = "Operación confirmada por el servidor: liberar mesa";
+        shell.Status = "Operación confirmada por el servidor: " + Labels.Action("release") + ".";
     });
 }

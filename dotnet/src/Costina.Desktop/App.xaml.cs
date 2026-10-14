@@ -11,6 +11,11 @@ public partial class App : Application
 {
     private Mutex? single;
 
+    // C1: sin Mica. El fondo Mica de Fluent deja la ventana transparente (en pantalla toma el color del escritorio y las capturas
+    // salen con huecos); con este interruptor la ventana Fluent pinta WindowBackground (#F3F4F6, Themes/Tokens.xaml). En el
+    // constructor estatico para que llegue tambien a los checks, que hacen new App() sin pasar por OnStartup.
+    static App() => AppContext.SetSwitch("Switch.System.Windows.Appearance.DisableFluentThemeWindowBackdrop", true);
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -37,6 +38,8 @@ public sealed partial class ShellViewModel : ObservableObject
     public OrganizationViewModel Organization { get; }   // E2: Configuracion (solo main)
     public CatalogViewModel Catalog { get; }             // E3: ERP > Catalogo y tarifas (solo main)
     public OffersViewModel Offers { get; }               // E4a: ERP > Oferta: cartas y menus (solo main)
+    // C1: nombres de mesa de la configuracion leida al conectar (Service.ApplyConfiguration); el codigo queda de respaldo.
+    public Names Names => Service.Names;
 
     [ObservableProperty] private string endpoint = "http://127.0.0.1:5088";
     [ObservableProperty] private string username = "";
@@ -47,22 +50,35 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty] private bool busy;
     [ObservableProperty] private PendingCommand? pending;
     [ObservableProperty] private PendingLoad? blocked;
-    [ObservableProperty] private string status = "Entra como responsable, o deja este PC conectado para el servicio (Configuración › Dispositivos, como responsable). La contraseña no se guarda en disco.";
+    // C1: vacio al arrancar (la capa Primeros pasos ya explica que hacer); el aviso de estado solo aparece cuando hay algo que decir.
+    [ObservableProperty] private string status = "";
     [ObservableProperty] private string realtimeState = "Tiempo real inactivo.";
-    [ObservableProperty] private string readTime = "Sin lectura actual del servidor. El botón Actualizar sigue disponible como respaldo.";
+    // C1: estado corto del tiempo real (connected, reconnecting, closed, unavailable, inactive): punto y palabra de la barra de estado.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(RealtimeShort), nameof(RealtimeDot))] private string realtimeLink = "inactive";
+    [ObservableProperty] private string readTime = "Sin lectura del servidor todavía (F5 para leer).";
     // Arranque (B1): mientras el servidor levanta tras encender el equipo, la ventana lo dice y espera.
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible))] private bool booting;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible), nameof(ShowFirstRun), nameof(ShowBoot), nameof(ServerDot), nameof(ServerStateText))] private bool booting;
     [ObservableProperty] private string bootText = "";
     // Elevacion (B3): la vista sensible pedida mientras se es Puesto; se abre sola al entrar el responsable.
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible))] [NotifyPropertyChangedFor(nameof(LoginTitle))] [NotifyPropertyChangedFor(nameof(ElevationRequested))] private string? requestedView;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LoginCardVisible))] [NotifyPropertyChangedFor(nameof(LoginTitle))] [NotifyPropertyChangedFor(nameof(ElevationRequested), nameof(ElevationMode))] private string? requestedView;
     public bool ElevationRequested => RequestedView is not null;
+    // C1: vista abierta en el area de trabajo (nombre del TabItem). La fija la ventana al cambiar de vista; la barra lateral resalta
+    // ESTA y no el boton pulsado: pedir Caja en el nivel Puesto abre la entrada del responsable y deja Inicio resaltado.
+    [ObservableProperty] private string? currentView;
+    // C1: barra lateral plegada a iconos (preferencia de pantalla de esta ventana; no se guarda).
+    [ObservableProperty] private bool sideNavCompact;
+    // C1: lo que se sabe del servidor antes de entrar: null = sin comprobar, true = responde, false = no responde o no es de fiar
+    // (el motivo, en Status). Lo fija el arranque (StartAsync) y una conexion correcta; cambiar la direccion lo olvida.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ServerDot), nameof(ServerStateText), nameof(FirstRunServerText))] private bool? serverReady;
 
     public ShellViewModel()
     {
         Settings = DesktopSettings.Load();
-        Endpoint = Settings.Endpoint; Username = Settings.Username;
         lastActivity = Clock();
         Home = new(this); Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this);
+        // C1 (arreglo): la direccion guardada se asigna DESPUES de crear las vistas. Si es distinta de la de por defecto (todo
+        // puesto adicional: https://NOMBRE:PUERTO), OnEndpointChanged -> Sync() recorre las vistas y antes reventaba (NullReference).
+        Endpoint = Settings.Endpoint; Username = Settings.Username;
     }
 
     // Cambiar la sesion (conectar, desconectar, otro nivel) refresca todas las propiedades derivadas que enlazan menus y vistas.
@@ -81,18 +97,68 @@ public sealed partial class ShellViewModel : ObservableObject
     public bool HasBlocked => Blocked is not null;
     public bool CanOpen => Session?.Actions?.Contains("open") == true;
     public bool TabsEnabled => Connected && !Busy;
-    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales).
-    public string ConnectionText => Session is null ? "Sin conexión" : $"{LevelText}: {Session.Actor ?? Session.Role} · {Session.Role switch { "main" => "puesto principal", "service" => "sala", "kitchen" => "cocina", var r => r }} · {Endpoint}" + (Session.Demo ? " · DEMO" : "");
+    // Barra de estado: quien esta conectado, con que rol y contra que servidor (nunca credenciales). C1: el actor sin user:/device:
+    // y el rol con el vocabulario comun (Responsable, Puesto de sala, Pantalla de cocina), sin repetir el nivel.
+    public string ConnectionText
+    {
+        get
+        {
+            if (Session is null) return "Nadie ha entrado en este PC";   // C1: como el lienzo (antes "Sin conexion" junto a "Servidor listo": se contradecia)
+            var role = RoleText(Session.Role); var actor = Labels.Actor(Session.Actor);
+            string?[] parts = [$"{LevelText}: {(actor.Length > 0 ? actor : role)}", actor.Length > 0 && role != LevelText ? role : null,
+                Session.StationName, Endpoint, Session.Demo ? "DEMO" : null];
+            return string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+        }
+    }
+    // C1 (revision): rol de la sesion con el vocabulario comun. Un dispositivo antiguo con rol principal (nivel Puesto) no es una
+    // persona: se rotula como dispositivo, "Principal (antiguo)", nunca "Responsable".
+    public string RoleText(string role) => IsStation && role == "main" ? Labels.DeviceRole(role) : Labels.SessionRole(role);
     // Perfil de pantalla (UX, no autorizacion): el servidor sigue decidiendo cada accion.
     public bool IsKitchen => Session?.Role is "main" or "kitchen";
     // Tarjeta de entrada: sin conexion (y sin arrancar), o cuando una vista sensible pide al responsable.
     public bool LoginCardVisible => (!Connected && !Booting) || RequestedView is not null;
-    public string LoginTitle => RequestedView is null ? "Entrar como responsable" : $"Entrar como responsable para abrir {ViewTitle(RequestedView)}";
-    public static string ViewTitle(string view) => view switch
+    // C1: Primeros pasos = este PC sin sesion y sin esperar al servidor; mientras espera, la capa de arranque. Con sesion (puesto) y un
+    // apartado sensible pedido, la misma tarjeta de entrada se abre centrada sobre un velo (ElevationMode).
+    public bool ShowFirstRun => !Connected && !Booting;
+    public bool ShowBoot => !Connected && Booting;
+    public bool ElevationMode => Connected && RequestedView is not null;
+    // C1: barra de estado y Primeros pasos: punto (ok, warn, danger, off) y palabra; el detalle de un fallo va en Status.
+    // Mientras el arranque espera al servidor la barra lo dice igual que la capa de arranque (no "sin comprobar").
+    public string ServerDot => Connected || ServerReady == true ? "ok" : Booting ? "warn" : ServerReady == false ? "danger" : "off";
+    public string ServerStateText => Connected ? "Servidor conectado" : ServerReady == true ? "Servidor listo" : Booting ? "Esperando al servidor"
+        : ServerReady == false ? "Servidor sin respuesta" : "Servidor sin comprobar";
+    public string FirstRunServerText => ServerReady switch
     {
-        "CheckoutTab" => "Cuenta / Caja", "OrganizationTab" => "Configuración", "CatalogTab" => "Catálogo y tarifas",
-        "OffersTab" => "Oferta: cartas y menús", "DevicesTab" => "Dispositivos", "HomeTab" => "Inicio", _ => view
+        true => $"El servidor está listo {ServerPlace}",
+        false => $"No se pudo conectar con el servidor {ServerPlace}",
+        null => $"Servidor configurado {ServerPlace}"
     };
+    internal string ServerPlace => Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out var uri) ? uri.IsLoopback ? "en este equipo" : $"en {uri.Host}" : "(dirección no válida)";
+    public string RealtimeShort => Labels.Realtime(RealtimeLink);
+    public string RealtimeDot => RealtimeLink switch { "connected" => "ok", "reconnecting" or "closed" => "warn", _ => "off" };
+    // C1: pastilla de la barra superior: nivel y quien (la estacion para un puesto). Vacia sin sesion.
+    public string LevelBadge
+    {
+        get
+        {
+            if (Session is null) return "";
+            var actor = Labels.Actor(Session.Actor);
+            var who = IsResponsible ? actor : Session.StationName is { Length: > 0 } station ? station : actor;
+            return who.Length > 0 ? $"{LevelText} · {who}" : LevelText;
+        }
+    }
+    // C1: version del paquete leida del ensamblado (Version del csproj), sin el commit que el build anade tras '+'. Nunca escrita a mano.
+    public static string AppVersion { get; } = ReadVersion();
+    public string VersionText => "Costiña " + AppVersion;
+    private static string ReadVersion()
+    {
+        var informational = typeof(ShellViewModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+        var plus = informational.IndexOf('+');
+        return plus < 0 ? informational : informational[..plus];
+    }
+    public string LoginTitle => RequestedView is null ? "Entrar como responsable" : $"Entrar como responsable para abrir {ViewTitle(RequestedView)}";
+    // C1: el nombre de cada vista sale del vocabulario comun (el mismo de la barra lateral y de los accesos de Inicio).
+    public static string ViewTitle(string view) => Labels.View(view);
     // Lo sensible (caja, configuracion, ERP, dispositivos) exige a una persona identificada; el servidor lo impone ademas (403).
     public static bool RequiresResponsible(string view) => view is "CheckoutTab" or "OrganizationTab" or "CatalogTab" or "OffersTab" or "DevicesTab";
     public string PendingText => Pending is null ? "" :
@@ -114,6 +180,8 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
         OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled)); OnPropertyChanged(nameof(ConnectionText));
         OnPropertyChanged(nameof(IsKitchen)); OnPropertyChanged(nameof(HasPairedDevice)); OnPropertyChanged(nameof(LoginCardVisible)); OnPropertyChanged(nameof(LoginTitle));
+        OnPropertyChanged(nameof(ShowFirstRun)); OnPropertyChanged(nameof(ShowBoot)); OnPropertyChanged(nameof(ElevationMode));
+        OnPropertyChanged(nameof(ServerDot)); OnPropertyChanged(nameof(ServerStateText)); OnPropertyChanged(nameof(LevelBadge));
         ConnectPairedCommand.NotifyCanExecuteChanged(); PairDeviceCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged(); LeaveResponsibleCommand.NotifyCanExecuteChanged(); CancelElevationCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged(); RetryCommand.NotifyCanExecuteChanged();
@@ -132,7 +200,11 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             Status = e switch
             {
-                ApiError a => $"El servidor rechazó o no confirmó la petición: {a.Message}. Actualiza antes de una nueva acción.",
+                // C1: el codigo del rechazo en una frase clara; uno desconocido sale con su codigo entre parentesis y una respuesta
+                // sin codigo reconocible (request_failed: proxy, error interno) con su estado HTTP. Con la orden aun pendiente no hay
+                // rechazo que contar: no se sabe si se aplico (el aviso de la orden sin confirmar dice como seguir).
+                ApiError a when Api?.Pending is not null => Labels.Failure(a.Code, a.Status, stillPending: true),
+                ApiError a => Labels.Failure(a.Code, a.Status, stillPending: false) + " Actualiza antes de una nueva acción.",
                 HttpRequestException or TaskCanceledException => "Servidor sin respuesta. Los datos pueden estar desactualizados. Una orden pendiente NO está confirmada.",
                 ArgumentException or InvalidOperationException => e.Message,
                 _ => "No se pudo interpretar la respuesta. Comprueba la versión y actualiza; no dupliques la orden."
@@ -186,7 +258,7 @@ public sealed partial class ShellViewModel : ObservableObject
         if (IsMain && Organization.Visible) await Organization.LoadAsync();
         if (IsMain && Catalog.Visible) await Catalog.LoadAsync();
         if (IsMain && Offers.Visible) await Offers.LoadAsync();
-        ReadTime = $"Datos leídos a las {DateTimeOffset.Now:HH:mm:ss} (lectura autoritativa del servidor).";
+        ReadTime = $"Datos leídos del servidor a las {DateTimeOffset.Now:HH:mm:ss}.";
     }
 
     internal Uri ParseEndpoint()
@@ -194,7 +266,10 @@ public sealed partial class ShellViewModel : ObservableObject
         if (!Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out var uri)) throw new ArgumentException("Dirección no válida.");
         return uri;
     }
-    partial void OnEndpointChanged(string value) => Sync();   // F4: 'Conectar puesto emparejado' se reevalua al teclear
+    // F4: 'Conectar puesto emparejado' se reevalua al teclear. C1: otra direccion es otro servidor: lo comprobado del anterior no vale.
+    // C1 (revision): el lugar del servidor de Primeros pasos depende de la direccion, no solo de ServerReady (que solo cambia con la
+    // primera tecla): se avisa en cada cambio.
+    partial void OnEndpointChanged(string value) { ServerReady = null; OnPropertyChanged(nameof(FirstRunServerText)); Sync(); }
 
     // ---- Arranque (B1): esperar al servidor sin rendirse en frio, distinguir red de certificado, conectar solo como puesto ----
     public async Task StartAsync(CancellationToken ct = default)
@@ -207,20 +282,22 @@ public sealed partial class ShellViewModel : ObservableObject
             var started = Clock();
             while (!ct.IsCancellationRequested)
             {
-                try { using var auth = new AuthClient(uri); await auth.ProbeAsync(ct); break; }
+                try { using var auth = new AuthClient(uri); await auth.ProbeAsync(ct); ServerReady = true; break; }
                 catch (Exception e) when (e is HttpRequestException or TaskCanceledException or ApiError)
                 {
                     switch (AuthClient.Classify(e))
                     {
                         case StartupProblem.Certificate:
-                            Status = $"No se puede confiar en el certificado del servidor {uri.Host}. Instala la CA de la instalación en este equipo (LEEME del servidor) o revisa la dirección. No se reintenta.";
+                            ServerReady = false;
+                            Status = $"No se puede confiar en el certificado del servidor {uri.Host}. Instala en este equipo el certificado de la instalación (LÉEME del servidor) o revisa la dirección. No se reintenta.";
                             return;
                         case StartupProblem.Other:
+                            ServerReady = false;
                             Status = $"En {uri} responde algo que no es el motor de Costiña. Revisa la dirección del servidor.";
                             return;
                     }
                     var waited = Clock() - started;
-                    if (waited > BootPatience) { Status = $"El servidor {uri.Host} no responde tras {(int)BootPatience.TotalMinutes} minutos. Comprueba que el equipo servidor está encendido y conectado, y pulsa Actualizar."; return; }
+                    if (waited > BootPatience) { ServerReady = false; Status = $"El servidor {uri.Host} no responde tras {(int)BootPatience.TotalMinutes} minutos. Comprueba que el equipo servidor está encendido y conectado, y pulsa Actualizar."; return; }
                     BootText = $"Arrancando el servidor ({(int)waited.TotalSeconds} s). Tras encender el equipo puede tardar de uno a tres minutos.";
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
                 }
@@ -309,7 +386,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 {
                     new DpapiDeviceStore(uri).Save(collect.DeviceToken!);
                     Settings.Endpoint = Endpoint.Trim(); Settings.Save();
-                    PairingStatus = $"Puesto emparejado como {collect.Role}/{collect.Station}.";
+                    PairingStatus = $"Emparejado como {Labels.SessionRole(collect.Role ?? "")}.";   // la estacion, por su nombre, al conectar
                     Sync();
                     await Run(() => ConnectWithToken(uri, collect.DeviceToken!, isUserSession: false));
                     return;
@@ -338,7 +415,7 @@ public sealed partial class ShellViewModel : ObservableObject
             // Cambiar de nivel cierra la conexion y el tiempo real anteriores (B3): nunca dos canales vivos de la misma ventana.
             await StopRealtime();
             var previous = Api;
-            Api = candidate; Session = identity; sessionToken = isUserSession ? token : null;
+            Api = candidate; ServerReady = true; Session = identity; sessionToken = isUserSession ? token : null;
             previous?.Dispose();
             // Cola durable: con la identidad ya autenticada se engancha el almacen cifrado, aislado por
             // instalacion, ambito, rol y ventana. Una orden sin confirmar de otra sesion se restaura y
@@ -354,8 +431,8 @@ public sealed partial class ShellViewModel : ObservableObject
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
                     + "\". Reintenta la misma orden antes de operar."
                 : (identity.Demo ? "DEMOSTRACIÓN · DATOS FICTICIOS · " : "") +
-                  (isUserSession ? $"Responsable {identity.Actor ?? identity.Role}: acceso a todos los apartados. Tras {(int)Inactivity.TotalMinutes} minutos sin actividad se vuelve al nivel Puesto."
-                                 : $"Puesto {identity.Actor ?? identity.Role}" + (identity.StationName is { Length: > 0 } s ? $" · {s}" : "") + ": toma comandas. Caja, configuración y dispositivos piden la contraseña del responsable.")
+                  (isUserSession ? $"Responsable {Labels.Actor(identity.Actor)}".TrimEnd() + $": acceso a todos los apartados. Tras {(int)Inactivity.TotalMinutes} minutos sin actividad se vuelve al nivel Puesto."
+                                 : $"Puesto {Labels.Actor(identity.Actor)}".TrimEnd() + (identity.StationName is { Length: > 0 } s ? $" · {s}" : "") + ": toma comandas. Caja, configuración y dispositivos piden la contraseña del responsable.")
                   + $" · servidor {identity.ServerVersion}";
         }
         catch { if (Api == candidate) Reset(); else candidate.Dispose(); throw; }
@@ -372,11 +449,13 @@ public sealed partial class ShellViewModel : ObservableObject
             realtime.Reconnected += () => Application.Current.Dispatcher.BeginInvoke(QueueRefresh);
             realtime.StateChanged += state => Application.Current.Dispatcher.BeginInvoke(() =>
             {
+                // C1: empieza por la etiqueta corta del vocabulario comun; la explicacion va detras. La barra de estado pinta la corta.
+                RealtimeLink = state is "connected" or "reconnecting" ? state : "closed";
                 RealtimeState = state switch
                 {
-                    "connected" => "Tiempo real activo: los cambios de otros puestos aparecen sin pulsar Actualizar.",
-                    "reconnecting" => "Tiempo real reconectando. Los datos pueden estar desactualizados.",
-                    _ => "Tiempo real desconectado: se reintenta cada 30 s. Mientras tanto usa Actualizar; los datos no se refrescan solos."
+                    "connected" => Labels.Realtime(state) + ": los cambios de otros puestos aparecen sin pulsar Actualizar.",
+                    "reconnecting" => Labels.Realtime(state) + " Los datos pueden estar desactualizados.",
+                    _ => Labels.Realtime("closed") + " cada 30 s. Mientras tanto usa Actualizar; los datos no se refrescan solos."
                 };
                 if (state == "closed") ScheduleRealtimeRetry(); else realtimeRetry?.Stop();
             });
@@ -385,7 +464,8 @@ public sealed partial class ShellViewModel : ObservableObject
         catch
         {
             await StopRealtime();
-            RealtimeState = "Tiempo real no disponible en este servidor. Usa el botón Actualizar.";
+            RealtimeLink = "unavailable";
+            RealtimeState = Labels.Realtime("unavailable") + " en este servidor. Usa el botón Actualizar.";
         }
     }
 
@@ -441,11 +521,11 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         realtimeRetry?.Stop();
         _ = (realtime?.DisposeAsync() ?? ValueTask.CompletedTask); realtime = null; refreshQueued = false; sessionToken = null; RequestedView = null;
-        RealtimeState = "Tiempo real inactivo.";
+        RealtimeState = "Tiempo real inactivo."; RealtimeLink = "inactive";
         Api?.Dispose(); Api = null; Session = null; Pending = null; Blocked = null;
         Home.Clear(); Service.Clear(); Checkout.Clear(); Devices.Clear(); Organization.Clear(); Catalog.Clear(); Offers.Clear();
         Status = "Desconectado. La contraseña no se guarda en disco.";
-        ReadTime = "Sin lectura actual del servidor.";
+        ReadTime = "Sin lectura del servidor todavía (F5 para leer).";
         Sync();
     }
 
