@@ -40,19 +40,61 @@
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="240"/></Grid.ColumnDefinitions>
      <DockPanel Grid.Column="0">
       <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Producto" Command="{Binding Catalog.StartProductCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Productos" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-      <TextBox DockPanel.Dock="Top" Text="{Binding Catalog.Search, UpdateSourceTrigger=PropertyChanged}" ToolTip="Buscar por nombre, código o referencia" Margin="0,0,0,8"/>
+      <TextBox x:Name="ProductSearch" DockPanel.Dock="Top" Text="{Binding Catalog.Search, UpdateSourceTrigger=PropertyChanged}" ToolTip="Buscar por nombre, código o referencia" Margin="0,0,0,8"/>
       <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" Height="214">
        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6"><Button DockPanel.Dock="Right" Content="＋ Presentación" Command="{Binding Catalog.StartPresentationCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Presentaciones" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0" TextTrimming="CharacterEllipsis" ToolTip="Presentaciones del producto y precio vigente por tarifa"/></DockPanel>
        <TextBlock DockPanel.Dock="Bottom" Text="Un producto se vende siempre por una presentación (botella, copa, ración…). Sin precio vigente en la tarifa general no se vende." Style="{StaticResource Subtle}" Margin="0,6,0,0" TextWrapping="Wrap"/>
        <ListBox x:Name="PresentationList" ItemsSource="{Binding Catalog.Presentations}" SelectedItem="{Binding Catalog.SelectedPresentation}"/>
       </DockPanel>
       <TextBlock DockPanel.Dock="Bottom" Text="No hay productos que mostrar: cambia la categoría o la búsqueda, crea uno con «＋ Producto» o importa el catálogo desde un fichero en el equipo servidor." Style="{StaticResource Subtle}" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="{Binding Catalog.HasProducts, Converter={StaticResource NotBool2Vis}}"/>
-      <ListBox x:Name="ProductList" ItemsSource="{Binding Catalog.Products}" SelectedItem="{Binding Catalog.SelectedProduct}"/>
+      <!-- E3.2: cada fila con su miniatura (32 px) y dos lineas: nombre y, debajo, categoria, precios de la General y estado. Lista
+           virtualizada y reciclada: con la bodega entera (mas de mil vinos) solo se crean, y solo piden su imagen, las filas que se ven. -->
+      <ListBox x:Name="ProductList" ItemsSource="{Binding Catalog.Products}" SelectedItem="{Binding Catalog.SelectedProduct}"
+               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
+       <ListBox.ItemTemplate><DataTemplate>
+        <DockPanel>
+         <Border DockPanel.Dock="Left" Style="{StaticResource ImageWell}" Width="34" Height="34" CornerRadius="7" Margin="0,1,10,1" VerticalAlignment="Top">
+          <Grid>
+           <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconImage}" Stroke="{StaticResource InkDisabled}" HorizontalAlignment="Center"
+                 Visibility="{Binding Thumbnail, Converter={StaticResource Null2Vis}}"/>
+           <Border CornerRadius="6" Background="{StaticResource Surface}" Visibility="{Binding Thumbnail, Converter={StaticResource NotNull2Vis}}">
+            <Border CornerRadius="6"><Border.Background><ImageBrush ImageSource="{Binding Thumbnail}" Stretch="Uniform"/></Border.Background></Border>
+           </Border>
+          </Grid>
+         </Border>
+         <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="{Binding Product.Name}"/>
+          <TextBlock Text="{Binding Detail}" FontSize="12" FontWeight="Normal" Foreground="{StaticResource InkSoft}"/>
+         </StackPanel>
+        </DockPanel>
+       </DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
      </DockPanel>
      <!-- Margen derecho de 14: la barra de desplazamiento de Fluent se superpone; asi no tapa el borde de las fichas. -->
      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,14,0">
       <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,0,0,10"><StackPanel>
-       <TextBlock Text="{Binding Catalog.ProductFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+       <TextBlock Text="{Binding Catalog.ProductFormTitle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+       <!-- E3.2: foto del producto (140 px) o su hueco con el motivo; debajo, cambiarla y quitarla (solo el responsable: los botones
+            siguen a las ordenes del catalogo). La foto se pide al servidor una vez y se guarda en memoria por su huella. -->
+       <Border x:Name="ProductPhotoWell" Style="{StaticResource ImageWell}" Background="{StaticResource Surface}" BorderBrush="{StaticResource StrokeStrong}"
+               Width="140" Height="140" HorizontalAlignment="Center">
+        <Grid>
+         <StackPanel VerticalAlignment="Center" Margin="10" Visibility="{Binding Catalog.ProductPhoto, Converter={StaticResource Null2Vis}}">
+          <Path Style="{StaticResource Icon}" Data="{StaticResource IconImage}" Stroke="{StaticResource InkDisabled}" HorizontalAlignment="Center">
+           <Path.LayoutTransform><ScaleTransform ScaleX="1.6" ScaleY="1.6"/></Path.LayoutTransform>
+          </Path>
+          <TextBlock x:Name="ProductPhotoText" Text="{Binding Catalog.PhotoText}" Style="{StaticResource Subtle}" TextAlignment="Center" Margin="0,8,0,0"/>
+         </StackPanel>
+         <Border CornerRadius="9" Margin="1" Visibility="{Binding Catalog.ProductPhoto, Converter={StaticResource NotNull2Vis}}">
+          <Border.Background><ImageBrush ImageSource="{Binding Catalog.ProductPhoto}" Stretch="Uniform"/></Border.Background>
+         </Border>
+        </Grid>
+       </Border>
+       <Button x:Name="ChangeImageButton" Content="Cambiar imagen…" Command="{Binding Catalog.ChangeImageCommand}" HorizontalAlignment="Stretch" Margin="0,10,0,4"
+               ToolTip="Elige una foto JPEG, PNG o WebP de hasta 2 MB"/>
+       <Button x:Name="RemoveImageButton" Content="Quitar imagen" Command="{Binding Catalog.RemoveImageCommand}" Style="{StaticResource Ghost}" HorizontalAlignment="Stretch" Margin="0,0,0,2"
+               ToolTip="La imagen deja de mostrarse; no se borra y se puede volver a poner"/>
+       <Border Height="1" Background="{StaticResource Stroke}" Margin="0,6,0,10"/>
        <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}"/>
        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Catalog.ProductName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}"/>
        <TextBlock Text="Categoría" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>

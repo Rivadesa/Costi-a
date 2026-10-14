@@ -135,6 +135,29 @@ public static class CatalogUnit
         }
         catch (PostgresException e) when (e.SqlState == "23503") { throw new StoreNotFound(); }
     }
+    // E3.2: imagen vigente de un producto. ImageOf da sus datos SIN los bytes (null si nunca tuvo); la lectura de los bytes es
+    // CatalogReads.ActiveImage. SetImage inserta o sustituye (y reactiva) y devuelve si cambio algo: la misma imagen ya vigente
+    // no se reescribe. RemoveImage la marca inactiva: nada se borra.
+    public static async Task<ImageInfo?> ImageOf(this Unit unit, string productId)
+        => (await unit.Rows($"SELECT product_id,content_type,sha256,bytes,active FROM core.product_images WHERE {Unit.ScopeWhere} AND product_id=@product",
+            [("product", productId)], r => new ImageInfo(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetBoolean(4)))).FirstOrDefault();
+    public static async Task<bool> SetImage(this Unit unit, ProductImage image)
+    {
+        try
+        {
+            var count = await unit.Sql("INSERT INTO core.product_images (tenant,company,location,product_id,content,content_type,sha256,bytes,active,updated_at,updated_by) " +
+                "VALUES (@tenant,@company,@location,@product,@content,@type,@sha,@bytes,true,now(),@actor) " +
+                "ON CONFLICT (tenant,company,location,product_id) DO UPDATE SET content=EXCLUDED.content,content_type=EXCLUDED.content_type,sha256=EXCLUDED.sha256," +
+                "bytes=EXCLUDED.bytes,active=true,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by " +
+                "WHERE NOT (core.product_images.active AND core.product_images.sha256=EXCLUDED.sha256)",
+                [("product", image.ProductId), ("content", image.Content), ("type", image.ContentType), ("sha", image.Sha256), ("bytes", image.Bytes), ("actor", unit.Actor)]);
+            return count == 1;
+        }
+        catch (PostgresException e) when (e.SqlState == "23503") { throw new StoreNotFound(); }
+    }
+    public static async Task<bool> RemoveImage(this Unit unit, string productId)
+        => await unit.Sql($"UPDATE core.product_images SET active=false,updated_at=now(),updated_by=@actor WHERE {Unit.ScopeWhere} AND product_id=@product AND active",
+            [("product", productId), ("actor", unit.Actor)]) == 1;
     // Siembra idempotente (fixtures): no pisa lo que ya exista.
     public static Task<int> SeedCategory(this Unit unit, CategoryDefinition c) => unit.Sql(
         "INSERT INTO core.categories (tenant,company,location,id,name,parent_id,color,sort,active) VALUES (@tenant,@company,@location,@id,@name,@parent,@color,@sort,@active) ON CONFLICT DO NOTHING",
@@ -153,11 +176,15 @@ public static class CatalogUnit
 // Lecturas del catalogo para el puesto principal (edicion) y para los catalogos operativos de los clientes.
 public sealed record PriceView(string TariffId, string ValidFrom, long PriceCents);
 public sealed record PresentationView(string Id, string Name, int Sort, bool Active, PriceView[] Prices);
-public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations, string? StationId = null);
+// E3.2: ImageSha = huella de la imagen VIGENTE del producto (null sin imagen o quitada); campo anadido al final: solo anade.
+public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations, string? StationId = null, string? ImageSha = null);
 public sealed record CatalogView(TaxDefinition[] Taxes, CategoryDefinition[] Categories, ProductView[] Products, TariffDefinition[] Tariffs, string Today);
 // Vendible tal como lo ven los clientes: sala sin dinero (SellableView); caja con el precio de la tarifa general (PricedSellableView).
-public sealed record SellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName);
-public sealed record PricedSellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, long PriceCents, string TariffId);
+public sealed record SellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, string? ImageSha = null);
+public sealed record PricedSellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, long PriceCents, string TariffId, string? ImageSha = null);
+// E3.2: datos de la imagen de un producto sin sus bytes (ordenes, importacion) y la imagen vigente con sus bytes (lectura).
+public sealed record ImageInfo(string ProductId, string ContentType, string Sha256, int Bytes, bool Active);
+public sealed record StoredImage(byte[] Content, string ContentType, string Sha256);
 
 public static class CatalogReads
 {
@@ -170,25 +197,38 @@ public static class CatalogReads
         var presentations = await reads.Query(scope, $"SELECT {CatalogUnit.PresentationColumns} FROM core.presentations WHERE {Scope} ORDER BY product_id,sort,id", CatalogUnit.PresentationRow, ct);
         var prices = await reads.Query(scope, $"SELECT {CatalogUnit.PriceColumns} FROM core.prices WHERE {Scope} ORDER BY tariff_id,valid_from", CatalogUnit.PriceRow, ct);
         var tariffs = await reads.Query(scope, $"SELECT {CatalogUnit.TariffColumns} FROM core.tariffs WHERE {Scope} ORDER BY sort,id", CatalogUnit.TariffRow, ct);
+        // E3.2: solo la huella de las imagenes vigentes; los bytes se piden aparte (GET /catalog/images/{id}) y el cliente los guarda por huella.
+        var images = (await reads.Query(scope, $"SELECT product_id,sha256 FROM core.product_images WHERE {Scope} AND active", r => (Product: r.GetString(0), Sha: r.GetString(1)), ct))
+            .ToDictionary(i => i.Product, i => i.Sha, StringComparer.Ordinal);
         var byProduct = presentations.ToLookup(p => p.ProductId);
         var byPresentation = prices.ToLookup(p => (p.ProductId, p.PresentationId));
         return new(taxes.ToArray(), categories.ToArray(), products.Select(p => new ProductView(p.Id, p.Name, p.CategoryId, p.TaxId, p.Reference, p.Sort, p.Active,
             byProduct[p.Id].Select(s => new PresentationView(s.Id, s.Name, s.Sort, s.Active,
-                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray())).ToArray(), p.StationId)).ToArray(),
+                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray())).ToArray(), p.StationId,
+                images.GetValueOrDefault(p.Id))).ToArray(),
             tariffs.ToArray(), today.ToString("yyyy-MM-dd"));
     }
 
+    // E3.2: imagen VIGENTE de un producto con sus bytes, o null (sin imagen, quitada o de otro ambito).
+    public static async Task<StoredImage?> ActiveImage(this DesktopReadRepository reads, BusinessScope scope, string productId, CancellationToken ct)
+        => (await reads.Query(scope, $"SELECT content,content_type,sha256 FROM core.product_images WHERE {Scope} AND product_id=@product AND active",
+            r => new StoredImage(r.GetFieldValue<byte[]>(0), r.GetString(1), r.GetString(2)), ct, ("product", productId))).FirstOrDefault();
+
     // Vendibles con precio vigente en la tarifa GENERAL hoy: producto y presentacion activos, con su categoria. Orden estable.
     private const string SellableSql =
-        "SELECT p.id,s.id,p.name,s.name,c.id,c.name,x.price_cents FROM core.products p " +
+        "SELECT p.id,s.id,p.name,s.name,c.id,c.name,x.price_cents,i.sha256 FROM core.products p " +
         "JOIN core.presentations s ON s.tenant=p.tenant AND s.company=p.company AND s.location=p.location AND s.product_id=p.id AND s.active " +
         "LEFT JOIN core.categories c ON c.tenant=p.tenant AND c.company=p.company AND c.location=p.location AND c.id=p.category_id " +
+        // E3.2: huella de la imagen vigente (null sin imagen o quitada).
+        "LEFT JOIN core.product_images i ON i.tenant=p.tenant AND i.company=p.company AND i.location=p.location AND i.product_id=p.id AND i.active " +
         "JOIN LATERAL (SELECT price_cents FROM core.prices x WHERE x.tenant=p.tenant AND x.company=p.company AND x.location=p.location AND x.tariff_id='general' " +
         " AND x.product_id=p.id AND x.presentation_id=s.id AND x.valid_from<=@today ORDER BY x.valid_from DESC LIMIT 1) x ON true " +
         // E4a: los productos-menu (categoria 'menus') se venden abriendo la mesa con su oferta, no como consumo suelto.
         "WHERE p.tenant=@tenant AND p.company=@company AND p.location=@location AND p.active AND coalesce(p.category_id,'')<>'menus' ORDER BY c.sort,c.id,p.sort,p.id,s.sort,s.id LIMIT 5000";
     public static Task<List<SellableView>> Sellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
-        => reads.Query(scope, SellableSql, r => new SellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)), ct, ("today", today));
+        => reads.Query(scope, SellableSql, r => new SellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
+            r.IsDBNull(7) ? null : r.GetString(7)), ct, ("today", today));
     public static Task<List<PricedSellableView>> PricedSellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
-        => reads.Query(scope, SellableSql, r => new PricedSellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt64(6), Domain.Catalog.GeneralTariff), ct, ("today", today));
+        => reads.Query(scope, SellableSql, r => new PricedSellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt64(6), Domain.Catalog.GeneralTariff,
+            r.IsDBNull(7) ? null : r.GetString(7)), ct, ("today", today));
 }

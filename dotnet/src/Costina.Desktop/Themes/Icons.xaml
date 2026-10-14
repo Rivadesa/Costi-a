@@ -50,6 +50,8 @@
  <Geometry x:Key="IconCheck">M4.167,10.417 l3.75,3.75 L15.833,5.833</Geometry>
  <!-- Cerrar -->
  <Geometry x:Key="IconClose">M5,5 l10,10 M15,5 L5,15</Geometry>
+ <!-- E3.2: imagen de un articulo (marco con montana y sol): hueco de una foto que aun no hay -->
+ <Geometry x:Key="IconImage">M4.167,2.5 H15.833 A1.667,1.667 0 0 1 17.5,4.167 V15.833 A1.667,1.667 0 0 1 15.833,17.5 H4.167 A1.667,1.667 0 0 1 2.5,15.833 V4.167 A1.667,1.667 0 0 1 4.167,2.5 Z M6.25,7.5 A1.25,1.25 0 1 0 8.75,7.5 A1.25,1.25 0 1 0 6.25,7.5 Z M17.5,12.5 l-4.167,-4.167 L4.167,17.5</Geometry>
  <!-- Plegar la barra lateral -->
  <Geometry x:Key="IconSidebar">M4.167,3.333 H15.833 A1.667,1.667 0 0 1 17.5,5 V15 A1.667,1.667 0 0 1 15.833,16.667 H4.167 A1.667,1.667 0 0 1 2.5,15 V5 A1.667,1.667 0 0 1 4.167,3.333 Z M7.5,3.333 v13.333</Geometry>
 </ResourceDictionary>

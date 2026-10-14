@@ -290,6 +290,93 @@ await Check("price-set travels with an idempotency key, is persisted before send
     var legacy=JsonSerializer.Deserialize<ProductChoice>("{\"id\":\"water\",\"name\":\"Agua\",\"presentation\":\"Botella\",\"priceCents\":400}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     Assert(choice.ToString().StartsWith("Vinos · Vino · Copa")&&legacy.PresentationId is null&&legacy.ToString().StartsWith("Agua · Botella"));
 });
+// E3.2: imagenes de los articulos. Los catalogos traen la huella (opcional: un servidor anterior no la envia); los bytes se piden
+// aparte con la credencial y se guardan por huella; poner y quitar son ordenes normales de la tuberia incierta.
+var web=new JsonSerializerOptions(JsonSerializerDefaults.Web);
+byte[] png=[0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0,0,0,13,(byte)'I',(byte)'H',(byte)'D',(byte)'R',0,0,0,1,0,0,0,1,8,6,0,0,0,0x1F,0x15,0xC4,0x89];
+var pngSha=ProductImages.Sha256(png);
+await Check("catalog DTOs carry imageSha when the server sends it and stay null for an older server",()=>{
+    var product=JsonSerializer.Deserialize<ProductDto>("{\"id\":\"wine\",\"name\":\"Vino\",\"taxId\":\"iva-21\",\"sort\":0,\"active\":true,\"presentations\":[],\"imageSha\":\""+pngSha+"\"}",web)!;
+    var older=JsonSerializer.Deserialize<ProductDto>("{\"id\":\"wine\",\"name\":\"Vino\",\"taxId\":\"iva-21\",\"sort\":0,\"active\":true,\"presentations\":[],\"stationId\":\"hot\"}",web)!;
+    var choice=JsonSerializer.Deserialize<ProductChoice>("{\"id\":\"wine\",\"name\":\"Vino\",\"presentation\":\"Copa\",\"priceCents\":950,\"imageSha\":\""+pngSha+"\"}",web)!;
+    var plain=JsonSerializer.Deserialize<ProductChoice>("{\"id\":\"wine\",\"name\":\"Vino\",\"presentation\":\"Copa\",\"priceCents\":950}",web)!;
+    Expect(product.ImageSha==pngSha&&older.ImageSha is null&&older.StationId=="hot","product imageSha");
+    Expect(choice.ImageSha==pngSha&&plain.ImageSha is null&&choice.ToString()==plain.ToString(),"product choice imageSha (never painted as text)");
+    // La organizacion trae las tarifas para elegir la de cada sala; un servidor anterior no: null, y la sala sigue decodificando.
+    var organization=JsonSerializer.Deserialize<OrganizationDto>("{\"zones\":[{\"id\":\"terraza\",\"name\":\"Terraza\",\"sort\":1,\"active\":true,\"tables\":[],\"tariffId\":\"terraza\"}],\"stations\":[],"
+        +"\"tariffs\":[{\"id\":\"general\",\"name\":\"General\",\"sort\":0,\"active\":true},{\"id\":\"terraza\",\"name\":\"Terraza\",\"sort\":1,\"active\":true}]}",web)!;
+    var legacy=JsonSerializer.Deserialize<OrganizationDto>("{\"zones\":[{\"id\":\"sala\",\"name\":\"Sala\",\"sort\":0,\"active\":true,\"tables\":[]}],\"stations\":[]}",web)!;
+    Expect(organization.Tariffs!.Length==2&&organization.Zones[0].TariffId=="terraza"&&legacy.Tariffs is null&&legacy.Zones[0].TariffId is null,"organization tariffs");
+    Expect(organization.Zones[0].ToString()=="Terraza · 0 mesas activas · activa"&&(organization.Zones[0] with {TariffName="Terraza"}).ToString()=="Terraza · tarifa Terraza · 0 mesas activas · activa","zone row names its own tariff");
+    Expect(!JsonSerializer.Serialize(organization.Zones[0] with {TariffName="Terraza"},web).Contains("tariffName"),"the tariff name is never sent back");
+    return Task.CompletedTask;});
+await Check("product-image-set takes the type from the bytes, sends them in base64, is persisted before sending and closes on the echoed key",async()=>{
+    var store=new MemoryStore(); string? key=null; JsonElement sent=default;
+    using var client=new ApiClient(new Uri("http://127.0.0.1:5088"),new string('a',40),new Handler(async (r,_)=>{
+        Assert(r.Method==HttpMethod.Post&&r.RequestUri!.AbsolutePath=="/api/native/v1/erp/catalog/commands/product-image-set"); key=r.Headers.GetValues("Idempotency-Key").Single();
+        Assert(store.LastSavedKey==key);   // durable ANTES del primer intento, como toda orden
+        sent=JsonSerializer.Deserialize<JsonElement>(await r.Content!.ReadAsStringAsync());
+        var ok=Response(200,"{\"productId\":\"wine\",\"sha256\":\""+pngSha+"\",\"bytes\":"+png.Length+",\"contentType\":\"image/png\",\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
+    }));
+    client.AttachPendingStore(store);
+    var result=await client.SetProductImageAsync("wine",png,"Cambiar imagen de Vino");
+    Expect(sent.GetProperty("productId").GetString()=="wine"&&sent.GetProperty("contentType").GetString()=="image/png"&&Convert.FromBase64String(sent.GetProperty("data").GetString()!).SequenceEqual(png),"body: "+sent);
+    Expect(sent.EnumerateObject().Select(p=>p.Name).Order().SequenceEqual(["contentType","data","productId"]),"only productId, contentType and data travel");
+    Expect(result.GetProperty("changed").GetBoolean()&&client.Pending is null&&store.ClearedKeys.Single()==key&&store.Stored is null,"closed on the echoed key");
+    Expect(client.Images.Get(pngSha) is {Type:"image/png"},"the confirmed image is cached by its sha: the catalog re-read does not download it again");
+});
+await Check("an image that is not JPEG, PNG or WebP, is empty or passes 2 MB is never sent",async()=>{
+    var calls=0;
+    using var client=Client(new Handler((_,_)=>{calls++;return Task.FromResult(Response(200,"{}"));}));
+    var tooBig=new byte[ProductImages.MaxBytes+1]; png.CopyTo(tooBig,0);
+    foreach(var bad in new[]{"<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>"u8.ToArray(),"<html><body>no</body></html>"u8.ToArray(),"GIF89a\u0001\u0000"u8.ToArray(),
+        "RIFF\u0000\u0000\u0000\u0000WAVEfmt "u8.ToArray(),new byte[]{0xFF,0xD8},Array.Empty<byte>(),tooBig})
+        await Throws<ArgumentException>(()=>client.SetProductImageAsync("wine",bad,"Cambiar imagen"));
+    Expect(calls==0&&client.Pending is null,"nothing reached the server and nothing is pending");
+    Expect(ProductImages.TypeOf([0xFF,0xD8,0xFF,0xE0])=="image/jpeg"&&ProductImages.TypeOf("RIFF\u0010\u0000\u0000\u0000WEBPVP8 "u8)=="image/webp"&&ProductImages.TypeOf(png)=="image/png","signatures");
+    try { ProductImages.CheckSize(ProductImages.MaxBytes+1); throw new Exception("2 MB + 1 must be refused"); }
+    catch(ArgumentException e) { Expect(e.Message.StartsWith("La imagen ocupa 2,1 MB; el máximo es 2 MB.",StringComparison.Ordinal),"size message: "+e.Message); }
+    ProductImages.CheckSize(ProductImages.MaxBytes);   // exactamente 2 MB si vale
+});
+await Check("product-image-remove travels as a normal command with only the product",async()=>{
+    string? body=null;
+    using var client=Client(new Handler(async (r,_)=>{
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/erp/catalog/commands/product-image-remove");
+        body=await r.Content!.ReadAsStringAsync();
+        var ok=Response(200,"{\"productId\":\"wine\",\"changed\":true}"); ok.Headers.Add("Idempotency-Key",r.Headers.GetValues("Idempotency-Key").Single()); return ok;
+    }));
+    await client.RemoveProductImageAsync("wine","Quitar imagen de Vino");
+    Expect(body=="{\"productId\":\"wine\"}"&&client.Pending is null,"remove body: "+body);
+});
+await Check("an image is read with the bearer, checked (type, signature, size, hash) and asked only once per sha",async()=>{
+    var gets=0; var mode="ok";
+    using var client=Client(new Handler((r,_)=>{
+        gets++;
+        Assert(r.Method==HttpMethod.Get&&r.Headers.Authorization?.Scheme=="Bearer");
+        if(r.RequestUri!.AbsolutePath=="/api/native/v1/catalog/images/none") return Task.FromResult(Response(404,"{\"error\":\"not_found\"}"));
+        Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/catalog/images/wine");
+        var body=mode=="svg"?"<svg/>"u8.ToArray():png;
+        var response=new HttpResponseMessage(HttpStatusCode.OK){Content=new ByteArrayContent(body)};
+        response.Content.Headers.ContentType=new System.Net.Http.Headers.MediaTypeHeaderValue(mode=="type"?"image/jpeg":mode=="svg"?"image/svg+xml":"image/png");
+        response.Headers.ETag=new System.Net.Http.Headers.EntityTagHeaderValue("\""+(mode=="etag"?new string('0',64):pngSha)+"\"");
+        return Task.FromResult(response);
+    }));
+    foreach(var bad in new[]{"type","svg","etag"})
+    {
+        mode=bad;
+        await Throws<InvalidDataException>(()=>client.GetProductImageAsync("wine",pngSha));
+        Expect(client.Images.Count==0,"a refused image is never cached: "+bad);
+    }
+    mode="ok";
+    var first=await client.GetProductImageAsync("wine",pngSha);
+    Expect(first is {ContentType:"image/png"}&&first.Sha256==pngSha&&first.Content.SequenceEqual(png),"image read");
+    var before=gets;
+    var again=await client.GetProductImageAsync("wine",pngSha);
+    Expect(gets==before&&again!.Content.SequenceEqual(png),"the same sha is served from memory");
+    Expect(await client.GetProductImageAsync("none","otra") is null,"404 = no image");
+    var cache=new ImageCache(10); cache.Put("a","image/png",new byte[6]); cache.Put("b","image/png",new byte[6]);
+    Expect(cache.Get("a") is null&&cache.Get("b") is not null&&cache.Bytes==6,"the cache keeps a ceiling and drops the least used");
+});
 // E2: la mesa operativa lleva su sala; un servidor anterior sin ese campo sigue decodificando.
 await Check("table choice shows its zone when the server sends it",()=>{
     var withZone=JsonSerializer.Deserialize<TableChoice>("{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":12,\"zoneId\":\"sala\",\"zoneName\":\"Sala\"}",new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -367,7 +454,7 @@ await Check("vocabulary: an unknown restriction is shown raw, never as a mild pr
 await Check("vocabulary: server rejections in clear Spanish; an unknown one keeps its code",()=>{
     foreach(var code in new[]{"version_conflict","table_occupied","account_not_balanced","unfinished_courses","restrictions_unreviewed","restrictions_unacknowledged",
         "wrong_station","account_closed","account_not_closed","refund_exceeds_credit","forbidden","choice_missing","course_empty","no_pending_course","active_course",
-        "service_finished","not_found","duplicate_code","table_in_use","reserved_station","reserved_tariff","offer_unavailable","price_missing",
+        "service_finished","not_found","duplicate_code","table_in_use","reserved_station","reserved_tariff","offer_unavailable","price_missing","image_invalid","image_too_large",
         "station_kind_mismatch","device_role_not_allowed","storage_conflict","operation_unconfirmed","request_failed"})
     {
         var text=Labels.Rejection(code);

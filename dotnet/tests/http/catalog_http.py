@@ -2,8 +2,13 @@
 vigencia - por HTTP real contra PostgreSQL. Solo el puesto principal edita; nunca se borra, se desactiva; el precio se
 congela en la cuenta con su producto, presentacion y tarifa (la de la sala o la general); los catalogos operativos no
 llevan dinero y solo listan vendibles con precio vigente; la importacion CSV es idempotente por la huella del fichero.
+E3.2: imagen vigente de cada articulo (JPEG, PNG o WebP por su firma, hasta 2 MB): solo main la pone o la quita, cualquier
+identidad la lee con ETag = huella; los catalogos llevan imageSha; la importacion toma las fotos de la carpeta del CSV.
 """
+import base64
 import datetime
+import hashlib
+import http.client
 import json
 import os
 import re
@@ -19,6 +24,45 @@ MONEY = re.compile(r'(price|cents|amount|balance|subtotal|total|paid|payment|ref
 
 def command(action, role='main', **body):
     return request('/erp/catalog/commands/' + action, body, role=role)
+
+def import_csv(path):
+    return subprocess.run(['dotnet', str(h.SERVER), 'import-catalog', str(path)], env=h.ENV, capture_output=True, text=True, encoding='utf8')
+
+# E3.2: el motor no decodifica imagenes, solo mira su firma: bastan la firma y unos bytes cualesquiera detras.
+def png(size=2048): return b'\x89PNG\r\n\x1a\n' + os.urandom(size - 8)
+def jpeg(size=2048): return b'\xff\xd8\xff\xe0' + os.urandom(size - 4)
+def webp(size=2048): return b'RIFF' + (size - 8).to_bytes(4, 'little') + b'WEBP' + os.urandom(size - 12)
+def sha(data): return hashlib.sha256(data).hexdigest()
+
+def set_image(pid, data, content_type, role='main'):
+    return command('product-image-set', role=role, productId=pid, contentType=content_type, data=base64.b64encode(data).decode('ascii'))
+
+def read_image(pid, role='main', etag=None):
+    status, body = request('/catalog/images/' + pid, role=role, headers={'If-None-Match': etag} if etag else None)
+    return status, body, {k.lower(): v for k, v in h.LAST_HEADERS.items()}
+
+def declared_only(path, length):
+    """Una orden que ANUNCIA un cuerpo de `length` bytes y no envia ninguno: el motor la rechaza al empezar a leer (tope de Kestrel)
+    sin esperar el cuerpo, y la prueba no depende de como corte el sistema una conexion con megas sin leer."""
+    connection = http.client.HTTPConnection('127.0.0.1', int(h.PORT), timeout=15)
+    try:
+        connection.putrequest('POST', '/api/native/v1' + path)
+        for name, value in (('Authorization', 'Bearer ' + h.KEYS['main']), ('Content-Type', 'application/json'),
+                            ('Idempotency-Key', os.urandom(8).hex()), ('Content-Length', str(length))):
+            connection.putheader(name, value)
+        connection.endheaders()
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+def subst_drive(folder):
+    """Windows: una unidad virtual (subst) libre sobre `folder` ('Q:'...), o None si no queda letra."""
+    for letter in 'QRSTUVWXYZ':
+        drive = letter + ':'
+        if not os.path.exists(drive + '\\') and subprocess.run(['subst', drive, str(folder)], capture_output=True).returncode == 0:
+            return drive
+    return None
 
 def catalog():
     return ok('/erp/catalog')
@@ -142,6 +186,8 @@ class Catalog(unittest.TestCase):
         self.assertEqual(request('/organization/commands/zone-create', dict(id='terraza-z', name='Terraza', sort=9, tariffId='terraza'))[0], 200)
         self.assertEqual(request('/organization/commands/zone-create', dict(id='z-bad', name='x', tariffId='no-existe'))[0], 404)
         self.assertEqual(next(z for z in ok('/organization')['zones'] if z['id'] == 'terraza-z')['tariffId'], 'terraza')
+        # E3.2: Configuracion elige la tarifa de la sala con las tarifas que trae /organization (sin leer el catalogo).
+        self.assertEqual(next(t for t in ok('/organization')['tariffs'] if t['id'] == 'terraza'), {'id': 'terraza', 'name': 'Terraza', 'sort': 1, 'active': True})
         self.assertEqual(request('/organization/commands/table-create', dict(id='TZ1', name='Terraza 1', capacity=4, zoneId='terraza-z'))[0], 200)
         self.assertEqual(json.loads(command('tariff-deactivate', id='terraza')[1])['error'], 'tariff_in_use')
         # Consumo desde sala en la terraza: precio de la tarifa de la sala HOY (no el programado), congelado con su origen.
@@ -179,6 +225,7 @@ class Catalog(unittest.TestCase):
         self.assertEqual(request('/organization/commands/zone-update', dict(id='terraza-z', tariffId=''))[0], 200)   # vuelve a la general
         self.assertIsNone(next(z for z in ok('/organization')['zones'] if z['id'] == 'terraza-z')['tariffId'])
         self.assertEqual(command('tariff-deactivate', id='terraza')[0], 200)
+        self.assertFalse(next(t for t in ok('/organization')['tariffs'] if t['id'] == 'terraza')['active'])   # E3.2: sigue, marcada
         self.assertEqual(command('price-set', tariffId='terraza', productId='wine', presentationId='glass', priceCents=1)[0], 409)   # tariff_inactive
 
     def test_04_csv_import_creates_and_updates_without_deleting_and_is_idempotent(self):
@@ -189,11 +236,10 @@ class Catalog(unittest.TestCase):
                 '3761;"Ladredo, Bierzo 2021";Tintos;Vinos;Botella;"1.250,50";21;1',
                 '3762;Agua con gas;Bebidas;;Botella;2.5;10;0']
         csv.write_text('\n'.join(rows) + '\n', encoding='utf8')
-        def run(path):
-            return subprocess.run(['dotnet', str(h.SERVER), 'import-catalog', str(path)], env=h.ENV, capture_output=True, text=True, encoding='utf8')
+        run = import_csv
         first = run(csv)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
-        self.assertIn('products created 3, updated 0; categories created 1; presentations created 3; prices set 3', first.stdout)
+        self.assertIn('products created 3, updated 0; categories created 1; presentations created 3; prices set 3; images set 0.', first.stdout)   # E3.2: sin columna image
         tinto = product('3760')
         self.assertEqual((tinto['name'], tinto['categoryId'], tinto['taxId'], tinto['reference'], tinto['active']), ('El Rapolao 2023', 'tintos', 'iva-21', '3760', True))
         self.assertEqual([(p['id'], p['name'], p['prices'][0]['priceCents']) for p in tinto['presentations']], [('botella', 'Botella', 4000)])
@@ -210,7 +256,7 @@ class Catalog(unittest.TestCase):
         csv.write_text('\n'.join(rows[:1] + ['3760;El Rapolao 2023 (nueva anada);Tintos;Vinos;Botella;41,00;21;1'] + rows[2:]) + '\n', encoding='utf8')
         third = run(csv)
         self.assertEqual(third.returncode, 0, third.stdout + third.stderr)
-        self.assertIn('products created 0, updated 1; categories created 0; presentations created 0; prices set 1', third.stdout)
+        self.assertIn('products created 0, updated 1; categories created 0; presentations created 0; prices set 1; images set 0.', third.stdout)
         self.assertEqual((product('3760')['name'], product('3760')['presentations'][0]['prices'][-1]['priceCents']), ('El Rapolao 2023 (nueva anada)', 4100))
         self.assertFalse(product('3761')['active'])
         self.assertEqual(h.sql("SELECT count(*) FROM core.products WHERE tenant='d1-tenant' AND id IN ('3760','3761','3762')"), '3')
@@ -236,7 +282,7 @@ class Catalog(unittest.TestCase):
                                   '3781;Rioja blanco de prueba;Rioja;Blancos;Botella;18,00;21;1',
                                   '3782;Albarino de prueba;Rías Baixas;Blancos;Botella;15,00;21;1',
                                   '3783;Mencia de prueba;Rías Baixas;Tintos;Botella;16,00;21;1']) + '\n', encoding='utf8')
-        run = lambda path: subprocess.run(['dotnet', str(h.SERVER), 'import-catalog', str(path)], env=h.ENV, capture_output=True, text=True, encoding='utf8')
+        run = import_csv
         first = run(csv)
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         self.assertIn('categories created 5;', first.stdout)                         # Blancos, Rioja x2 y Rias Baixas x2 (Tintos ya existia)
@@ -268,6 +314,152 @@ class Catalog(unittest.TestCase):
         self.assertIn(request('/erp/catalog/commands/category-create', dict(id='postres', name='Otro'), key=key)[0], (409, 422))       # misma clave, otro cuerpo
         self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.category_created' AND aggregate_id='postres'"), '1')
         self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.price_set' AND aggregate_id='coffee'"), '2')   # unit y double
+
+    def test_06_product_images_are_set_read_replaced_and_removed_only_by_main(self):
+        """E3.2: una imagen vigente por articulo. Solo main la pone o la quita; cualquier identidad valida la lee (una foto no es
+        dinero) con su tipo, ETag = huella y cache privada que revalida; los catalogos llevan imageSha; nada se borra."""
+        first = png(5000)
+        status, body = set_image('water', first, 'image/png')
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(body), {'productId': 'water', 'sha256': sha(first), 'bytes': 5000, 'contentType': 'image/png', 'changed': True})
+        self.assertFalse(json.loads(set_image('water', first, 'image/png')[1])['changed'])              # la misma imagen ya vigente: nada cambia
+        status, body, headers = read_image('water')
+        self.assertEqual((status, body), (200, first))
+        self.assertEqual((headers['content-type'], headers['etag'], headers['x-content-type-options']), ('image/png', '"' + sha(first) + '"', 'nosniff'))
+        self.assertEqual(headers['cache-control'], 'private, no-cache')
+        status, body, headers = read_image('water', etag='"' + sha(first) + '"')                       # el cliente ya la tiene
+        self.assertEqual((status, body, headers['etag']), (304, b'', '"' + sha(first) + '"'))
+        # Sala y cocina la leen pero no la cambian ni la quitan; sin credencial, nada.
+        for role in ('service', 'kitchen'):
+            self.assertEqual(read_image('water', role=role)[:2], (200, first), role)
+            self.assertEqual(set_image('water', png(100), 'image/png', role=role)[0], 403, role)
+            self.assertEqual(command('product-image-remove', role=role, productId='water')[0], 403, role)
+        self.assertEqual(request('/catalog/images/water', role='nadie')[0], 401)
+        # imageSha en el catalogo de edicion y en los operativos (null sin imagen), sin ninguna clave de dinero en el de sala.
+        self.assertEqual((product('water')['imageSha'], product('wine')['imageSha']), (sha(first), None))
+        for path, role in (('/catalog', 'service'), ('/catalog', 'main'), ('/checkout/catalog', 'main')):
+            items = json.loads(request(path, role=role)[1])
+            self.assertEqual({(i['id'], i['imageSha']) for i in items if i['id'] in ('water', 'wine')}, {('water', sha(first)), ('wine', None)}, path)
+        self.assertEqual(list(money_keys(json.loads(request('/catalog', role='service')[1]))), [])
+        # Sustituir: otro formato y otra huella; la anterior ya no sirve como ETag.
+        second = jpeg(7000)
+        self.assertTrue(json.loads(set_image('water', second, 'image/jpeg')[1])['changed'])
+        status, body, headers = read_image('water', etag='"' + sha(first) + '"')
+        self.assertEqual((status, body, headers['content-type'], headers['etag']), (200, second, 'image/jpeg', '"' + sha(second) + '"'))
+        # WebP, y una imagen de justo 2 MB: ~2,8 MB de base64, por encima del tope general de 32 KB, que solo ESTA orden sube.
+        self.assertEqual(set_image('wine', webp(3000), 'image/webp')[0], 200)
+        largest = png(2 * 1024 * 1024)
+        status, body = set_image('lubina', largest, 'image/png')
+        self.assertEqual((status, json.loads(body)['bytes']), (200, 2 * 1024 * 1024), body)
+        self.assertEqual(read_image('lubina')[1], largest)
+        # Lo que no es una imagen segura se rechaza con su codigo y la vigente sigue igual.
+        for data, declared, error in ((b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', 'image/svg+xml', 'image_invalid'),
+                                      (b'<html><script>alert(1)</script></html>', 'image/png', 'image_invalid'),   # HTML disfrazado
+                                      (png(100), 'image/jpeg', 'image_invalid'),                                  # el tipo declarado no es el de los bytes
+                                      (b'', 'image/png', 'image_invalid'),
+                                      (png(2 * 1024 * 1024 + 1), 'image/png', 'image_too_large')):
+            status, body = set_image('water', data, declared)
+            self.assertEqual((status, json.loads(body)['error']), (409, error), declared)
+        self.assertEqual(command('product-image-set', productId='water', contentType='image/png', data='no es base64!')[0], 422)
+        self.assertEqual(set_image('no-existe', png(100), 'image/png')[0], 404)
+        self.assertEqual(read_image('water')[1], second)
+        # El tope del cuerpo es explicito por orden: product-image-set admite hasta 4 MB de JSON y cualquier otra orden 32 KB. Por
+        # encima, el motor la rechaza al empezar a leer, antes de aplicar nada.
+        self.assertEqual(declared_only('/erp/catalog/commands/product-image-set', 4 * 1024 * 1024 + 1)[0], 422)
+        self.assertEqual(declared_only('/erp/catalog/commands/category-create', 32 * 1024 + 1)[0], 422)
+        self.assertEqual(read_image('water')[1], second)
+        # Quitar: la lectura da 404 y imageSha es null; quitarla otra vez no cambia nada; la fila sigue (inactiva) y ponerla la reactiva.
+        status, body = command('product-image-remove', productId='water')
+        self.assertEqual((status, json.loads(body)), (200, {'productId': 'water', 'changed': True}))
+        self.assertFalse(json.loads(command('product-image-remove', productId='water')[1])['changed'])
+        self.assertEqual(read_image('water')[0], 404)
+        self.assertIsNone(product('water')['imageSha'])
+        self.assertEqual([i['imageSha'] for i in ok('/catalog') if i['id'] == 'water'], [None])
+        self.assertEqual(h.sql("SELECT count(*) || ':' || bool_or(active) FROM core.product_images WHERE tenant='d1-tenant' AND product_id='water'"), '1:false')
+        self.assertEqual(read_image('croquetas')[0], 404)                                               # nunca tuvo
+        self.assertTrue(json.loads(set_image('water', second, 'image/jpeg')[1])['changed'])
+        self.assertEqual(read_image('water')[:2], (200, second))
+        # Auditoria: huella, tamano y tipo de cada cambio real; nunca los bytes (ni en la auditoria ni en la respuesta guardada).
+        audit = h.sql("SELECT string_agg(action || '|' || (payload->'data'->>'sha256') || '|' || coalesce(payload->'data'->>'bytes', '-') || '|' || coalesce(payload->'data'->>'content_type', '-'), ',' ORDER BY occurred_at, id) "
+                      "FROM core.audit WHERE tenant='d1-tenant' AND aggregate_id='water' AND action LIKE 'catalog.product_image%'")
+        self.assertEqual(audit.split(','), ['catalog.product_image_set|' + sha(first) + '|5000|image/png', 'catalog.product_image_set|' + sha(second) + '|7000|image/jpeg',
+                                            'catalog.product_image_removed|' + sha(second) + '|-|-', 'catalog.product_image_set|' + sha(second) + '|7000|image/jpeg'])
+        self.assertLess(int(h.sql("SELECT max(octet_length(payload::text)) FROM core.audit WHERE tenant='d1-tenant' AND action LIKE 'catalog.product_image%'")), 1000)
+        self.assertLess(int(h.sql("SELECT max(octet_length(response)) FROM core.commands WHERE tenant='d1-tenant' AND response LIKE '%\"sha256\"%'")), 1000)
+
+    def test_07_import_takes_images_from_the_csv_folder_and_never_from_outside(self):
+        """E3.2: columna 'image' = fichero de la carpeta del CSV. Crea, es idempotente (la huella cubre CSV e imagenes), una foto
+        cambiada con el mismo CSV cambia solo esa imagen, una celda vacia no quita nada, nada sale de la carpeta y un CSV en la raiz
+        de una unidad (memoria USB) tambien vale."""
+        base = Path(tempfile.mkdtemp(prefix='costina-images-'))
+        folder = base / 'bodega'; (folder / 'fotos').mkdir(parents=True)
+        tinto, blanco = png(3000), jpeg(4000)
+        (folder / 'fotos' / 'verial-3790.png').write_bytes(tinto)
+        (folder / 'verial-3791.jpg').write_bytes(blanco)
+        header = 'reference;name;category;presentation;price;tax;image'
+        csv = folder / 'bodega.csv'
+        csv.write_text('\n'.join([header, '3790;Tinto con foto;Tintos;Botella;20,00;21;fotos/verial-3790.png',
+                                  '3791;Blanco con foto;Blancos;Botella;18,00;21;verial-3791.jpg',
+                                  '3792;Sin foto;Blancos;Botella;12,00;21;']) + '\n', encoding='utf8')
+        first = import_csv(csv)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn('products created 3, updated 0;', first.stdout); self.assertIn('prices set 3; images set 2.', first.stdout)
+        shas = lambda: {r: product(r)['imageSha'] for r in ('3790', '3791', '3792')}
+        self.assertEqual(shas(), {'3790': sha(tinto), '3791': sha(blanco), '3792': None})
+        self.assertEqual(read_image('3790')[:2], (200, tinto)); self.assertEqual(read_image('3791')[2]['content-type'], 'image/jpeg')
+        stamp = lambda product_id: h.sql(f"SELECT sha256 || '@' || updated_at FROM core.product_images WHERE tenant='d1-tenant' AND product_id='{product_id}'")
+        commands = lambda: h.sql("SELECT count(*) FROM core.commands WHERE tenant='d1-tenant' AND actor='cli:import-catalog'")
+        before, imported = (stamp('3790'), stamp('3791')), commands()
+        again = import_csv(csv)                                                                          # mismo CSV, mismas fotos: repeticion
+        self.assertEqual((again.returncode, again.stdout), (0, first.stdout), again.stderr)
+        self.assertEqual(((stamp('3790'), stamp('3791')), commands()), (before, imported))
+        # Una foto cambiada con el CSV igual es otra importacion: cambia SOLO esa imagen.
+        newer = png(3500)
+        (folder / 'fotos' / 'verial-3790.png').write_bytes(newer)
+        changed = import_csv(csv)
+        self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
+        self.assertIn('products created 0, updated 0; categories created 0; presentations created 0; prices set 0; images set 1.', changed.stdout)
+        self.assertEqual((product('3790')['imageSha'], stamp('3791')), (sha(newer), before[1]))
+        # Una celda vacia nunca quita la imagen; una imagen quitada a mano sigue quitada mientras el fichero traiga la misma.
+        (folder / 'sin.csv').write_text(header + '\n3791;Blanco con foto;Blancos;Botella;18,00;21;\n', encoding='utf8')
+        empty = import_csv(folder / 'sin.csv')
+        self.assertEqual(empty.returncode, 0, empty.stdout + empty.stderr); self.assertIn('images set 0.', empty.stdout)
+        self.assertEqual(product('3791')['imageSha'], sha(blanco))
+        self.assertEqual(command('product-image-remove', productId='3791')[0], 200)
+        (folder / 'otra.csv').write_text(header + '\n3791;Blanco con foto;Blancos;Botella;18,50;21;verial-3791.jpg\n', encoding='utf8')
+        kept = import_csv(folder / 'otra.csv')
+        self.assertEqual(kept.returncode, 0, kept.stdout + kept.stderr); self.assertIn('prices set 1; images set 0.', kept.stdout)
+        self.assertIsNone(product('3791')['imageSha'])
+        # Nada fuera de la carpeta del CSV: ni '..', ni ruta absoluta, ni un fichero que no existe. Error con su linea, nada aplicado.
+        (base / 'fuera.png').write_bytes(png(500))
+        for name in ('../fuera.png', str(base / 'fuera.png'), 'fotos/../../fuera.png', '..\\fuera.png', 'no-existe.png'):
+            (folder / 'mal.csv').write_text(header + '\n3793;Fuera;Blancos;Botella;5,00;21;' + name + '\n', encoding='utf8')
+            refused = import_csv(folder / 'mal.csv')
+            self.assertNotEqual(refused.returncode, 0, name); self.assertIn('Line 2', refused.stdout + refused.stderr, name)
+        # Una imagen invalida (SVG con extension .png, PNG con extension .jpg, un .txt) falla con SU linea y no aplica ni la fila buena.
+        (folder / 'falsa.png').write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+        (folder / 'cambiada.jpg').write_bytes(png(500))
+        (folder / 'notas.txt').write_bytes(png(500))
+        for name in ('falsa.png', 'cambiada.jpg', 'notas.txt'):
+            (folder / 'mal.csv').write_text('\n'.join([header, '3794;Bueno;Blancos;Botella;5,00;21;verial-3791.jpg', '3795;Malo;Blancos;Botella;5,00;21;' + name]) + '\n', encoding='utf8')
+            refused = import_csv(folder / 'mal.csv')
+            self.assertNotEqual(refused.returncode, 0, name); self.assertIn('Line 3 (3795)', refused.stdout + refused.stderr, name)
+        self.assertEqual(h.sql("SELECT count(*) FROM core.products WHERE tenant='d1-tenant' AND id IN ('3793','3794','3795')"), '0')
+        # Un CSV en la RAIZ de una unidad (una memoria USB: E:\catalogo.csv junto a E:\catalogo-imagenes\) encuentra sus fotos.
+        # Solo en Windows: una unidad virtual (subst) sobre una carpeta temporal, que se quita al acabar.
+        if os.name == 'nt':
+            usb = base / 'usb'; (usb / 'catalogo-imagenes').mkdir(parents=True)
+            memoria = webp(2500)
+            (usb / 'catalogo-imagenes' / 'verial-3796.webp').write_bytes(memoria)
+            (usb / 'catalogo.csv').write_text(header + '\n3796;Blanco de la memoria;Blancos;Botella;9,00;21;catalogo-imagenes/verial-3796.webp\n', encoding='utf8')
+            drive = subst_drive(usb)
+            self.assertIsNotNone(drive, 'no free drive letter for subst')
+            try:
+                at_root = import_csv(drive + '\\catalogo.csv')
+            finally:
+                subprocess.run(['subst', drive, '/d'], capture_output=True)
+            self.assertEqual(at_root.returncode, 0, at_root.stdout + at_root.stderr); self.assertIn('images set 1.', at_root.stdout)
+            self.assertEqual(product('3796')['imageSha'], sha(memoria))
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)

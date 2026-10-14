@@ -30,6 +30,9 @@ class Organization(unittest.TestCase):
         self.assertEqual([z['id'] for z in org['zones']], ['sala'])
         self.assertEqual([t['id'] for t in org['zones'][0]['tables']], ['M%d' % i for i in range(1, 9)])
         self.assertEqual({s['id']: s['kind'] for s in org['stations']}, {'pase': 'Pass', 'cold': 'Kitchen', 'hot': 'Kitchen', 'sala-1': 'Room'})
+        # E3.2: las tarifas viajan con la organizacion para elegir la de cada sala: codigo, nombre, orden y activa; nunca precios.
+        self.assertIn({'id': 'general', 'name': 'General', 'sort': 0, 'active': True}, org['tariffs'])
+        self.assertTrue(all(set(t) == {'id', 'name', 'sort', 'active'} for t in org['tariffs']), org['tariffs'])
         for role in ('service', 'kitchen'):
             self.assertEqual(request('/organization', role=role)[0], 403, role)
             self.assertEqual(command('zone-create', role=role, id='x', name='x')[0], 403, role)

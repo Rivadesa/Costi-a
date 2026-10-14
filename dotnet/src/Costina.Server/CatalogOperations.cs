@@ -11,7 +11,7 @@ namespace Costina.Server;
 // Sin version esperada: datos maestros, la ultima edicion gana; el cliente relee tras cada comando.
 public sealed record CatalogCommand(string? Id=null,string? Name=null,decimal? Rate=null,string? ParentId=null,string? Color=null,int? Sort=null,
     string? CategoryId=null,string? TaxId=null,string? Reference=null,string? Presentation=null,string? ProductId=null,string? PresentationId=null,
-    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null,string? StationId=null);
+    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null,string? StationId=null,string? ContentType=null,byte[]? Data=null);
 
 public static class CatalogOperations
 {
@@ -20,8 +20,13 @@ public static class CatalogOperations
         "category-create","category-update","category-deactivate","category-reactivate",
         "product-create","product-update","product-deactivate","product-reactivate",
         "presentation-create","presentation-update","presentation-deactivate","presentation-reactivate",
-        "tariff-create","tariff-update","tariff-deactivate","tariff-reactivate","price-set"];
+        "tariff-create","tariff-update","tariff-deactivate","tariff-reactivate","price-set",
+        "product-image-set","product-image-remove"];
     public static bool Allows(string role,string action) => role=="main" && Actions.Contains(action,StringComparer.Ordinal);
+    // E3.2: cuerpo maximo de product-image-set (y solo de esa orden): 2 MB de imagen son ~2,8 MB en base64; el resto es margen para
+    // el JSON y para un serializador que escape '+' y '/' como secuencias unicode de seis caracteres. El dominio sigue exigiendo
+    // 2 MB a los bytes ya decodificados.
+    public const int ImageCommandBody = 4 * 1024 * 1024;
     public static DateOnly Today() => DateOnly.FromDateTime(DateTime.Now);
 
     public static async Task<object> Apply(Unit unit,ExecutionIdentity identity,string action,CatalogCommand request)
@@ -150,6 +155,23 @@ public static class CatalogOperations
                 if(changed) await unit.Events([Event("price_set",price.ProductId,("presentation",price.PresentationId),("tariff",price.TariffId),("valid_from",price.ValidFrom.ToString("yyyy-MM-dd")),("price_cents",price.PriceCents.ToString()))]);
                 return new { price.TariffId,price.ProductId,price.PresentationId,validFrom=price.ValidFrom.ToString("yyyy-MM-dd"),price.PriceCents,changed };
             }
+            // E3.2: imagen del articulo. La respuesta, la auditoria y el aviso llevan huella, tamano y tipo: NUNCA los bytes.
+            case "product-image-set":
+            {
+                var product=await unit.Product(Required(request.ProductId));
+                var image=Catalog.Image(product.Id,request.ContentType,request.Data);
+                var changed=await unit.SetImage(image);
+                if(changed) await unit.Events([Event("product_image_set",product.Id,("sha256",image.Sha256),("bytes",image.Bytes.ToString(System.Globalization.CultureInfo.InvariantCulture)),("content_type",image.ContentType))]);
+                return new { productId=product.Id,sha256=image.Sha256,bytes=image.Bytes,contentType=image.ContentType,changed };
+            }
+            case "product-image-remove":
+            {
+                var product=await unit.Product(Required(request.ProductId));
+                var current=await unit.ImageOf(product.Id);
+                var changed=await unit.RemoveImage(product.Id);
+                if(changed) await unit.Events([Event("product_image_removed",product.Id,("sha256",current!.Sha256))]);
+                return new { productId=product.Id,changed };
+            }
             default: throw new StoreNotFound();
         }
     }
@@ -181,8 +203,9 @@ public static class CatalogOperations
         var reads=new DesktopReadRepository(source);
         app.MapGet(prefix,(Func<HttpContext,Task<IResult>>)(async c=>Json(await reads.FullCatalog(scope,Today(),c.RequestAborted))))
             .WithMetadata(new RouteAccess("main"));
+        // El middleware ya ha exigido main y una accion anunciada antes de llegar aqui: solo esa orden de main lee un cuerpo grande.
         app.MapPost(prefix+"/commands/{action}",(HttpContext c,string action)=>
-            Write<CatalogCommand>(c,store,scope,(u,i,r)=>Apply(u,i,action,r)))
+            Write<CatalogCommand>(c,store,scope,(u,i,r)=>Apply(u,i,action,r),action=="product-image-set" ? ImageCommandBody : MaxCommandBody))
             .WithMetadata(new RouteAccess("main") { ActionPolicy=Allows });
     }
 }

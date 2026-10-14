@@ -22,7 +22,7 @@ public sealed record ModuleSchema(string Name, string Schema, string Grants)
 // Current-state persistence, not event sourcing. SQL identifiers are constants, never user input.
 public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
 {
-    public const int SchemaVersion = 6;
+    public const int SchemaVersion = 7;
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}$")] private static partial Regex SchemaName();
     public static string CheckedSchema(string name)
         => SchemaName().IsMatch(name) && name != "public" ? name : throw new ArgumentException("Invalid schema name: " + name);
@@ -255,6 +255,8 @@ public sealed partial class Unit(NpgsqlConnection connection, NpgsqlTransaction 
     public const string ScopeWhere = "tenant=@tenant AND company=@company AND location=@location";
     [GeneratedRegex("^[a-z][a-z0-9_]{0,30}\\.[a-z][a-z0-9_]{0,62}$")] private static partial Regex QualifiedTable();
     private readonly BusinessScope scope = identity.Scope;
+    // E3.2: actor real de la orden (user:<nombre>, device:<nombre>, cli:...) para las columnas updated_by de los datos maestros.
+    public string Actor => identity.ActorId;
 
     private NpgsqlCommand Command(string sql, (string Name, object Value)[] values)
     {

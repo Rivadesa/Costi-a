@@ -12,6 +12,12 @@ public sealed record ProductDefinition(string Id, string Name, string? CategoryI
 public sealed record PresentationDefinition(string ProductId, string Id, string Name, int Sort, bool Active);
 public sealed record TariffDefinition(string Id, string Name, int Sort, bool Active);
 public sealed record PriceDefinition(string TariffId, string ProductId, string PresentationId, DateOnly ValidFrom, long PriceCents);
+// E3.2: imagen vigente de un articulo (una por producto). ContentType sale de la FIRMA de los bytes, nunca de la extension ni de
+// lo que diga quien la envia; Sha256 (hex en minusculas) es su huella: ETag de la lectura y clave de cache de los clientes.
+public sealed record ProductImage(string ProductId, string ContentType, byte[] Content, string Sha256)
+{
+    public int Bytes => Content.Length;
+}
 
 public static class Catalog
 {
@@ -75,6 +81,35 @@ public static class Catalog
     {
         Guard.Rule(priceCents is >= 0 and <= MaxPriceCents, "invalid_price", $"Price must be between 0 and {MaxPriceCents} cents.");
         return new(Organization.Code(tariffId, "tariff id"), Organization.Code(productId, "product id"), Organization.Code(presentationId, "presentation id"), validFrom, priceCents!.Value);
+    }
+
+    // E3.2: solo imagenes SEGURAS. JPEG, PNG y WebP reconocidos por su firma de bytes, hasta 2 MB; nunca SVG (puede llevar
+    // codigo) ni nada que no empiece por una de esas firmas. El tipo declarado tiene que coincidir con el de los bytes.
+    // El servidor no las transforma: no hace falta ninguna libreria de imagen.
+    public const int MaxImageBytes = 2 * 1024 * 1024;
+    public static readonly IReadOnlyList<string> ImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    // Tipo por la firma (magic bytes): JPEG FF D8 FF; PNG 89 50 4E 47 0D 0A 1A 0A; WebP "RIFF" <tamano> "WEBP". null = otro.
+    public static string? ImageType(ReadOnlySpan<byte> content)
+    {
+        if (content.Length >= 3 && content[0] == 0xFF && content[1] == 0xD8 && content[2] == 0xFF) return "image/jpeg";
+        if (content.Length >= 8 && content[..8].SequenceEqual((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return "image/png";
+        if (content.Length >= 12 && content[..4].SequenceEqual("RIFF"u8) && content.Slice(8, 4).SequenceEqual("WEBP"u8)) return "image/webp";
+        return null;
+    }
+
+    public static void ImageSize(long bytes)
+        => Guard.Rule(bytes <= MaxImageBytes, "image_too_large", $"The image is larger than {MaxImageBytes / (1024 * 1024)} MB.");
+
+    public static ProductImage Image(string? productId, string? contentType, byte[]? content)
+    {
+        var product = Organization.Code(productId, "product id");
+        Guard.Rule(content is { Length: > 0 }, "image_invalid", "The image is empty.");
+        ImageSize(content!.Length);
+        var detected = ImageType(content) ?? throw new RuleViolation("image_invalid", "Only JPEG, PNG and WebP images are accepted (recognised by their bytes).");
+        Guard.Rule(string.Equals(contentType?.Trim(), detected, StringComparison.OrdinalIgnoreCase), "image_invalid",
+            $"The declared type does not match the image bytes ({detected}).");
+        return new(product, detected, content, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content)));
     }
 
     // Fecha de vigencia tal como viaja en comandos y ficheros: AAAA-MM-DD.

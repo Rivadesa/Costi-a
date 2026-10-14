@@ -82,6 +82,71 @@ public sealed class ApiClient : IDisposable
         var text = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<T>(text, Json) ?? throw new JsonException("Respuesta vacía.");
     }
+    // E3.2: bytes de las imagenes ya leidas por esta conexion, por huella (se olvidan al cerrarla).
+    public ImageCache Images { get; } = new();
+    private readonly Dictionary<string, Task<ProductImage?>> reading = new(StringComparer.Ordinal);   // lecturas en curso por huella
+
+    // E3.2: imagen vigente de un articulo, con la credencial de esta conexion (la ruta exige identidad: un <img> no podria mandarla).
+    // Con la huella que trae el catalogo se mira antes la cache y las lecturas en curso: cada imagen se pide UNA vez aunque la
+    // pidan a la vez la lista y la ficha. Al recibirla se comprueban el tipo declarado, la firma, el tamano y que su huella sea la
+    // del ETag; si algo no cuadra no se guarda ni se devuelve. null = sin imagen.
+    public async Task<ProductImage?> GetProductImageAsync(string productId, string? sha256 = null)
+    {
+        if (sha256 is not null && Images.Get(sha256) is { } cached) return new(productId, cached.Type, cached.Content, sha256);
+        Task<ProductImage?>? read = null;
+        lock (reading)
+            if (sha256 is null || !reading.TryGetValue(sha256, out read))
+            {
+                read = ReadImageAsync(productId);
+                if (sha256 is not null) reading[sha256] = read;
+            }
+        try { return await read! is { } image ? image with { ProductId = productId } : null; }
+        finally { if (sha256 is not null) lock (reading) if (reading.TryGetValue(sha256, out var current) && current == read) reading.Remove(sha256); }
+    }
+    private async Task<ProductImage?> ReadImageAsync(string productId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, SafePath("catalog/images/" + Segment(productId)));
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;   // sin imagen, quitada o producto desconocido
+        await Check(response);
+        if (response.Content.Headers.ContentLength is > ProductImages.MaxBytes) throw new InvalidDataException("La imagen recibida pasa de 2 MB.");
+        var content = await ReadLimitedAsync(response.Content, ProductImages.MaxBytes);
+        var type = ProductImages.TypeOf(content);
+        if (type is null || !string.Equals(type, response.Content.Headers.ContentType?.MediaType, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("La respuesta no es una imagen " + ProductImages.Formats + ".");
+        var sha = ProductImages.Sha256(content);
+        if (response.Headers.ETag is { } tag && !string.Equals(tag.Tag.Trim('"'), sha, StringComparison.Ordinal))
+            throw new InvalidDataException("La imagen recibida no corresponde a su huella.");
+        Images.Put(sha, type, content);
+        return new(productId, type, content, sha);
+    }
+    // E3.2: poner o cambiar la imagen de un articulo es una orden normal de la tuberia incierta (clave, persistida antes de enviar,
+    // mismo reintento identico). El tipo sale de los bytes; lo que pasa de 2 MB o no es JPEG, PNG o WebP no se envia. Confirmada,
+    // sus bytes quedan en la cache por su huella: la relectura del catalogo no la vuelve a descargar.
+    public async Task<JsonElement> SetProductImageAsync(string productId, byte[] content, string description)
+    {
+        var contentType = ProductImages.Check(content);
+        var result = await SendAsync("erp/catalog/commands/product-image-set", new { productId, contentType, data = Convert.ToBase64String(content) }, description);
+        Images.Put(ProductImages.Sha256(content), contentType, content);
+        return result;
+    }
+    // E3.2: quitar la imagen (el servidor la marca inactiva; nada se borra). Misma tuberia.
+    public Task<JsonElement> RemoveProductImageAsync(string productId, string description)
+        => SendAsync("erp/catalog/commands/product-image-remove", new { productId }, description);
+    private static async Task<byte[]> ReadLimitedAsync(HttpContent content, int limit)
+    {
+        await using var stream = await content.ReadAsStreamAsync();
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk)) > 0)
+        {
+            if (buffer.Length + read > limit) throw new InvalidDataException("La imagen recibida pasa de 2 MB.");
+            buffer.Write(chunk, 0, read);
+        }
+        return buffer.ToArray();
+    }
+
     // POST autenticado directo para operaciones de IDENTIDAD (emparejamientos, revocaciones,
     // logout): sin Idempotency-Key ni orden incierta. Los comandos de dominio siguen en SendAsync.
     public async Task<JsonElement> PostRawAsync<T>(string path, T body)
@@ -220,5 +285,5 @@ public sealed class ApiClient : IDisposable
         return path;
     }
     public static string Segment(string id) => Uri.EscapeDataString(id);
-    public void Dispose() { http.Dispose(); mutation.Dispose(); (store as IDisposable)?.Dispose(); }
+    public void Dispose() { http.Dispose(); mutation.Dispose(); Images.Clear(); (store as IDisposable)?.Dispose(); }
 }

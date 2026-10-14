@@ -80,7 +80,9 @@ public static class OrganizationUnit
 
 // Lecturas de organizacion para el puesto principal y para la configuracion operativa de los clientes.
 public sealed record ZoneView(string Id, string Name, int Sort, bool Active, TableDefinition[] Tables, string? TariffId = null);
-public sealed record OrganizationView(ZoneView[] Zones, StationDefinition[] Stations);
+// E3.2: Tariffs = las tarifas (codigo, nombre, orden, activa; nunca precios) para elegir la de cada sala en Configuracion sin leer el
+// catalogo entero (con la bodega real son mas de mil articulos con sus precios). Campo anadido al final: solo anade.
+public sealed record OrganizationView(ZoneView[] Zones, StationDefinition[] Stations, TariffDefinition[] Tariffs);
 // Mesa tal como la ven los clientes en GET /configuration (activas; campos de E1 mas la sala).
 public sealed record TableChoiceView(string Id, string Name, int Capacity, string ZoneId, string ZoneName);
 
@@ -94,7 +96,8 @@ public static class OrganizationReads
             r => new TableDefinition(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetInt32(4), r.GetBoolean(5)), ct);
         var stations = await reads.Query(scope, $"SELECT {OrganizationUnit.StationColumns} FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id",
             r => new StationDefinition(r.GetString(0), r.GetString(1), OrganizationUnit.KindOf(r.GetString(2)), r.GetInt32(3), r.GetBoolean(4)), ct);
-        return new(zones.Select(z => new ZoneView(z.Id, z.Name, z.Sort, z.Active, tables.Where(t => t.ZoneId == z.Id).ToArray(), z.TariffId)).ToArray(), stations.ToArray());
+        var tariffs = await reads.Query(scope, $"SELECT {CatalogUnit.TariffColumns} FROM core.tariffs WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id", CatalogUnit.TariffRow, ct);
+        return new(zones.Select(z => new ZoneView(z.Id, z.Name, z.Sort, z.Active, tables.Where(t => t.ZoneId == z.Id).ToArray(), z.TariffId)).ToArray(), stations.ToArray(), tariffs.ToArray());
     }
 
     public static Task<List<TableChoiceView>> ActiveTables(this DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)

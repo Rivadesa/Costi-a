@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 namespace Costina.Client;
 
 public sealed record Versioned<T>(long Version, T Data);
@@ -36,15 +37,23 @@ public sealed record MenuChoice(string Id, string Name) { public override string
 // E2: organizacion editable (solo main): espejo de GET /organization. Kind viene como texto (Kitchen, Pass, Bar, Room).
 public sealed record TableDto(string Id, string Name, int Capacity, string ZoneId, int Sort, bool Active)
 { public string StateLabel => Labels.Active(Active, feminine: true); public override string ToString() => $"{Name} · {Labels.Plural(Capacity, "plaza", "plazas")} · {StateLabel}"; }
+// E3.2: TariffName no viaja: la pantalla lo resuelve con las tarifas leidas (OrganizationDto.Tariffs) y la lista de salas nombra la
+// tarifa de la sala cuando no es la General (sin tarifa propia la sala cobra con la General).
 public sealed record ZoneDto(string Id, string Name, int Sort, bool Active, TableDto[] Tables, string? TariffId = null)
-{ public string StateLabel => Labels.Active(Active, feminine: true); public override string ToString() => $"{Name} · {Labels.Plural(Tables.Count(t => t.Active), "mesa activa", "mesas activas")} · {StateLabel}"; }
+{
+    [JsonIgnore] public string? TariffName { get; init; }
+    public string StateLabel => Labels.Active(Active, feminine: true);
+    public override string ToString() => $"{Name}{(TariffName is { Length: > 0 } tariff ? " · tarifa " + tariff : "")} · {Labels.Plural(Tables.Count(t => t.Active), "mesa activa", "mesas activas")} · {StateLabel}";
+}
 public sealed record StationDto(string Id, string Name, string Kind, int Sort, bool Active)
 {
     public string KindLabel => Labels.StationKind(Kind);
     public string StateLabel => Labels.Active(Active, feminine: true);
     public override string ToString() => $"{Name} · {KindLabel} · {StateLabel}";
 }
-public sealed record OrganizationDto(ZoneDto[] Zones, StationDto[] Stations);
+// E3.2: Tariffs = tarifas del catalogo (codigo, nombre, orden, activa; nunca precios) para elegir la de cada sala. Opcional: un
+// servidor anterior no las envia.
+public sealed record OrganizationDto(ZoneDto[] Zones, StationDto[] Stations, TariffDto[]? Tariffs = null);
 // E4a: ofertas VIGENTES (degustacion / menu cerrado / carta) con sus pases y platos; Menus sigue como alias de un servidor anterior.
 public sealed record OfferDishChoice(string Id, string Name) { public override string ToString() => Name; }
 // E4b: Items = lo pedible en un grupo de carta (producto + presentacion); Dishes = platos de un menu cerrado.
@@ -60,8 +69,10 @@ public sealed record OfferItemDto(string ProductId, string PresentationId, strin
 public sealed record OfferCourseDto(string Id, string Name, int Sort, bool Active, OfferDishDto[] Dishes, OfferItemDto[]? Items = null);
 public sealed record OfferDto(string Id, string Name, string Kind, string? ProductId, string Service, string? ValidFrom, string? ValidTo, int Weekdays, int Sort, bool Active, OfferCourseDto[] Courses);
 // E3: vendible de caja = producto + presentacion con el precio de la tarifa general como referencia (el servidor fija el real).
-// PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia.
-public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents, string? PresentationId = null, string? CategoryName = null, string? TariffId = null)
+// PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia. E3.2: ImageSha = huella de la imagen
+// vigente del producto (null sin imagen o con un servidor anterior); los bytes se piden aparte (ApiClient.GetProductImageAsync).
+public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents, string? PresentationId = null, string? CategoryName = null, string? TariffId = null,
+    string? ImageSha = null)
 { public override string ToString() => (CategoryName is { Length: > 0 } ? CategoryName + " · " : "") + $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }
 // E3: catalogo completo (solo main): espejo de GET /erp/catalog. Precios con IVA incluido; ValidFrom como AAAA-MM-DD.
 public sealed record TaxDto(string Id, string Name, decimal Rate, bool Active)
@@ -69,7 +80,9 @@ public sealed record TaxDto(string Id, string Name, decimal Rate, bool Active)
 public sealed record CategoryDto(string Id, string Name, string? ParentId, string? Color, int Sort, bool Active);
 public sealed record PriceDto(string TariffId, string ValidFrom, long PriceCents);
 public sealed record PresentationDto(string Id, string Name, int Sort, bool Active, PriceDto[] Prices);
-public sealed record ProductDto(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationDto[] Presentations, string? StationId = null);
+// E3.2: ImageSha = huella de la imagen vigente (null sin imagen, quitada o con un servidor anterior).
+public sealed record ProductDto(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationDto[] Presentations, string? StationId = null,
+    string? ImageSha = null);
 public sealed record TariffDto(string Id, string Name, int Sort, bool Active)
 { public string StateLabel => Labels.Active(Active, feminine: true); public override string ToString() => $"{Name} · {StateLabel}"; }
 public sealed record CatalogDto(TaxDto[] Taxes, CategoryDto[] Categories, ProductDto[] Products, TariffDto[] Tariffs, string Today);

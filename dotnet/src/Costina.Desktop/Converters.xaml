@@ -6,4 +6,6 @@
  <local:InvertedBool2Vis x:Key="NotBool2Vis"/>
  <local:Text2Vis x:Key="Text2Vis"/>
  <local:SameViewConverter x:Key="SameView"/>
+ <local:NullToVisibility x:Key="Null2Vis"/>
+ <local:NullToVisibility x:Key="NotNull2Vis" Invert="True"/>
 </ResourceDictionary>

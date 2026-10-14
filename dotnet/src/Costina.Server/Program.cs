@@ -148,15 +148,19 @@ if(args.Length == 1 && args[0] == "first-user")
 if(args.Length == 2 && args[0] == "import-catalog")
 {
     await store.CheckAsync(schemaNames);
-    var content = await File.ReadAllBytesAsync(args[1]);
+    var csv = Path.GetFullPath(args[1]);
+    var content = await File.ReadAllBytesAsync(csv);
     var rows = CatalogImport.Parse(System.Text.Encoding.UTF8.GetString(content));
-    var fingerprint = CatalogImport.Fingerprint(content);
+    // E3.2: las imagenes citadas (columna 'image', ficheros de la carpeta del CSV) se validan antes de abrir la transaccion y su huella
+    // entra en la de la importacion: una foto cambiada con el mismo CSV se aplica, no se toma por una repeticion.
+    var images = CatalogImport.Images(rows,Path.GetDirectoryName(csv)!);
+    var fingerprint = CatalogImport.Fingerprint(content,images);
     var response = await store.ExecuteAsync(new(scope,"cli:import-catalog"),"import-catalog-" + fingerprint[..32],fingerprint,
-        async unit => await CatalogImport.Apply(unit,rows,CatalogOperations.Today()));
+        async unit => await CatalogImport.Apply(unit,rows,CatalogOperations.Today(),images));
     var summary = Wire.Decode<ImportSummary>(response);
     Console.WriteLine($"Catalog import: {summary.Rows} rows; products created {summary.ProductsCreated}, updated {summary.ProductsUpdated}; " +
-        $"categories created {summary.CategoriesCreated}; presentations created {summary.PresentationsCreated}; prices set {summary.PricesSet}. " +
-        "Repeating the same file changes nothing.");
+        $"categories created {summary.CategoriesCreated}; presentations created {summary.PresentationsCreated}; prices set {summary.PricesSet}; " +
+        $"images set {summary.ImagesSet}. Repeating the same file changes nothing.");
     return;
 }
 if(args.Length == 1 && args[0] == "backup")
@@ -245,7 +249,8 @@ builder.WebHost.ConfigureKestrel(options=>
 {
     options.Listen(IPAddress.Loopback,port);
     if(tlsCertificate is not null) options.ListenAnyIP(tlsPort,listen=>listen.UseHttps(tlsCertificate));
-    options.Limits.MaxRequestBodySize=32768;
+    // Tope de todo el motor; solo la orden product-image-set lo sube, para su propia peticion (CatalogOperations.ImageCommandBody).
+    options.Limits.MaxRequestBodySize=Requests.MaxCommandBody;
 });
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(source);
