@@ -3,6 +3,7 @@
  <!-- E2: tema visual unico de la aplicacion (paleta, tipografia, controles). Ver Theme.xaml.
       Corte B: sin StartupUri; la ventana la crea OnStartup (instancia unica y arranque que espera al servidor). -->
  <ResourceDictionary>
-  <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Theme.xaml"/></ResourceDictionary.MergedDictionaries>
+  <!-- C1: Converters.xaml (Bool2Vis, NotBool2Vis) aqui y no en la ventana, para que las vistas de Views/ los vean. -->
+  <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Theme.xaml"/><ResourceDictionary Source="Converters.xaml"/></ResourceDictionary.MergedDictionaries>
  </ResourceDictionary>
 </Application.Resources></Application>

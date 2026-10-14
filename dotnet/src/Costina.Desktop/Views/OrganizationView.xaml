@@ -1,0 +1,72 @@
+<UserControl x:Class="Costina.Desktop.Views.OrganizationView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- C1: Configuracion: salas, mesas y estaciones (nucleo, E2, solo main).
+      Extraida de MainWindow sin cambios; hereda el DataContext del cascaron (ShellViewModel): los enlaces son los mismos. -->
+ <Grid Margin="0,4,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <StackPanel Grid.Row="0" Margin="0,0,0,10">
+   <TextBlock Text="Configuración del negocio" Style="{StaticResource PanelTitle}"/>
+   <TextBlock Text="{Binding Organization.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+   <TextBlock Text="Nada se borra: una sala, mesa o estación se desactiva y conserva su historia; se puede reactivar cuando haga falta." Style="{StaticResource Subtle}"/>
+  </StackPanel>
+  <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="5*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+   <!-- Salas y mesas -->
+   <Border Grid.Column="0" Style="{StaticResource Card}">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
+     <DockPanel Grid.Column="0">
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Sala" Command="{Binding Organization.StartZoneCommand}" Margin="0"/><TextBlock Text="Salas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+      <TextBlock DockPanel.Dock="Bottom" Text="Aún no hay salas. Crea la primera con «＋ Sala»." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Organization.HasZones, Converter={StaticResource NotBool2Vis}}"/>
+      <ListBox x:Name="ZoneList" ItemsSource="{Binding Organization.Zones}" SelectedItem="{Binding Organization.SelectedZone}"/>
+     </DockPanel>
+     <DockPanel Grid.Column="2">
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Mesa" Command="{Binding Organization.StartTableCommand}" Margin="0"/><TextBlock Text="Mesas de la sala" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+      <ListBox x:Name="TableList" ItemsSource="{Binding Organization.Tables}" SelectedItem="{Binding Organization.SelectedTable}"/>
+     </DockPanel>
+     <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,4,0">
+      <Border Style="{StaticResource Banner}" Margin="0,0,0,10"><StackPanel>
+       <TextBlock Text="{Binding Organization.ZoneFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+       <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}"/>
+       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}"/>
+       <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" Width="80" HorizontalAlignment="Left"/>
+       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar sala" Style="{StaticResource Primary}" Command="{Binding Organization.SaveZoneCommand}"/>
+        <Button x:Name="ToggleZoneButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleZoneCommand}"/></WrapPanel>
+      </StackPanel></Border>
+      <Border Style="{StaticResource Banner}"><StackPanel>
+       <TextBlock Text="{Binding Organization.TableFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+       <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}"/>
+       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.TableName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}"/>
+       <WrapPanel Margin="0,6,0,0">
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Aforo" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
+        <StackPanel Margin="0,0,10,0"><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
+       </WrapPanel>
+       <TextBlock Text="Sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+       <ComboBox ItemsSource="{Binding Organization.ActiveZones}" SelectedValuePath="Id" SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}"/>
+       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar mesa" Style="{StaticResource Primary}" Command="{Binding Organization.SaveTableCommand}"/>
+        <Button x:Name="ToggleTableButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleTableCommand}"/></WrapPanel>
+      </StackPanel></Border>
+     </StackPanel></ScrollViewer>
+    </Grid>
+   </Border>
+   <!-- Estaciones -->
+   <Border Grid.Column="2" Style="{StaticResource Card}">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="230"/></Grid.ColumnDefinitions>
+     <DockPanel Grid.Column="0">
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Estación" Command="{Binding Organization.StartStationCommand}" Margin="0"/><TextBlock Text="Estaciones" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
+      <TextBlock DockPanel.Dock="Bottom" Text="Cocina, pase, barra o sala. Los puestos emparejados se asignan a una estación activa. La estación «pase» existe siempre." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
+      <ListBox x:Name="StationList" ItemsSource="{Binding Organization.Stations}" SelectedItem="{Binding Organization.SelectedStation}"/>
+     </DockPanel>
+     <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><Border Style="{StaticResource Banner}" VerticalAlignment="Top" Margin="0,0,4,0"><StackPanel>
+      <TextBlock Text="{Binding Organization.StationFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+      <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}"/>
+      <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.StationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}"/>
+      <TextBlock Text="Tipo" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+      <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Organization.StationKind}" IsEnabled="{Binding Organization.StationEditable}">
+       <ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="pass">Pase</ComboBoxItem><ComboBoxItem Tag="bar">Barra</ComboBoxItem><ComboBoxItem Tag="room">Sala</ComboBoxItem>
+      </ComboBox>
+      <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.StationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" Width="70" HorizontalAlignment="Left"/>
+      <WrapPanel Margin="0,8,0,0"><Button Content="Guardar estación" Style="{StaticResource Primary}" Command="{Binding Organization.SaveStationCommand}"/>
+       <Button x:Name="ToggleStationButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleStationCommand}"/></WrapPanel>
+     </StackPanel></Border></ScrollViewer>
+    </Grid>
+   </Border>
+  </Grid>
+ </Grid>
+</UserControl>

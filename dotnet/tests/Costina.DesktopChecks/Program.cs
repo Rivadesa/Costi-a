@@ -233,7 +233,9 @@ internal static class Program
         var activeDevices=new Costina.Client.DeviceRowDto[]{new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))};
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         if(!center.RoomStations.Select(s=>s.Id).SequenceEqual(new[]{"sala-1"})||!center.KitchenStations.Select(s=>s.Id).SequenceEqual(new[]{"pase","cold","hot"})) throw new Exception("Waiters go to room/bar stations and screens to kitchen/pass/bar; inactive ones are never offered.");
-        if(window.FindName("ApproveStationBox") is not null||window.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
+        // C1: la vista de dispositivos es un UserControl con su propio ambito de nombres: se busca a traves de el.
+        var devicesView=(FrameworkElement)window.FindName("DevicesView");
+        if(devicesView.FindName("ApproveStationBox") is not null||devicesView.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
         if(!center.StartWaiterCommand.CanExecute(null)||!center.StartKitchenCommand.CanExecute(center.KitchenStations[1])||center.CreateRoomStationCommand.CanExecute(null)) throw new Exception("With a room station the waiter assistant starts and 'create Sala' is not offered.");
         if(center.Rows.Length!=2||center.Rows[0].Group!="Comanderos"||center.Rows[1].Group!="Pantalla de cocina · Cocina fría"||!center.ListSummary.Contains("1 quitados (ocultos)")) throw new Exception("The list groups active devices and hides the removed ones: "+center.ListSummary);
         center.ShowRevoked=true;
@@ -299,6 +301,12 @@ internal static class Program
         using(var elevationFile=File.Create("artifacts/desktop/elevation.png")) elevationEncoder.Save(elevationFile);
         levels.CancelElevationCommand.Execute(null);
         if(levels.ElevationRequested||levels.LoginCardVisible||levels.ConnectEnabled) throw new Exception("'Seguir como puesto' closes the card and keeps the station connected.");
+        // C1: los accesos de Inicio viven en su vista y navegan con GoToPage: nacen habilitados y siguen la logica del menu.
+        var homeDevices=(Button)((FrameworkElement)window.FindName("HomeView")).FindName("HomeDevicesButton");
+        if(!homeDevices.IsEnabled) throw new Exception("The Inicio shortcuts are enabled from the start (GoToPage CanExecute).");
+        System.Windows.Input.NavigationCommands.GoToPage.Execute(homeDevices.CommandParameter,homeDevices);
+        if(!levels.ElevationRequested||!levels.LoginTitle.Contains("Dispositivos")||workspace.SelectedItem!=(TabItem)window.FindName("HomeTab")) throw new Exception("A sensitive Inicio shortcut at the Puesto level asks for the responsible and keeps Inicio: "+levels.LoginTitle);
+        levels.CancelElevationCommand.Execute(null);
         var opened=""; levels.ViewRequested+=name=>opened=name;
         levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
         if(!levels.IsResponsible||levels.LevelText!="Responsable"||!levels.LeaveResponsibleCommand.CanExecute(null)) throw new Exception("A person session is the Responsable level.");

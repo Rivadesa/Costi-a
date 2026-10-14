@@ -1,0 +1,87 @@
+<UserControl x:Class="Costina.Desktop.Views.DevicesView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- C1: Dispositivos (nucleo, solo main; corte A): conectar comanderos y pantallas de cocina.
+      Extraida de MainWindow sin cambios; hereda el DataContext del cascaron (ShellViewModel): los enlaces son los mismos.
+      Los botones de pantalla de cocina buscan el comando en el DataContext de la ventana (RelativeSource Window). -->
+ <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border Grid.Column="0" Style="{StaticResource Card}"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+   <TextBlock Text="Conectar un dispositivo" Style="{StaticResource PanelTitle}"/>
+   <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,4,0,10" TextWrapping="Wrap"/>
+   <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}">
+    <TextBlock Text="Comandero (sala)" Style="{StaticResource Section}"/>
+    <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+     <ComboBox x:Name="RoomStationBox" Width="210" ItemsSource="{Binding Devices.RoomStations}" SelectedItem="{Binding Devices.SelectedRoomStation}" DisplayMemberPath="Name" Margin="0,0,8,0" ToolTip="Estación de sala (o barra) a la que pertenece el comandero"/>
+     <Button x:Name="StartWaiterButton" Content="Conectar comandero" Style="{StaticResource Primary}" Command="{Binding Devices.StartWaiterCommand}"/>
+    </WrapPanel>
+    <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource Bool2Vis}}">
+     <TextBlock Text="No hay ninguna estación de sala donde poner un comandero." VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap"/>
+     <Button x:Name="CreateRoomStationButton" Content="Crear la estación «Sala»" Command="{Binding Devices.CreateRoomStationCommand}"/>
+    </WrapPanel>
+    <WrapPanel Margin="0,6,0,0" Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+     <Button x:Name="KeepThisPcButton" Content="Dejar este PC conectado para el servicio" Command="{Binding Devices.KeepThisPcConnectedCommand}" ToolTip="Este PC queda emparejado como puesto de sala en la estación elegida: al encenderlo entra solo y toma comandas; caja, configuración y dispositivos siguen pidiendo la contraseña del responsable."/>
+     <TextBlock Text="{Binding Devices.ThisPcText}" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap" MaxWidth="360" Style="{StaticResource Subtle}"/>
+    </WrapPanel>
+    <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,14,0,4"/>
+    <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">
+     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+     <ItemsControl.ItemTemplate><DataTemplate>
+      <Button Content="{Binding Name}" MinWidth="160" Command="{Binding DataContext.Devices.StartKitchenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+     </DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </StackPanel>
+   <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource Bool2Vis}}">
+    <TextBlock Text="{Binding Devices.AssistantTitle}" Style="{StaticResource Section}"/>
+    <TextBlock Text="{Binding Devices.AssistantText}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+    <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+     <Border Grid.Column="0" Background="White" Padding="8" CornerRadius="6" BorderBrush="{StaticResource Line}" BorderThickness="1" VerticalAlignment="Top" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+      <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="232" Height="232" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
+     </Border>
+     <StackPanel Grid.Column="1" Margin="12,0,0,0">
+      <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+      <TextBlock Text="Código" Style="{StaticResource FieldLabel}" Margin="0,8,0,2"/>
+      <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"/>
+      <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,4,0,0"/>
+     </StackPanel>
+    </Grid>
+    <Border Style="{StaticResource WarnBanner}" Margin="0,0,0,8" Visibility="{Binding Devices.HasDuplicateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Devices.DuplicateWarning}" TextWrapping="Wrap"/></Border>
+    <Border Style="{StaticResource Banner}" Margin="0,0,0,8" Visibility="{Binding Devices.HasRecognised, Converter={StaticResource Bool2Vis}}"><DockPanel>
+     <Button DockPanel.Dock="Right" x:Name="ApproveButton" Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}"/>
+     <TextBlock Text="{Binding Devices.RecognisedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+    </DockPanel></Border>
+    <WrapPanel>
+     <Button Content="Generar otro código" Command="{Binding Devices.NewCodeCommand}"/>
+     <Button Content="Cerrar el asistente" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelCommand}"/>
+    </WrapPanel>
+   </StackPanel>
+   <Expander Header="Dirección para los dispositivos y solicitudes recibidas" Margin="0,14,0,0">
+    <StackPanel Margin="0,6,0,0">
+     <TextBlock Text="Dirección para los dispositivos" Style="{StaticResource FieldLabel}"/>
+     <TextBox x:Name="DeviceAddressBox" Text="{Binding Devices.DeviceAddress, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://NOMBRE:PUERTO con el que tablets y móviles llegan al servidor: el nombre del certificado (D5.3). Se propone sola y se recuerda en este equipo."/>
+     <TextBlock Text="Solicitudes recibidas" Style="{StaticResource Section}" Margin="0,10,0,4"/>
+     <TextBlock Text="Solo se aprueba la solicitud del asistente abierto, que sabe qué va a ser el dispositivo. Cualquier otra solo puede denegarse." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+     <ListBox ItemsSource="{Binding Devices.Pending}" SelectedItem="{Binding Devices.SelectedPending}" MaxHeight="100" Margin="0,4,0,4"/>
+     <Button Content="Denegar la solicitud seleccionada" Style="{StaticResource DangerButton}" Command="{Binding Devices.DenyCommand}" HorizontalAlignment="Left"/>
+    </StackPanel>
+   </Expander>
+  </StackPanel></ScrollViewer></Border>
+  <Border Grid.Column="2" Style="{StaticResource Card}"><DockPanel>
+   <StackPanel DockPanel.Dock="Top">
+    <TextBlock Text="Dispositivos conectados" Style="{StaticResource PanelTitle}"/>
+    <TextBlock Text="{Binding Devices.ListSummary}" TextWrapping="Wrap" Style="{StaticResource Subtle}" Margin="0,4,0,6"/>
+    <CheckBox Content="Mostrar también los quitados" IsChecked="{Binding Devices.ShowRevoked}" Margin="0,0,0,6"/>
+   </StackPanel>
+   <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+    <Border Style="{StaticResource DangerBanner}" Margin="0,0,0,6" Visibility="{Binding Devices.ConfirmingRemoval, Converter={StaticResource Bool2Vis}}"><DockPanel>
+     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+      <Button x:Name="ConfirmRemoveButton" Content="Sí, quitar" Style="{StaticResource DangerButton}" Command="{Binding Devices.ConfirmRemoveCommand}"/>
+      <Button Content="No" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelRemoveCommand}"/>
+     </StackPanel>
+     <TextBlock Text="{Binding Devices.RemovalText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+    </DockPanel></Border>
+    <Button x:Name="RemoveButton" Content="Quitar el dispositivo seleccionado" Style="{StaticResource DangerButton}" Command="{Binding Devices.AskRemoveCommand}" HorizontalAlignment="Left"/>
+   </StackPanel>
+   <ListBox x:Name="DeviceList" ItemsSource="{Binding Devices.Rows}" SelectedItem="{Binding Devices.SelectedRow}" DisplayMemberPath="Text">
+    <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" FontWeight="Bold" Margin="0,8,0,2"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
+   </ListBox>
+  </DockPanel></Border>
+ </Grid>
+</UserControl>

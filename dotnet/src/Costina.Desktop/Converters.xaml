@@ -1,0 +1,7 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="clr-namespace:Costina.Desktop">
+ <!-- C1: conversores de toda la aplicacion. Viven aqui, combinados en App.xaml, y no en Window.Resources: las vistas (UserControl de
+      Views/) se construyen antes de colgar de la ventana y no verian sus recursos (XamlParseException al cargar). -->
+ <BooleanToVisibilityConverter x:Key="Bool2Vis"/>
+ <local:InvertedBool2Vis x:Key="NotBool2Vis"/>
+</ResourceDictionary>

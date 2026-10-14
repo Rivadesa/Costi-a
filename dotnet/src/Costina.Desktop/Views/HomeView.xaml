@@ -1,0 +1,36 @@
+<UserControl x:Class="Costina.Desktop.Views.HomeView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <!-- C1: Inicio (corte A): estado, accesos y dispositivos.
+      Extraida de MainWindow sin cambios; hereda el DataContext del cascaron (ShellViewModel): los enlaces son los mismos.
+      Los accesos navegan con NavigationCommands.GoToPage: la ventana aplica la misma logica que el menu (elevacion incluida).
+      La vista se construye ANTES de colgar de la ventana: sin esta CommandBinding (solo CanExecute, siempre true) los accesos
+      calcularian CanExecute sin llegar a la de la ventana y nacerian deshabilitados hasta la primera tecla o clic. La orden
+      no se ejecuta aqui: sigue subiendo y la ejecuta la ventana (MainWindow.GoToPage). -->
+ <UserControl.CommandBindings><CommandBinding Command="NavigationCommands.GoToPage" CanExecute="CanGoToPage"/></UserControl.CommandBindings>
+ <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,4,0,0"><StackPanel>
+  <Border Style="{StaticResource Card}" Margin="0,0,0,12"><StackPanel>
+   <TextBlock Text="Inicio" Style="{StaticResource PanelTitle}"/>
+   <TextBlock Text="{Binding Home.WhoText}" TextWrapping="Wrap" Margin="0,4,0,4"/>
+   <TextBlock Text="{Binding Home.ServerText}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+   <TextBlock Text="{Binding RealtimeState}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
+   <TextBlock Text="{Binding Home.BackupText}" TextWrapping="Wrap" Style="{StaticResource Subtle}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"/>
+  </StackPanel></Border>
+  <Border Style="{StaticResource WarnBanner}" Margin="0,0,0,12" Visibility="{Binding Home.HasCertificateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Home.CertificateWarning}" TextWrapping="Wrap"/></Border>
+  <TextBlock Text="Apartados" Style="{StaticResource Section}"/>
+  <WrapPanel Margin="0,4,0,12">
+   <Button x:Name="HomeDiningButton" Content="Comedor y cocina" Command="NavigationCommands.GoToPage" CommandParameter="ServiceTab" Style="{StaticResource Primary}" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding HasDining, Converter={StaticResource Bool2Vis}}"/>
+   <Button Content="Cuenta / Caja" Command="NavigationCommands.GoToPage" CommandParameter="CheckoutTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+   <Button Content="Configuración" Command="NavigationCommands.GoToPage" CommandParameter="OrganizationTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+   <Button Content="Catálogo y tarifas" Command="NavigationCommands.GoToPage" CommandParameter="CatalogTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+   <Button Content="Oferta: cartas y menús" Command="NavigationCommands.GoToPage" CommandParameter="OffersTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+   <Button x:Name="HomeDevicesButton" Content="Dispositivos" Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab" MinWidth="210" MinHeight="56" FontSize="15" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
+  </WrapPanel>
+  <Border Style="{StaticResource Card}" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}"><StackPanel>
+   <TextBlock Text="Dispositivos" Style="{StaticResource Section}"/>
+   <TextBlock Text="{Binding Home.DevicesSummary}" TextWrapping="Wrap"/>
+   <WrapPanel Margin="0,8,0,0">
+    <Button Content="Conectar comandero" Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab"/>
+    <Button Content="Conectar pantalla de cocina" Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab"/>
+   </WrapPanel>
+  </StackPanel></Border>
+ </StackPanel></ScrollViewer>
+</UserControl>

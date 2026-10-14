@@ -9,7 +9,7 @@ using Costina.Desktop.ViewModels;
 
 namespace Costina.Desktop;
 
-// Estados vacios: visible cuando NO hay datos (texto explicativo en lugar de una lista en blanco).
+// Estados vacios: visible cuando NO hay datos (texto explicativo en lugar de una lista en blanco). Recurso NotBool2Vis de Converters.xaml.
 public sealed class InvertedBool2Vis : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is true ? Visibility.Collapsed : Visibility.Visible;
@@ -51,12 +51,23 @@ public partial class MainWindow : Window
         Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().FirstOrDefault(t => t.Visibility == Visibility.Visible);
     }
 
-    // Menu (y accesos de Inicio): cada entrada selecciona una vista del area de trabajo por su nombre (Tag).
+    // Menu: cada entrada selecciona una vista del area de trabajo por su nombre (Tag).
+    // C1: los botones de las vistas (accesos de Inicio) no pueden usar Click=ShowView desde un UserControl: envian
+    // NavigationCommands.GoToPage con el nombre de la vista y llegan aqui por la CommandBinding de la ventana. Misma logica.
     // Corte B: un apartado sensible desde el nivel Puesto pide primero al responsable (RequestElevation); el servidor lo
     // impone ademas con 403, asi que la pantalla solo evita un rechazo seguro.
     private void ShowView(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: string name } || FindName(name) is not TabItem view) return;
+        if (sender is FrameworkElement { Tag: string name }) ShowView(name);
+    }
+    private void CanGoToPage(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = true;
+    private void GoToPage(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (e.Parameter is string name) ShowView(name);
+    }
+    private void ShowView(string name)
+    {
+        if (FindName(name) is not TabItem view) return;
         if (ShellViewModel.RequiresResponsible(name) && !shell.IsMain) { shell.RequestElevation(name); return; }
         Tabs.SelectedItem = view;
     }
@@ -75,16 +86,18 @@ public partial class MainWindow : Window
 
     private async void TabChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (e.Source is not TabControl tabs) return;
-        shell.Home.Visible = tabs.SelectedItem == HomeTab;
-        shell.Checkout.Visible = tabs.SelectedItem == CheckoutTab;
-        shell.Devices.Visible = tabs.SelectedItem == DevicesTab;
-        shell.Organization.Visible = tabs.SelectedItem == OrganizationTab;
-        shell.Catalog.Visible = tabs.SelectedItem == CatalogTab;
-        shell.Offers.Visible = tabs.SelectedItem == OffersTab;
+        // C1: solo el cambio de vista del area de trabajo. Cualquier selector interior (ComboBox, ListBox, DataGrid o un
+        // TabControl anidado en una vista) burbujea hasta aqui con su propio OriginalSource y se ignora.
+        if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
+        shell.Home.Visible = Tabs.SelectedItem == HomeTab;
+        shell.Checkout.Visible = Tabs.SelectedItem == CheckoutTab;
+        shell.Devices.Visible = Tabs.SelectedItem == DevicesTab;
+        shell.Organization.Visible = Tabs.SelectedItem == OrganizationTab;
+        shell.Catalog.Visible = Tabs.SelectedItem == CatalogTab;
+        shell.Offers.Visible = Tabs.SelectedItem == OffersTab;
         if (shell.Home.Visible && shell.Connected && !shell.Busy)
             await shell.Run(shell.Home.LoadAsync);
-        else if (tabs.SelectedItem is TabItem { Name: var selected } && ShellViewModel.RequiresResponsible(selected) && !shell.IsMain)
+        else if (Tabs.SelectedItem is TabItem { Name: var selected } && ShellViewModel.RequiresResponsible(selected) && !shell.IsMain)
             SelectFirstVisibleView();   // una vista sensible no se queda abierta en el nivel Puesto
         else if (shell.Checkout.Visible && shell.IsMain && !shell.Busy)
             await shell.Run(shell.Checkout.LoadAsync);
