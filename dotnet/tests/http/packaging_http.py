@@ -651,6 +651,66 @@ class Packaging(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
         self.assertFalse(root.exists(), 'the denied folder must be cleaned up')
 
+    def test_06g_the_laboratory_never_reads_an_installation(self):
+        """C2.1: the HTTP suites started the laboratory WITHOUT COSTINA_DATA, so its data root was the real installation of the PC
+        (C:\\ProgramData\\Costina). Only 'access denied' kept them out; from an elevated console the installation's COSTINA_MODE beat
+        COSTINA_LAB_MODE (logs, backups, certificate and ports of the real installation) and init-lab loaded its owner credentials.
+        Now the laboratory requires a data folder of its own and refuses an installation's configuration. Temporary folders only:
+        the real installation is never touched, not even read (the refusal happens before any file is opened)."""
+        guard, mixed = 'necesitan su propia carpeta de datos', 'tiene la configuracion de una instalacion'
+        def run(*args, env):
+            done = cli(*args, env=env)
+            return done.returncode, done.stdout + done.stderr
+        work = Path(tempfile.mkdtemp(prefix='costina-isolation-'))
+        try:
+            # 1. FIRST, so the engine without the fix stops here: a folder holding an installation's configuration (a copy of the
+            #    real one, or the real one read from an elevated console). Neither the engine start nor init-lab may use it.
+            installation = work / 'installation'
+            (installation / 'config').mkdir(parents=True)
+            (installation / 'config' / 'server.json').write_text(json.dumps({'COSTINA_MODE': 'installation',
+                'COSTINA_BACKUP_COPY': str(work / 'second-copy'), 'COSTINA_PORT': PORT}), encoding='utf8')
+            (installation / 'config' / 'owner.json').write_text(json.dumps({'COSTINA_DB_OWNER':
+                'Host=127.0.0.1;Port=9;Database=never_d1_test;Username=nobody;Password=never-read'}), encoding='utf8')
+            for args in ((), ('init-lab',), ('create-user', 'lab-main', 'main')):
+                code, output = run(*args, env=clean_env(COSTINA_DATA=str(installation), COSTINA_LAB_MODE='true'))
+                self.assertNotEqual(code, 0, (args, output))
+                self.assertIn(mixed, output, args)
+                self.assertIn('COSTINA_MODE=installation', output, args)
+            self.assertEqual(sorted(p.name for p in installation.iterdir()), ['config'])   # no logs\ and no backups\ were created
+            self.assertFalse((work / 'second-copy').exists())
+            # 2. No COSTINA_DATA: the default root is the installation's. Refused before reading anything, whichever variable asks
+            #    for the laboratory.
+            for laboratory in ({'COSTINA_LAB_MODE': 'true'}, {'COSTINA_MODE': 'laboratory'}):
+                env = clean_env(**laboratory)
+                del env['COSTINA_DATA']
+                code, output = run('init-lab', env=env)
+                self.assertEqual(code, 1, output)
+                self.assertIn(guard, output)
+                self.assertIn('COSTINA_DATA', output)
+                self.assertNotIn('No se puede leer', output)   # it never got as far as opening the configuration
+                self.assertNotIn('   at ', output)
+            # 3. COSTINA_DATA naming the installation's root (or a folder inside it): the same refusal, again without reading it.
+            default_root = os.path.join(os.environ.get('ProgramData', r'C:\ProgramData'), 'Costina') if os.name == 'nt' else '/var/lib/costina'
+            for root in (default_root, default_root + os.sep, os.path.join(default_root, 'lab')):
+                code, output = run('init-lab', env=clean_env(COSTINA_DATA=root, COSTINA_LAB_MODE='true'))
+                self.assertEqual(code, 1, (root, output))
+                self.assertIn(guard, output, root)
+            # 4. Controls. A folder of its own (empty, or provisioned for the laboratory) passes the guard and the run fails only for
+            #    what it really lacks; an installation (mode from the environment, as the service and the installer do) is unaffected.
+            own = work / 'own'
+            (own / 'config').mkdir(parents=True)
+            code, output = run('init-lab', env=clean_env(COSTINA_DATA=str(own), COSTINA_LAB_MODE='true'))
+            self.assertIn('Missing COSTINA_DB', output)
+            (own / 'config' / 'server.json').write_text(json.dumps({'COSTINA_MODE': 'laboratory'}), encoding='utf8')
+            code, output = run('init-lab', env=clean_env(COSTINA_DATA=str(own), COSTINA_LAB_MODE='true'))
+            self.assertIn('Missing COSTINA_DB', output)
+            code, output = run('init', env=clean_env(COSTINA_DATA=str(installation)))
+            self.assertNotIn(guard, output)
+            self.assertNotIn(mixed, output)
+            self.assertIn('Missing COSTINA_DB', output)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')
         if not target: self.skipTest('Not running under GitHub Actions')
