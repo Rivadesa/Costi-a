@@ -85,6 +85,9 @@ public sealed record ZoneView(string Id, string Name, int Sort, bool Active, Tab
 public sealed record OrganizationView(ZoneView[] Zones, StationDefinition[] Stations, TariffDefinition[] Tariffs);
 // Mesa tal como la ven los clientes en GET /configuration (activas; campos de E1 mas la sala).
 public sealed record TableChoiceView(string Id, string Name, int Capacity, string ZoneId, string ZoneName);
+// C2: estacion tal como la ven los clientes en GET /configuration, para escribir su NOMBRE y no su codigo. Kind es el codigo en
+// minusculas (kitchen, pass, bar, room), el mismo que acepta station-create.
+public sealed record StationChoiceView(string Id, string Name, string Kind, bool Active);
 
 public static class OrganizationReads
 {
@@ -104,6 +107,10 @@ public static class OrganizationReads
         => reads.Query(scope, "SELECT t.id,t.name,t.capacity,z.id,z.name FROM core.tables t JOIN core.zones z ON z.tenant=t.tenant AND z.company=t.company AND z.location=t.location AND z.id=t.zone_id " +
             "WHERE t.tenant=@tenant AND t.company=@company AND t.location=@location AND t.active AND z.active ORDER BY z.sort,z.id,t.sort,t.id LIMIT 500",
             r => new TableChoiceView(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4)), ct);
+    // C2: TODAS las estaciones, tambien las desactivadas (marcadas): un dispositivo o una elaboracion de antes sigue nombrando la suya.
+    public static Task<List<StationChoiceView>> StationChoices(this DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)
+        => reads.Query(scope, "SELECT id,name,kind,active FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location ORDER BY sort,id LIMIT 500",
+            r => new StationChoiceView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetBoolean(3)), ct);
 
     public static async Task<bool> StationActive(this DesktopReadRepository reads, BusinessScope scope, string id, CancellationToken ct)
         => (await reads.Query(scope, "SELECT 1 FROM core.stations WHERE tenant=@tenant AND company=@company AND location=@location AND id=@id AND active",

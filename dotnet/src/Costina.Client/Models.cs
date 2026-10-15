@@ -72,7 +72,11 @@ public sealed record OfferItemChoice(string ProductId, string PresentationId, st
 public sealed record OfferCourseChoice(string Id, string Name, OfferDishChoice[] Dishes, OfferItemChoice[]? Items = null);
 public sealed record OfferChoice(string Id, string Name, string Kind, OfferCourseChoice[] Courses)
 { public string KindLabel => Labels.OfferKind(Kind); public override string ToString() => $"{Name} · {KindLabel}"; }
-public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null, OfferChoice[]? Offers = null);
+// C2: estaciones de la configuracion operativa (todos los roles; tambien las desactivadas, para nombrar lo que ya las cita). Kind es
+// el codigo en minusculas (kitchen, pass, bar, room). Stations es opcional: un servidor anterior no lo envia y queda el codigo.
+public sealed record StationChoice(string Id, string Name, string Kind, bool Active = true)
+{ public string KindLabel => Labels.StationKind(Kind); public override string ToString() => Name; }
+public sealed record Configuration(TableChoice[] Tables, MenuChoice[]? Menus = null, OfferChoice[]? Offers = null, StationChoice[]? Stations = null);
 // E4a: oferta completa (solo main): espejo de GET /erp/offers.
 public sealed record OfferDishDto(string OfferId, string CourseId, string Id, string Name, string StationId, string? ProductId, int Sort, bool Active);
 public sealed record OfferItemDto(string ProductId, string PresentationId, string Name, string Presentation, string? StationId, int Sort, bool Active);

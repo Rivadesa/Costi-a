@@ -319,6 +319,23 @@ await Check("catalog DTOs carry imageSha when the server sends it and stay null 
     Expect(organization.Zones[0].ToString()=="Terraza · 0 mesas activas · activa"&&(organization.Zones[0] with {TariffName="Terraza"}).ToString()=="Terraza · tarifa Terraza · 0 mesas activas · activa","zone row names its own tariff");
     Expect(!JsonSerializer.Serialize(organization.Zones[0] with {TariffName="Terraza"},web).Contains("tariffName"),"the tariff name is never sent back");
     return Task.CompletedTask;});
+// C2: GET /configuration trae las estaciones (todos los roles, tambien las desactivadas) para escribir su nombre; un servidor
+// anterior no las envia: Stations null y se sigue viendo el codigo, sin inventar nada.
+await Check("configuration stations give names to every role and an older server keeps the codes",async()=>{
+    const string tables="\"tables\":[{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":4,\"zoneId\":\"sala\",\"zoneName\":\"Sala\"}]";
+    var json="{"+tables+",\"offers\":[],\"menus\":[],\"stations\":[{\"id\":\"pase\",\"name\":\"Pase\",\"kind\":\"pass\",\"active\":true},"
+        +"{\"id\":\"hot\",\"name\":\"Cocina caliente\",\"kind\":\"kitchen\",\"active\":true},{\"id\":\"barra\",\"name\":\"Barra alta\",\"kind\":\"bar\",\"active\":false}]}";
+    using var client=Client(new Handler((r,_)=>Task.FromResult(Response(200,r.RequestUri!.AbsolutePath.EndsWith("/configuration",StringComparison.Ordinal)?json:"{}"))));
+    var current=await client.GetAsync<Configuration>("configuration");
+    var stations=current.Stations??throw new Exception("stations missing");
+    Expect(stations.Length==3&&stations[2] is {Id:"barra",Kind:"bar",Active:false},"stations decoded, inactive ones included");
+    Expect(stations.Select(s=>s.KindLabel).SequenceEqual(["Pase","Cocina","Barra"])&&stations[1].ToString()=="Cocina caliente","kind labels and the name as text");
+    var names=new Names(current);
+    Expect(names.Station("hot")=="Cocina caliente"&&names.Station("barra")=="Barra alta"&&names.Station("cold")=="cold"&&names.Table("M1")=="Mesa 1","names from the configuration (unknown code shown raw)");
+    var older=JsonSerializer.Deserialize<Configuration>("{"+tables+",\"menus\":[]}",web)!;
+    Expect(older.Stations is null&&new Names(older).Station("hot")=="hot"&&new Names(older).Table("M1")=="Mesa 1","older server: no stations, codes stay");
+    Expect(new StationChoice("x","Rara","grill").KindLabel=="grill","an unknown kind is shown raw");
+});
 await Check("product-image-set takes the type from the bytes, sends them in base64, is persisted before sending and closes on the echoed key",async()=>{
     var store=new MemoryStore(); string? key=null; JsonElement sent=default;
     using var client=new ApiClient(new Uri("http://127.0.0.1:5088"),new string('a',40),new Handler(async (r,_)=>{

@@ -97,6 +97,12 @@ class Organization(unittest.TestCase):
         self.assertEqual(command('station-deactivate', id='pase')[0], 409)                     # reservada: la de pase existe siempre
         self.assertEqual(command('station-update', id='pase', kind='kitchen')[0], 409)
         self.assertEqual(command('station-deactivate', id='barra')[0], 200)
+        # C2: /configuration (todos los roles) lista tambien la estacion desactivada, marcada: lo que ya la cita sigue nombrandola.
+        for role in ('main', 'service', 'kitchen'):
+            stations = {s['id']: s for s in ok('/configuration', role=role)['stations']}
+            self.assertEqual(stations['barra'], {'id': 'barra', 'name': 'Barra alta', 'kind': 'bar', 'active': False}, role)
+            self.assertEqual({s: stations[s]['kind'] for s in ('pase', 'cold', 'hot', 'sala-1')},
+                             {'pase': 'pass', 'cold': 'kitchen', 'hot': 'kitchen', 'sala-1': 'room'}, role)
         # Aprobar un puesto exige una estacion ACTIVA de la lista.
         pairing = ok('/auth/pairings', {})
         status, claimed = request('/auth/pairings/claim', {'code': pairing['code'], 'deviceName': 'tablet-barra'}, role='')
@@ -105,6 +111,7 @@ class Organization(unittest.TestCase):
         for station in ('barra', 'inventada', ''):
             self.assertEqual(request('/auth/pairings/' + pid + '/approve', {'role': 'service', 'station': station})[0], 422, station)
         self.assertEqual(command('station-reactivate', id='barra')[0], 200)
+        self.assertTrue(next(s for s in ok('/configuration', role='service')['stations'] if s['id'] == 'barra')['active'])
         self.assertEqual(request('/auth/pairings/' + pid + '/approve', {'role': 'service', 'station': 'barra'})[0], 200)
 
     def test_05_commands_are_idempotent_and_audited(self):

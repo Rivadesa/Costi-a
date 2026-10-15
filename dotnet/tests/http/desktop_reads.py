@@ -64,6 +64,10 @@ class DesktopReadChecks(unittest.TestCase):
             cfg=h.ok('/configuration',role=role)
             self.assertEqual(8,len(cfg['tables']))
             for menu in cfg['menus']: self.assertEqual({'id','name'},set(menu))
+            # C2: estaciones para escribir su nombre (no su codigo) en cualquier rol: id, nombre, tipo y activa; nada mas.
+            for station in cfg['stations']: self.assertEqual({'id','name','kind','active'},set(station),role)
+            self.assertIn({'id':'pase','name':'Pase','kind':'pass','active':True},cfg['stations'],role)
+            self.assertIn({'id':'hot','name':'Cocina caliente','kind':'kitchen','active':True},cfg['stations'],role)
     def test_catalog_only_for_main_even_with_case_or_profile(self):
         for role in ('service','kitchen'):
             for path in ('/checkout/catalog','/CHECKOUT/CATALOG','/checkout/accounts'):

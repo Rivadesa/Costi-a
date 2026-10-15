@@ -38,7 +38,10 @@ public static class DesktopReadRoutes
             var configuration=new Dictionary<string,object>(StringComparer.Ordinal){
                 ["tables"]=await reads.ActiveTables(scope,c.RequestAborted),
                 // E4a: ofertas VIGENTES ahora (degustaciones y menus cerrados con sus pases y platos): lo que se puede abrir. Sin dinero.
-                ["offers"]=await reads.AvailableOffers(scope,DateTime.Now,c.RequestAborted)};
+                ["offers"]=await reads.AvailableOffers(scope,DateTime.Now,c.RequestAborted),
+                // C2: estaciones (id, nombre, tipo, activa; tambien las desactivadas) para que un puesto y la PWA escriban nombres y no
+                // codigos: /organization es solo del responsable. Solo anade; sin dinero.
+                ["stations"]=await reads.StationChoices(scope,c.RequestAborted)};
             foreach(var (module,host) in modules)
                 foreach(var (key,value) in await module.ConfigurationAsync(host,c.RequestAborted))
                     if(!configuration.TryAdd(key,value)) throw new InvalidOperationException($"Configuration key {key} is claimed twice.");

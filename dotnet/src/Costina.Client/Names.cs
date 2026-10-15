@@ -1,13 +1,24 @@
 namespace Costina.Client;
 
-// C1: nombres legibles de mesas y estaciones a partir de lo leido (mesas de GET /configuration; las estaciones llegaran a
-// /configuration en C2, hasta entonces solo las conoce quien lee /organization). Cuando el nombre no se conoce queda el codigo:
-// nunca se inventa un nombre ni se oculta de que mesa o estacion se habla.
-public sealed class Names(IEnumerable<TableChoice>? tables = null, IEnumerable<StationDto>? stations = null)
+// C1: nombres legibles de mesas y estaciones a partir de lo leido. Cuando el nombre no se conoce queda el codigo: nunca se inventa
+// un nombre ni se oculta de que mesa o estacion se habla. C2: GET /configuration ya trae las estaciones para todos los roles (antes
+// solo las conocia quien leia /organization); con un servidor anterior no llegan y se sigue viendo el codigo.
+public sealed class Names
 {
     public static readonly Names Empty = new();
-    private readonly Dictionary<string, string> tableNames = Index((tables ?? []).Select(t => (t.Id, t.Name)));
-    private readonly Dictionary<string, string> stationNames = Index((stations ?? []).Select(s => (s.Id, s.Name)));
+    private readonly Dictionary<string, string> tableNames;
+    private readonly Dictionary<string, string> stationNames;
+
+    public Names(IEnumerable<TableChoice>? tables = null, IEnumerable<StationDto>? stations = null)
+        : this((tables ?? []).Select(t => (t.Id, t.Name)), (stations ?? []).Select(s => (s.Id, s.Name))) { }
+    // C2: mesas y estaciones de la configuracion operativa leida.
+    public Names(Configuration configuration)
+        : this(configuration.Tables.Select(t => (t.Id, t.Name)), (configuration.Stations ?? []).Select(s => (s.Id, s.Name))) { }
+    private Names(IEnumerable<(string Id, string Name)> tables, IEnumerable<(string Id, string Name)> stations)
+    {
+        tableNames = Index(tables);
+        stationNames = Index(stations);
+    }
 
     public string Table(string? id) => Lookup(tableNames, id);
     public string Station(string? id) => Lookup(stationNames, id);

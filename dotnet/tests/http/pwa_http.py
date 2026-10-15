@@ -66,6 +66,7 @@ class Pwa(unittest.TestCase):
             status, body = h.request(path, role='service')
             self.assertEqual(status, 200, path)
             self.assertEqual(list(money_keys(json.loads(body))), [], path)
+            if path == '/configuration': self.assertTrue(json.loads(body)['stations'], path)   # C2: las estaciones tambien pasan la guarda
         # D6.3: tampoco lo que RESPONDE una orden de sala. Una clave como 'chargeId' basta para que la guarda de la PWA
         # rechace la respuesta y la orden quede sin confirmar: la referencia del consumo viaja como consumptionId.
         status, body = h.request('/dining/services/' + sid + '/commands/add-consumption',
