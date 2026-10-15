@@ -277,6 +277,8 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
 
 ### 4.1. E4d — Menú de la casa y palabras claras (`0.39.0-e4d`, sin cambio de esquema)
 
+**Entregado el 15-10** con las palabras del promotor («Menú degustación», «Menús y cartas», «Menú del día»): `docs/native/E4d-menu-del-dia-y-palabras-claras.md`. Quedan para después el selector de calendario en las fechas y el IVA del producto-menú en la ficha.
+
 **Lo que ya arregla C2b (en curso).** El promotor encontró que el programa se cerraba al guardar.
 - En Catálogo, Oferta y Salas, cada «Guardar» validaba los campos **antes** del manejador de errores del shell: `Code`, `Name` y las lecturas de números, fechas y precios lanzan `ArgumentException` fuera de `shell.Run` (`Desktop/ViewModels/CatalogViewModel.cs:336-353,357`; `OffersViewModel.cs:169-173,185`; `OrganizationViewModel.cs:140-144,148`). Un código fijo vacío (o un nombre, un orden, una fecha o un precio vacíos o mal escritos) cerraba el programa.
 - C2b enseña el mensaje en su lugar y, si el código fijo está vacío, lo genera en el cliente a partir del nombre con la regla de la importación (`Catalog.Slug`, `Core.Domain/Catalog.cs:141-155`).
