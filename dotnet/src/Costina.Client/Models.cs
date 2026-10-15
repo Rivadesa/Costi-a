@@ -85,18 +85,20 @@ public sealed record OfferDto(string Id, string Name, string Kind, string? Produ
 // E3: vendible de caja = producto + presentacion con el precio de la tarifa general como referencia (el servidor fija el real).
 // PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia. E3.2: ImageSha = huella de la imagen
 // vigente del producto (null sin imagen o con un servidor anterior); los bytes se piden aparte (ApiClient.GetProductImageAsync).
+// E3.3: Section ('cocina' | 'bodega'), Family, Reference y Glass (es la copa; lo decide el servidor): un servidor anterior no los envia.
 public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents, string? PresentationId = null, string? CategoryName = null, string? TariffId = null,
-    string? ImageSha = null)
+    string? ImageSha = null, string? Section = null, string? Family = null, string? Reference = null, bool Glass = false)
 { public override string ToString() => (CategoryName is { Length: > 0 } ? CategoryName + " · " : "") + $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }
 // E3: catalogo completo (solo main): espejo de GET /erp/catalog. Precios con IVA incluido; ValidFrom como AAAA-MM-DD.
 public sealed record TaxDto(string Id, string Name, decimal Rate, bool Active)
 { public string StateLabel => Labels.Active(Active, feminine: false); public override string ToString() => $"{Name} · {Rate:0.##} % · {StateLabel}"; }
 public sealed record CategoryDto(string Id, string Name, string? ParentId, string? Color, int Sort, bool Active);
 public sealed record PriceDto(string TariffId, string ValidFrom, long PriceCents);
-public sealed record PresentationDto(string Id, string Name, int Sort, bool Active, PriceDto[] Prices);
+public sealed record PresentationDto(string Id, string Name, int Sort, bool Active, PriceDto[] Prices, bool Glass = false);   // E3.3: Glass = es la copa
 // E3.2: ImageSha = huella de la imagen vigente (null sin imagen, quitada o con un servidor anterior).
+// E3.3: Section ('cocina' | 'bodega' | null para un producto-menu), Family (la familia bajo la seccion) y CategoryPath (sin la seccion).
 public sealed record ProductDto(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationDto[] Presentations, string? StationId = null,
-    string? ImageSha = null);
+    string? ImageSha = null, string? Section = null, string? Family = null, string[]? CategoryPath = null);
 public sealed record TariffDto(string Id, string Name, int Sort, bool Active)
 { public string StateLabel => Labels.Active(Active, feminine: true); public override string ToString() => $"{Name} · {StateLabel}"; }
 public sealed record CatalogDto(TaxDto[] Taxes, CategoryDto[] Categories, ProductDto[] Products, TariffDto[] Tariffs, string Today);

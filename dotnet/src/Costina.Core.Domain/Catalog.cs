@@ -27,6 +27,47 @@ public static class Catalog
     public const string GeneralTariff = "general";
     // Presentacion por defecto de la importacion y de la migracion (lo que antes era el unico "producto vendible").
     public const string DefaultPresentation = "unit";
+    // E3.3: dos SECCIONES fijas del catalogo, como categorias raiz reservadas (existen siempre en cada ambito, como 'general' y 'pase'):
+    // no se desactivan, no se cuelgan de otra categoria y su codigo no se puede dar de alta a mano (Slug nunca produce un guion bajo).
+    // Su nombre si se puede cambiar. La presentacion de la COPA es 'copa' (la de los datos de ensayo, 'glass', cuenta igual).
+    public const string KitchenSection = "_cocina", CellarSection = "_bodega", GlassPresentation = "copa";
+    public static bool IsSection(string? id) => id is KitchenSection or CellarSection;
+    public static string SectionName(string id) => id == KitchenSection ? "Cocina" : "Bodega y bebidas";
+    public static bool IsGlass(string? presentationId) => presentationId is GlassPresentation or "glass";
+    // Raiz de una categoria (null sin categoria). Se protege de un ciclo con un tope de pasos.
+    public static string? RootOf(string? categoryId, Func<string, string?> parentOf)
+    {
+        var current = categoryId;
+        for (var steps = 0; current is not null && steps < 16; steps++)
+        {
+            var parent = parentOf(current);
+            if (parent is null) return current;
+            current = parent;
+        }
+        return current;
+    }
+    // Seccion de un producto al leer: la de su raiz si es una seccion; los productos-menu (categoria 'menus'), ninguna: se editan en
+    // Menus y cartas; si no, por la estacion (cocina o pase = cocina; sin estacion o barra = bodega: "sin estacion, bebida o consumo
+    // directo"). Asi un catalogo importado sale en Bodega antes de mover nada. Devuelve "cocina", "bodega" o null.
+    public static string? SectionOf(string? categoryId, Func<string, string?> parentOf, string? stationKind)
+    {
+        if (categoryId == Offers.MenusCategory) return null;
+        var root = RootOf(categoryId, parentOf);
+        if (root == KitchenSection) return "cocina";
+        if (root == CellarSection) return "bodega";
+        return stationKind is { } kind && (kind.Equals("kitchen", StringComparison.OrdinalIgnoreCase) || kind.Equals("pass", StringComparison.OrdinalIgnoreCase)) ? "cocina" : "bodega";
+    }
+    // Nombres de la raiz a la hoja, sin la seccion; la familia es el primero (en una raiz sin seccion, la propia raiz).
+    public static string[] CategoryPath(string? categoryId, Func<string, string?> parentOf, Func<string, string?> nameOf)
+    {
+        var names = new List<string>(); var current = categoryId;
+        for (var steps = 0; current is not null && steps < 16; steps++)
+        {
+            if (!IsSection(current) && nameOf(current) is { } name) names.Insert(0, name);
+            current = parentOf(current);
+        }
+        return [.. names];
+    }
 
     public static TaxDefinition Tax(string? id, string? name, decimal? rate, bool active = true)
     {

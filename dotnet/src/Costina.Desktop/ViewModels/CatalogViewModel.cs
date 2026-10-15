@@ -91,6 +91,23 @@ public sealed record PresentationRow(PresentationDto Presentation, string PriceT
     public bool Inactive => !Presentation.Active;
     public override string ToString() => $"{Presentation.Name} · {PriceText} · {StateLabel}";
 }
+// E3.3: fila de "Vinos por copa" (Bodega en bloque). Lo tecleado es un BORRADOR por codigo de producto (F01): una relectura no lo pisa
+// y "Guardar" solo envia filas de productos que siguen en la ultima lectura correcta. ByGlassRead/GlassPriceRead es lo leido.
+public sealed partial class GlassRow(ProductDto product, string family, string bottleText, bool byGlassRead, string glassPriceRead) : ObservableObject
+{
+    public ProductDto Product { get; } = product;
+    public string Name => Product.Name;
+    public string Family { get; } = family;
+    public string BottleText { get; } = bottleText;
+    public bool ByGlassRead { get; } = byGlassRead;
+    public string GlassPriceRead { get; } = glassPriceRead;
+    [ObservableProperty] private bool isChecked;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private bool byGlass = byGlassRead;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private string glassPrice = glassPriceRead;
+    public bool Dirty => ByGlass != ByGlassRead || (ByGlass && GlassPrice.Trim() != GlassPriceRead);
+    public string Detail => Family + " · botella " + BottleText + (Product.Reference is { Length: > 0 } r ? " · " + r : "");
+    public override string ToString() => $"{Name} · {Family} · botella {BottleText} · copa {(ByGlass ? GlassPrice : "no")}";
+}
 // C2b: filas de las listas de tarifas e impuestos (la eleccion sigue siendo el DTO: SelectedTariff y SelectedTax).
 public sealed record TariffRow(TariffDto Tariff, string Detail) { public bool Inactive => !Tariff.Active; public override string ToString() => Tariff.ToString(); }
 public sealed record TaxRow(TaxDto Tax, string Detail) { public bool Inactive => !Tax.Active; public override string ToString() => Tax.ToString(); }
@@ -156,7 +173,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     public SegmentChoice[] Sections { get; } = SectionChoices();
     private static SegmentChoice[] SectionChoices()
     {
-        var choices = new[] { new SegmentChoice("products", "Productos"), new SegmentChoice("categories", "Categorías"), new SegmentChoice("tariffs", "Tarifas"), new SegmentChoice("taxes", "Impuestos") };
+        var choices = new[] { new SegmentChoice("products", "Productos"), new SegmentChoice("categories", "Categorías"), new SegmentChoice("tariffs", "Tarifas"), new SegmentChoice("taxes", "Impuestos"), new SegmentChoice("glass", "Vinos por copa") };
         SegmentChoice.Mark(choices, "products");
         return choices;
     }
@@ -169,10 +186,161 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         {
             if (value is null || value == section || !Sections.Any(s => s.Id == value)) return;
             section = value; SegmentChoice.Mark(Sections, value);
-            foreach (var name in new[] { nameof(Section), nameof(ShowProducts), nameof(ShowCategories), nameof(ShowTariffs), nameof(ShowTaxes) }) OnPropertyChanged(name);
+            foreach (var name in new[] { nameof(Section), nameof(ShowProducts), nameof(ShowCategories), nameof(ShowTariffs), nameof(ShowTaxes), nameof(ShowGlass) }) OnPropertyChanged(name);
         }
     }
     public bool ShowProducts => section == "products";
+    public bool ShowGlass => section == "glass";
+    // ---- E3.3: seccion de cada producto (Cocina, Bodega y bebidas o Menus) ----
+    // La dice el servidor; con uno anterior se calcula igual que el: la raiz de su categoria si es una seccion, los productos-menu
+    // ninguna y, si no, la estacion (cocina o pase = cocina; sin estacion o barra = bodega).
+    public const string KitchenSection = "_cocina", CellarSection = "_bodega";
+    public static bool IsSectionCategory(string? id) => id is KitchenSection or CellarSection;
+    private string? RootOf(string? categoryId) { var c = categoryId; for (var n = 0; c is not null && n < 16; n++) { var parent = CategoryOf(c)?.ParentId; if (parent is null) return c; c = parent; } return c; }
+    public string? SectionOf(ProductDto p)
+    {
+        if (p.Section is { Length: > 0 }) return p.Section;
+        if (p.CategoryId == "menus") return null;
+        return RootOf(p.CategoryId) switch
+        {
+            KitchenSection => "cocina", CellarSection => "bodega",
+            _ => Stations.FirstOrDefault(s => s.Id == p.StationId)?.Kind is { } kind && (kind.Equals("Kitchen", StringComparison.OrdinalIgnoreCase) || kind.Equals("Pass", StringComparison.OrdinalIgnoreCase)) ? "cocina" : "bodega"
+        };
+    }
+    private string FamilyOf(ProductDto p) => p.Family ?? (p.CategoryId is { } c ? PathOf(c, 6).Split(" › ").FirstOrDefault(n => !IsSectionCategory(n)) ?? "Sin familia" : "Sin familia");
+    // Chips de seccion de la lista de productos, con recuento (como los filtros del Comedor); "Todos" conserva las listas de antes.
+    public FilterChip[] SectionFilters { get; } = [new("all", "Todos"), new("cocina", "Cocina"), new("bodega", "Bodega y bebidas"), new("menus", "Menús")];
+    private string sectionFilter = "all";
+    public string? SectionFilter
+    {
+        get => sectionFilter;
+        set
+        {
+            if (value is null || value == sectionFilter || !SectionFilters.Any(s => s.Id == value)) return;
+            sectionFilter = value; OnPropertyChanged();
+            if (!rendering) Refilter();
+        }
+    }
+    private bool InSection(ProductDto p) => sectionFilter == "all" || (SectionOf(p) ?? "menus") == sectionFilter;
+    private void LabelSectionFilters()
+    {
+        foreach (var chip in SectionFilters)
+            chip.Label = catalog is null ? chip.Name : $"{chip.Name} · {catalog.Products.Count(p => chip.Id == "all" || (SectionOf(p) ?? "menus") == chip.Id)}";
+    }
+    // ---- E3.3: Vinos por copa (la bodega en bloque): buscador, familia, filas con borrador y las acciones sobre los marcados ----
+    [ObservableProperty] private GlassRow[] glassRows = [];
+    [ObservableProperty] private string glassSearch = "";
+    [ObservableProperty] private CategoryChoice[] glassFamilies = [AllChoice];
+    [ObservableProperty] private string? glassFamily = "";
+    [ObservableProperty] private string samePriceText = "";
+    [ObservableProperty] private string? glassTaxId;
+    [ObservableProperty] private string? moveTargetId;
+    [ObservableProperty] private string glassCount = "";
+    [ObservableProperty] private string glassSummary = "";
+    [ObservableProperty] private bool showGlassEmpty;
+    private readonly Dictionary<string, (bool ByGlass, string Price)> glassDraft = new(StringComparer.Ordinal);
+    private readonly HashSet<string> glassChecked = new(StringComparer.Ordinal);
+    private bool glassRendering;
+    partial void OnGlassSearchChanged(string value) { if (!rendering && !glassRendering) RenderGlass(); }
+    partial void OnGlassTaxIdChanged(string? value) => ComposeGlass();
+    partial void OnMoveTargetIdChanged(string? value) => ComposeGlass();
+    partial void OnGlassFamilyChanged(string? value) { if (!rendering && !glassRendering && value is not null) RenderGlass(); }
+    private IEnumerable<ProductDto> CellarProducts() => catalog is null ? [] : catalog.Products.Where(p => p.Active && SectionOf(p) == "bodega");
+    private void RenderGlass()
+    {
+        if (catalog is null) { GlassRows = []; GlassCount = ""; ShowGlassEmpty = true; return; }
+        var today = catalog.Today; var text = GlassSearch.Trim();
+        // Familias de la bodega para el filtro (la familia y sus subfamilias: se filtra por la raiz bajo la seccion).
+        var families = CellarProducts().Select(FamilyOf).Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(f => f, StringComparer.CurrentCultureIgnoreCase)
+            .Select(f => new CategoryChoice(f, f, f, 0)).ToArray();
+        CategoryChoice[] choices = [new("", "Todas las familias", "Todas las familias", 0), .. families];
+        if (!GlassFamilies.SequenceEqual(choices)) { var keep = GlassFamily; glassRendering = true; try { GlassFamilies = choices; GlassFamily = null; GlassFamily = choices.Any(c => c.Id == keep) ? keep : ""; } finally { glassRendering = false; } }
+        var rows = CellarProducts()
+            .Where(p => GlassFamily is not { Length: > 0 } f || string.Equals(FamilyOf(p), f, StringComparison.CurrentCultureIgnoreCase))
+            .Where(p => text.Length == 0 || TextSearch.Contains(p.Name, text) || (p.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false) || TextSearch.Contains(FamilyOf(p), text))
+            .Select(p =>
+            {
+                var glass = p.Presentations.FirstOrDefault(s => s.Glass || s.Id is "copa" or "glass");
+                var glassPrice = glass is { Active: true } ? Current(glass, "general", today) : null;
+                var bottle = p.Presentations.Where(s => s.Active && !(s.Glass || s.Id is "copa" or "glass")).Select(s => Current(s, "general", today)).FirstOrDefault(c => c is not null);
+                var row = new GlassRow(p, FamilyOf(p), bottle is null ? "sin precio" : Money(bottle.PriceCents), glassPrice is not null, glassPrice is null ? "" : (glassPrice.PriceCents / 100m).ToString("0.00", Spanish));
+                if (glassDraft.TryGetValue(p.Id, out var draft)) { row.ByGlass = draft.ByGlass; row.GlassPrice = draft.Price; }
+                row.IsChecked = glassChecked.Contains(p.Id);
+                row.PropertyChanged += GlassRowChanged;
+                return row;
+            }).ToArray();
+        foreach (var old in GlassRows) old.PropertyChanged -= GlassRowChanged;
+        GlassRows = rows;
+        var total = CellarProducts().Count();
+        GlassCount = rows.Length == total ? Labels.Plural(total, "vino o bebida", "vinos y bebidas") + " en Bodega" : $"{rows.Length} de {Labels.Plural(total, "vino o bebida", "vinos y bebidas")}";
+        ShowGlassEmpty = rows.Length == 0;
+        ComposeGlass();
+    }
+    private void GlassRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not GlassRow row) return;
+        if (e.PropertyName is nameof(GlassRow.ByGlass) or nameof(GlassRow.GlassPrice))
+        {
+            if (row.Dirty) glassDraft[row.Product.Id] = (row.ByGlass, row.GlassPrice); else glassDraft.Remove(row.Product.Id);
+        }
+        else if (e.PropertyName == nameof(GlassRow.IsChecked)) { if (row.IsChecked) glassChecked.Add(row.Product.Id); else glassChecked.Remove(row.Product.Id); }
+        ComposeGlass();
+    }
+    private void ComposeGlass()
+    {
+        var checkedRows = GlassRows.Count(r => r.IsChecked); var dirty = GlassRows.Count(r => r.Dirty);
+        GlassSummary = (checkedRows == 0 ? "Ninguno marcado" : Labels.Plural(checkedRows, "marcado", "marcados")) + " · " + (dirty == 0 ? "sin cambios por guardar" : Labels.Plural(dirty, "cambio por guardar", "cambios por guardar"));
+        foreach (var command in new IRelayCommand[] { SaveGlassCommand, SamePriceCommand, SetTaxCommand, MoveCheckedCommand, CheckAllCommand, UncheckAllCommand }) command.NotifyCanExecuteChanged();
+    }
+    private GlassRow[] CheckedRows => GlassRows.Where(r => r.IsChecked).ToArray();
+    private bool CanCheckAll() => GlassRows.Any(r => !r.IsChecked);
+    [RelayCommand(CanExecute = nameof(CanCheckAll))] private void CheckAll() { foreach (var r in GlassRows) r.IsChecked = true; }
+    private bool CanUncheckAll() => GlassRows.Any(r => r.IsChecked);
+    [RelayCommand(CanExecute = nameof(CanUncheckAll))] private void UncheckAll() { foreach (var r in GlassRows) r.IsChecked = false; }
+    // "Mismo precio para los marcados": escribe el precio en los marcados y los pone por copa; no envia nada.
+    private bool CanSamePrice() => Main && CheckedRows.Length > 0;
+    [RelayCommand(CanExecute = nameof(CanSamePrice))]
+    private void SamePrice() => shell.Attempt(() =>
+    {
+        var cents = Cents(SamePriceText); var text = (cents / 100m).ToString("0.00", Spanish);
+        foreach (var r in CheckedRows) { r.ByGlass = true; r.GlassPrice = text; }
+        return Task.CompletedTask;
+    });
+    // "Guardar": UNA orden glass-sale-set con los cambios (hasta 300 por orden; el resto, en ordenes seguidas, una detras de otra).
+    private bool CanSaveGlass() => Main && GlassRows.Any(r => r.Dirty);
+    [RelayCommand(CanExecute = nameof(CanSaveGlass))]
+    private Task SaveGlass() => shell.Attempt(() =>
+    {
+        var dirty = GlassRows.Where(r => r.Dirty).ToArray();
+        var items = new List<object>(); var stop = new List<string>();
+        foreach (var r in dirty)
+        {
+            if (r.ByGlass) { if (r.GlassPrice.Trim().Length == 0) throw new ArgumentException($"Falta el precio de la copa de {r.Name}."); items.Add(new { productId = r.Product.Id, priceCents = Cents(r.GlassPrice) }); }
+            else if (r.ByGlassRead) stop.Add(r.Product.Id);
+        }
+        var sent = dirty.Select(r => r.Product.Id).ToArray();
+        return shell.Run(async () =>
+        {
+            for (var i = 0; i < items.Count || i < stop.Count; i += 300)
+                await shell.Api!.SendAsync("erp/catalog/commands/glass-sale-set", new { items = items.Skip(i).Take(300).ToArray(), stop = stop.Skip(i).Take(300).ToArray() },
+                    $"Vinos por copa: {Labels.Plural(items.Count, "copa", "copas")}, {Labels.Plural(stop.Count, "quitado", "quitados")}");
+            foreach (var id in sent) glassDraft.Remove(id);
+            shell.Status = $"Vinos por copa guardados: {Labels.Plural(items.Count, "copa", "copas")}, {Labels.Plural(stop.Count, "quitado", "quitados")}: confirmado por el servidor.";
+            await LoadAsync();
+        });
+    });
+    // "Cambiar IVA de los marcados" (decision del promotor: el tipo lo dira el gestor; se cambia sin reimportar).
+    private bool CanSetTax() => Main && CheckedRows.Length > 0 && GlassTaxId is { Length: > 0 };
+    [RelayCommand(CanExecute = nameof(CanSetTax))]
+    private Task SetTax() => Command("products-tax-set", new { productIds = CheckedRows.Select(r => r.Product.Id).ToArray(), taxId = GlassTaxId }, $"Cambiar IVA de {Labels.Plural(CheckedRows.Length, "marcado", "marcados")} a {Taxes.FirstOrDefault(t => t.Id == GlassTaxId)?.Name ?? GlassTaxId}");
+    // "Mover los marcados a" una familia (products-move).
+    private bool CanMoveChecked() => Main && CheckedRows.Length > 0 && MoveTargetId is not null;
+    [RelayCommand(CanExecute = nameof(CanMoveChecked))]
+    private Task MoveChecked() => Command("products-move", new { productIds = CheckedRows.Select(r => r.Product.Id).ToArray(), categoryId = MoveTargetId ?? "" }, $"Mover {Labels.Plural(CheckedRows.Length, "marcado", "marcados")} a {(MoveTargetId is { Length: > 0 } m ? PathOf(m) : "sin familia")}");
+    // E3.3: una familia raiz que no es una seccion se coloca con un boton (category-update con parentId); el servidor comprueba los niveles.
+    public bool CanPlaceCategory => Main && !NewCategory && SelectedCategory?.Category is { ParentId: null } c && !IsSectionCategory(c.Id);
+    [RelayCommand] private Task PlaceCategory(string? section) => SelectedCategory is null || section is null ? Task.CompletedTask
+        : Command("category-update", new { id = SelectedCategory.Category.Id, parentId = section }, $"Mover {SelectedCategory.Category.Name} a {(section == KitchenSection ? "Cocina" : "Bodega y bebidas")}");
     public bool ShowCategories => section == "categories";
     public bool ShowTariffs => section == "tariffs";
     public bool ShowTaxes => section == "taxes";
@@ -315,7 +483,14 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         Choices(ref activeTaxes, [.. Taxes.Where(t => t.Active || t.Id == product?.TaxId).Select(t => t.Active ? t : t with { Name = t.Name + " (desactivado)" })], nameof(ActiveTaxes), () => ProductTaxId, v => ProductTaxId = v);
         Choices(ref stationChoices, [NoStation, .. Stations.Where(s => s.Active && s.Kind != "Pass" || s.Id == product?.StationId).Select(s => s.Active ? s : s with { Name = s.Name + " (desactivada)" })],
             nameof(StationChoices), () => ProductStationId, v => ProductStationId = v);
+        // E3.3: las mismas listas para las acciones en bloque de Vinos por copa (impuesto y familia de destino).
+        Choices(ref bulkTaxes, [.. Taxes.Where(t => t.Active)], nameof(BulkTaxes), () => GlassTaxId ?? "", v => GlassTaxId = v is { Length: > 0 } ? v : null);
+        Choices(ref moveTargets, [NoCategory, .. TreeChoices(c => c.Active)], nameof(MoveTargets), () => MoveTargetId ?? "", v => MoveTargetId = v);
     }
+    private TaxDto[] bulkTaxes = [];
+    private CategoryChoice[] moveTargets = [NoCategory];
+    public TaxDto[] BulkTaxes => bulkTaxes;
+    public CategoryChoice[] MoveTargets => moveTargets;
     private void Choices<T>(ref T[] field, T[] fresh, string list, Func<string> get, Action<string> set)
     {
         if (field.SequenceEqual(fresh)) return;
@@ -346,8 +521,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     {
         foreach (var name in new[] { nameof(CategoryEditable), nameof(ProductEditable), nameof(PresentationEditable), nameof(PriceEditable), nameof(TariffEditable), nameof(TaxEditable),
             nameof(CategoryFormTitle), nameof(ProductFormTitle), nameof(PresentationFormTitle), nameof(TariffFormTitle), nameof(TaxFormTitle),
-            nameof(HasCategories), nameof(HasProducts), nameof(HasPresentations) })
+            nameof(HasCategories), nameof(HasProducts), nameof(HasPresentations), nameof(CanPlaceCategory) })
             OnPropertyChanged(name);
+        ComposeGlass();
         foreach (var command in new IRelayCommand[] { StartCategoryCommand, SaveCategoryCommand, ToggleCategoryCommand, StartProductCommand, SaveProductCommand, ToggleProductCommand,
             StartPresentationCommand, SavePresentationCommand, TogglePresentationCommand, SetPriceCommand, StartTariffCommand, SaveTariffCommand, ToggleTariffCommand, StartTaxCommand, SaveTaxCommand, ToggleTaxCommand,
             ChangeImageCommand, RemoveImageCommand, CancelCategoryCommand, CancelProductCommand, CancelPresentationCommand, CancelTariffCommand, CancelTaxCommand, ShowCategoryProductsCommand })
@@ -365,7 +541,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             NewCategory = NewProduct = NewPresentation = NewTariff = NewTax = false; Search = ""; AllCategories = true; filterCategoryId = null; Summary = "Sin datos de catálogo todavía."; PriceValidFrom = "";
             createdCategory = createdProduct = createdPresentation = createdTariff = createdTax = null;
             images.Clear(); photoGeneration++; ProductPhoto = null; PhotoText = "Sin producto seleccionado.";
-            Section = "products"; LabelSections();
+            Section = "products"; sectionFilter = "all"; OnPropertyChanged(nameof(SectionFilter)); LabelSections(); LabelSectionFilters(); glassDraft.Clear(); glassChecked.Clear(); GlassSearch = ""; RenderGlass();
         }
         finally { rendering = false; }
         RefreshChoices(); RepushFilter();
@@ -440,7 +616,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             // C2b (repaso de coherencia): sin productos, la cabecera dice que falta y como empezar, como Oferta y Salas (antes "0 productos activos").
             Summary = value.Products.Length == 0 ? "Aún no hay productos: crea el primero con «Nuevo producto» o importa el catálogo."
                 : $"{Labels.Plural(value.Products.Count(p => p.Active), "producto activo", "productos activos")} ({Labels.Plural(sellable, "vendible", "vendibles")} hoy) · precios con IVA incluido";
-            LabelSections();
+            LabelSections(); LabelSectionFilters(); RenderGlass();
         }
         finally { rendering = false; }
         RefreshChoices(); RepushFilter();
@@ -450,9 +626,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private static string? Take(ref string? created) { var value = created; created = null; return value; }
     private void LabelSections()
     {
-        int?[] counts = [catalog?.Products.Length, catalog?.Categories.Length, catalog?.Tariffs.Length, catalog?.Taxes.Length];
+        int?[] counts = [catalog?.Products.Length, catalog?.Categories.Length, catalog?.Tariffs.Length, catalog?.Taxes.Length, catalog is null ? null : CellarProducts().Count()];
         foreach (var (choice, count) in Sections.Zip(counts))
-            choice.Label = (choice.Id switch { "products" => "Productos", "categories" => "Categorías", "tariffs" => "Tarifas", _ => "Impuestos" }) + (count is { } n ? " · " + n : "");
+            choice.Label = (choice.Id switch { "products" => "Productos", "categories" => "Categorías", "tariffs" => "Tarifas", "taxes" => "Impuestos", _ => "Vinos por copa" }) + (count is { } n ? " · " + n : "");
     }
 
     // ---- C2b: arbol de categorias (rutas, descendientes y recuentos) ----
@@ -519,6 +695,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         var text = Search.Trim();
         var within = !AllCategories && filterCategoryId is { } filter ? Within(filter) : null;
         Products = catalog.Products
+            .Where(InSection)   // E3.3: Cocina, Bodega y bebidas o Menus
             .Where(p => within is null || p.CategoryId is { } c && within.Contains(c))
             .Where(p => Matches(p, text))
             .Select(ProductRowOf)

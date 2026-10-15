@@ -11,7 +11,10 @@ namespace Costina.Server;
 // Sin version esperada: datos maestros, la ultima edicion gana; el cliente relee tras cada comando.
 public sealed record CatalogCommand(string? Id=null,string? Name=null,decimal? Rate=null,string? ParentId=null,string? Color=null,int? Sort=null,
     string? CategoryId=null,string? TaxId=null,string? Reference=null,string? Presentation=null,string? ProductId=null,string? PresentationId=null,
-    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null,string? StationId=null,string? ContentType=null,byte[]? Data=null);
+    string? TariffId=null,string? ValidFrom=null,long? PriceCents=null,string? StationId=null,string? ContentType=null,byte[]? Data=null,
+    GlassItem[]? Items=null,string[]? Stop=null,string[]? ProductIds=null);
+// E3.3: un vino por copa con su precio (glass-sale-set).
+public sealed record GlassItem(string? ProductId=null,long? PriceCents=null);
 
 public static class CatalogOperations
 {
@@ -21,7 +24,9 @@ public static class CatalogOperations
         "product-create","product-update","product-deactivate","product-reactivate",
         "presentation-create","presentation-update","presentation-deactivate","presentation-reactivate",
         "tariff-create","tariff-update","tariff-deactivate","tariff-reactivate","price-set",
-        "product-image-set","product-image-remove"];
+        "product-image-set","product-image-remove","glass-sale-set","products-move","products-tax-set"];
+    // E3.3: vinos por orden de glass-sale-set (unos 21 KB en 300: dentro de MaxCommandBody). El puesto parte listas mayores.
+    public const int MaxGlassItems=300;
     public static bool Allows(string role,string action) => role=="main" && Actions.Contains(action,StringComparer.Ordinal);
     // E3.2: cuerpo maximo de product-image-set (y solo de esa orden): 2 MB de imagen son ~2,8 MB en base64; el resto es margen para
     // el JSON y para un serializador que escape '+' y '/' como secuencias unicode de seis caracteres. El dominio sigue exigiendo
@@ -63,6 +68,7 @@ public static class CatalogOperations
                 var name=Organization.Name(request.Name);
                 var categories=await unit.Categories();
                 var id=string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>categories.Any(x=>string.Equals(x.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id;
+                if(Catalog.IsSection(id?.Trim())) throw new RuleViolation("reserved_category","That code is a reserved section of the catalog.");   // E3.3
                 var category=Catalog.Category(id,name,request.ParentId,request.Color,request.Sort??Catalog.NextSort(categories.Where(c=>c.ParentId==(string.IsNullOrWhiteSpace(request.ParentId) ? null : request.ParentId)).Select(c=>c.Sort)));
                 await CheckParent(unit,category);
                 await unit.InsertCategory(category); await unit.Events([Event("category_created",category.Id,("name",category.Name))]); return category;
@@ -72,6 +78,7 @@ public static class CatalogOperations
                 var current=await unit.Category(Required(request.Id));
                 var category=Catalog.Category(current.Id,request.Name??current.Name,request.ParentId??current.ParentId,request.Color??current.Color,request.Sort??current.Sort,current.Active);
                 if(request.ParentId=="") category=category with { ParentId=null };       // cadena vacia = sin padre
+                if(Catalog.IsSection(current.Id) && category.ParentId is not null) throw new RuleViolation("reserved_category","A section of the catalog stays at the root.");   // E3.3: solo cambia de nombre
                 if(request.Color=="") category=category with { Color=null };
                 if(category.ParentId!=current.ParentId) await CheckParent(unit,category);
                 await unit.UpdateCategory(category); await unit.Events([Event("category_updated",category.Id,("name",category.Name))]); return category;
@@ -79,6 +86,7 @@ public static class CatalogOperations
             case "category-deactivate": case "category-reactivate":
             {
                 var current=await unit.Category(Required(request.Id));
+                if(!active && Catalog.IsSection(current.Id)) throw new RuleViolation("reserved_category","A section of the catalog cannot be deactivated.");   // E3.3
                 if(!active)
                 {
                     if((await unit.Products()).Any(p=>p.Active && p.CategoryId==current.Id)) throw new RuleViolation("category_in_use","Active products belong to this category; move or deactivate them first.");
@@ -177,6 +185,84 @@ public static class CatalogOperations
                 var changed=await unit.SetImage(image);
                 if(changed) await unit.Events([Event("product_image_set",product.Id,("sha256",image.Sha256),("bytes",image.Bytes.ToString(System.Globalization.CultureInfo.InvariantCulture)),("content_type",image.ContentType))]);
                 return new { productId=product.Id,sha256=image.Sha256,bytes=image.Bytes,contentType=image.ContentType,changed };
+            }
+            // E3.3: vinos por copa en bloque: por cada vino, la presentacion reservada 'copa' (creada o reactivada) con su precio en la
+            // General desde hoy; los de 'stop' dejan de venderse por copa (su precio se queda). Una sola orden, auditada por vino.
+            case "glass-sale-set":
+            {
+                var items=request.Items??[]; var stop=request.Stop??[];
+                if(items.Length+stop.Length>MaxGlassItems) throw new RuleViolation("too_many_items",$"At most {MaxGlassItems} wines per order; send the rest in another.");
+                if(items.Length+stop.Length==0) throw new RuleViolation("nothing_to_do","items or stop is required.");
+                var events=new List<DomainEvent>(); int marked=0,stopped=0,priced=0;
+                foreach(var item in items)
+                {
+                    var product=await unit.Product(Required(item.ProductId));
+                    if(!product.Active) throw new RuleViolation("product_unavailable",$"Product {product.Id} is deactivated.");
+                    var glass=(await unit.Presentations(product.Id)).FirstOrDefault(p=>p.Id==Catalog.GlassPresentation);
+                    if(glass is null)
+                    {
+                        await unit.InsertPresentation(Catalog.Presentation(product.Id,Catalog.GlassPresentation,"Copa",0));
+                        events.Add(Event("presentation_created",product.Id,("presentation",Catalog.GlassPresentation),("name","Copa"))); marked++;
+                    }
+                    else if(!glass.Active)
+                    {
+                        await unit.UpdatePresentation(glass with { Active=true });
+                        events.Add(Event("presentation_reactivated",product.Id,("presentation",Catalog.GlassPresentation))); marked++;
+                    }
+                    var price=Catalog.Price(Catalog.GeneralTariff,product.Id,Catalog.GlassPresentation,Today(),item.PriceCents);
+                    if(await unit.SetPrice(price))
+                    {
+                        events.Add(Event("price_set",price.ProductId,("presentation",price.PresentationId),("tariff",price.TariffId),("valid_from",price.ValidFrom.ToString("yyyy-MM-dd")),("price_cents",price.PriceCents.ToString()))); priced++;
+                    }
+                }
+                foreach(var id in stop)
+                {
+                    var product=await unit.Product(Required(id));
+                    var glass=(await unit.Presentations(product.Id)).FirstOrDefault(p=>p.Id==Catalog.GlassPresentation);
+                    if(glass is { Active:true })
+                    {
+                        await unit.UpdatePresentation(glass with { Active=false });
+                        events.Add(Event("presentation_deactivated",product.Id,("presentation",Catalog.GlassPresentation))); stopped++;
+                    }
+                }
+                if(events.Count>0) await unit.Events(events);
+                return new { marked,priced,stopped };
+            }
+            // E3.3: mover varios productos de familia en una orden (ordenar la bodega sin ir de uno en uno). categoryId vacio = sin familia.
+            case "products-move":
+            {
+                var ids=(request.ProductIds??throw new RuleViolation("product_ids_required","productIds is required.")).Distinct(StringComparer.Ordinal).ToArray();
+                if(ids.Length==0) throw new RuleViolation("product_ids_required","productIds is required.");
+                var categoryId=string.IsNullOrWhiteSpace(request.CategoryId) ? null : Organization.Code(request.CategoryId,"category id");
+                if(categoryId is not null && !(await unit.Category(categoryId)).Active) throw new RuleViolation("category_inactive","The category is deactivated.");
+                var events=new List<DomainEvent>(); var moved=0;
+                foreach(var id in ids)
+                {
+                    var current=await unit.Product(Required(id));
+                    if(current.CategoryId==categoryId) continue;
+                    var product=current with { CategoryId=categoryId };
+                    await unit.UpdateProduct(product); events.Add(Event("product_updated",product.Id,("name",product.Name),("category",categoryId??""))); moved++;
+                }
+                if(events.Count>0) await unit.Events(events);
+                return new { moved,categoryId };
+            }
+            // E3.3: cambiar el IVA de varios productos de una vez (decision del promotor: el tipo lo dira el gestor; se cambia sin reimportar).
+            case "products-tax-set":
+            {
+                var ids=(request.ProductIds??throw new RuleViolation("product_ids_required","productIds is required.")).Distinct(StringComparer.Ordinal).ToArray();
+                if(ids.Length==0) throw new RuleViolation("product_ids_required","productIds is required.");
+                var tax=await unit.Tax(Required(request.TaxId));
+                if(!tax.Active) throw new RuleViolation("tax_inactive","The tax is deactivated.");
+                var events=new List<DomainEvent>(); var changed=0;
+                foreach(var id in ids)
+                {
+                    var current=await unit.Product(Required(id));
+                    if(current.TaxId==tax.Id) continue;
+                    var product=current with { TaxId=tax.Id };
+                    await unit.UpdateProduct(product); events.Add(Event("product_updated",product.Id,("name",product.Name),("tax",tax.Id))); changed++;
+                }
+                if(events.Count>0) await unit.Events(events);
+                return new { changed,taxId=tax.Id };
             }
             case "product-image-remove":
             {

@@ -92,7 +92,10 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
             "INSERT INTO core.stations (tenant,company,location,id,name,kind,sort,active) VALUES (@tenant,@company,@location,'pase','Pase','pass',0,true) ON CONFLICT DO NOTHING",
             "INSERT INTO core.tariffs (tenant,company,location,id,name,sort,active) VALUES (@tenant,@company,@location,'general','General',0,true) ON CONFLICT DO NOTHING",
             "INSERT INTO core.taxes (tenant,company,location,id,name,rate,active) VALUES (@tenant,@company,@location,'iva-10','IVA 10 %',10.00,true)," +
-            "(@tenant,@company,@location,'iva-21','IVA 21 %',21.00,true),(@tenant,@company,@location,'iva-4','IVA 4 %',4.00,true),(@tenant,@company,@location,'iva-0','Exento',0.00,true) ON CONFLICT DO NOTHING" })
+            "(@tenant,@company,@location,'iva-21','IVA 21 %',21.00,true),(@tenant,@company,@location,'iva-4','IVA 4 %',4.00,true),(@tenant,@company,@location,'iva-0','Exento',0.00,true) ON CONFLICT DO NOTHING",
+            // E3.3: las dos secciones del catalogo (Cocina; Bodega y bebidas), raices reservadas que aparecen con init, upgrade, restore e init-lab.
+            "INSERT INTO core.categories (tenant,company,location,id,name,parent_id,color,sort,active) VALUES (@tenant,@company,@location,'_cocina','Cocina',NULL,NULL,0,true)," +
+            "(@tenant,@company,@location,'_bodega','Bodega y bebidas',NULL,NULL,1,true) ON CONFLICT DO NOTHING" })
         {
             await using var command = dataSource.CreateCommand(sql);
             command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);

@@ -174,7 +174,7 @@ if(args.Length == 2 && args[0] == "import-catalog")
     var summary = Wire.Decode<ImportSummary>(response);
     Console.WriteLine($"Catalog import: {summary.Rows} rows; products created {summary.ProductsCreated}, updated {summary.ProductsUpdated}; " +
         $"categories created {summary.CategoriesCreated}; presentations created {summary.PresentationsCreated}; prices set {summary.PricesSet}; " +
-        $"images set {summary.ImagesSet}. Repeating the same file changes nothing.");
+        $"images set {summary.ImagesSet}. Repeating the same file changes nothing."+(summary.Kept>0 ? $" {summary.Kept} existing product(s) brought another family or tax in the file and kept the ones set in Costina." : ""));
     return;
 }
 if(args.Length == 1 && args[0] == "backup")

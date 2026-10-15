@@ -17,7 +17,8 @@ namespace Costina.Server;
 // huella difiere de la guardada; una celda vacia nunca quita la imagen que ya hay. El motor no sale a Internet: las fotos las
 // descarga antes tools/catalog/woocommerce-to-csv.py --images. La huella de la importacion cubre el CSV Y cada imagen citada.
 public sealed record ImportRow(int Line,string Code,string? Reference,string Name,string? Category,string? Parent,string Presentation,long PriceCents,string Tax,bool Active,string? Image=null);
-public sealed record ImportSummary(int Rows,int ProductsCreated,int ProductsUpdated,int CategoriesCreated,int PresentationsCreated,int PricesSet,int ImagesSet=0);
+// E3.3: Kept = productos existentes cuyo fichero traia otra familia o IVA y se dejaron como estaban en Costina.
+public sealed record ImportSummary(int Rows,int ProductsCreated,int ProductsUpdated,int CategoriesCreated,int PresentationsCreated,int PricesSet,int ImagesSet=0,int Kept=0);
 // Imagen de una fila ya validada: fichero dentro de la carpeta del CSV, su tipo por la firma y su huella. Los bytes no se guardan
 // en memoria (un catalogo grande no cabe): se vuelven a leer en la transaccion solo si hay que fijarla, y deben seguir siendo los mismos.
 public sealed record ImportImage(int Line,string Code,string Name,string Path,string ContentType,string Sha256);
@@ -143,7 +144,7 @@ public static class CatalogImport
         var categories=(await unit.Categories()).ToDictionary(c=>c.Id,StringComparer.Ordinal);
         var products=(await unit.Products()).ToDictionary(p=>p.Id,StringComparer.Ordinal);
         var imageOf=(images ?? []).ToDictionary(i=>i.Line);
-        int created=0,updated=0,newCategories=0,newPresentations=0,prices=0,newImages=0;
+        int created=0,updated=0,newCategories=0,newPresentations=0,prices=0,newImages=0,kept=0;
         // E3.1: una categoria se reconoce por NOMBRE y PADRE, no solo por el nombre: en una bodega real la misma region cuelga
         // de varios tipos (Rioja en Tintos y en Blancos) y por nombre se mezclaban. Sin padre en el fichero, o para el propio padre
         // (cuyo abuelo no se conoce), vale cualquier categoria con ese nombre, la raiz primero. Una nueva toma el codigo del nombre
@@ -174,7 +175,10 @@ public static class CatalogImport
                 var categoryId=await EnsureCategory(row.Category,row.Parent,row.Line);
                 if(products.TryGetValue(row.Code,out var existing))
                 {
-                    var product=Catalog.Product(existing.Id,row.Name,categoryId??existing.CategoryId,tax.Id,row.Reference??existing.Reference,existing.Sort,existing.Active);
+                    // E3.3: a un producto que ya existe solo se le actualizan nombre, referencia, precio e imagen: su familia, su IVA y su
+                    // estacion son de Costina (lo que el promotor movio o corrigio no lo deshace la tienda). Se cuenta lo que traia distinto.
+                    if((categoryId is not null && categoryId!=existing.CategoryId) || tax.Id!=existing.TaxId) kept++;
+                    var product=Catalog.Product(existing.Id,row.Name,existing.CategoryId,existing.TaxId,row.Reference??existing.Reference,existing.Sort,existing.Active,existing.StationId);
                     if(product!=existing) { await unit.UpdateProduct(product); products[product.Id]=product; updated++; }
                 }
                 else
@@ -205,7 +209,7 @@ public static class CatalogImport
                 throw new ArgumentException($"Line {row.Line} ({row.Code}): {e.Message}");
             }
         }
-        return new(rows.Count,created,updated,newCategories,newPresentations,prices,newImages);
+        return new(rows.Count,created,updated,newCategories,newPresentations,prices,newImages,kept);
     }
     private static decimal? RateOf(string text)
         => decimal.TryParse(text.Replace(',','.').TrimEnd('%').Trim(),NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out var rate) ? rate : null;

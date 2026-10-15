@@ -122,6 +122,23 @@ internal static class Program
             Equal(new DateOnly(2026, 10, 1), Catalog.ValidFrom(" 2026-10-01 ", new DateOnly(2026, 9, 23)));
             Equal(new DateOnly(2026, 9, 23), Catalog.ValidFrom(null, new DateOnly(2026, 9, 23)));
         });
+        // E3.3: secciones del catalogo. Por la raiz si es una seccion; los productos-menu, ninguna; si no, por la estacion.
+        Test("catalog sections come from the root category or, without one, from the station", () => {
+            var parents = new Dictionary<string, string?> { ["_cocina"] = null, ["_bodega"] = null, ["vinos"] = "_bodega", ["tintos"] = "vinos", ["rioja"] = "tintos", ["carnes"] = "_cocina", ["bebidas"] = null, ["menus"] = null };
+            string? ParentOf(string id) => parents.GetValueOrDefault(id);
+            Equal("bodega", Catalog.SectionOf("rioja", ParentOf, "kitchen"));
+            Equal("cocina", Catalog.SectionOf("carnes", ParentOf, null));
+            Equal("cocina", Catalog.SectionOf("bebidas", ParentOf, "Kitchen"));
+            Equal("cocina", Catalog.SectionOf(null, ParentOf, "pass"));
+            Equal("bodega", Catalog.SectionOf("bebidas", ParentOf, null));
+            Equal("bodega", Catalog.SectionOf("bebidas", ParentOf, "bar"));
+            Equal(null, Catalog.SectionOf("menus", ParentOf, null));
+            Equal("_bodega", Catalog.RootOf("rioja", ParentOf));
+            Equal("Tintos", Catalog.CategoryPath("rioja", ParentOf, id => id switch { "vinos" => "Vinos", "tintos" => "Tintos", "rioja" => "Rioja", _ => null })[1]);
+            Equal(3, Catalog.CategoryPath("rioja", ParentOf, id => id).Length);   // sin la seccion
+            Equal((true, true, false), (Catalog.IsSection("_cocina"), Catalog.IsGlass("glass"), Catalog.IsGlass("bottle")));
+            Equal("cocina", Catalog.Slug("_cocina"));   // un slug nunca produce el guion bajo de una seccion
+        });
         Test("catalog rejects bad prices, rates, colors, references and dates", () => {
             Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), -1));
             Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), Catalog.MaxPriceCents + 1));

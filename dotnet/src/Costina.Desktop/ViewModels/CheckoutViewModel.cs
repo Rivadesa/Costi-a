@@ -31,6 +31,11 @@ public sealed record AccountRow(AccountChoice Choice, string Text)
 // C2b: fila de la tabla de consumos (concepto con su precio unitario o su motivo de anulacion debajo) y de la lista de pagos.
 public sealed record ChargeRow(string Description, string Note, string Quantity, string Amount, bool Voided);
 public sealed record MoneyRow(string What, string Detail, string Amount);
+// E3.3: el buscador de consumos de Caja agrupa los vendibles por producto, con un boton por presentacion (Copa, Botella...): la misma
+// regla de busqueda que tendra el comandero en C3b (sin tildes; por nombre, referencia y familia). Elegir un boton solo mueve
+// SelectedProduct: la orden add-product no cambia.
+public sealed record ProductGroup(string Id, string Name, string Detail, PresentationButton[] Presentations);
+public sealed record PresentationButton(ProductChoice Choice, string Label, bool IsChosen);
 
 public sealed partial class CheckoutViewModel(ShellViewModel shell) : ObservableObject
 {
@@ -52,6 +57,31 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     [ObservableProperty] private ChargeDto[] charges = [];
     [ObservableProperty] private ProductChoice[] products = [];
     [ObservableProperty] private ProductChoice? selectedProduct;
+    [ObservableProperty] private string productSearch = "";
+    [ObservableProperty] private ProductGroup[] productGroups = [];
+    [ObservableProperty] private string productGroupsNote = "";
+    [ObservableProperty] private string chosenProductText = "";
+    public const int MaxProductGroups = 24;
+    partial void OnProductSearchChanged(string value) { if (!rendering) BuildProductGroups(); }
+    partial void OnSelectedProductChanged(ProductChoice? value) { if (!rendering) BuildProductGroups(); }
+    private static bool MatchesProduct(ProductChoice p, string text) => text.Length == 0 || TextSearch.Contains(p.Name, text) || (p.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
+        || (p.Family is { } f && TextSearch.Contains(f, text)) || (p.CategoryName is { } c && TextSearch.Contains(c, text));
+    private void BuildProductGroups()
+    {
+        var text = ProductSearch.Trim();
+        var groups = Products.Where(p => MatchesProduct(p, text)).GroupBy(p => p.Id).ToArray();
+        ProductGroups = groups.Take(MaxProductGroups).Select(g =>
+        {
+            var first = g.First();
+            string?[] detail = [first.Family ?? first.CategoryName, first.Reference];
+            return new ProductGroup(g.Key, first.Name, string.Join(" · ", detail.Where(d => d is { Length: > 0 })),
+                g.Select(p => new PresentationButton(p, $"{p.Presentation} · {Money.Format(p.PriceCents)}", ReferenceEquals(p, SelectedProduct) || SelectedProduct is { } s && s.Id == p.Id && s.PresentationId == p.PresentationId)).ToArray());
+        }).ToArray();
+        ProductGroupsNote = Products.Length == 0 ? "" : groups.Length == 0 ? $"Ningún producto coincide con «{text}»."
+            : groups.Length > MaxProductGroups ? $"{groups.Length} coinciden; se muestran {MaxProductGroups}: afina la búsqueda." : "";
+        ChosenProductText = SelectedProduct is { } chosen ? $"Elegido: {chosen.Name} · {chosen.Presentation} · {Money.Format(chosen.PriceCents)}" : "Elige una presentación de la lista.";
+    }
+    [RelayCommand] private void PickProduct(ProductChoice? choice) { if (choice is not null) SelectedProduct = choice; }
     [ObservableProperty] private string quantity = "1";
     [ObservableProperty] private string amount = "";
     [ObservableProperty] private string method = "card";
@@ -149,7 +179,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         try
         {
             summaries = new(StringComparer.Ordinal); summariesComplete = false; AccountsRead = false; Search = "";
-            Accounts = []; SelectedAccount = null; Products = []; SelectedProduct = null;
+            Accounts = []; SelectedAccount = null; Products = []; SelectedProduct = null; ProductSearch = ""; BuildProductGroups();
             accountServiceId = null; requested = null; Amount = ""; amountAccount = null; Invalidate();
         }
         finally { rendering = false; }
@@ -236,6 +266,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
             Accounts = choices; SelectedAccount = choices.FirstOrDefault(a => a.ServiceId == accountServiceId);
             if (accountServiceId != amountAccount) { Amount = ""; Note = ""; amountAccount = accountServiceId; }
             Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id + "/" + p.PresentationId == previousProduct) ?? catalog.FirstOrDefault();
+            BuildProductGroups();
             Account = current; Charges = current?.Data.Charges ?? [];   // OnAccountChanged compone totales y estado
             if (current is null) { Totals = "Sin cuenta seleccionada"; AccountState = ""; }
         }

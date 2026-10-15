@@ -50,9 +50,16 @@ public static class DesktopReadRoutes
         // D6.1 (#28, ADR-007): catalogo OPERATIVO para el comandero — que se puede anadir, nunca a que precio.
         // Proyeccion propia: no reutiliza la de caja ni deja pasar un solo campo economico (ni 'tariff': la guarda de la PWA la rechaza).
         // E3: un vendible = producto + presentacion activos con precio vigente en la tarifa general.
-        app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>Json(
-            await reads.Sellables(scope,DateOnly.FromDateTime(DateTime.Now),c.RequestAborted)
-        ))).WithMetadata(new RouteAccess("main","service"));
+        // E3.3: ETag = huella del contenido Y de la fecha (el precio vigente, y con el lo vendible, cambia de un dia a otro); 304 ante
+        // If-None-Match, para que el comandero revalide sin bajar 2.000 filas. Cache privada que revalida.
+        app.MapGet(prefix+"/catalog",(Func<HttpContext,Task<IResult>>)(async c=>{
+            var today=DateOnly.FromDateTime(DateTime.Now);
+            var body=Wire.Encode(await reads.Sellables(scope,today,c.RequestAborted));
+            var tag="\""+Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(today.ToString("yyyy-MM-dd")+body)))[..32]+"\"";
+            c.Response.Headers.ETag=tag; c.Response.Headers.CacheControl="private, no-cache";
+            if(c.Request.Headers.IfNoneMatch.Any(v=>v==tag)) return Results.StatusCode(304);
+            return Results.Text(body,"application/json");
+        })).WithMetadata(new RouteAccess("main","service"));
         // E3.2: imagen vigente de un articulo, para cualquier identidad valida (una foto no es dinero). Bytes tal cual se guardaron,
         // con su tipo, ETag = huella y cache PRIVADA que revalida (la URL es del producto: la imagen puede cambiar); 304 si el cliente
         // ya tiene esa huella; nosniff para que nadie la interprete como otra cosa; 404 sin imagen o quitada. No es JSON: la guarda

@@ -349,6 +349,8 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
 
 ### 4.2. E3.3 — Cocina, Bodega y vinos por copa (`0.40.0-e3.3`, sin cambio de esquema)
 
+**Entregado el 15-10**: `docs/native/E3.3-cocina-bodega-y-copas.md`. Las dos pestañas grandes son chips de sección dentro de Productos (Todos · Cocina · Bodega y bebidas · Menús), «Sin colocar» es el par de botones de la ficha de una familia raíz, y la fecha «Desde» del precio sigue a la vista; el resto, como aquí.
+
 **Motor:**
 - **Dos secciones fijas del catálogo**, como categorías raíz reservadas: `_cocina` («Cocina») y `_bodega` («Bodega y bebidas»).
   - Se aseguran por ámbito, como `general` y `pase` (`PostgresStore.EnsureOrganizationAsync`). Ese método solo corre en `init`, `upgrade`, `restore` e `init-lab` (`Server/Program.cs:85,107`): en una instalación aparecen con el `upgrade` que hace el instalador al actualizar. Las pruebas que cuentan categorías (`catalog_http.py`, DesktopChecks) se ajustan.
