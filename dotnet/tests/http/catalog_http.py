@@ -547,7 +547,8 @@ class Catalog(unittest.TestCase):
         self.assertIn('1 existing product(s) brought another family or tax', result.stdout)
         wine = product('wine')
         self.assertEqual((wine['name'], wine['categoryId'], wine['taxId'], wine['stationId']), ('Vino de ensayo 2024', 'vinos', 'iva-21', 'cold'))
-        self.assertEqual(max((p for p in next(s for s in wine['presentations'] if s['id'] == 'bottle')['prices'] if p['tariffId'] == 'general'), key=lambda p: p['validFrom'])['priceCents'], 4500)
+        # El fichero dice "Botella" -> presentacion 'botella' (la del laboratorio es 'bottle'): nace con su precio, como en test_04.
+        self.assertEqual(max((p for p in next(s for s in wine['presentations'] if s['id'] == 'botella')['prices'] if p['tariffId'] == 'general'), key=lambda p: p['validFrom'])['priceCents'], 4500)
         self.assertEqual(command('product-update', id='wine', name='Vino de ensayo', stationId='')[0], 200)
 
 if __name__ == '__main__':
