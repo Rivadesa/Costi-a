@@ -319,6 +319,23 @@ await Check("catalog DTOs carry imageSha when the server sends it and stay null 
     Expect(organization.Zones[0].ToString()=="Terraza · 0 mesas activas · activa"&&(organization.Zones[0] with {TariffName="Terraza"}).ToString()=="Terraza · tarifa Terraza · 0 mesas activas · activa","zone row names its own tariff");
     Expect(!JsonSerializer.Serialize(organization.Zones[0] with {TariffName="Terraza"},web).Contains("tariffName"),"the tariff name is never sent back");
     return Task.CompletedTask;});
+// C2: GET /configuration trae las estaciones (todos los roles, tambien las desactivadas) para escribir su nombre; un servidor
+// anterior no las envia: Stations null y se sigue viendo el codigo, sin inventar nada.
+await Check("configuration stations give names to every role and an older server keeps the codes",async()=>{
+    const string tables="\"tables\":[{\"id\":\"M1\",\"name\":\"Mesa 1\",\"capacity\":4,\"zoneId\":\"sala\",\"zoneName\":\"Sala\"}]";
+    var json="{"+tables+",\"offers\":[],\"menus\":[],\"stations\":[{\"id\":\"pase\",\"name\":\"Pase\",\"kind\":\"pass\",\"active\":true},"
+        +"{\"id\":\"hot\",\"name\":\"Cocina caliente\",\"kind\":\"kitchen\",\"active\":true},{\"id\":\"barra\",\"name\":\"Barra alta\",\"kind\":\"bar\",\"active\":false}]}";
+    using var client=Client(new Handler((r,_)=>Task.FromResult(Response(200,r.RequestUri!.AbsolutePath.EndsWith("/configuration",StringComparison.Ordinal)?json:"{}"))));
+    var current=await client.GetAsync<Configuration>("configuration");
+    var stations=current.Stations??throw new Exception("stations missing");
+    Expect(stations.Length==3&&stations[2] is {Id:"barra",Kind:"bar",Active:false},"stations decoded, inactive ones included");
+    Expect(stations.Select(s=>s.KindLabel).SequenceEqual(["Pase","Cocina","Barra"])&&stations[1].ToString()=="Cocina caliente","kind labels and the name as text");
+    var names=new Names(current);
+    Expect(names.Station("hot")=="Cocina caliente"&&names.Station("barra")=="Barra alta"&&names.Station("cold")=="cold"&&names.Table("M1")=="Mesa 1","names from the configuration (unknown code shown raw)");
+    var older=JsonSerializer.Deserialize<Configuration>("{"+tables+",\"menus\":[]}",web)!;
+    Expect(older.Stations is null&&new Names(older).Station("hot")=="hot"&&new Names(older).Table("M1")=="Mesa 1","older server: no stations, codes stay");
+    Expect(new StationChoice("x","Rara","grill").KindLabel=="grill","an unknown kind is shown raw");
+});
 await Check("product-image-set takes the type from the bytes, sends them in base64, is persisted before sending and closes on the echoed key",async()=>{
     var store=new MemoryStore(); string? key=null; JsonElement sent=default;
     using var client=new ApiClient(new Uri("http://127.0.0.1:5088"),new string('a',40),new Handler(async (r,_)=>{
@@ -423,6 +440,7 @@ var vocabulary=new (string Family,string[] Codes,Func<string,string> Label)[]{
     ("rol de dispositivo",["service","kitchen","main"],Labels.DeviceRole),
     ("rol de sesion",["main","service","kitchen"],Labels.SessionRole),
     ("tiempo real",["connected","reconnecting","closed","unavailable","inactive"],Labels.Realtime),
+    ("estado de mesa (plano)",[FloorPlan.Free,FloorPlan.Seated,FloorPlan.Kitchen,FloorPlan.Ready,FloorPlan.Eating,FloorPlan.Paused,FloorPlan.Finished,FloorPlan.Cancelled],Labels.TableState),
     ("accion",actions,Labels.Action),
     ("vista",["HomeTab","ServiceTab","CheckoutTab","CatalogTab","OffersTab","OrganizationTab","DevicesTab"],Labels.View)};
 foreach(var (family,codes,label) in vocabulary)
@@ -447,6 +465,8 @@ await Check("vocabulary: the exact words of the plan table",()=>{
     Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Pantalla de cocina","rol");
     Expect(string.Join("|",new[]{"connected","reconnecting","closed"}.Select(Labels.Realtime))=="Tiempo real activo|Reconectando…|Sin tiempo real, reintentando","tiempo real");
     Expect(Labels.Guest(null)=="Toda la mesa"&&Labels.Guest(3)=="Comensal 3","comensal");
+    Expect(string.Join("|",new[]{"free","seated","kitchen","ready","eating","paused","finished","cancelled"}.Select(Labels.TableState))
+        =="Libre|Sentados|En cocina|Listo para servir|Comiendo|En pausa|Terminado, por liberar|Cancelado, por liberar","estado de mesa");
     Expect(Labels.Presence(true,null)=="Conectado"&&Labels.Presence(false,null)=="Sin conexión","presencia");
     var removedAt=new DateTimeOffset(2026,10,14,21,30,0,TimeSpan.Zero);
     Expect(Labels.Presence(true,removedAt)=="Quitado el "+removedAt.ToLocalTime().ToString("dd/MM HH:mm",System.Globalization.CultureInfo.InvariantCulture),"quitado, en hora local");
@@ -512,6 +532,56 @@ await Check("vocabulary: actors without prefixes, plurals, active and names with
     Expect(names.Table("M1")=="Mesa 1"&&names.Table("M9")=="M9"&&names.Station("cold")=="Cocina fría"&&names.Station("hot")=="hot"&&Names.Empty.Table(null)=="","names");
     Expect(new AccountChoice("s1","M1","Open").StateLabel=="Abierta"&&new OfferChoice("c","Carta de ensayo","a-la-carte",[]).ToString()=="Carta de ensayo · Carta","account and offer choices");
     Expect(new BoardEntry(1,new DiningDto("s1","M1",1,"InService",[]),new OccupancyDto("o1","M1","s1","Occupied",null),1).ToString()=="M1 · 1 persona · En servicio","board entry fallback");
+    return Task.CompletedTask;});
+// C2: plano del comedor. El estado de la tarjeta, su tiempo, el avance de los pases y el aviso de restricciones salen SOLO de lo
+// leido (presentacion); un estado o un tipo de restriccion desconocidos salen tal cual y nunca se rebajan.
+await Check("floor plan: tile state, time, progress and alert come from the read data, unknown values raw",()=>{
+    var now=new DateTimeOffset(2026,10,15,20,40,0,TimeSpan.Zero);
+    CourseDto C(string state,int? fired=null,int? ready=null,int? served=null,PreparationDto[]? preps=null,bool choice=false,bool optional=false)
+        =>new("c-"+state,state,state,fired is {} f?now.AddMinutes(-f):null,ready is {} r?now.AddMinutes(-r):null,served is {} s?now.AddMinutes(-s):null,null,preps??[],null,choice,optional);
+    DiningDto D(string state,params CourseDto[] courses)=>new("s1","M1",4,state,courses);
+    Expect(FloorPlan.State(null)=="free"&&Labels.TableState(FloorPlan.State(null))=="Libre","free");
+    Expect(FloorPlan.State(D("Open",C("Pending")))=="seated"&&FloorPlan.State(D("InService",C("Pending"),C("Pending")))=="seated","seated: open, or running with nothing sent yet");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Fired",12),C("Pending")))=="kitchen","in the kitchen");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Ready",12,3)))=="ready","ready beats the rest");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Skipped"),C("Pending")))=="eating","eating between courses");
+    Expect(FloorPlan.State(D("Paused",C("Ready",12,3)))=="paused"&&FloorPlan.State(D("Completed",C("Served")))=="finished"&&FloorPlan.State(D("Cancelled",C("Pending")))=="cancelled","paused, finished, cancelled");
+    Expect(FloorPlan.State(D("Closing"))=="Closing"&&Labels.TableState("Closing")=="Closing"&&FloorPlan.Label("Closing")=="Closing","an unknown service state is shown raw");
+    Expect(FloorPlan.State(D("InService",C("Plating",5)))=="Plating","an unknown course state is shown raw, never softened to 'Comiendo'");
+    // Revision C2: solo los codigos de FloorPlan se rotulan (comparacion exacta); un estado del servidor que se parece a uno de ellos
+    // (Labels no distingue mayusculas) sigue saliendo tal cual: un pase "Cancelled" no es una mesa cancelada.
+    Expect(FloorPlan.State(D("InService",C("Cancelled")))=="Cancelled"&&FloorPlan.Label(FloorPlan.State(D("InService",C("Cancelled"))))=="Cancelled"
+        &&FloorPlan.Label(FloorPlan.State(D("Ready")))=="Ready"&&FloorPlan.Label(FloorPlan.State(D("Finished")))=="Finished"&&!FloorPlan.IsCode("Ready"),
+        "a raw state that looks like a tile code stays raw: "+FloorPlan.Label(FloorPlan.State(D("InService",C("Cancelled")))));
+    Expect(FloorPlan.Codes.All(c=>FloorPlan.Label(c)==Labels.TableState(c)&&FloorPlan.Label(c)!=c),"every tile code has its Spanish label");
+    Expect(FloorPlan.Since(D("InService",C("Served",30,25,20),C("Fired",12)))==now.AddMinutes(-12)&&FloorPlan.Since(D("InService",C("Ready",12,3)))==now.AddMinutes(-3)
+        &&FloorPlan.Since(D("InService",C("Served",40,35,30),C("Served",20,15,8),C("Pending")))==now.AddMinutes(-8)&&FloorPlan.Since(D("Open",C("Pending"))) is null,"time of the state shown (never invented)");
+    Expect(Labels.Minutes(TimeSpan.FromMinutes(12.7))=="12 min"&&Labels.Minutes(TimeSpan.FromMinutes(65))=="1 h 05 min"&&Labels.Minutes(TimeSpan.FromMinutes(-2))=="0 min","minutes");
+    var running=D("InService",C("Served",30,25,20),C("Skipped"),C("Ready",12,3),C("Fired",2),C("Pending"));
+    Expect(string.Join(",",FloorPlan.Steps(running))=="done,done,ready,kitchen,pending"&&FloorPlan.Done(running)==2&&FloorPlan.Steps(null).Length==0,"course progress");
+    GuestRestrictionDto allergy=new("r1",2,"Allergy","frutos secos","Severe"),mild=new("r2",3,"Intolerance","lactosa","Mild"),odd=new("r3",1,"Anaphylaxis","cacahuete","Critical"),
+        severeIntolerance=new("r4",null,"Intolerance","gluten","Severe"),oddSeverity=new("r5",null,"Preference","picante","Extreme");
+    Expect(FloorPlan.Alert(D("InService"))==""&&!FloorPlan.AlertIsAlarming(D("InService")),"no restrictions, no alert");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild,allergy]})=="Alergia"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild,allergy]}),"an allergy is named");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild]})=="Restricción"&&!FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild]}),"a mild intolerance is a plain restriction");
+    // Revision C2: la palabra de la tarjeta nombra lo mas alarmante y un valor desconocido sale tal cual (con su gravedad): el rojo y el
+    // ambar nunca llevan la misma palabra, y un tipo nuevo nunca se rebaja a la palabra generica "Restriccion".
+    string A(params GuestRestrictionDto[] list)=>FloorPlan.Alert(D("InService") with {Restrictions=list});
+    Expect(A(odd)=="Anaphylaxis (Critical)"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[odd]})&&odd.Alarming,"an unknown kind is shown raw with its severity, never softened: "+A(odd));
+    Expect(A(severeIntolerance)=="Intolerancia (grave)"&&A(oddSeverity)=="Preferencia (Extreme)"&&A(mild,severeIntolerance)=="Intolerancia (grave)","a severe or unknown-severity intolerance or preference names kind and severity: "+A(oddSeverity));
+    Expect(A(allergy,odd)=="Alergia, Anaphylaxis (Critical)"&&A(mild,allergy,severeIntolerance)=="Alergia"&&A(new GuestRestrictionDto("r6",1,"Allergy","sésamo","Critical"))=="Alergia (Critical)",
+        "an allergy is named, an unknown kind next to it too, and an unknown allergy severity raw: "+A(allergy,odd));
+    Expect(A(mild,new GuestRestrictionDto("r7",2,"Preference","picante","Moderate"))=="Restricción"&&!FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild]}),"only mild or moderate ones are a plain restriction");
+    Expect(severeIntolerance.Alarming&&oddSeverity.Alarming&&!mild.Alarming&&allergy.Alarming,"severe or unknown severity is alarming");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia · por revisar"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild],RestrictionsPendingAck=true})
+        &&FloorPlan.Alert(D("InService") with {RestrictionsPendingAck=true})=="Restricción · por revisar"&&FloorPlan.Alert(D("InService") with {Restrictions=[odd],RestrictionsPendingAck=true})=="Anaphylaxis (Critical) · por revisar"
+        &&FloorPlan.AlertWord(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia","a change kitchen has not reviewed is said, after the word");
+    var ready=new PreparationDto("p1","Merluza","hot",1,1,true,"Ready"); var fired=new PreparationDto("p2","Merluza","hot",1,2,true,"Fired");
+    Expect(FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2)=="En cocina desde las "+Labels.Clock(now.AddMinutes(-12))+" · 1 de 2 elaboraciones listas","kitchen detail: "+FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2));
+    Expect(FloorPlan.CourseDetail(C("Served",30,25,20),2)=="Servido a las "+Labels.Clock(now.AddMinutes(-20))&&FloorPlan.CourseDetail(C("Ready",12,3),2)=="Listo desde las "+Labels.Clock(now.AddMinutes(-3)),"served and ready");
+    Expect(FloorPlan.CourseDetail(C("Pending",preps:[ready],choice:true),4)=="Han elegido 1 de 4 personas"&&FloorPlan.CourseDetail(C("Pending",optional:true),2)=="Se piden platos de la carta"
+        &&FloorPlan.CourseDetail(C("Pending",preps:[ready,fired],optional:true),2)=="2 platos pedidos"&&FloorPlan.CourseDetail(C("Pending",preps:[ready]),2)=="1 elaboración","pending detail");
+    Expect(FloorPlan.CourseDetail(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]),2)=="Motivo: sin hambre"&&FloorPlan.CourseDetail(C("Plating"),2)=="","skipped and unknown");
     return Task.CompletedTask;});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));

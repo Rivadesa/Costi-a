@@ -34,8 +34,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
 
     // Lo leido
     [ObservableProperty] private StationDto[] stations = [];
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsRoomStation))] private StationDto[] roomStations = [];   // sala o barra: donde va un comandero
-    [ObservableProperty] private StationDto[] kitchenStations = [];                                                     // cocina, pase o barra: donde va una pantalla
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsRoomStation), nameof(ChoosingText))] private StationDto[] roomStations = [];   // sala o barra: donde va un comandero
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ChoosingText))] private StationDto[] kitchenStations = [];                       // cocina, pase o barra: donde va una pantalla
     [ObservableProperty] private StationDto? selectedRoomStation;
     [ObservableProperty] private PairingPendingDto[] pending = [];
     [ObservableProperty] private PairingPendingDto? selectedPending;
@@ -47,7 +47,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     public bool NeedsRoomStation => RoomStations.Length == 0;
 
     // Asistente en curso (intencion ligada al pairingId emitido)
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAssistant))] private string assistantTitle = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAssistant), nameof(ShowWaiterSection), nameof(ShowKitchenSection))] private string assistantTitle = "";
     [ObservableProperty] private string assistantText = "";
     [ObservableProperty] private string intentRole = "";
     [ObservableProperty] private string intentStationId = "";
@@ -58,6 +58,26 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDuplicateWarning))] private string duplicateWarning = "";
     public bool HasAssistant => AssistantTitle.Length > 0;
     public bool HasRecognised => Recognised is not null;
+
+    // C2: Inicio pide abrir un asistente concreto ("Conectar comandero" / "Pantalla de cocina"). La peticion se guarda y se atiende en la
+    // siguiente lectura de esta vista (al abrirla): con UNA sola estacion posible el asistente arranca y emite su codigo; con varias (o
+    // ninguna) se abre en su primer paso, elegir la estacion, con la otra seccion recogida. La estacion la elige siempre el responsable.
+    private string? requestedIntent;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ChoosingStation), nameof(ChoosingText), nameof(ShowWaiterSection), nameof(ShowKitchenSection))]
+    private string choosingIntent = "";
+    public bool ChoosingStation => ChoosingIntent.Length > 0;
+    public bool ShowWaiterSection => !HasAssistant && ChoosingIntent != "kitchen";
+    public bool ShowKitchenSection => !HasAssistant && ChoosingIntent != "service";
+    public string ChoosingText => ChoosingIntent switch
+    {
+        "service" when NeedsRoomStation => "Conectar comandero: no hay ninguna estación de sala donde ponerlo. Crea la estación «Sala» y conéctalo después.",
+        "service" => "Conectar comandero: elige la estación de sala a la que va a pertenecer y pulsa «Conectar comandero».",
+        "kitchen" when KitchenStations.Length == 0 => "Pantalla de cocina: no hay ninguna estación de cocina, pase o barra activa. Créala en Salas, mesas y estaciones.",
+        "kitchen" => "Pantalla de cocina: pulsa la estación donde va a estar la pantalla.",
+        _ => ""
+    };
+    internal void Request(string? role) => requestedIntent = role;   // null = olvidar la peticion (se cancelo la entrada del responsable)
     public bool HasDuplicateWarning => DuplicateWarning.Length > 0;
     public string IntentLabel => IntentRole == "service" ? $"comandero en {IntentStationName}" : $"pantalla de cocina de {IntentStationName}";
     public string RecognisedText => Recognised is null ? "" : $"\"{Recognised.DeviceName}\" pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
@@ -89,7 +109,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         AskRemoveCommand.NotifyCanExecuteChanged(); ConfirmRemoveCommand.NotifyCanExecuteChanged(); CancelRemoveCommand.NotifyCanExecuteChanged();
         KeepThisPcConnectedCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(ThisPcText));
         AskEnableSimpleCommand.NotifyCanExecuteChanged(); ConfirmEnableSimpleCommand.NotifyCanExecuteChanged(); CancelEnableSimpleCommand.NotifyCanExecuteChanged();
-        DisableSimpleCommand.NotifyCanExecuteChanged();
+        DisableSimpleCommand.NotifyCanExecuteChanged(); CancelChoosingCommand.NotifyCanExecuteChanged();
     }
 
     internal void Clear()
@@ -102,7 +122,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             Devices = []; Rows = []; SelectedRow = null; ListSummary = ""; RemovalCandidate = null;
             AssistantTitle = ""; AssistantText = ""; IntentRole = ""; IntentStationId = ""; IntentStationName = ""; PairingId = ""; PairingCode = "";
             Recognised = null; DuplicateWarning = ""; codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
-            Network = null; ConfirmingSimple = false;
+            Network = null; ConfirmingSimple = false; requestedIntent = null; ChoosingIntent = "";
         }
         finally { rendering = false; }
     }
@@ -110,13 +130,37 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     internal async Task LoadAsync()
     {
         if (shell.Api is null || !shell.IsMain) return;
+        // C2: el asistente pedido desde Inicio se consume ANTES de leer: si una lectura falla no queda para despues (otra visita o una
+        // actualizacion lo abririan solo y emitirian un codigo que nadie ha pedido en ese momento); se vuelve a pulsar.
+        var intent = requestedIntent; requestedIntent = null;
         await ReadNetworkAsync();
         if (!addressSuggested) await SuggestAddressAsync();
         var pendingRows = await shell.Api.GetAsync<PairingPendingDto[]>("auth/pairings/pending");
         var deviceRows = await shell.Api.GetAsync<DeviceRowDto[]>("auth/devices");
         var organization = await shell.Api.GetAsync<OrganizationDto>("organization");
         Render(organization.Stations, pendingRows, deviceRows);
+        if (intent is { } role) await OpenRequested(role);
     }
+
+    // C2: el asistente que pidio Inicio, con las estaciones recien leidas. Corre dentro de la lectura (shell.Run): no pasa otra vez por
+    // Run, asi que repite aqui las mismas condiciones que la habilitacion de los botones (responsable, sin orden pendiente ni ilegible).
+    private async Task OpenRequested(string role)
+    {
+        if (HasAssistant) { shell.Status = "Ya hay un asistente abierto: termínalo o ciérralo antes de conectar otro dispositivo."; return; }
+        var choices = role == "service" ? RoomStations : KitchenStations;
+        if (choices.Length == 1 && shell.IsMain && shell.Pending is null && shell.Blocked is null)
+        {
+            if (role == "service") SelectedRoomStation = choices[0];
+            BeginAssistant(role, choices[0]);
+            await IssueCode();
+            return;
+        }
+        ChoosingIntent = role;
+        Sync();
+    }
+    private bool CanCancelChoosing() => ChoosingStation;
+    [RelayCommand(CanExecute = nameof(CanCancelChoosing))]
+    private void CancelChoosing() { ChoosingIntent = ""; Sync(); }
 
     // Composicion pura de lo leido (los checks la ejercitan sin servidor). El tipo de estacion decide que asistente la ofrece;
     // la regla de verdad vive en el servidor (A2).
@@ -208,27 +252,33 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [NotifyPropertyChangedFor(nameof(SimpleText))] [NotifyPropertyChangedFor(nameof(NetworkWarning))] [NotifyPropertyChangedFor(nameof(HasNetworkWarning))]
     private NetworkDto? network;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(OfferSimple))] private bool confirmingSimple;
-    public bool SimpleAvailable => Network?.LanHttp is { Listening: true, Port: not null };
-    public bool SimpleOn => SimpleAvailable && Network!.LanHttp.Enabled;
+    public bool SimpleAvailable => SimpleAvailableIn(Network);
+    public bool SimpleOn => SimpleOnIn(Network);
     public bool SimpleOff => SimpleAvailable && !Network!.LanHttp.Enabled;
     public bool OfferSimple => SimpleOff && !ConfirmingSimple;   // mientras se confirma, solo la barra de confirmacion
-    public string SimpleText => !SimpleAvailable ? ""
-        : SimpleOn ? (SimpleAddressNow() is { } address
+    public string SimpleText => SimpleConnectionText(Network);
+    public string NetworkWarning => NetworkWarningText(Network);
+    public bool HasNetworkWarning => NetworkWarning.Length > 0;
+    private string? SimpleAddressNow() => SimpleAddress(Network);
+
+    // C2: textos puros de la red del servidor, los mismos aqui y en los avisos de Inicio. Sin conexion sencilla en el servidor (lectura
+    // nula, servidor anterior o puerto sin escuchar) no se dice nada de ella.
+    public static bool SimpleAvailableIn(NetworkDto? network) => network?.LanHttp is { Listening: true, Port: not null };
+    public static bool SimpleOnIn(NetworkDto? network) => SimpleAvailableIn(network) && network!.LanHttp.Enabled;
+    public static string? SimpleAddress(NetworkDto? network) =>
+        SimpleOnIn(network) && network!.SuggestedIp is { } ip ? PairingLink.SimpleAddress(ip, network.LanHttp.Port!.Value) : null;
+    public static string SimpleConnectionText(NetworkDto? network) => !SimpleAvailableIn(network) ? ""
+        : SimpleOnIn(network) ? (SimpleAddress(network) is { } address
             ? $"Conexión sencilla activa: móviles y tablets entran por {address} con solo leer el QR, sin instalar nada. El tráfico viaja sin cifrar por la red del local: úsala solo con el Wi-Fi del personal, nunca con el de los clientes."
             : "Conexión sencilla activa, pero no se encuentra la IP de este servidor en la red del local: comprueba que está conectado por cable o Wi-Fi.")
         : "Para conectar móviles y tablets sin instalar ningún certificado, activa la conexión sencilla: entran por la IP de este PC con solo leer el QR.";
-    public string NetworkWarning
+    public static string NetworkWarningText(NetworkDto? network)
     {
-        get
-        {
-            var exposed = Network?.PublicNetworks ?? [];
-            if (exposed.Length == 0) return "";
-            var names = string.Join(", ", exposed.Select(n => "«" + n.Name + "»"));
-            return $"La red {names} del servidor está marcada como «Pública» en Windows: así ningún móvil ni tablet puede llegar a él. En el PC servidor, abre Configuración › Red e Internet, entra en la conexión y cambia «Tipo de perfil de red» a «Privada» (solo si es la red de confianza del local).";
-        }
+        var exposed = network?.PublicNetworks ?? [];
+        if (exposed.Length == 0) return "";
+        var names = string.Join(", ", exposed.Select(n => "«" + n.Name + "»"));
+        return $"La red {names} del servidor está marcada como «Pública» en Windows: así ningún móvil ni tablet puede llegar a él. En el PC servidor, abre Configuración › Red e Internet, entra en la conexión y cambia «Tipo de perfil de red» a «Privada» (solo si es la red de confianza del local).";
     }
-    public bool HasNetworkWarning => NetworkWarning.Length > 0;
-    private string? SimpleAddressNow() => SimpleOn && Network!.SuggestedIp is { } ip ? PairingLink.SimpleAddress(ip, Network.LanHttp.Port!.Value) : null;
 
     private async Task ReadNetworkAsync()
     {
@@ -379,7 +429,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // Sin red (los checks): la intencion del asistente y, despues, el codigo emitido con su pairingId.
     public void BeginAssistant(string role, StationDto station)
     {
-        IntentRole = role; IntentStationId = station.Id; IntentStationName = station.Name;
+        IntentRole = role; IntentStationId = station.Id; IntentStationName = station.Name; ChoosingIntent = "";   // C2: el paso de elegir estacion termina aqui
         PairingId = ""; PairingCode = ""; codeExpiresAt = null; Recognised = null; DuplicateWarning = "";
         AssistantTitle = role == "service" ? $"Conectar comandero · {station.Name}" : $"Conectar pantalla de cocina · {station.Name}";
         AssistantText = "Generando el código…";

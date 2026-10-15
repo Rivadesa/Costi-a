@@ -463,8 +463,24 @@ internal static class Program
         if(!home.WhoText.StartsWith("Principal (antiguo)",StringComparison.Ordinal)) throw new Exception("Inicio states who is connected: "+home.WhoText);
         home.ApplyDevices([new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d2","tablet-sala-2","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null),
             new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null,true),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))]);
-        if(home.DevicesSummary!="2 comanderos (1 con conexión ahora) · 1 pantalla de cocina (1 con conexión ahora)") throw new Exception("Inicio summarises active devices and presence: "+home.DevicesSummary);
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.33.0-b1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        // C2: Inicio lista los dispositivos ACTIVOS (comanderos primero) con su conexion en palabras; los quitados solo en Dispositivos.
+        if(home.DevicesSummary!="2 de 3 con conexión"||!home.DeviceRows.Select(r=>r.Name+" "+r.State+" "+r.Dot).SequenceEqual(["tablet-sala-1 Conectado ok","tablet-sala-2 Sin conexión off","pantalla-fria Conectado ok"])
+            ||home.DevicesMore.Length!=0||home.DevicesEmpty.Length!=0) throw new Exception("Inicio lists active devices with their presence: "+home.DevicesSummary+" / "+string.Join(", ",home.DeviceRows.Select(r=>r.Name+" "+r.State)));
+        home.ApplyDevices([]);
+        if(home.DeviceRows.Length!=0||home.DevicesSummary.Length!=0||!home.DevicesEmpty.StartsWith("Ningún dispositivo conectado todavía",StringComparison.Ordinal)) throw new Exception("Without devices Inicio says so.");
+        home.ApplyDevices([..Enumerable.Range(1,7).Select(i=>new Costina.Client.DeviceRowDto("x"+i,"tablet-"+i,"service","sala-1","user:jefa",DateTimeOffset.Now,null,i%2==0)),
+            new("old","pc-viejo","main","","user:jefa",DateTimeOffset.Now,null)]);
+        if(home.DeviceRows.Length!=Costina.Desktop.ViewModels.HomeViewModel.DevicesShown||home.DevicesMore!="Y 3 dispositivos más en Dispositivos."||home.DevicesSummary!="3 de 8 con conexión"
+            ||!home.DevicesWarning.StartsWith("1 dispositivo antiguo con rol principal",StringComparison.Ordinal)) throw new Exception("A long list is cut, counted, and a legacy main device is warned about: "+home.DevicesMore+" / "+home.DevicesWarning);
+        // C2: saludo segun la hora local y servicio del dia con la regla de las ofertas (comida hasta las 17:00).
+        if(Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,9,0,0))!="Buenos días"||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,15,0,0))!="Buenas tardes"
+            ||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,22,0,0))!="Buenas noches"||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,15,3,0,0))!="Buenas noches")
+            throw new Exception("The greeting follows the local time.");
+        if(Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,14,21,30,0),true)!="Miércoles, 14 de octubre · Servicio de cena"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.37.0-c2",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -551,6 +567,9 @@ internal static class Program
         if(((FrameworkElement)window.FindName("StatusBarInfo")).Visibility!=Visibility.Collapsed||levels.Status.Length==0) throw new Exception("While the login card is up the request is said once, in the card.");
         if(((FrameworkElement)window.FindName("ElevationLayer")).ActualHeight!=((FrameworkElement)window.Content).ActualHeight) throw new Exception("The scrim covers the whole window, top bar and status bar included.");
         RefuseRaw(window,"elevation");
+        // Revision C2: sin el tablero leido Inicio no presenta un comedor vacio: ni "0 de 0" ni "Nada por revisar" (falso negativo de alergias).
+        if(levels.Service.BoardRead||levels.Home.OccupiedText!="—"||levels.Home.TablesText.Length!=0||levels.Home.ReviewText!="—"||levels.Home.ReviewDetail!="Sin leer todavía"||levels.Home.ReviewAlarm
+            ||!levels.Home.FloorEmpty.StartsWith("Sin leer todavía",StringComparison.Ordinal)||Texts(window).Contains("Nada por revisar")) throw new Exception("Before any read Inicio says it has not read the floor: "+levels.Home.ReviewDetail+" / "+levels.Home.FloorEmpty);
         Save(Shot(window),"elevation.png");
         levels.CancelElevationCommand.Execute(null);
         if(levels.ElevationRequested||levels.LoginCardVisible||levels.ConnectEnabled) throw new Exception("'Seguir como puesto' closes the card and keeps the station connected.");
@@ -582,6 +601,7 @@ internal static class Program
         levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
         levels.OnUnauthorized().GetAwaiter().GetResult();
         if(levels.Connected||!levels.Status.Contains("caducado")) throw new Exception("A 401 of the person session returns to Puesto (or to the login card) and explains it: "+levels.Status);
+        if(levels.Service.BoardRead||levels.Home.ReviewDetail!="Sin leer todavía"||levels.Home.Tiles.Length!=0) throw new Exception("After leaving a level the floor is unread again, never 'Nada por revisar': "+levels.Home.ReviewDetail);
         levels.Clock=()=>DateTimeOffset.UtcNow;
         if(Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().Length<4||!Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().StartsWith("pc-",StringComparison.Ordinal)) throw new Exception("This PC pairs under a stable, readable name.");
         Directory.Delete(settingsFolder,true); DesktopSettings.Folder=checksRoot;
@@ -647,7 +667,9 @@ internal static class Program
         var servedAt=new DateTimeOffset(2026,10,14,11,5,0,TimeSpan.Zero);
         window.Shell.Service.Courses=[new Costina.Client.CourseDto("c0","Bienvenida","Served",servedAt,servedAt,servedAt,null,[]),new Costina.Client.CourseDto("c1","Aperitivos","Ready",null,null,null,null,[prep],["serve"])]; window.Shell.Service.SelectedCourse=window.Shell.Service.Courses[1];
         window.Shell.Service.Preparations=[prep];
-        if(window.Shell.Service.ServiceTitle!="Mesa 1 · 2 personas · En servicio"||window.Shell.Service.BoardItems.Single().Text!="Mesa 1 · 2 personas · En servicio") throw new Exception("The table is named and its state is in Spanish: "+window.Shell.Service.ServiceTitle);
+        // C2: la ficha y la tarjeta salen de la mesa LEIDA (en servicio y sin ningun pase enviado todavia: "Sentados").
+        if(window.Shell.Service.ServiceTitle!="Mesa 1 · 2 personas · En servicio"||window.Shell.Service.DetailTitle!="Mesa 1"||window.Shell.Service.DetailState!="Sentados"
+            ||window.Shell.Service.Tiles.Single(t=>t.Occupied).StateLabel!="Sentados") throw new Exception("The table is named and its state is in Spanish: "+window.Shell.Service.ServiceTitle);
         if(window.Shell.Service.Courses[1].StateLabel!="Listo para servir"||window.Shell.Service.Courses[0].ServedAtLabel!=servedAt.ToLocalTime().ToString("HH:mm")||prep.StateLabel!="Por empezar"||prep.GuestLabel!="Toda la mesa") throw new Exception("Course and preparation states, guest and served time (local) in Spanish.");
         window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400,"bottle","Bebidas","general"),new Costina.Client.ProductChoice("wine","Vino de ensayo","Copa",950,"glass","Vinos","general")]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
         window.Shell.Checkout.Accounts=[new Costina.Client.AccountChoice("s1","M1","Open")]; window.Shell.Checkout.SelectedAccount=window.Shell.Checkout.Accounts[0];
@@ -670,26 +692,414 @@ internal static class Program
         Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Products.Where(p=>p.Product.ImageSha is not null).All(p=>p.Thumbnail is not null)&&catalogView.Images.Waiting==0,"the capture shows the photos");
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
+        // ===== C2 (plan 2026-10-14): Comedor con plano de mesas y ficha =====
+        // Datos de ejemplo COHERENTES: la configuracion (Sala principal con 8 mesas y Terraza con 4, ofertas y estaciones con nombre), el
+        // tablero (siete mesas ocupadas en estados distintos, una con un cambio de alergia sin revisar) y las cuentas de Caja son del mismo
+        // comedor. El servidor simulado los sirve: elegir una tarjeta pasa por la lectura de siempre (F01). El reloj queda fijo para que los
+        // minutos de cada mesa sean exactos.
+        var c2Now=DateTimeOffset.UtcNow; window.Shell.Clock=()=>c2Now;
+        DateTimeOffset? Ago(int? minutes)=>minutes is {} m?c2Now.AddMinutes(-m):null;
+        Costina.Client.PreparationDto Prep(string id,string name,string station,int? guest,string state,string[]? actions=null,Costina.Client.GuestRestrictionDto[]? restrictions=null,bool review=false)
+            =>new(id,name,station,1,guest,true,state,actions??[],restrictions??[],review);
+        Costina.Client.CourseDto Course(string id,string name,string state,int? fired,int? ready,int? served,Costina.Client.PreparationDto[] preps,string[]? actions=null,bool choice=false,bool optional=false)
+            =>new(id,name,state,Ago(fired),Ago(ready),Ago(served),null,preps,actions??[],choice,optional);
+        Costina.Client.BoardEntry Seat(string id,string table,int pax,string state,string offer,Costina.Client.CourseDto[] courses,string[] actions,Costina.Client.GuestRestrictionDto[]? restrictions=null,bool pendingReview=false,string[]? occupancy=null)
+            =>new(5,new(id,table,pax,state,courses,actions,restrictions??[],pendingReview,offer),new("o-"+id,table,id,"Occupied",null,occupancy??[]),2);
+        Costina.Client.GuestRestrictionDto nuts=new("r-nuts",2,"Allergy","frutos secos","Severe"),lactose=new("r-lactosa",3,"Intolerance","lactosa","Mild"),unknownKind=new("r-raro",1,"Anaphylaxis","cacahuete","Critical");
+        var diningConfig=new Costina.Client.Configuration(
+            [..new[]{("M1",2),("M2",4),("M3",2),("M4",4),("M5",6),("M6",2),("M7",2),("M8",4)}.Select(t=>new Costina.Client.TableChoice(t.Item1,"Mesa "+t.Item1[1..],t.Item2,"sala","Sala principal")),
+             ..new[]{("T1",4),("T2",2),("T3",4),("T4",6)}.Select(t=>new Costina.Client.TableChoice(t.Item1,"Terraza "+t.Item1[1..],t.Item2,"terraza","Terraza"))],
+            null,
+            [new("DEGUSTACION","Degustación Costiña","tasting",[]),
+             new("DIA","Menú del día","set-menu",[new("entrantes","Entrantes",[new("ensalada","Ensalada de la huerta")]),new("principales","Principales",[new("merluza","Merluza a la gallega"),new("carrillera","Carrillera al vino")]),new("postres","Postres",[new("tarta","Tarta de queso"),new("flan","Flan de huevo")])]),
+             new("CARTA","Carta","a-la-carte",[new("entrantes","Entrantes",[],[new("pulpo","racion","Pulpo á feira","Ración"),new("croquetas","racion","Croquetas de la casa","Ración")]),new("principales","Principales",[],[new("lubina","racion","Lubina a la plancha","Ración")]),new("postres","Postres",[],[new("filloas","racion","Filloas","Ración")])])],
+            [new("pase","Pase","pass"),new("cold","Cocina fría","kitchen"),new("hot","Cocina caliente","kitchen"),new("sala-1","Sala 1","room"),new("terraza","Terraza","room")]);
+        string[] tastingCourses=["Aperitivos","Mar","Arroz","Pescado","Carne","Postre"];
+        Costina.Client.BoardEntry[] diningBoard=[
+            Seat("s1","M1",2,"InService","DEGUSTACION",[
+                Course("aperitivos","Aperitivos","Served",48,44,40,[Prep("s1-aperitivos","Aperitivos de la casa","cold",null,"Ready")]),
+                Course("mar","Mar","Served",35,31,28,[Prep("s1-mar","Zamburiñas a la plancha","hot",null,"Ready")]),
+                Course("arroz","Arroz","Served",22,18,15,[Prep("s1-arroz","Arroz de bogavante","hot",null,"Ready")]),
+                Course("pescado","Pescado","Preparing",12,null,null,[Prep("s1-rodaballo","Rodaballo al horno","hot",null,"Preparing",["preparation-ready"]),Prep("s1-salsa","Salsa de vieiras","pase",null,"Fired",["preparation-start","preparation-ready"])]),
+                Course("carne","Carne","Pending",null,null,null,[Prep("s1-carne","Lomo de vaca gallega","hot",null,"Pending")],["skip"]),
+                Course("postre","Postre","Pending",null,null,null,[Prep("s1-filloas","Filloas","cold",null,"Pending")],["skip"])],
+                ["pause","declare-restriction"]),
+            Seat("s3","M3",2,"InService","CARTA",[
+                Course("entrantes","Entrantes","Ready",20,3,null,[Prep("s3-pulpo","Pulpo á feira","cold",null,"Ready"),Prep("s3-croquetas","Croquetas de la casa","hot",null,"Ready")],["serve"],optional:true),
+                Course("principales","Principales","Pending",null,null,null,[],["skip","add-dish"],optional:true),
+                Course("postres","Postres","Pending",null,null,null,[],["skip","add-dish"],optional:true)],
+                ["pause","declare-restriction"]),
+            Seat("s4","M4",4,"InService","DIA",[
+                Course("entrantes","Entrantes","Served",60,54,50,[..Enumerable.Range(1,4).Select(g=>Prep("s4-ensalada-"+g,"Ensalada de la huerta","cold",g,"Ready"))]),
+                Course("principales","Principales","Preparing",25,null,null,[Prep("s4-merluza-1","Merluza a la gallega","hot",1,"Ready"),
+                    Prep("s4-merluza-2","Merluza a la gallega","hot",2,"Preparing",["preparation-ready","review-preparation"],[nuts],true),
+                    Prep("s4-carrillera-3","Carrillera al vino","hot",3,"Ready",null,[lactose]),Prep("s4-carrillera-4","Carrillera al vino","hot",4,"Fired",["preparation-start","preparation-ready"])]),
+                Course("postres","Postres","Pending",null,null,null,[Prep("s4-tarta-1","Tarta de queso","cold",1,"Pending"),Prep("s4-flan-2","Flan de huevo","cold",2,"Pending",null,[nuts])],["skip","choose"],choice:true)],
+                ["pause","declare-restriction","remove-restriction"],[nuts,lactose],pendingReview:true),
+            Seat("s6","M6",2,"Open","DEGUSTACION",[..tastingCourses.Select((n,i)=>Course("d"+i,n,"Pending",null,null,null,[Prep("s6-"+i,n,"hot",null,"Pending")],["skip"]))],["start","cancel-unstarted","declare-restriction"]),
+            Seat("s7","M7",2,"Paused","CARTA",[
+                Course("entrantes","Entrantes","Served",30,26,22,[Prep("s7-pulpo","Pulpo á feira","cold",null,"Ready")],optional:true),
+                Course("principales","Principales","Pending",null,null,null,[Prep("s7-lubina","Lubina a la plancha","hot",null,"Pending",null,[unknownKind])],["skip","add-dish"],optional:true)],
+                ["resume","declare-restriction","remove-restriction"],[unknownKind]),
+            Seat("s8","M8",3,"Completed","DIA",[..new[]{"Entrantes","Principales","Postres"}.Select((n,i)=>Course("c"+i,n,"Served",95-25*i,90-25*i,85-25*i,[]))],[],null,false,["release"]),
+            Seat("st1","T1",4,"InService","CARTA",[
+                Course("entrantes","Entrantes","Served",20,12,8,[Prep("st1-pulpo","Pulpo á feira","cold",null,"Ready")],optional:true),
+                Course("principales","Principales","Pending",null,null,null,[Prep("st1-lubina-1","Lubina a la plancha","hot",null,"Pending"),Prep("st1-lubina-2","Lubina a la plancha","hot",null,"Pending")],["skip","add-dish"],optional:true)],
+                ["pause","fire-next","declare-restriction"])];
+        // Lo que el servidor anuncia a este PC en el nivel Puesto (dispositivo de sala con una estacion de sala; Affordances.Filter): sin
+        // terminar, cancelar ni liberar, sin validar el pase (solo 'pase') y sin acciones sobre elaboraciones de otra estacion ni revisiones.
+        static Costina.Client.BoardEntry AsStation(Costina.Client.BoardEntry e)=>e with {
+            Service=e.Service with {Actions=[..(e.Service.Actions??[]).Where(a=>a is not ("complete" or "cancel-unstarted"))],
+                Courses=[..e.Service.Courses.Select(c=>c with {Actions=[..(c.Actions??[]).Where(a=>a!="ready")],Preparations=[..c.Preparations.Select(p=>p with {Actions=[]})]})]},
+            Occupancy=e.Occupancy with {Actions=[]}};
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
+        server.Configuration=diningConfig; server.Board=diningBoard;
+        server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        var service=window.Shell.Service; var serviceView=(FrameworkElement)window.FindName("ServiceView");
+        Button TileButton(string name){ window.UpdateLayout(); return Descendants<Button>(serviceView).FirstOrDefault(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile t&&t.Name==name)??throw new Exception("No tile painted for "+name); }
+        Button Named(string name)=>(Button)serviceView.FindName(name);
+        void Pick(string name,string serviceId){ Press(TileButton(name),"tile "+name); Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id==serviceId&&service.SelectedEntry?.Service.Id==serviceId,"clicking "+name+" reads that table"); window.UpdateLayout(); }
+        string Actions()=>service.PrimaryAction+" | "+string.Join(",",service.SecondaryActions.Select(a=>a.Action+(a.Danger?"!":"")));
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"refresh reads the configuration and the board");
+        if(server.Count("GET","configuration")==0||service.Tiles.Length!=12||service.Tiles.Count(t=>t.Occupied)!=7) throw new Exception("One tile per ACTIVE table of the configuration, crossed with the board: "+service.Tiles.Length);
+        if(!service.ZoneTabs.Select(z=>z.Label).SequenceEqual(["Todas las salas · 12","Sala principal · 8","Terraza · 4"])||!service.Groups.Select(g=>g.Name+": "+g.Summary).SequenceEqual(["Sala principal: 8 mesas · 6 ocupadas","Terraza: 4 mesas · 1 ocupada"]))
+            throw new Exception("Tiles are grouped by zone and the zones are tabs with their counts: "+string.Join(",",service.Groups.Select(g=>g.Name+": "+g.Summary)));
+        // Revision C2: la sala elegida se pinta como elegida (IsCurrent del viewmodel, no la seleccion de la lista, que se perdia).
+        if(!service.ZoneTabs[0].IsCurrent||service.ZoneTabs.Count(z=>z.IsCurrent)!=1) throw new Exception("'Todas las salas' is painted as the chosen tab.");
+        if(!service.Filters.Select(f=>f.Label).SequenceEqual(["Todas · 12","Ocupadas · 7","En cocina · 2","Para servir · 1","Libres · 5"])||service.FloorSummary!="7 de 12 mesas ocupadas · 19 personas")
+            throw new Exception("Filter chips and the summary carry their counts: "+string.Join(",",service.Filters.Select(f=>f.Label))+" / "+service.FloorSummary);
+        string States()=>string.Join(" | ",service.Tiles.Select(t=>t.Name+": "+t.StateLabel+(t.Elapsed.Length>0?" "+t.Elapsed:"")+(t.HasAlert?" ["+t.Alert+"]":"")+(t.HasSteps?" "+t.Progress:"")));
+        if(States()!="Mesa 1: En cocina 12 min 3 de 6 | Mesa 2: Libre | Mesa 3: Listo para servir 3 min 0 de 3 | Mesa 4: En cocina 25 min [Alergia · por revisar] 1 de 3 | Mesa 5: Libre | Mesa 6: Sentados 0 de 6"
+            +" | Mesa 7: En pausa [Anaphylaxis (Critical)] 1 de 2 | Mesa 8: Terminado, por liberar 3 de 3 | Terraza 1: Comiendo 8 min 1 de 2 | Terraza 2: Libre | Terraza 3: Libre | Terraza 4: Libre")
+            throw new Exception("Tile states, minutes, alerts and course progress in Spanish, from the read data: "+States());
+        if(!service.Tiles.Single(t=>t.Name=="Mesa 4").AlertAlarming||!service.Tiles.Single(t=>t.Name=="Mesa 7").AlertAlarming||service.Tiles.Single(t=>t.Name=="Mesa 2").Detail!="4 plazas"||service.Tiles.Single(t=>t.Name=="Mesa 4").Detail!="4 personas · Menú del día")
+            throw new Exception("Alerts of an allergy or an unknown kind are alarming; a free tile shows its seats and an occupied one its people and offer.");
+        if(!Texts(TileButton("Mesa 4")).Contains("Alergia · por revisar")||!Texts(TileButton("Mesa 1")).Contains("En cocina")) throw new Exception("The allergy badge and the state are painted with their words: "+string.Join(" | ",Texts(TileButton("Mesa 4"))));
+        if(!Texts(TileButton("Mesa 7")).Contains("Anaphylaxis (Critical)")) throw new Exception("An unknown restriction kind is painted raw on its tile, never as a generic word: "+string.Join(" | ",Texts(TileButton("Mesa 7"))));
+        // Elegir una mesa OCUPADA: la tarjeta mueve SelectedEntry y la ficha se compone de la lectura de esa mesa (F01).
+        var readsBefore=server.Requests.Length;
+        Pick("Mesa 4","s4");
+        if(!server.Requests.Skip(readsBefore).Any(r=>r.Method=="GET"&&r.Path=="dining/services/s4")||service.OpenForm) throw new Exception("An occupied tile goes through the usual read of that table.");
+        if(!service.Tiles.Single(t=>t.Name=="Mesa 4").IsSelected||service.Tiles.Count(t=>t.IsSelected)!=1) throw new Exception("The selected tile is ringed, and only that one.");
+        if(service.DetailTitle!="Mesa 4"||service.DetailZoneOffer!="Sala principal · Menú del día"||service.DetailState!="En cocina"||!service.DetailInfo.StartsWith("4 personas · en cocina desde las ",StringComparison.Ordinal)||!service.DetailInfo.EndsWith(" (25 min)",StringComparison.Ordinal))
+            throw new Exception("The panel names zone and offer, the table, its state, its people and its time: "+service.DetailZoneOffer+" / "+service.DetailInfo);
+        if(!service.CourseRows.Select(r=>r.Number+" "+r.Course.Name+": "+r.State+" · "+r.Detail).SequenceEqual(["1 Entrantes: Servido · Servido a las "+Costina.Client.Labels.Clock(c2Now.AddMinutes(-50)),
+            "2 Principales: En preparación · En cocina desde las "+Costina.Client.Labels.Clock(c2Now.AddMinutes(-25))+" · 2 de 4 elaboraciones listas","3 Postres: Falta elegir plato · Han elegido 2 de 4 personas"]))
+            throw new Exception("Courses are numbered with their state (the missing choice is exact with the headcount) and their detail: "+string.Join(" | ",service.CourseRows.Select(r=>r.State+" · "+r.Detail)));
+        if(service.PrimaryAction is not null||service.PrimaryText!="Esperando la revisión de cocina"||Named("PrimaryActionButton").IsEnabled||Actions()!=" | pause"||!service.ReasonNeeded)
+            throw new Exception("Nothing announced for the big button: it waits, disabled; below, exactly the other announced actions: "+service.PrimaryText+" / "+Actions());
+        if(service.PreparationRows.Any(r=>r.Station!="Cocina caliente")||service.SelectedPreparation?.Id!="s4-merluza-2"||!service.ReviewAnnounced||!service.PreparationActionsAnnounced||!service.ReviewCommand.CanExecute("adapt"))
+            throw new Exception("Preparations name their station from the configuration and the review is offered on the one under review.");
+        var detailTexts=Texts(serviceView).ToArray();
+        foreach(var text in new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Comensal 3 · Intolerancia lactosa (leve)","Restricciones de los comensales","Cocina caliente · Comensal 2","⚠ PENDIENTE DE REVISIÓN","Esperando la revisión de cocina"})
+            if(!detailTexts.Contains(text)) throw new Exception("The panel paints '"+text+"' (restrictions whole and in words, station names, the pending review).");
+        if(!detailTexts.Any(t=>t.StartsWith("SIN REVISAR POR COCINA: ",StringComparison.Ordinal))||detailTexts.Any(t=>t is "hot" or "cold"||t.StartsWith("hot ·",StringComparison.Ordinal))) throw new Exception("The pending review is said in words and stations are never coded.");
+        if(service.RemoveRestrictionCommand.CanExecute(null)) throw new Exception("Removing a restriction needs one chosen.");
+        var restrictionList=(ListBox)serviceView.FindName("RestrictionList"); restrictionList.SelectedIndex=0;
+        if(service.SelectedRestriction?.Id!="r-nuts"||!service.RemoveRestrictionCommand.CanExecute(null)) throw new Exception("Choosing a restriction chip makes 'Retirar' act on it.");
+        restrictionList.SelectedIndex=-1;
+        // Una mesa LIBRE: la tarjeta elige la MESA del formulario de abrir (de siempre) y no lee nada ni toca la mesa leida.
+        readsBefore=server.Requests.Length;
+        Press(TileButton("Mesa 2"),"tile Mesa 2"); window.UpdateLayout();
+        if(!service.OpenForm||service.SelectedTable?.Id!="M2"||service.SelectedEntry?.Service.Id!="s4"||server.Requests.Length!=readsBefore||!service.Tiles.Single(t=>t.Name=="Mesa 2").IsSelected||service.Tiles.Count(t=>t.IsSelected)!=1)
+            throw new Exception("A free tile selects the TABLE for the open form, reads nothing and leaves the read table alone.");
+        if(((FrameworkElement)serviceView.FindName("OpenPanel")).Visibility!=Visibility.Visible||((FrameworkElement)serviceView.FindName("TableDetail")).Visibility==Visibility.Visible
+            ||!Named("OpenTableButton").IsEnabled||service.OpenButtonText!="Abrir Mesa 2"||service.BackText!="Volver a Mesa 4"||service.OpenInfo!="Sala principal · 4 plazas"||service.OpenState!="Libre"||service.OpenWarning.Length!=0)
+            throw new Exception("The panel turns into the open form for that table: "+service.OpenButtonText+" / "+service.OpenInfo);
+        RefuseRaw(window,"service-open"); Save(Shot(window),"service-open.png");
+        // El boton de cabecera "Abrir mesa" propone una mesa libre si la elegida esta ocupada; abrir una ocupada se avisa (decide el servidor).
+        service.SelectedTable=service.Tables.Single(t=>t.Id=="M1");
+        if(service.OpenWarning.Length==0||!service.OpenCommand.CanExecute(null)) throw new Exception("An occupied table in the open form is warned about but the server decides.");
+        service.CancelOpenCommand.Execute(null); Press(Named("StartOpenButton"),"Abrir mesa");
+        if(!service.OpenForm||service.SelectedTable?.Id!="M2") throw new Exception("'Abrir mesa' opens the form on a free table: "+service.SelectedTable?.Id);
+        // Filtros y salas: solo presentacion, sobre lo leido.
+        string Shown()=>string.Join(",",service.Groups.SelectMany(g=>g.Tiles).Select(t=>t.Name));
+        ((ListBox)serviceView.FindName("FilterList")).SelectedIndex=2;
+        if(service.Filter!="kitchen"||Shown()!="Mesa 1,Mesa 4") throw new Exception("'En cocina' shows the tables in the kitchen: "+Shown());
+        service.Filter="ready"; if(Shown()!="Mesa 3") throw new Exception("'Para servir': "+Shown());
+        service.Filter="free"; if(Shown()!="Mesa 2,Mesa 5,Terraza 2,Terraza 3,Terraza 4") throw new Exception("'Libres': "+Shown());
+        service.Filter="busy"; ((ListBox)serviceView.FindName("ZoneTabList")).SelectedIndex=2;
+        if(service.SelectedZone!="terraza"||Shown()!="Terraza 1"||!service.Filters.Select(f=>f.Label).SequenceEqual(["Todas · 4","Ocupadas · 1","En cocina · 0","Para servir · 0","Libres · 3"]))
+            throw new Exception("A zone tab narrows the plan and the counts: "+string.Join(",",service.Filters.Select(f=>f.Label)));
+        service.Filter="kitchen"; if(service.FloorEmpty!="Ninguna mesa coincide con este filtro.") throw new Exception("An empty filter says so.");
+        service.SelectedZone=""; service.Filter="all";
+        // Mesa LISTA PARA SERVIR: la accion grande es "Marcar servido" del pase listo y envia la orden de siempre con el contexto leido.
+        Pick("Mesa 3","s3");
+        if(service.PrimaryAction!="serve"||service.PrimaryText!="Marcar servido · Entrantes"||!Named("PrimaryActionButton").IsEnabled||Actions()!="serve | pause")
+            throw new Exception("A ready course puts 'Marcar servido' in the big button: "+service.PrimaryText+" / "+Actions());
+        if(!service.PreparationRows.Select(r=>r.Line).SequenceEqual(["Cocina fría · Toda la mesa","Cocina caliente · Toda la mesa"])) throw new Exception("Station names come from configuration.stations: "+string.Join(",",service.PreparationRows.Select(r=>r.Line)));
+        var servePosts=server.Count("POST","");
+        Press(Named("PrimaryActionButton"),"Marcar servido");
+        Wait(()=>!window.Shell.Busy&&server.Count("POST","")>servePosts,"the big button sends the announced action");
+        var served=server.Requests.Last(r=>r.Method=="POST");
+        if(served.Path!="dining/services/s3/commands/serve"||!served.Body.Contains("\"expectedVersion\":5",StringComparison.Ordinal)||!served.Body.Contains("\"courseId\":\"entrantes\"",StringComparison.Ordinal)
+            ||window.Shell.Status!="Operación confirmada por el servidor: Marcar servido.") throw new Exception("The big button is the usual ActCommand with the read context: "+served.Path+" "+served.Body+" / "+window.Shell.Status);
+        window.Shell.Status="";
+        // Mesa SENTADA sin empezar: "Iniciar servicio" en grande y "Cancelar mesa sin empezar" como peligro; ocupado, nada se puede pulsar.
+        Pick("Mesa 6","s6");
+        if(Actions()!="start | skip,cancel-unstarted!"||service.PrimaryText!="Iniciar servicio"||!service.CourseRows.All(r=>r.State=="Sin enviar")) throw new Exception("An open table offers to start it: "+Actions());
+        window.Shell.Busy=true;
+        if(service.ActCommand.CanExecute("start")||service.OpenCommand.CanExecute(null)) throw new Exception("Busy gates the big button and opening.");
+        window.Shell.Busy=false;
+        // Mesa EN PAUSA con una restriccion de tipo desconocido: se pinta tal cual (nunca rebajada) y en rojo; "Reanudar" en grande.
+        Pick("Mesa 7","s7");
+        if(Actions()!="resume | skip"||!service.RestrictionsAlarming||!Texts(serviceView).Contains("Comensal 1 · Anaphylaxis cacahuete (Critical)")) throw new Exception("An unknown restriction is shown raw and alarming: "+Actions());
+        // Mesa TERMINADA: liberar es la accion grande (ActCommand "release" -> la orden de ocupacion de siempre, con su version y motivo).
+        Pick("Mesa 8","s8");
+        if(Actions()!="release | "||service.PrimaryText!="Liberar mesa"||service.DetailState!="Terminado, por liberar") throw new Exception("A finished table offers to release it: "+Actions());
+        service.Reason="Clientes ya se han ido"; servePosts=server.Count("POST","");
+        Press(Named("PrimaryActionButton"),"Liberar mesa");
+        Wait(()=>!window.Shell.Busy&&server.Count("POST","")>servePosts,"release is sent");
+        if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"dining/occupancy/s8/release"} release||!release.Body.Contains("\"expectedVersion\":2",StringComparison.Ordinal)) throw new Exception("Release goes to the occupancy with ITS version: "+server.Requests.Last(r=>r.Method=="POST").Path);
+        window.Shell.Status=""; service.Reason="";
+        // Mesa COMIENDO: enviar el siguiente pase, nombrandolo.
+        Pick("Terraza 1","st1");
+        if(Actions()!="fire-next | pause,skip"||service.PrimaryText!="Enviar siguiente pase a cocina · Principales"||service.DetailState!="Comiendo") throw new Exception("Between courses the next one is offered: "+service.PrimaryText);
+        // "Ver cuenta" (responsable): abre Caja en la cuenta de ESA mesa.
+        Pick("Mesa 4","s4");
+        Press(Named("ViewAccountButton"),"Ver cuenta");
+        Wait(()=>!window.Shell.Busy&&window.Shell.Checkout.Account?.Data.ServiceId=="s4","Caja opens the account of the table");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||window.Shell.Checkout.SelectedAccount?.ServiceId!="s4"||window.Shell.Checkout.Account?.Data.ServiceId!="s4") throw new Exception("'Ver cuenta' opens Caja on that table's account.");
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        // Revision C2: la cuenta de una mesa terminada ya esta cerrada y Caja solo lista las abiertas: "Ver cuenta" NO cae en la cuenta de
+        // otra mesa; Caja no elige ninguna y lo dice.
+        server.Accounts=[..diningBoard.Where(b=>b.Service.Id!="s8").Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        Pick("Mesa 8","s8"); window.Shell.Status="";
+        var accountReads=server.Count("GET","checkout/accounts");
+        Press(Named("ViewAccountButton"),"Ver cuenta (cuenta cerrada)");
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","checkout/accounts")>accountReads,"Caja reads its accounts");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||window.Shell.Checkout.SelectedAccount is not null||window.Shell.Checkout.Account is not null
+            ||window.Shell.Checkout.Totals!="Sin cuenta seleccionada"||!window.Shell.Status.StartsWith("La cuenta de Mesa 8 no está abierta",StringComparison.Ordinal))
+            throw new Exception("'Ver cuenta' on a table whose account is not open never shows another table's account: "+window.Shell.Checkout.SelectedAccount?.ServiceId+" / "+window.Shell.Status);
+        server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        // La configuracion se relee en cada actualizacion: una mesa nueva aparece sin reconectar; una mesa ocupada que la configuracion ya no
+        // lista no se esconde nunca.
+        server.Configuration=diningConfig with {Tables=[..diningConfig.Tables,new("T5","Terraza 5",2,"terraza","Terraza")]};
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"refresh with a new table");
+        if(service.Tiles.Length!=13||service.Tiles.Last().Name!="Terraza 5"||service.Tiles.Last().Occupied) throw new Exception("A table created in Configuración appears on the next refresh.");
+        server.Configuration=diningConfig with {Tables=[..diningConfig.Tables.Where(t=>t.Id!="M8")]};
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"refresh without an occupied table");
+        if(service.Tiles.SingleOrDefault(t=>t.Entry?.Service.Id=="s8") is not {ZoneName:"Otras mesas ocupadas"}) throw new Exception("An occupied table missing from the configuration is still on the plan.");
+        server.Configuration=diningConfig;
+        // Nivel PUESTO (este PC como dispositivo de sala): el servidor no le anuncia cocina, pase, terminar ni liberar, y la ficha no los
+        // pinta; "Ver cuenta" pide la contrasena del responsable, como Caja desde el menu.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        window.Shell.Session=new("service","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
+        server.Board=[..diningBoard.Select(AsStation)];
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the Puesto reads the plan");
+        if(!window.Shell.IsStation||window.Shell.IsKitchen||service.Tiles.Length!=12) throw new Exception("The Puesto level sees the same plan.");
+        Pick("Mesa 4","s4");
+        if(service.ReviewAnnounced||service.PreparationActionsAnnounced||Actions()!=" | pause"||((FrameworkElement)serviceView.FindName("RestrictionsBlock")).Visibility!=Visibility.Visible)
+            throw new Exception("At the Puesto level no kitchen action is announced nor painted; restrictions are always shown: "+Actions());
+        Pick("Mesa 8","s8");
+        if(Actions()!=" | "||service.PrimaryText!="Sin acciones para esta mesa ahora"||Named("PrimaryActionButton").IsEnabled) throw new Exception("Releasing is not the Puesto's: nothing is offered: "+Actions());
+        Press(Named("ViewAccountButton"),"Ver cuenta (puesto)");
+        if(!window.Shell.ElevationRequested||!window.Shell.LoginTitle.Contains("Cuenta / Caja",StringComparison.Ordinal)) throw new Exception("'Ver cuenta' at the Puesto level asks for the responsible: "+window.Shell.LoginTitle);
+        window.Shell.CancelElevationCommand.Execute(null); window.Shell.Status="";
+        Pick("Mesa 3","s3");
+        if(Actions()!="serve | pause"||!Named("PrimaryActionButton").IsEnabled) throw new Exception("The Puesto serves a ready course: "+Actions());
+        window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+        RefuseRaw(window,"service-puesto"); Save(Shot(window),"service-puesto.png");
+        // Revision C2: "Ver cuenta" de la Mesa 8 se pidio arriba en el nivel Puesto y se cancelo la entrada: el responsable que entra despues
+        // (sin desconectar) y abre Caja desde el menu ve la primera cuenta, como siempre, no la de aquella peticion olvidada.
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        var accountsBefore=server.Count("GET","checkout/accounts");
+        tabs.SelectedItem=(TabItem)window.FindName("CheckoutTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","checkout/accounts")>accountsBefore,"the responsible opens Caja from the menu");
+        if(window.Shell.Checkout.SelectedAccount?.ServiceId!="s1") throw new Exception("A cancelled 'Ver cuenta' never chooses the account later: "+window.Shell.Checkout.SelectedAccount?.ServiceId);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        // Captura principal (como el lienzo): responsable, todas las salas, la Mesa 4 con su alergia por revisar elegida.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        server.Board=diningBoard;
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan");
+        Pick("Mesa 4","s4");
+        // Revision C2: tras salir de un nivel y volver a leer (las pestanas se rehacen) la sala elegida sigue pintada como elegida.
+        if(service.SelectedZone!=""||!service.ZoneTabs[0].IsCurrent||service.ZoneTabs.Count(z=>z.IsCurrent)!=1) throw new Exception("After a level change and a new read 'Todas las salas' is still painted as chosen.");
+        // La vista cabe a 1.280 x 860 con la barra lateral desplegada: la ficha mide 400 px y su accion grande queda a la vista; el plano
+        // reparte las tarjetas en columnas iguales (tres a ese ancho) y desplaza lo que no cabe.
+        var primaryButton=Named("PrimaryActionButton"); var tablePanel=(FrameworkElement)serviceView.FindName("TablePanel");
+        if(Math.Abs(tablePanel.ActualWidth-400)>0.5||primaryButton.TranslatePoint(new Point(0,primaryButton.ActualHeight),serviceView).Y>serviceView.ActualHeight+0.5)
+            throw new Exception("The panel keeps its width and its big action in view: "+tablePanel.ActualWidth+" / "+primaryButton.TranslatePoint(new Point(0,primaryButton.ActualHeight),serviceView).Y+" of "+serviceView.ActualHeight);
+        var salaTops=service.Groups[0].Tiles.Take(4).Select(t=>Math.Round(TileButton(t.Name).TranslatePoint(new Point(0,0),serviceView).Y)).ToArray();
+        if(window.ActualWidth>=1270&&!window.Shell.SideNavCompact&&(salaTops[0]!=salaTops[1]||salaTops[1]!=salaTops[2]||salaTops[3]<=salaTops[2])) throw new Exception("At 1280 px with the sidebar unfolded the plan shows three tiles per row: "+string.Join(",",salaTops));
+        if(Descendants<Button>(serviceView).Where(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile).Any(b=>b.ActualWidth<Costina.Desktop.Views.ServiceView.MinTile-0.5)) throw new Exception("No tile is narrower than its minimum.");
+        // ===== C2 (plan 2026-10-14): Inicio como panel (Main.dc.html) =====
+        // Las cifras y el mini plano salen de las MISMAS tarjetas del Comedor (sin lecturas propias); los dispositivos con su conexion y la
+        // conexion sencilla, del servidor simulado; sus botones abren el asistente de Dispositivos; una mesa del mini plano y "Abrir mesa"
+        // llevan al Comedor por el camino de siempre (F01). En el nivel Puesto no se ve nada del responsable.
+        var homeView=(FrameworkElement)window.FindName("HomeView");
+        Button HomeNamed(string name)=>(Button)homeView.FindName(name);
+        Button MiniTile(string name){ window.UpdateLayout(); return Descendants<Button>((FrameworkElement)homeView.FindName("MiniPlan")).FirstOrDefault(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile t&&t.Name==name)??throw new Exception("No mini tile painted for "+name); }
+        void ShowHome(){ tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.UpdateLayout(); Wait(()=>!window.Shell.Busy,"Inicio is read"); window.UpdateLayout(); }
+        var panelDevices=new Costina.Client.DeviceRowDto[]{new("h1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("h2","tablet-terraza","service","terraza","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),
+            new("h3","pantalla-caliente","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-2),null,true),new("h4","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-2),null),
+            new("h5","pantalla-pase","kitchen","pase","user:jefa",DateTimeOffset.Now.AddDays(-2),null,true),new("h6","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))};
+        server.Organization=sampleOrganization with {Stations=stationsForDevices}; server.Devices=panelDevices; server.Network=SimpleOn; server.Diagnostics=soon;
+        var readsBeforeHome=server.Requests.Length;
+        ShowHome();
+        if(!server.Requests.Skip(readsBeforeHome).Select(r=>r.Path).ToHashSet().SetEquals(["diagnostics","auth/devices","installation/network"])) throw new Exception("Opening Inicio reads diagnostics, devices and network, never the board: "+string.Join(", ",server.Requests.Skip(readsBeforeHome).Select(r=>r.Path)));
+        string Kpis()=>$"{home.OccupiedText} {home.TablesText} | {home.DinersText} ({home.DinersDetail}) | {home.KitchenText} ({home.ReadyText}) | {home.ReviewText} ({home.ReviewDetail})";
+        if(Kpis()!="7 de 12 | 19 (2 degustaciones · 2 menús cerrados · 3 a la carta) | 2 (1 listo para servir) | 1 (Mesa 4 · ALERGIA frutos secos (grave))"||!home.ReviewAlarm||!home.HasReady
+            ||home.OccupiedShare.Value!=7||home.FreeShare.Value!=5) throw new Exception("The Inicio figures come from the Comedor tiles of the coherent sample: "+Kpis());
+        if(!home.Title.EndsWith(", Jefa",StringComparison.Ordinal)||!home.DateLine.EndsWith(c2Now.ToLocalTime().Hour<17?"· Servicio de comida":"· Servicio de cena",StringComparison.Ordinal)||!char.IsUpper(home.DateLine[0]))
+            throw new Exception("Inicio greets the responsible by name, with the date and the service: "+home.Title+" / "+home.DateLine);
+        if(!ReferenceEquals(home.Tiles,service.Tiles)||Descendants<Button>((FrameworkElement)homeView.FindName("MiniPlan")).Count(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile)!=12||home.ZonesText!="Sala principal · Terraza")
+            throw new Exception("'Sala ahora' paints the Comedor tiles, one per table: "+home.ZonesText);
+        // Revision C2: el aviso del mini plano se parte solo por su sentido ("Alergia" / "por revisar"), y un tipo desconocido sale tal cual.
+        if(!Texts(MiniTile("Mesa 4")).Contains("Alergia")||!Texts(MiniTile("Mesa 4")).Contains("por revisar")||!Texts(MiniTile("Mesa 4")).Contains("En cocina")||!Texts(MiniTile("Mesa 7")).Contains("Anaphylaxis (Critical)")||!Texts(MiniTile("Mesa 2")).Contains("Libre"))
+            throw new Exception("A mini tile says its state and its allergy in words: "+string.Join(" | ",Texts(MiniTile("Mesa 4"))));
+        if(!home.Legend.Select(l=>l.Label).SequenceEqual(["Libre","Sentados","En cocina","Listo para servir","Comiendo","En pausa","Terminado, por liberar","Alergia, restricción grave o por revisar"])) throw new Exception("The legend names the states on the plan: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        // Revision C2: con solo una restriccion leve en el plano no hay borde rojo (pastilla ambar con su palabra) y la leyenda no lo promete.
+        var readBoard=service.Board; var terrace=readBoard.Single(b=>b.Service.Id=="st1");
+        service.Board=[terrace with {Service=terrace.Service with {Restrictions=[lactose]}}];
+        if(home.Legend.Any(l=>l.Tone=="alert")||service.Tiles.Single(t=>t.Name=="Terraza 1") is not {Alert:"Restricción",AlertAlarming:false}) throw new Exception("A mild restriction alone paints no red border and the legend promises none: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        service.Board=readBoard;
+        if(home.DevicesSummary!="4 de 5 con conexión"||!home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}").SequenceEqual(["tablet-sala-1: Comandero · Sala 1 · Conectado","tablet-terraza: Comandero · Terraza · Conectado",
+            "pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado","pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión","pantalla-pase: Pantalla de cocina · Pase · Conectado"])||!home.DeviceRows.Single(r=>r.Name=="pantalla-fria").Screen)
+            throw new Exception("The device list names kind and station, with presence in words: "+string.Join(" | ",home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}")));
+        if(home.SimpleState!="Conexión sencilla activa · http://192.168.0.81:5089"||home.SimpleDot!="warn"||!home.SimpleNotice.Contains("sin cifrar",StringComparison.Ordinal)||home.NetworkNotice.Length!=0||!home.HasCertificateWarning)
+            throw new Exception("Inicio states the simple connection and warns about it and the certificate: "+home.SimpleState);
+        home.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
+        if(home.SimpleState!="Conexión sencilla desactivada"||home.SimpleNotice.Length!=0||!home.NetworkNotice.Contains("«Red 8»",StringComparison.Ordinal)) throw new Exception("A public Windows network is warned about on Inicio too: "+home.NetworkNotice);
+        home.ApplyNetwork(null);
+        if(home.SimpleState.Length!=0||home.NetworkNotice.Length!=0) throw new Exception("A server without the simple connection paints nothing about it on Inicio.");
+        home.ApplyNetwork(SimpleOn);
+        foreach(var name in new[]{"ConnectDeviceButton","FloorLinkButton","HomeOpenTableButton","HomeConnectWaiterButton","HomeConnectKitchenButton","HomeDevicesButton"})
+            if(!HomeNamed(name).IsVisible||!HomeNamed(name).IsEnabled) throw new Exception("The responsible sees "+name+" enabled from the start (GoToPage answered by the view, commands by their CanExecute).");
+        foreach(var name in new[]{"KpiRow","FloorCard","HomeDevicesCard","CertificateBar","SimpleNoticeBar","BackupNote","ServerNote"})
+            if(((FrameworkElement)homeView.FindName(name)).Visibility!=Visibility.Visible) throw new Exception(name+" is shown to the responsible.");
+        // "Conectar comandero": una sola estacion de sala, asi que el asistente de Dispositivos arranca y emite su codigo (la orden de siempre).
+        var pairingsBefore=server.Count("POST","auth/pairings");
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the waiter assistant opens in Dispositivos");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.AssistantTitle!="Conectar comandero · Sala 1"||center.PairingCode!="Home12_abc-def"||center.ChoosingStation
+            ||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("'Conectar comandero' opens its assistant with a one-use code: "+center.AssistantTitle);
+        center.CancelCommand.Execute(null); window.Shell.Status="";
+        // Revision C2: el asistente pedido desde Inicio se consume al leer: si la lectura de Dispositivos falla, no se abre solo mas tarde (otra
+        // visita o una actualizacion) ni emite un codigo que nadie ha pedido en ese momento; se vuelve a pulsar.
+        ShowHome(); var postsBefore=server.Count("POST",""); var deviceReads=server.Count("GET","auth/devices");
+        server.Failing["auth/devices"]=true;
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (lectura fallida)");
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"the devices read fails");
+        server.Failing.Clear();
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore||window.Shell.Status.Length==0)
+            throw new Exception("A failed read opens no assistant, issues no code and says so: "+window.Shell.Status);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); window.Shell.Status="";
+        deviceReads=server.Count("GET","auth/devices");
+        tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"a later visit reads Dispositivos");
+        if(center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore) throw new Exception("A request whose read failed never opens an assistant later nor issues a code.");
+        window.Shell.Status="";
+        // "Pantalla de cocina": varias estaciones posibles, asi que el asistente se abre en su primer paso (elegir la estacion) sin emitir nada.
+        ShowHome(); pairingsBefore=server.Count("POST","auth/pairings");
+        Press(HomeNamed("HomeConnectKitchenButton"),"Pantalla de cocina (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.ChoosingStation,"the kitchen screen assistant opens at choosing its station");
+        var devicesPanel=(FrameworkElement)window.FindName("DevicesView"); window.UpdateLayout();
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingIntent!="kitchen"||server.Count("POST","auth/pairings")!=pairingsBefore
+            ||((FrameworkElement)devicesPanel.FindName("ChooseStationBar")).Visibility!=Visibility.Visible||((FrameworkElement)devicesPanel.FindName("WaiterSection")).Visibility!=Visibility.Collapsed
+            ||((FrameworkElement)devicesPanel.FindName("KitchenSection")).Visibility!=Visibility.Visible||center.ChoosingText!="Pantalla de cocina: pulsa la estación donde va a estar la pantalla.")
+            throw new Exception("With several kitchen stations the assistant opens at choosing one, with only that section shown: "+center.ChoosingText);
+        RefuseRaw(window,"devices-choose"); Save(Shot(window),"devices-choose.png");
+        Press(Descendants<Button>((FrameworkElement)devicesPanel.FindName("KitchenButtons")).Single(b=>Texts(b).Contains("Cocina fría")),"Cocina fría");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"choosing the station starts the assistant");
+        if(center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.ChoosingStation||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("Choosing the station starts the usual assistant: "+center.AssistantTitle);
+        center.CancelCommand.Execute(null); window.Shell.Status="";
+        // Una mesa OCUPADA del mini plano: el Comedor con esa mesa leida por el camino de siempre (F01); una LIBRE: el formulario de abrir.
+        ShowHome(); var readsBeforeTile=server.Requests.Length;
+        Press(MiniTile("Mesa 3"),"mini Mesa 3");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id=="s3"&&service.SelectedEntry?.Service.Id=="s3","the mini plan opens Mesa 3 in Comedor");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||service.OpenForm||!server.Requests.Skip(readsBeforeTile).Any(r=>r.Method=="GET"&&r.Path=="dining/services/s3"))
+            throw new Exception("An occupied mini tile opens Comedor with that table read as usual.");
+        ShowHome(); readsBeforeTile=server.Requests.Length;
+        Press(MiniTile("Terraza 2"),"mini Terraza 2");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!service.OpenForm||service.SelectedTable?.Id!="T2"||service.SelectedEntry?.Service.Id!="s3"||server.Requests.Skip(readsBeforeTile).Any(r=>r.Path.StartsWith("dining/",StringComparison.Ordinal)))
+            throw new Exception("A free mini tile opens the open form for that table, reading nothing.");
+        service.CancelOpenCommand.Execute(null);
+        // "Abrir mesa" de la cabecera: el Comedor con el formulario de abrir mesa en una mesa libre (Service.StartOpen).
+        service.SelectedTable=service.Tables.Single(t=>t.Id=="M1"); ShowHome();
+        Press(HomeNamed("HomeOpenTableButton"),"Abrir mesa (Inicio)");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!service.OpenForm||service.SelectedTable?.Id!="M2") throw new Exception("'Abrir mesa' on Inicio opens the form on a free table: "+service.SelectedTable?.Id);
+        service.CancelOpenCommand.Execute(null);
+        // "Ver plano": el Comedor, como el menu.
+        ShowHome(); Press(HomeNamed("FloorLinkButton"),"Ver plano");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")) throw new Exception("'Ver plano' opens Comedor.");
+        // Nivel PUESTO: las cifras y el mini plano si (el comedor es del puesto); dispositivos, conectar, diagnostico y red, no: ni se leen.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        window.Shell.Session=new("service","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
+        server.Board=[..diningBoard.Select(AsStation)];
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.UpdateLayout();
+        readsBeforeHome=server.Requests.Length;
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the Puesto reads Inicio"); window.UpdateLayout();
+        if(server.Requests.Skip(readsBeforeHome).Any(r=>r.Path is "diagnostics" or "auth/devices" or "installation/network")) throw new Exception("At the Puesto level Inicio reads nothing of the responsible's.");
+        foreach(var name in new[]{"HomeDevicesCard","ConnectDeviceButton","CertificateBar","SimpleNoticeBar","BackupNote","HomeNetworkBar"})
+            if(((FrameworkElement)homeView.FindName(name)).IsVisible) throw new Exception("At the Puesto level Inicio hides "+name+".");
+        if(!((FrameworkElement)homeView.FindName("KpiRow")).IsVisible||!((FrameworkElement)homeView.FindName("FloorCard")).IsVisible||Grid.GetColumnSpan((FrameworkElement)homeView.FindName("FloorCard"))!=3
+            ||!HomeNamed("HomeOpenTableButton").IsVisible||!((FrameworkElement)homeView.FindName("ServerNote")).IsVisible||home.DeviceRows.Length!=0||Kpis()!="7 de 12 | 19 (2 degustaciones · 2 menús cerrados · 3 a la carta) | 2 (1 listo para servir) | 1 (Mesa 4 · ALERGIA frutos secos (grave))")
+            throw new Exception("At the Puesto level Inicio shows the dining figures and the whole-width plan: "+Kpis());
+        if(!home.Title.EndsWith(", pc-principal",StringComparison.Ordinal)||!home.WhoText.StartsWith("Puesto de sala pc-principal · Sala 1",StringComparison.Ordinal)) throw new Exception("At the Puesto level Inicio greets the puesto: "+home.Title);
+        RefuseRaw(window,"home-puesto"); Save(Shot(window),"home-puesto.png");
+        // Un asistente pedido en el nivel Puesto pide antes la contrasena (Dispositivos es del responsable); cancelar la entrada lo olvida.
+        home.ConnectDeviceCommand.Execute("kitchen");
+        if(!window.Shell.ElevationRequested||!window.Shell.LoginTitle.Contains("Dispositivos",StringComparison.Ordinal)||tabs.SelectedItem!=(TabItem)window.FindName("HomeTab"))
+            throw new Exception("An assistant asked at the Puesto level asks for the responsible first: "+window.Shell.LoginTitle);
+        window.Shell.CancelElevationCommand.Execute(null); window.Shell.Status="";
+        // De vuelta al responsable (sin desconectar, como al entrar con su contrasena: la peticion cancelada no debe sobrevivir) y con la
+        // Mesa 4 elegida en el Comedor (captura principal).
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        server.Board=diningBoard;
+        tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&center.KitchenStations.Length>0,"the responsible opens Dispositivos");
+        if(center.ChoosingStation||center.HasAssistant) throw new Exception("A cancelled request never opens an assistant later.");
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan again");
+        Pick("Mesa 4","s4");
+        window.Shell.Api.Dispose(); window.Shell.Api=null;
+        SynchronizationContext.SetSynchronizationContext(previousContext);
+        window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400,"bottle","Bebidas","general"),new Costina.Client.ProductChoice("wine","Vino de ensayo","Copa",950,"glass","Vinos","general")]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
+        window.Shell.Checkout.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))]; window.Shell.Checkout.SelectedAccount=window.Shell.Checkout.Accounts[0];
+        window.Shell.Checkout.Charges=[new("ch1","Degustación Costiña · Por persona",2,15000,false,null,30000),new("ch2","Agua mineral · Botella",1,400,false,null,400)];
+        window.Shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",30400,0,30400,0,"Unpaid",window.Shell.Checkout.Charges,[],["add-product","payment"],[]));
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         center.ApplyNetwork(SimpleOn);   // B.2: la captura de Dispositivos muestra la conexion sencilla activa
-        home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
+        home.ApplyDiagnostics(soon); home.ApplyDevices(panelDevices); home.ApplyNetwork(SimpleOn);   // C2: Inicio con sus dispositivos y la conexion sencilla
         window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
-        window.Shell.Service.Restrictions=dto.Restrictions!;
         window.Shell.Home.Visible=true;
         foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
         {
             tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout();
             // Las columnas "*" del DataGrid se reparten en una pasada diferida: se vacia la cola del despachador antes de capturar.
             window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
-            // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista (las estaciones aun salen por su codigo: C2).
+            // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista. C2: las estaciones, por su nombre.
             RefuseRaw(window,tab);
-            if(tab=="ServiceTab"&&(!Texts(window).Any(t=>t.Contains("ALERGIA gluten (grave)",StringComparison.Ordinal))||!Texts(window).Any(t=>t.Contains("Anaphylaxis cacahuete (Critical)",StringComparison.Ordinal))))
-                throw new Exception("Comedor paints the allergy in words and an unknown restriction raw (never softened).");
+            if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Anaphylaxis (Critical)","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
+                throw new Exception("Comedor paints the allergy in words on the panel and on the tile, and the station by its name: missing '"+missing+"'.");
+            // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
+            if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
+                "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
+                throw new Exception("Inicio paints its figures, the allergy to review, the plan and the devices in words: missing '"+missingHome+"'.");
             var shot=Shot(window);
             // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
             // margen entre la barra lateral y la vista.
             if(Pixel(shot,workspace.TranslatePoint(new Point(-12,12),window)) is var gutter&&gutter!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception(tab+": the window background must be opaque #F3F4F6, found "+gutter);
             Save(shot,file);
+            // C2: Inicio desplaza: la segunda captura es su final (accesos y notas: conexion sencilla, copia de seguridad y servidor).
+            if(tab=="HomeTab")
+            {
+                var homeScroll=(ScrollViewer)((FrameworkElement)window.FindName("HomeView")).FindName("HomeScroll");
+                homeScroll.ScrollToEnd(); window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+                var homeEnd=(FrameworkElement)((FrameworkElement)window.FindName("HomeView")).FindName("HomeNotes");
+                if(homeEnd.TranslatePoint(new Point(0,homeEnd.ActualHeight),homeScroll).Y>homeScroll.ActualHeight+0.5) throw new Exception("Scrolled to the end, Inicio shows its notes.");
+                Save(Shot(window),"home-end.png"); homeScroll.ScrollToHome(); window.UpdateLayout();
+            }
         }
         // B.2: Dispositivos con la red de Windows en "Publica" y la conexion sencilla apagada, ofrecida y pidiendo confirmacion.
         center.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
@@ -815,6 +1225,17 @@ internal static class Program
         }
     }
     private static void Await(Task task,string what){ Wait(()=>task.IsCompleted,what); task.GetAwaiter().GetResult(); }
+    // C2: pulsa un boton como lo haria una persona (patron Invoke de automatizacion: ejecuta SU orden enlazada con su parametro); un
+    // boton oculto o deshabilitado no se puede pulsar. Despues deja trabajar al despachador (la pulsacion llega por el).
+    private static void Press(Button button,string what)
+    {
+        if(!button.IsVisible||!button.IsEnabled) throw new Exception(what+": the button must be visible and enabled.");
+        var peer=new System.Windows.Automation.Peers.ButtonAutomationPeer(button);
+        ((System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke)).Invoke();
+        var frame=new DispatcherFrame();
+        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle,new Action(()=>frame.Continue=false));
+        Dispatcher.PushFrame(frame);
+    }
     // E3.2: foto de muestra: una botella dibujada (cristal, capsula, etiqueta y brillo) sobre blanco, guardada como PNG o JPEG de verdad.
     private static byte[] Bottle(Color glass,Color label,BitmapEncoder encoder)
     {
@@ -837,12 +1258,24 @@ internal static class Program
 
     // E3.2: servidor simulado en memoria para los checks: sirve el catalogo, la organizacion y las imagenes (con su tipo y su ETag),
     // confirma las ordenes con el eco de su clave y aplica en memoria las de imagen, como el motor; registra cada peticion. Sin puertos.
+    // C2: tambien la configuracion operativa, el tablero del comedor, cada mesa (la entrada del tablero con su version) y las cuentas
+    // de Caja, para que elegir una tarjeta del plano pase por la lectura de siempre.
     private sealed record Request(string Method,string Path,string Body,string? Key);
     private sealed class FakeServer(Costina.Client.CatalogDto catalog,Costina.Client.OrganizationDto organization) : System.Net.Http.HttpMessageHandler
     {
         public Costina.Client.CatalogDto Catalog { get; set; }=catalog;
         public Costina.Client.OrganizationDto Organization { get; set; }=organization;
+        public Costina.Client.Configuration? Configuration { get; set; }
+        public Costina.Client.BoardEntry[] Board { get; set; }=[];
+        public Costina.Client.AccountChoice[] Accounts { get; set; }=[];
+        // C2: lo que lee Inicio del responsable (diagnostico, dispositivos, red) y lo que necesita un asistente de Dispositivos (solicitudes y
+        // el codigo de un uso que emite POST auth/pairings).
+        public Costina.Client.DiagnosticsDto? Diagnostics { get; set; }
+        public Costina.Client.DeviceRowDto[] Devices { get; set; }=[];
+        public Costina.Client.NetworkDto? Network { get; set; }
         public System.Collections.Concurrent.ConcurrentDictionary<string,(string Type,byte[] Content)> Images { get; }=new();
+        // Revision C2: lecturas que fallan (503) mientras la ruta este aqui, para comprobar lo que queda tras una lectura fallida.
+        public System.Collections.Concurrent.ConcurrentDictionary<string,bool> Failing { get; }=new();
         private readonly List<Request> requests=[];
         public Request[] Requests { get { lock(requests) return [..requests]; } }
         public int Count(string method,string path)=>Requests.Count(r=>r.Method==method&&r.Path.StartsWith(path,StringComparison.Ordinal));
@@ -854,6 +1287,7 @@ internal static class Program
             lock(requests) requests.Add(new(request.Method.Method,path,body,key));
             if(request.Method==System.Net.Http.HttpMethod.Get)
             {
+                if(Failing.ContainsKey(path)) return Json(503,"{\"error\":\"unavailable\"}");
                 if(path.StartsWith("catalog/images/",StringComparison.Ordinal))
                 {
                     if(!Images.TryGetValue(Uri.UnescapeDataString(path["catalog/images/".Length..]),out var image)) return Json(404,"{\"error\":\"not_found\"}");
@@ -864,8 +1298,21 @@ internal static class Program
                 }
                 if(path=="erp/catalog") return Json(200,JsonSerializer.Serialize(Catalog,Costina.Client.ApiClient.Json));
                 if(path=="organization") return Json(200,JsonSerializer.Serialize(Organization,Costina.Client.ApiClient.Json));
+                if(path=="configuration"&&Configuration is not null) return Json(200,JsonSerializer.Serialize(Configuration,Costina.Client.ApiClient.Json));
+                if(path=="dining/board") return Json(200,JsonSerializer.Serialize(Board,Costina.Client.ApiClient.Json));
+                if(path.StartsWith("dining/services/",StringComparison.Ordinal)&&Board.FirstOrDefault(b=>b.Service.Id==Uri.UnescapeDataString(path["dining/services/".Length..])) is {} entry)
+                    return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.DiningDto>(entry.Version,entry.Service),Costina.Client.ApiClient.Json));
+                if(path=="checkout/accounts") return Json(200,JsonSerializer.Serialize(Accounts,Costina.Client.ApiClient.Json));
+                if(path=="checkout/catalog") return Json(200,"[]");
+                if(path=="diagnostics"&&Diagnostics is not null) return Json(200,JsonSerializer.Serialize(Diagnostics,Costina.Client.ApiClient.Json));
+                if(path=="auth/devices") return Json(200,JsonSerializer.Serialize(Devices,Costina.Client.ApiClient.Json));
+                if(path=="auth/pairings/pending") return Json(200,"[]");
+                if(path=="installation/network"&&Network is not null) return Json(200,JsonSerializer.Serialize(Network,Costina.Client.ApiClient.Json));
+                if(path.StartsWith("checkout/services/",StringComparison.Ordinal)&&Accounts.FirstOrDefault(a=>a.ServiceId==Uri.UnescapeDataString(path["checkout/services/".Length..])) is {} account)
+                    return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.AccountDto>(1,new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
                 return Json(404,"{\"error\":\"not_found\"}");
             }
+            if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",code="Home12_abc-def",expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
             var command=JsonSerializer.Deserialize<JsonElement>(body);
             if(path=="erp/catalog/commands/product-image-set")
             {

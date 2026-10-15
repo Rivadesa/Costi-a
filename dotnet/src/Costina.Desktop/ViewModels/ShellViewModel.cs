@@ -31,7 +31,7 @@ public sealed partial class ShellViewModel : ObservableObject
     // La ventana selecciona la vista pedida cuando el responsable ya ha entrado (y al conectar, la primera visible).
     public event Action<string>? ViewRequested;
 
-    public HomeViewModel Home { get; }                   // corte A: Inicio (estado, accesos, dispositivos)
+    public HomeViewModel Home { get; }                   // corte A: Inicio (estado, accesos, dispositivos); C2: panel con cifras y mini plano
     public ServiceViewModel Service { get; }
     public CheckoutViewModel Checkout { get; }
     public DevicesViewModel Devices { get; }
@@ -76,6 +76,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Settings = DesktopSettings.Load();
         lastActivity = Clock();
         Home = new(this); Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this);
+        Home.Watch(Service);   // C2: las cifras y el mini plano de Inicio siguen a las tarjetas del Comedor (sin lecturas propias)
         // C1 (arreglo): la direccion guardada se asigna DESPUES de crear las vistas. Si es distinta de la de por defecto (todo
         // puesto adicional: https://NOMBRE:PUERTO), OnEndpointChanged -> Sync() recorre las vistas y antes reventaba (NullReference).
         Endpoint = Settings.Endpoint; Username = Settings.Username;
@@ -252,7 +253,9 @@ public sealed partial class ShellViewModel : ObservableObject
     internal async Task RefreshAll()
     {
         if (Home.Visible) await Home.LoadAsync();
-        if (HasDining) await Service.LoadAsync();
+        // C2: la configuracion (mesas activas, ofertas vigentes, estaciones) se relee con el tablero: una mesa creada en Configuracion
+        // aparece en el plano sin reconectar y la oferta de la comida deja paso a la de la cena.
+        if (HasDining) { Service.ApplyConfiguration(await Api!.GetAsync<Configuration>("configuration")); await Service.LoadAsync(); }
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
         if (IsMain && Devices.Visible) await Devices.LoadAsync();
         if (IsMain && Organization.Visible) await Organization.LoadAsync();
@@ -341,9 +344,22 @@ public sealed partial class ShellViewModel : ObservableObject
         Status = $"{ViewTitle(view)} es solo para el responsable: entra con tu usuario y contraseña. El puesto sigue operativo.";
         Sync();
     }
+    // C2: una vista pedida desde un viewmodel (Inicio: abrir mesa, una mesa del mini plano, un asistente de Dispositivos) sigue la logica
+    // del menu: un apartado sensible en el nivel Puesto pide antes al responsable; el resto se abre sin mas.
+    public void OpenView(string view)
+    {
+        if (RequiresResponsible(view)) RequestElevation(view);
+        else ViewRequested?.Invoke(view);
+    }
     private bool CanCancelElevation() => RequestedView is not null && !Busy;
     [RelayCommand(CanExecute = nameof(CanCancelElevation))]
-    private void CancelElevation() { RequestedView = null; Status = "Sigues en el nivel Puesto."; Sync(); }
+    private void CancelElevation()
+    {
+        RequestedView = null;
+        Devices.Request(null);   // C2: un asistente pedido desde Inicio no se abre solo mas tarde, cuando nadie lo espera
+        Checkout.Request(null);  // C2: ni la cuenta pedida con "Ver cuenta" elige cuenta la proxima vez que se abra Caja desde el menu
+        Status = "Sigues en el nivel Puesto."; Sync();
+    }
 
     private bool CanConnectPaired() => ConnectEnabled && HasPairedDevice;
     [RelayCommand(CanExecute = nameof(CanConnectPaired))]

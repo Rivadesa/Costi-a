@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         // 15 minutos sin tocar nada y, si es asi, se vuelve al nivel Puesto.
         InputManager.Current.PreProcessInput += (_, _) => shell.NoteActivity();
         inactivity.Tick += (_, _) => shell.CheckInactivity();
+        inactivity.Tick += (_, _) => shell.Service.Tick();   // C2: los minutos de las mesas del plano avanzan sin releer
         inactivity.Start();
     }
 
