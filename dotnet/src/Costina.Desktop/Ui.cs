@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Costina.Desktop;
 
@@ -32,6 +34,25 @@ public static class Ui
         "Current", typeof(bool), typeof(Ui), new FrameworkPropertyMetadata(false));
     public static bool GetCurrent(DependencyObject element) => (bool)element.GetValue(CurrentProperty);
     public static void SetCurrent(DependencyObject element, bool value) => element.SetValue(CurrentProperty, value);
+
+    // C2b (revision): una lista cuya eleccion la mueve el modelo ("Ver cuenta" desde el Comedor, un alta confirmada, "Ver todos", una mesa
+    // que cambio de sala) desplaza la fila elegida a la vista; antes la ficha mostraba una fila que la lista tenia fuera de pantalla. Solo
+    // pinta: no toca la eleccion. La guarda de OriginalSource deja pasar los SelectionChanged de los desplegables y listas de dentro de
+    // cada fila, que suben hasta la lista.
+    public static readonly DependencyProperty KeepSelectionInViewProperty = DependencyProperty.RegisterAttached(
+        "KeepSelectionInView", typeof(bool), typeof(Ui), new PropertyMetadata(false, (d, e) =>
+        {
+            if (d is not ListBox list) return;
+            list.SelectionChanged -= Reveal;
+            if ((bool)e.NewValue) list.SelectionChanged += Reveal;
+        }));
+    public static bool GetKeepSelectionInView(DependencyObject element) => (bool)element.GetValue(KeepSelectionInViewProperty);
+    public static void SetKeepSelectionInView(DependencyObject element, bool value) => element.SetValue(KeepSelectionInViewProperty, value);
+    private static void Reveal(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListBox { SelectedItem: { } item } list || !ReferenceEquals(e.OriginalSource, list)) return;
+        list.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { if (ReferenceEquals(list.SelectedItem, item) && list.IsVisible) list.ScrollIntoView(item); });
+    }
 
     // Barra lateral plegada a iconos: se fija una vez en la barra y la heredan todos sus elementos.
     public static readonly DependencyProperty CompactProperty = DependencyProperty.RegisterAttached(

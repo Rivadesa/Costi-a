@@ -382,6 +382,16 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     }
 
     public static string Money(long cents) => (cents / 100m).ToString("N2", CultureInfo.GetCultureInfo("es-ES")) + " €";
+    // Revision de C2b: las fechas se escriben como se leen (dd/mm/aaaa); se admite tambien AAAA-MM-DD. Lo que viaja en la orden sigue
+    // siendo AAAA-MM-DD, byte a byte como antes. Vacio se devuelve vacio (cada orden dice que significa).
+    internal static string ParseDay(string text, string error)
+    {
+        var t = text.Trim();
+        if (t.Length == 0) return "";
+        return DateOnly.TryParseExact(t, ["dd/MM/yyyy", "yyyy-MM-dd"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) ? day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : throw new ArgumentException(error);
+    }
+    // Revision de C2b: el nombre de un producto del catalogo leido (la ficha de una oferta nombra su producto-menu, que Caja no vende).
+    public string? NameOfProduct(string id) => catalog?.Products.FirstOrDefault(p => p.Id == id)?.Name;
 
     // Precio vigente hoy en una tarifa (la fila de mayor fecha no posterior a hoy), o null.
     private static PriceDto? Current(PresentationDto presentation, string tariffId, string today)
@@ -406,7 +416,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             var tariff = Take(ref createdTariff) ?? SelectedTariff?.Id; var tax = Take(ref createdTax) ?? SelectedTax?.Id;
             // C2b: la fecha de "Fijar precio" propone el hoy del servidor; si seguia proponiendo el de una lectura anterior (otro dia), se
             // pone al dia. Una fecha tecleada no se toca.
-            if (PriceValidFrom.Length == 0 || PriceValidFrom == catalog?.Today) PriceValidFrom = value.Today;
+            if (PriceValidFrom.Length == 0 || PriceValidFrom == Day(catalog?.Today ?? "")) PriceValidFrom = Day(value.Today);
             catalog = value; Tariffs = value.Tariffs; Taxes = value.Taxes;
             // Una lista rehecha pierde su eleccion y no la recupera si la fila nueva es igual a la de antes (los registros comparan por valor
             // y la propiedad no avisa): la eleccion se vuelve a dar, primero vacia y despues la de siempre.
@@ -522,11 +532,13 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     {
         var today = catalog!.Today;
         var active = p.Presentations.Where(s => s.Active).OrderBy(s => s.Sort).ThenBy(s => s.Id, StringComparer.Ordinal).ToArray();
-        var price = active.Length == 0 ? null : Current(active[0], "general", today);
+        // Revision de C2b: el precio de la fila es el General de la PRIMERA presentacion activa que lo tenga (no de la primera a secas), y
+        // "Sin precio" solo si ninguna lo tiene: lo mismo que cuenta el resumen (Sellable) y avisa la ficha.
+        var price = active.Select(s => Current(s, "general", today)).FirstOrDefault(c => c is not null);
         return new ProductRow(p, p.CategoryId is null ? "Sin categoría" : PathOf(p.CategoryId, 2),
             p.Presentations.Length == 0 ? "sin presentación" : string.Join(" / ", p.Presentations.Where(s => s.Active).Select(s => Current(s, "general", today) is { } current ? $"{s.Name} {Money(current.PriceCents)}" : s.Name + " sin precio")),
             images)
-        { MainPrice = !p.Active ? "Desactivado" : price is null ? "Sin precio" : Money(price.PriceCents), PriceMissing = p.Active && price is null, PresentationCount = active.Length };
+        { MainPrice = !p.Active ? "Desactivado" : price is null ? "Sin precio" : Money(price.PriceCents), PriceMissing = p.Active && !Sellable(p, today), PresentationCount = active.Length };
     }
     private void RenderPresentations() => Presentations = SelectedProduct is null ? [] : SelectedProduct.Product.Presentations.Select(p => new PresentationRow(p, PriceLabel(p)) { Cells = CellsOf(p) }).ToArray();
     // Precio vigente en cada tarifa activa (las columnas de la tabla): sin precio en la General no se vende; sin precio propio en otra
@@ -717,7 +729,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private void ComposeCategories()
     {
         var all = catalog?.Categories ?? [];
-        CategoryCount = catalog is null ? "" : Labels.Plural(all.Length, "categoría", "categorías") + (all.Count(c => !c.Active) is var off and > 0 ? $", {off} desactivada{(off == 1 ? "" : "s")}" : "");
+        CategoryCount = catalog is null ? "" : Labels.Plural(all.Length, "categoría", "categorías") + (all.Count(c => !c.Active) is var off and > 0 ? " · " + Labels.Plural(off, "desactivada", "desactivadas") : "");
         ShowCategoryListEmpty = Categories.Length == 0;
         (CategoryListHeading, CategoryListText) = catalog is null ? ("Sin leer todavía", "Las categorías aparecerán aquí al leer el catálogo del servidor.")
             : ("Aún no hay categorías", "Agrupan los productos (Vinos › Tintos › Rioja…). Crea la primera o impórtalas con el catálogo.");
@@ -971,7 +983,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private Task SetPrice() => shell.Attempt(() =>
     {
         var tariffId = Code(Chosen(PriceTariffId, "la tarifa")); var priceCents = Cents(PriceText); var validFrom = PriceValidFrom.Trim();
-        if (validFrom.Length > 0 && !DateOnly.TryParseExact(validFrom, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) throw new ArgumentException("Vigencia: fecha AAAA-MM-DD (vacía = hoy).");
+        validFrom = ParseDay(validFrom, "Vigencia: fecha dd/mm/aaaa (vacía = hoy).");
         return Command("price-set", new { tariffId, productId = SelectedProduct!.Product.Id, presentationId = SelectedPresentation!.Presentation.Id, validFrom, priceCents },
             $"Fijar precio {Money(priceCents)} de {SelectedProduct.Product.Name} · {SelectedPresentation.Presentation.Name} en {Tariffs.FirstOrDefault(t => t.Id == tariffId)?.Name ?? tariffId}");
     });

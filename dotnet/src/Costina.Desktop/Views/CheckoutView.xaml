@@ -12,6 +12,12 @@
   <GridLength x:Key="QuantityColumn">74</GridLength>
   <GridLength x:Key="AmountColumn">104</GridLength>
   <GridLength x:Key="VoidColumn">86</GridLength>
+  <!-- Revision de C2b: una linea anulada va entera en gris y tachada, tambien su cantidad y su importe (antes el importe seguia en negrita,
+       como si contara). El importe de una linea que cuenta va en seminegrita. -->
+  <Style x:Key="ChargeText" TargetType="TextBlock">
+   <Style.Triggers><DataTrigger Binding="{Binding Voided}" Value="True"><Setter Property="TextDecorations" Value="Strikethrough"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="FontWeight" Value="Normal"/></DataTrigger></Style.Triggers>
+  </Style>
+  <Style x:Key="ChargeAmount" TargetType="TextBlock" BasedOn="{StaticResource ChargeText}"><Setter Property="FontWeight" Value="SemiBold"/></Style>
  </UserControl.Resources>
  <DockPanel>
   <!-- ===== Cabecera de pagina: titulo, resumen y, a la derecha, el aviso de que es un registro de ensayo ===== -->
@@ -32,7 +38,8 @@
    <Border x:Name="AccountsPane" Style="{StaticResource ListPane}">
     <DockPanel>
      <TextBox x:Name="AccountSearch" DockPanel.Dock="Top" Style="{StaticResource SearchField}" local:Ui.Hint="Buscar mesa o sala"
-              Text="{Binding Checkout.Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar una cuenta por mesa o sala"/>
+              Text="{Binding Checkout.Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar una cuenta por mesa o sala"
+              Visibility="{Binding Checkout.ShowListTools, Converter={StaticResource Bool2Vis}}"/>
      <Grid>
       <!-- Lista vacia: dice que falta y ofrece abrir una mesa (cada mesa abierta tiene su cuenta) o borrar la busqueda. -->
       <StackPanel x:Name="AccountsEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Checkout.ShowListEmpty, Converter={StaticResource Bool2Vis}}">
@@ -70,7 +77,7 @@
    <Border x:Name="AccountPanel" Grid.Column="2" Style="{StaticResource Ficha}">
     <Grid>
      <!-- Nada elegido (o la cuenta elegida sin lectura fiable): dice que elegir y no muestra campos ni botones. -->
-     <ContentControl x:Name="AccountEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCheckout}"
+     <ContentControl x:Name="AccountEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconCheckout}"
                      local:Ui.Heading="{Binding Checkout.EmptyHeading}" Content="{Binding Checkout.EmptyText}" Visibility="{Binding Checkout.HasContext, Converter={StaticResource NotBool2Vis}}"/>
 
      <DockPanel x:Name="AccountDetail" Visibility="{Binding Checkout.HasContext, Converter={StaticResource Bool2Vis}}">
@@ -95,10 +102,10 @@
        </UniformGrid>
        <TextBlock Text="{Binding Checkout.RefundedText}" Style="{StaticResource Subtle}" Margin="0,6,0,0" Visibility="{Binding Checkout.RefundedText, Converter={StaticResource Text2Vis}}"/>
        <ContentControl x:Name="CreditBar" Style="{StaticResource WarnBar}" Margin="0,10,0,0" Visibility="{Binding Checkout.CreditText, Converter={StaticResource Text2Vis}}">
-        <TextBlock Text="{Binding Checkout.CreditText}"/>
+        <TextBlock Text="{Binding Checkout.CreditText}" TextWrapping="Wrap"/>
        </ContentControl>
        <ContentControl x:Name="ClosedBar" Style="{StaticResource WarnBar}" Margin="0,10,0,0" Visibility="{Binding Checkout.ClosedText, Converter={StaticResource Text2Vis}}">
-        <TextBlock Text="{Binding Checkout.ClosedText}"/>
+        <TextBlock Text="{Binding Checkout.ClosedText}" TextWrapping="Wrap"/>
        </ContentControl>
       </StackPanel>
 
@@ -122,11 +129,15 @@
         <Grid Margin="0,12,0,0">
          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
          <Button x:Name="PayButton" Style="{StaticResource BigAction}" Content="Registrar pago de prueba" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Checkout.PayCommand}"
-                 Visibility="{Binding Checkout.CloseAnnounced, Converter={StaticResource NotBool2Vis}}"/>
+                 Visibility="{Binding Checkout.ShowPay, Converter={StaticResource Bool2Vis}}"/>
+         <!-- Pagado de mas (revision de C2b): el grande lleva a "Otras operaciones" (solo desplaza y enfoca el motivo); la devolucion sigue
+              siendo el boton de alli, con su motivo. -->
+         <Button x:Name="RefundHintButton" Style="{StaticResource FichaSecondary}" Margin="0" HorizontalAlignment="Stretch" Content="Devolver lo pagado de más…" ContentTemplate="{StaticResource ButtonText}"
+                 Click="ShowRefund" Visibility="{Binding Checkout.ShowRefundHint, Converter={StaticResource Bool2Vis}}" ToolTip="Baja a «Otras operaciones», donde se devuelve con su motivo"/>
          <Button x:Name="CloseAccountButton" Style="{StaticResource BigAction}" Content="Cerrar cuenta saldada" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Checkout.CloseAccountCommand}"
                  Visibility="{Binding Checkout.CloseAnnounced, Converter={StaticResource Bool2Vis}}" ToolTip="La cuenta queda cerrada; cerrar la cuenta no termina el servicio de la mesa"/>
          <Button x:Name="PayAgainButton" Grid.Column="1" Content="Registrar pago de prueba" Command="{Binding Checkout.PayCommand}" MinHeight="46" Margin="10,0,0,0" Padding="14,0"
-                 Visibility="{Binding Checkout.CloseAnnounced, Converter={StaticResource Bool2Vis}}"/>
+                 Visibility="{Binding Checkout.ShowPayAside, Converter={StaticResource Bool2Vis}}"/>
         </Grid>
        </StackPanel>
       </Border>
@@ -162,17 +173,11 @@
             <Grid>
              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="{StaticResource QuantityColumn}"/><ColumnDefinition Width="{StaticResource AmountColumn}"/><ColumnDefinition Width="{StaticResource VoidColumn}"/></Grid.ColumnDefinitions>
              <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="{Binding Description}" TextWrapping="Wrap">
-               <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                 <Style.Triggers><DataTrigger Binding="{Binding Voided}" Value="True"><Setter Property="TextDecorations" Value="Strikethrough"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers>
-                </Style>
-               </TextBlock.Style>
-              </TextBlock>
+              <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Style="{StaticResource ChargeText}"/>
               <TextBlock Text="{Binding Note}" Style="{StaticResource RowDetail}" TextWrapping="Wrap" Visibility="{Binding Note, Converter={StaticResource Text2Vis}}"/>
              </StackPanel>
-             <TextBlock Grid.Column="1" Text="{Binding Quantity}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-             <TextBlock Grid.Column="2" Text="{Binding Amount}" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+             <TextBlock Grid.Column="1" Text="{Binding Quantity}" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource ChargeText}"/>
+             <TextBlock Grid.Column="2" Text="{Binding Amount}" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource ChargeAmount}"/>
              <Border Grid.Column="3" Style="{StaticResource ToneChip}" HorizontalAlignment="Right" Visibility="{Binding Voided, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Anulado"/></Border>
             </Grid>
            </Border>

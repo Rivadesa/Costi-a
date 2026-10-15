@@ -106,7 +106,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     internal void Request(string? role) => requestedIntent = role;   // null = olvidar la peticion (se cancelo la entrada del responsable)
     public bool HasDuplicateWarning => DuplicateWarning.Length > 0;
     public string IntentLabel => IntentRole == "service" ? $"comandero en {IntentStationName}" : $"pantalla de cocina de {IntentStationName}";
-    public string RecognisedText => Recognised is null ? "" : $"\"{Recognised.DeviceName}\" pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
+    public string RecognisedText => Recognised is null ? "" : $"«{Recognised.DeviceName}» pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
 
     // QR del enlace https://EQUIPO:PUERTO/app/#pair=CODIGO (D6.5)
     private const string QrIdle = "Al generar el código aparece aquí su QR: el dispositivo lo lee con la cámara y abre la aplicación con el código ya puesto.";
@@ -123,7 +123,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // Quitar en dos pasos (F9: nada irreversible con un solo toque)
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ConfirmingRemoval))] [NotifyPropertyChangedFor(nameof(RemovalText))] private DeviceRow? removalCandidate;
     public bool ConfirmingRemoval => RemovalCandidate is not null;
-    public string RemovalText => RemovalCandidate is null ? "" : $"¿Quitar \"{RemovalCandidate.Device.Name}\"? Dejará de funcionar en el acto y habrá que conectarlo de nuevo"
+    public string RemovalText => RemovalCandidate is null ? "" : $"¿Quitar «{RemovalCandidate.Device.Name}»? Dejará de funcionar en el acto y habrá que conectarlo de nuevo"
         + (RemovalCandidate.IsThisPc ? ". ES ESTE PC: tendrás que volver a conectarlo como responsable" : "") + ".";
 
     public bool Visible { get; set; }
@@ -206,7 +206,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             // Solo la solicitud del asistente abierto se reconoce (y se puede aprobar): la intencion vive aqui, ligada al pairingId.
             Recognised = PairingId.Length == 0 ? null : pendingRows.FirstOrDefault(p => p.PairingId == PairingId);
             DuplicateWarning = Recognised is { } request && deviceRows.Any(d => d.Active && string.Equals(d.Name, request.DeviceName, StringComparison.OrdinalIgnoreCase))
-                ? $"Ya hay un dispositivo activo llamado \"{request.DeviceName}\". Dos con el mismo nombre comparten identidad en la auditoría: quita el antiguo antes o pide otro nombre en el dispositivo."
+                ? $"Ya hay un dispositivo activo llamado «{request.DeviceName}». Dos con el mismo nombre comparten identidad en la auditoría: quita el antiguo antes o pide otro nombre en el dispositivo."
                 : "";
             RebuildRows();
         }
@@ -420,7 +420,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         var collect = await auth.CollectAsync(claim.PairingId, claim.PollSecret);
         if (collect.Status != "approved" || collect.DeviceToken is null) throw new InvalidOperationException("No se pudo recoger la credencial del puesto.");
         new DpapiDeviceStore(uri).Save(collect.DeviceToken);
-        shell.Status = $"Este PC queda conectado como puesto \"{name}\" en {station.Name}. Al encenderlo entrará solo; al salir del modo responsable seguirá operativo.";
+        shell.Status = $"Este PC queda conectado como puesto «{name}» en {station.Name}. Al encenderlo entrará solo; al salir del modo responsable seguirá operativo.";
         OnPropertyChanged(nameof(ThisPcText)); shell.Sync();
         await LoadAsync();
     });
@@ -519,7 +519,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     {
         var request = Recognised!;
         await shell.Api!.PostRawAsync("auth/pairings/" + ApiClient.Segment(request.PairingId) + "/approve", new { role = IntentRole, station = IntentStationId });
-        shell.Status = $"\"{request.DeviceName}\" conectado como {IntentLabel}. En unos segundos entra solo en su pantalla.";
+        shell.Status = $"«{request.DeviceName}» conectado como {IntentLabel}. En unos segundos entra solo en su pantalla.";
         CloseAssistant();
         await LoadAsync();
     });
@@ -529,7 +529,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     private Task Deny() => shell.Run(async () =>
     {
         await shell.Api!.PostRawAsync("auth/pairings/" + ApiClient.Segment(SelectedPending!.PairingId) + "/deny", new { });
-        shell.Status = $"Solicitud de \"{SelectedPending.DeviceName}\" denegada.";
+        shell.Status = $"Solicitud de «{SelectedPending.DeviceName}» denegada.";
         await LoadAsync();
     });
 
@@ -560,7 +560,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     {
         var row = RemovalCandidate!; RemovalCandidate = null;
         await shell.Api!.PostRawAsync("auth/devices/" + ApiClient.Segment(row.Device.Id) + "/revoke", new { });
-        shell.Status = $"\"{row.Device.Name}\" quitado: expulsado también del tiempo real. Para volver a usarlo, conéctalo de nuevo.";
+        shell.Status = $"«{row.Device.Name}» quitado: expulsado también del tiempo real. Para volver a usarlo, conéctalo de nuevo.";
         await LoadAsync();
     });
 

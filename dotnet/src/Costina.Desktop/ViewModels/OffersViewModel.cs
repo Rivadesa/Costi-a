@@ -18,8 +18,10 @@ public sealed record OfferRow(OfferDto Offer)
 {
     public string KindLabel => Labels.OfferKind(Offer.Kind);
     public string StateLabel => Labels.Active(Offer.Active, feminine: true);
-    // C2b: segunda linea de la fila: tipo, servicio, pases activos y vigencia.
+    // C2b: segunda linea de la fila: tipo, servicio y pases activos. Revision: la vigencia va en su propia linea (si no, la segunda se
+    // partia tras un "·" colgado y las filas con fechas median mas que las demas).
     public string Detail { get; init; } = "";
+    public string Validity { get; init; } = "";
     public bool Inactive => !Offer.Active;
     public override string ToString() => $"{Offer.Name} · {KindLabel} · {StateLabel}";
 }
@@ -151,8 +153,8 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     // C2b: el producto-menu por su nombre si es un vendible leido; si no (los productos-menu no se venden sueltos en caja), por su codigo,
     // dicho como codigo: es lo que encuentra el buscador del catalogo.
     public string OfferProductText => (NewOffer ? OfferKind == "a-la-carte" : IsCarte) ? "Carta: sin producto-menú; cada plato se cobra al pedirlo, al precio del catálogo."
-        : !NewOffer && SelectedOffer?.Offer.ProductId is { Length: > 0 } p ? (ItemChoices.FirstOrDefault(c => c.Id == p) is { } product
-            ? $"Se vende por persona como el producto «{product.Name}»: su precio se fija en ERP › Catálogo y tarifas."
+        : !NewOffer && SelectedOffer?.Offer.ProductId is { Length: > 0 } p ? ((shell.Catalog.NameOfProduct(p) ?? ItemChoices.FirstOrDefault(c => c.Id == p)?.Name) is { } product
+            ? $"Se vende por persona como el producto «{product}»: su precio se fija en ERP › Catálogo y tarifas."
             : $"Se vende por persona con su producto-menú del catálogo (código «{p}»): su precio se fija en ERP › Catálogo y tarifas.")
         : "Al crearla se crea también su producto-menú en el catálogo (categoría Menús).";
     // C2b: lo que significa el tipo elegido en la ficha (antes, un parrafo fijo en la cabecera de la vista).
@@ -288,7 +290,8 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     // Busca por nombre (sin distinguir mayusculas ni tildes: "costina" encuentra la Degustacion Costina) o por codigo.
     private bool Shown(OfferDto offer, bool byKind = true) => (!byKind || kindFilter == "all" || offer.Kind == kindFilter) && Matches(offer, Search.Trim());
     private static bool Matches(OfferDto offer, string text) => TextSearch.Contains(offer.Name, text) || offer.Id.Contains(text, StringComparison.OrdinalIgnoreCase);
-    private OfferRow[] Rows() => read is null ? [] : read.Where(o => Shown(o)).Select(o => new OfferRow(o) { Detail = OfferDetail(o) }).ToArray();
+    private OfferRow[] Rows() => read is null ? [] : read.Where(o => Shown(o)).Select(o => new OfferRow(o) { Detail = OfferDetail(o), Validity = Capital(Validity(o.ValidFrom, o.ValidTo)) }).ToArray();
+    private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
     // Recuento de cada chip dentro de lo que deja ver la busqueda.
     private void LabelFilters()
     {
@@ -352,7 +355,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     {
         var o = SelectedOffer?.Offer;
         OfferId = o?.Id ?? ""; OfferName = o?.Name ?? ""; OfferKind = o?.Kind ?? "tasting"; OfferService = o?.Service ?? "any";
-        OfferValidFrom = o?.ValidFrom ?? ""; OfferValidTo = o?.ValidTo ?? ""; OfferSort = (o?.Sort ?? 0).ToString(); OfferProductId = o?.ProductId ?? ""; OfferPrice = "";
+        OfferValidFrom = DayText(o?.ValidFrom); OfferValidTo = DayText(o?.ValidTo); OfferSort = (o?.Sort ?? 0).ToString(); OfferProductId = o?.ProductId ?? ""; OfferPrice = "";
         var days = o?.Weekdays ?? 127; OfferDays = Enumerable.Range(0, 7).Select(i => (days & (1 << i)) != 0).ToArray();
     }
     private void FillCourseForm() { var c = SelectedCourse?.Course; CourseId = c?.Id ?? ""; CourseName = c?.Name ?? ""; CourseSort = (c?.Sort ?? 0).ToString(); }
@@ -385,8 +388,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         var names = on.Select(i => DayNames[i]).ToArray();
         return names.Length == 1 ? "solo " + names[0] : string.Join(", ", names[..^1]) + " y " + names[^1];
     }
-    // La vigencia va con espacios que no parten: si la fila no cabe en una linea, pasa entera a la siguiente.
-    private static string OfferDetail(OfferDto o) => $"{Labels.OfferKind(o.Kind)} · {Labels.OfferService(o.Service)} · {Labels.Plural(o.Courses.Count(c => c.Active), "pase", "pases")} · {Validity(o.ValidFrom, o.ValidTo).Replace(' ', ' ')}";
+    private static string OfferDetail(OfferDto o) => $"{Labels.OfferKind(o.Kind)} · {Labels.OfferService(o.Service)} · {Labels.Plural(o.Courses.Count(c => c.Active), "pase", "pases")}";
     private static string[] ActiveNames(OfferDto offer, OfferCourseDto course) => offer.Kind == "a-la-carte"
         ? [.. (course.Items ?? []).Where(i => i.Active).Select(i => i.Name).Distinct()] : [.. course.Dishes.Where(d => d.Active).Select(d => d.Name)];
     private static string CourseDetail(OfferDto offer, OfferCourseDto course)
@@ -401,7 +403,8 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         var carte = offer.Kind == "a-la-carte";
         var active = carte ? (course.Items ?? []).Count(i => i.Active) : course.Dishes.Count(d => d.Active);
         var inactive = carte ? (course.Items ?? []).Count(i => !i.Active) : course.Dishes.Count(d => !d.Active);
-        return Labels.Plural(active, "plato", "platos") + (inactive > 0 ? " · " + Labels.Plural(inactive, "desactivado", "desactivados") : "");
+        // Revision de C2b: en una carta el plato que ya no se ofrece es "retirado" (su chip y sus botones dicen eso), no "desactivado".
+        return Labels.Plural(active, "plato", "platos") + (inactive > 0 ? " · " + (carte ? Labels.Plural(inactive, "retirado", "retirados") : Labels.Plural(inactive, "desactivado", "desactivados")) : "");
     }
 
     private void Compose()
@@ -462,12 +465,9 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     private static string Name(string text) => text.Trim().Length == 0 ? throw new ArgumentException("El nombre es obligatorio.") : text.Trim();
     // C2b: lo elegido en un desplegable. Null = el desplegable perdio su eleccion: no se envia nada en lugar de cambiar sin querer la estacion.
     private static string Chosen(string? value, string what) => value ?? throw new ArgumentException($"Vuelve a elegir {what}: el desplegable se quedó sin elección.");
-    private static string DateText(string text)
-    {
-        var t = text.Trim();
-        if (t.Length > 0 && !DateOnly.TryParseExact(t, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) throw new ArgumentException("Fechas: AAAA-MM-DD (vacío = sin límite).");
-        return t;
-    }
+    // Revision de C2b: las fechas se escriben como se leen (dd/mm/aaaa; tambien AAAA-MM-DD); en la orden viajan como AAAA-MM-DD.
+    private static string DateText(string text) => CatalogViewModel.ParseDay(text, "Fechas: dd/mm/aaaa (vacío = sin límite).");
+    private static string DayText(string? iso) => iso is { Length: > 0 } ? Day(iso) : "";
     public int Weekdays => OfferDays.Select((on, i) => on ? 1 << i : 0).Sum();
 
     // C2b: confirmed se ejecuta solo cuando el servidor confirma la orden (antes de releer): lo recien creado queda elegido.

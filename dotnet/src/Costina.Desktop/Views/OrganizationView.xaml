@@ -4,12 +4,13 @@
       de Components.xaml). Hereda el DataContext del cascaron (ShellViewModel). Cabecera de pagina con el alta de la pestana elegida; pestanas
       "Salas y mesas" · "Estaciones". Salas y mesas: las salas a la izquierda (tarjetas con sus mesas activas, sus plazas y su tarifa propia;
       "Desactivada" con su palabra), en el centro las mesas de la sala elegida como las tarjetas del plano del Comedor (nombre, plazas y estado
-      con palabra; una desactivada, con borde discontinuo) con "Mesa", y a la derecha la ficha de la sala o de la mesa elegida. Estaciones:
+      con palabra; una desactivada, en gris) con "Mesa", y a la derecha la ficha de la sala o de la mesa elegida. Estaciones:
       lista y ficha; la estacion Pase, marcada como reservada. Una sola barra de desplazamiento por columna. Cada boton sigue con su orden y
       su CanExecute de siempre; sin nada elegido la ficha dice que elegir y no muestra campos. -->
  <UserControl.Resources>
   <!-- Mesas de la sala: tarjetas blancas en columnas iguales (el ancho lo reparte la vista, TileWidth) sobre el fondo gris, como el plano
-       del Comedor; una desactivada, sin fondo y con borde discontinuo; la elegida, con anillo de acento. La lista es el unico desplazamiento
+       del Comedor; una desactivada, gris con el nombre en gris (el borde discontinuo queda para "Libre" en el Comedor: revision de C2b); la
+       elegida, con anillo de acento. La lista es el unico desplazamiento
        de la columna. -->
   <Style x:Key="TableCards" TargetType="ListBox">
    <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="Background" Value="Transparent"/>
@@ -37,13 +38,12 @@
           <Border x:Name="Bd" CornerRadius="12" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" Padding="14,11,14,13">
            <ContentPresenter HorizontalAlignment="Stretch"/>
           </Border>
-          <Rectangle x:Name="Dash" RadiusX="12" RadiusY="12" Stroke="{StaticResource StrokeStrong}" StrokeThickness="1.5" StrokeDashArray="3 2.5" Visibility="Collapsed" IsHitTestVisible="False"/>
           <Border x:Name="Ring" CornerRadius="12" BorderThickness="2" BorderBrush="{StaticResource Accent}" Visibility="Collapsed" IsHitTestVisible="False"/>
          </Grid>
          <ControlTemplate.Triggers>
           <DataTrigger Binding="{Binding Inactive}" Value="True">
-           <Setter TargetName="Bd" Property="Background" Value="Transparent"/><Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/>
-           <Setter TargetName="Dash" Property="Visibility" Value="Visible"/>
+           <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2}"/><Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/>
+           <Setter TargetName="Bd" Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/>
           </DataTrigger>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#FAFCFB"/></Trigger>
           <Trigger Property="IsSelected" Value="True"><Setter TargetName="Ring" Property="Visibility" Value="Visible"/></Trigger>
@@ -55,9 +55,10 @@
     </Setter.Value>
    </Setter>
   </Style>
-  <!-- Fila de una lista atenuada si lo que nombra esta desactivado (la palabra va en su chip). -->
+  <!-- Fila de una lista en gris (InkSoft, como Dispositivos) si lo que nombra esta desactivado (la palabra va en su chip); no se atenua
+       con opacidad, que dejaba el detalle de 12 px por debajo de 4,5:1 (revision de C2b). -->
   <Style x:Key="RowPanel" TargetType="StackPanel">
-   <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers>
+   <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers>
   </Style>
   <!-- El nombre de una fila en tarjeta (sala, estacion) es CardRowTitle, de Components.xaml (repaso de coherencia de C2b). -->
  </UserControl.Resources>
@@ -98,16 +99,13 @@
         <ListBox.ItemTemplate>
          <DataTemplate>
           <StackPanel Style="{StaticResource RowPanel}" AutomationProperties.Name="{Binding Zone.Name}">
-           <DockPanel>
-            <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
-             <TextBlock Text="Desactivada"/>
-            </Border>
-            <TextBlock Text="{Binding Zone.Name}" Style="{StaticResource CardRowTitle}"/>
-           </DockPanel>
+           <TextBlock Text="{Binding Zone.Name}" Style="{StaticResource CardRowTitle}"/>
            <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
-           <Border Style="{StaticResource ToneChip}" Tag="info" HorizontalAlignment="Left" Margin="0,8,0,1" Visibility="{Binding Tariff, Converter={StaticResource Text2Vis}}">
-            <TextBlock Text="{Binding Tariff}"/>
-           </Border>
+           <!-- Revision de C2b: en 250 px el chip no comparte linea con el nombre; estado y tarifa van juntos en su fila. -->
+           <WrapPanel>
+            <Border Style="{StaticResource ToneChip}" Margin="0,8,6,1" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Desactivada"/></Border>
+            <Border Style="{StaticResource ToneChip}" Tag="info" Margin="0,8,6,1" Visibility="{Binding Tariff, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Tariff}"/></Border>
+           </WrapPanel>
           </StackPanel>
          </DataTemplate>
         </ListBox.ItemTemplate>
@@ -128,7 +126,7 @@
       </StackPanel>
      </DockPanel>
      <Grid>
-      <StackPanel x:Name="TablesEmpty" VerticalAlignment="Center" Margin="8,0,8,16" Visibility="{Binding Organization.ShowTablesEmpty, Converter={StaticResource Bool2Vis}}">
+      <StackPanel x:Name="TablesEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Organization.ShowTablesEmpty, Converter={StaticResource Bool2Vis}}">
        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconDining}" local:Ui.Heading="{Binding Organization.TablesEmptyHeading}" Content="{Binding Organization.TablesEmptyText}"/>
        <Button x:Name="EmptyNewTableButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva mesa" Command="{Binding Organization.StartTableCommand}"
                Visibility="{Binding Organization.ShowCreateTable, Converter={StaticResource Bool2Vis}}"/>
@@ -157,7 +155,7 @@
     <!-- Ficha: la de la mesa elegida (o la nueva) o, si no hay mesa, la de la sala elegida (o la nueva); sin nada, que elegir. -->
     <Border x:Name="ZonePanel" Grid.Column="4" Style="{StaticResource Ficha}">
      <Grid>
-      <ContentControl x:Name="ZoneEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconOrganization}"
+      <ContentControl x:Name="ZoneEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconOrganization}"
                       local:Ui.Heading="{Binding Organization.ZoneEmptyHeading}" Content="{Binding Organization.ZoneEmptyText}" Visibility="{Binding Organization.ShowZoneEmpty, Converter={StaticResource Bool2Vis}}"/>
 
       <!-- Ficha de la sala: datos, su tarifa (E3.2: la General, las activas y, solo si ESTA sala la usa, una desactivada, marcada) y sus mesas. -->
@@ -280,7 +278,7 @@
      <DockPanel>
       <TextBlock DockPanel.Dock="Top" Text="Cada plato sale en la pantalla de su estación. Los puestos emparejados se asignan a una estación activa." Style="{StaticResource Subtle}" Margin="2,2,10,10"/>
       <Grid>
-       <StackPanel x:Name="StationsEmpty" VerticalAlignment="Center" Margin="8,0,8,40" Visibility="{Binding Organization.ShowStationListEmpty, Converter={StaticResource Bool2Vis}}">
+       <StackPanel x:Name="StationsEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Organization.ShowStationListEmpty, Converter={StaticResource Bool2Vis}}">
         <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconFlame}" local:Ui.Heading="{Binding Organization.StationListHeading}" Content="{Binding Organization.StationListText}"/>
         <Button x:Name="EmptyNewStationButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva estación" Command="{Binding Organization.StartStationCommand}"/>
        </StackPanel>
@@ -309,7 +307,7 @@
 
     <Border x:Name="StationPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Organization.StationFormTitle}">
      <Grid>
-      <ContentControl x:Name="StationEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconFlame}"
+      <ContentControl x:Name="StationEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconFlame}"
                       local:Ui.Heading="{Binding Organization.StationEmptyHeading}" Content="{Binding Organization.StationEmptyText}" Visibility="{Binding Organization.HasStationContext, Converter={StaticResource NotBool2Vis}}"/>
       <DockPanel x:Name="StationDetail" Visibility="{Binding Organization.HasStationContext, Converter={StaticResource Bool2Vis}}">
        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">

@@ -38,6 +38,9 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     private bool rendering;
     private string? accountServiceId;   // destino solicitado; no es el contexto de un comando
     private int generation;
+    // C2b (revision): a que cuenta pertenece lo escrito en el importe y el motivo. Elegir otra tarjeta (o que una relectura elija otra)
+    // los vacia: el pendiente rellenado con "Todo lo pendiente" para una mesa nunca se cobra ni se devuelve en otra (espiritu de F01).
+    private string? amountAccount;
     // C2b: ultima lectura de cada cuenta abierta, solo para pintar sus tarjetas (nunca es el contexto de una orden).
     private Dictionary<string, AccountDto> summaries = new(StringComparer.Ordinal);
     private bool summariesComplete;
@@ -65,6 +68,8 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     [ObservableProperty] private string listEmptyText = "";
     [ObservableProperty] private bool showClearSearch;
     public bool ShowOpenTable => ShowListEmpty && AccountsRead && Accounts.Length == 0 && shell.Home.CanOpenTables;
+    // Revision de C2b: sin cuentas (y sin busqueda escrita) el buscador se esconde, como las herramientas de lista de Catalogo y Oferta.
+    public bool ShowListTools => Accounts.Length > 0 || Search.Length > 0;
     // Formas de pago como botones segmentados: el codigo elegido es Method (lo que viaja en el cuerpo); el texto, del vocabulario comun.
     public SegmentChoice[] Methods { get; } = PaymentChoices();
     private static SegmentChoice[] PaymentChoices()
@@ -96,6 +101,11 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasPayments))] private MoneyRow[] paymentRows = [];
     public bool HasPayments => PaymentRows.Length > 0;
     [ObservableProperty] private bool closeAnnounced;
+    // Revision de C2b: con dinero de mas y sin cierre anunciado, el boton grande no es "Registrar pago de prueba" (tomaria aun mas) sino
+    // un acceso a "Otras operaciones" para devolverlo; registrar otro pago queda al lado. Solo presentacion: ninguna orden ni CanExecute cambia.
+    [ObservableProperty] private bool showPay = true;
+    [ObservableProperty] private bool showPayAside;
+    [ObservableProperty] private bool showRefundHint;
 
     public bool Visible { get; set; }
 
@@ -140,7 +150,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         {
             summaries = new(StringComparer.Ordinal); summariesComplete = false; AccountsRead = false; Search = "";
             Accounts = []; SelectedAccount = null; Products = []; SelectedProduct = null;
-            accountServiceId = null; requested = null; Amount = ""; Invalidate();
+            accountServiceId = null; requested = null; Amount = ""; amountAccount = null; Invalidate();
         }
         finally { rendering = false; }
         Compose();
@@ -169,7 +179,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         if (Account is not null && Account.Data.ServiceId != target) Invalidate();
         try
         {
-            var choices = await api.GetAsync<AccountChoice[]>("checkout/accounts");
+            var choices = Ordered(await api.GetAsync<AccountChoice[]>("checkout/accounts"));
             var catalog = await api.GetAsync<ProductChoice[]>("checkout/catalog");
             // Sin destino pedido, la primera cuenta, como siempre (C2b: la primera que deja ver la busqueda); la cuenta pedida desde una
             // mesa que Caja no lista, ninguna.
@@ -224,6 +234,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         {
             summaries = read; summariesComplete = choices.All(c => read.ContainsKey(c.ServiceId)); AccountsRead = true;
             Accounts = choices; SelectedAccount = choices.FirstOrDefault(a => a.ServiceId == accountServiceId);
+            if (accountServiceId != amountAccount) { Amount = ""; Note = ""; amountAccount = accountServiceId; }
             Products = catalog; SelectedProduct = catalog.FirstOrDefault(p => p.Id + "/" + p.PresentationId == previousProduct) ?? catalog.FirstOrDefault();
             Account = current; Charges = current?.Data.Charges ?? [];   // OnAccountChanged compone totales y estado
             if (current is null) { Totals = "Sin cuenta seleccionada"; AccountState = ""; }
@@ -236,6 +247,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     {
         Compose();
         if (rendering || shell.Busy || value is null) return;
+        if (value.ServiceId != amountAccount) { Amount = ""; Note = ""; amountAccount = value.ServiceId; }
         accountServiceId = value.ServiceId;
         Sync();
         _ = shell.Run(LoadSelectionAsync);
@@ -261,6 +273,20 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         bool Has(string value) => TextSearch.Contains(value, text);
         return Has(shell.Names.Table(choice.TableId)) || Has(ZoneOf(choice));
     }
+    // Revision de C2b: el listado del servidor viene por identificador de servicio (un GUID: orden aleatorio en una instalacion real; la
+    // muestra de los checks lo escondia). Las tarjetas y la cuenta elegida por defecto siguen el plano del Comedor (salas y mesas en su
+    // orden) y, para una cuenta que el plano no lista, el nombre de su mesa. Solo ordena en la vista: el motor no cambia.
+    private AccountChoice[] Ordered(AccountChoice[] choices)
+    {
+        if (choices.Length < 2) return choices;   // la misma instancia leida: una lista vacia nueva sigue avisando (ToArray devolveria la compartida)
+        int Index(AccountChoice choice)
+        {
+            var i = 0;
+            foreach (var tile in shell.Service.Tiles) { if (tile.Entry?.Service.Id == choice.ServiceId) return i; i++; }
+            return int.MaxValue;
+        }
+        return choices.OrderBy(Index).ThenBy(c => shell.Names.Table(c.TableId), StringComparer.CurrentCultureIgnoreCase).ToArray();
+    }
     private TableTile? TileOf(AccountChoice choice) => shell.Service.Tiles.FirstOrDefault(t => t.Entry?.Service.Id == choice.ServiceId);
     private string ZoneOf(AccountChoice choice) =>
         TileOf(choice)?.ZoneName ?? shell.Service.Tables.FirstOrDefault(t => t.Id == choice.TableId)?.ZoneName ?? "";
@@ -278,7 +304,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         (ListEmptyHeading, ListEmptyText) = !AccountsRead && Accounts.Length == 0 ? ("Sin leer todavía", "Las cuentas abiertas aparecerán aquí al leerlas del servidor.")
             : Accounts.Length == 0 ? ("No hay cuentas abiertas", "Cada mesa que se abre en Comedor y cocina tiene su cuenta: aparecerá aquí para añadir consumos y cobrarla.")
             : ("Ninguna cuenta coincide", $"Ninguna mesa ni sala con cuenta abierta coincide con «{text}».");
-        OnPropertyChanged(nameof(ShowOpenTable));
+        OnPropertyChanged(nameof(ShowOpenTable)); OnPropertyChanged(nameof(ShowListTools));
     }
     private AccountRow Row(AccountChoice choice)
     {
@@ -311,6 +337,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
                 : ("Elige una cuenta", "Pulsa una cuenta de la lista para ver sus consumos, sus pagos y cobrarla.");
             DetailContext = DetailTitle = DetailState = CoverageText = TotalText = PaidText = PendingText = CreditText = RefundedText = ClosedText = "";
             LineRows = []; PaymentRows = []; LinesTitle = "Consumos";
+            ComposeActions();
             return;
         }
         var a = context.Data; var choice = SelectedAccount!;
@@ -326,10 +353,18 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         LineRows = a.Charges.Select(c => new ChargeRow(c.Description,
             c.Voided ? "Anulado" + (c.VoidReason is { Length: > 0 } reason ? ": " + reason : "") : c.Quantity > 1 ? Money.Format(c.UnitPriceCents) + " la unidad" : "",
             c.Quantity.ToString(CultureInfo.InvariantCulture), Money.Format(c.TotalCents), c.Voided)).ToArray();
-        LinesTitle = a.Charges.Length == 0 ? "Consumos" : "Consumos · " + Labels.Plural(a.Charges.Count(c => !c.Voided), "línea", "líneas");
+        // Revision de C2b: el titulo cuenta las lineas que suman y, aparte, las anuladas (la tabla las lista todas).
+        var voided = a.Charges.Count(c => c.Voided);
+        LinesTitle = a.Charges.Length == 0 ? "Consumos" : "Consumos · " + Labels.Plural(a.Charges.Length - voided, "línea", "líneas") + (voided > 0 ? " · " + Labels.Plural(voided, "anulada", "anuladas") : "");
         PaymentRows = a.Payments.Select(p => new MoneyRow("Pago · " + p.MethodLabel, "a las " + Labels.Clock(p.At), Money.Format(p.AmountCents)))
             .Concat((a.Refunds ?? []).Select(r => new MoneyRow("Devolución · " + r.MethodLabel, $"a las {Labels.Clock(r.At)} · {r.Reason}", "− " + Money.Format(r.AmountCents))))
             .ToArray();
+        ComposeActions();
+    }
+    private void ComposeActions()
+    {
+        var credit = CreditText.Length > 0;
+        ShowPay = !CloseAnnounced && !credit; ShowPayAside = CloseAnnounced || credit; ShowRefundHint = credit && !CloseAnnounced;
     }
 
     private Versioned<AccountDto> Require() => Context

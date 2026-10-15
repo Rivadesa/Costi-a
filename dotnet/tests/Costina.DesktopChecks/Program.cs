@@ -676,7 +676,7 @@ internal static class Program
         if(!offersView.NewMenuOffer||offersView.OfferProductText.StartsWith("Carta:",StringComparison.Ordinal)) throw new Exception("A new menu asks for its price or product.");
         offersView.SelectedOffer=offersView.Offers[0];
         offersView.SelectedOffer=offersView.Offers[1];
-        if(offersView.OfferKind!="set-menu"||offersView.OfferService!="lunch"||offersView.OfferValidFrom!="2026-09-01"||offersView.OfferDays[5]||!offersView.OfferDays[0]||offersView.Weekdays!=31) throw new Exception("Selecting an offer fills its form, weekdays included.");
+        if(offersView.OfferKind!="set-menu"||offersView.OfferService!="lunch"||offersView.OfferValidFrom!="01/09/2026"||offersView.OfferDays[5]||!offersView.OfferDays[0]||offersView.Weekdays!=31) throw new Exception("Selecting an offer fills its form, weekdays included.");
         offersView.SelectedDish=offersView.Dishes[1];
         if(offersView.DishStationId!="hot"||offersView.SelectedDish.StateLabel!="desactivado"||offersView.DishFormTitle!="Plato: Sopa del día"||offersView.SelectedDish.ToString()!="Sopa del día · Cocina caliente · desactivado") throw new Exception("Selecting a dish fills its form and states its status in text: "+offersView.SelectedDish);
         offersView.StartDishCommand.Execute(null);
@@ -1155,7 +1155,9 @@ internal static class Program
         service.CancelOpenCommand.Execute(null);
         // Las cuentas de las siete mesas ocupadas: una tarjeta por cuenta con su mesa, su sala y sus personas (del plano) y su total, su
         // cobertura y su pendiente (de SU lectura); el resumen suma lo pendiente.
-        server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        // Revision de C2b: el servidor lista las cuentas por identificador de servicio (orden aleatorio): aqui al reves del plano. Las tarjetas y la
+        // cuenta elegida por defecto siguen el plano del Comedor.
+        server.Accounts=[..diningBoard.AsEnumerable().Reverse().Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
         var readsBeforeCaja=server.Requests.Length;
         OpenCheckout("Caja reads its accounts");
         var cardReads=server.Requests.Skip(readsBeforeCaja).Where(r=>r.Path.StartsWith("checkout/services/",StringComparison.Ordinal)).Select(r=>r.Path).ToArray();
@@ -1175,7 +1177,7 @@ internal static class Program
             throw new Exception("The ficha heads with the table, the account state and its coverage in words, and three figures: "+checkout.DetailContext+" / "+checkout.TotalText+" "+checkout.PaidText+" "+checkout.PendingText);
         if(!checkout.LineRows.Select(l=>$"{l.Description} | {l.Note} | {l.Quantity} | {l.Amount}{(l.Voided?" | anulado":"")}").SequenceEqual(["Menú del día · Por persona | 18,50 € la unidad | 4 | 74,00 €",
                 "Vino de la casa · Botella |  | 1 | 12,00 €","Agua mineral · Botella | 2,50 € la unidad | 2 | 5,00 €","Café solo · Unidad | Anulado: Pedido por error | 1 | 1,50 € | anulado"])
-            ||checkout.LinesTitle!="Consumos · 3 líneas"||!checkout.PaymentRows.Select(p=>p.What+" "+p.Amount).SequenceEqual(["Pago · Tarjeta 40,00 €"]))
+            ||checkout.LinesTitle!="Consumos · 3 líneas · 1 anulada"||!checkout.PaymentRows.Select(p=>p.What+" "+p.Amount).SequenceEqual(["Pago · Tarjeta 40,00 €"]))
             throw new Exception("Consumption lines (concept, unit price, quantity, amount, voided) and payments come from the read: "+string.Join(" / ",checkout.LineRows.Select(l=>l.Description+" "+l.Note)));
         var cajaTexts=Texts(checkoutView).ToArray();
         foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",
@@ -1195,6 +1197,11 @@ internal static class Program
         var postsBeforeFill=server.Count("POST","");
         Press(InCheckout<Button>("FillPendingButton"),"Todo lo pendiente");
         if(checkout.Amount!="51,00"||server.Count("POST","")!=postsBeforeFill) throw new Exception("'Todo lo pendiente' only writes the pending amount; it sends nothing: "+checkout.Amount);
+        // Revision de C2b: el importe rellenado para la Mesa 4 no sobrevive a elegir otra tarjeta (se cobraria en otra cuenta); nada se envia.
+        checkout.Note="motivo a medias"; Choose("s1");
+        if(checkout.Amount.Length!=0||checkout.Note.Length!=0||server.Count("POST","")!=postsBeforeFill) throw new Exception("Choosing another card empties the amount and the note typed for the previous one: "+checkout.Amount);
+        Choose("s4"); Press(InCheckout<Button>("FillPendingButton"),"Todo lo pendiente");
+        if(checkout.Amount!="51,00"||checkout.Method!="cash") throw new Exception("Back on Mesa 4 the pending amount is filled again and the method is kept: "+checkout.Amount);
         window.Shell.Status="";
         Send("PayButton","Registrar pago de prueba");
         var payment=server.Requests.Last(r=>r.Method=="POST"); var paymentBody=JsonSerializer.Deserialize<JsonElement>(payment.Body);
@@ -1213,8 +1220,16 @@ internal static class Program
         // Pagado de mas (Terraza 1): se dice con su importe y se ofrece devolver (anunciado), con el importe, la forma de pago y el motivo.
         window.Shell.Status="";
         Choose("st1");
-        if(checkout.CoverageText!="Pagado de más"||!checkout.CreditText.StartsWith("Pagado de más: 5,80 €.",StringComparison.Ordinal)||!Paints("CreditBar")||!Usable("RefundButton")||InCheckout<Button>("ReopenButton").IsEnabled||checkout.CloseAnnounced)
-            throw new Exception("An overpaid account says so and offers refunding (announced): "+checkout.CreditText);
+        if(checkout.CoverageText!="Pagado de más"||!checkout.CreditText.StartsWith("Pagado de más: 5,80 €.",StringComparison.Ordinal)||!Paints("CreditBar")||!Usable("RefundButton")||InCheckout<Button>("ReopenButton").IsEnabled||checkout.CloseAnnounced
+            ||Paints("PayButton")||!Usable("RefundHintButton")||!Usable("PayAgainButton"))
+            throw new Exception("An overpaid account says so and offers refunding (announced); the big action leads to 'Otras operaciones' instead of taking more money: "+checkout.CreditText);
+        // Revision de C2b: la tarjeta elegida por el modelo (Terraza 1 es la ultima) se desplaza a la vista de la lista.
+        // (ScrollIntoView sobre una lista virtualizada se completa en un paso Loaded posterior del dispatcher: se le deja correr.)
+        Wait(()=>{ window.UpdateLayout(); return accountList.ItemContainerGenerator.ContainerFromItem(accountList.SelectedItem) is not null; },"the chosen card gets its container once scrolled into view");
+        var chosenCard=accountList.ItemContainerGenerator.ContainerFromItem(accountList.SelectedItem) as ListBoxItem
+            ?? throw new Exception($"The chosen card has no realized container: selected={accountList.SelectedItem} items={accountList.Items.Count} visible={accountList.IsVisible} keep={Costina.Desktop.Ui.GetKeepSelectionInView(accountList)} offset={Descendants<ScrollViewer>(accountList).FirstOrDefault()?.VerticalOffset}");
+        var chosenTop=chosenCard.TranslatePoint(new Point(),accountList).Y;
+        if(chosenTop<0||chosenTop+chosenCard.ActualHeight>accountList.ActualHeight+0.5) throw new Exception("A card chosen by the viewmodel is scrolled into view: top "+chosenTop+" of "+accountList.ActualHeight);
         InCheckout<ScrollViewer>("AccountScroll").ScrollToEnd(); window.UpdateLayout();
         RefuseRaw(window,"checkout-credit"); Save(Shot(window),"checkout-credit.png");
         InCheckout<ScrollViewer>("AccountScroll").ScrollToHome(); window.UpdateLayout();
@@ -1372,6 +1387,12 @@ internal static class Program
         if(catalogView.NewProduct||Shows("ProductDetail")||!Shows("ProductEmpty")||server.Count("POST","")!=postsBeforeNew) throw new Exception("Cancelling the new product returns to the empty ficha and sends nothing.");
         // La carta de vinos: pestanas con su recuento, resumen, filas con su precio General y su categoria, miniaturas.
         server.Catalog=wineCatalog;
+        // Revision de C2b: la fila de un producto toma el precio General de la primera presentacion activa que lo tenga y solo dice "Sin precio"
+        // si ninguna lo tiene (lo mismo que cuenta el resumen y avisa la ficha). Se compone sin servidor y se deshace antes de leer la carta.
+        catalogView.Render(wineCatalog with {Products=[..wineCatalog.Products,new("doble","Doble presentación",wineCatalog.Products[0].CategoryId,wineCatalog.Products[0].TaxId,null,99,true,
+            [new("copa","Copa",0,true,[]),new("botella","Botella",1,true,[new("general","1970-01-01",2400)])])]}); window.UpdateLayout();
+        var doble=catalogView.Products.Single(p=>p.Product.Id=="doble");
+        if(doble.MainPrice!="24,00 €"||doble.PriceMissing||!catalogView.Summary.Contains("(17 vendibles")) throw new Exception("A product whose first presentation has no General price shows the next one's price and no warning: "+doble.MainPrice+" / "+catalogView.Summary);
         OpenCatalog("the catalog reads the wine list");
         if(!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 18","Categorías · 16","Tarifas · 3","Impuestos · 4"])
             ||catalogView.Summary!="17 productos activos (16 vendibles hoy) · precios con IVA incluido"||catalogView.ProductCount!="18 productos · precio General"||Shows("ShowAllButton"))
@@ -1438,7 +1459,7 @@ internal static class Program
         if(!ReferenceEquals(productList.SelectedItem,catalogView.SelectedProduct)||productList.ItemContainerGenerator.ContainerFromItem(catalogView.SelectedProduct) is not ListBoxItem{IsSelected:true}) throw new Exception("The chosen row is marked.");
         var presentationList=InCatalog<ListBox>("PresentationList");
         presentationList.SelectedIndex=1; window.UpdateLayout();
-        if(catalogView.SelectedPresentation?.Presentation.Id!="copa"||catalogView.PriceText!="4,50"||catalogView.PriceValidFrom!="2026-10-15"||catalogView.ScheduledText!="Programado: Terraza 5,50 € desde el 01/11/2026"||!Shows("ScheduledPriceText"))
+        if(catalogView.SelectedPresentation?.Presentation.Id!="copa"||catalogView.PriceText!="4,50"||catalogView.PriceValidFrom!="15/10/2026"||catalogView.ScheduledText!="Programado: Terraza 5,50 € desde el 01/11/2026"||!Shows("ScheduledPriceText"))
             throw new Exception("Choosing the glass shows its General price in the form and its scheduled Terraza price apart: "+catalogView.ScheduledText);
         // Pulsar una presentacion trae a la vista su ficha con "Fijar precio", que a 1.280 x 860 queda debajo de la tabla.
         var productScroll=InCatalog<ScrollViewer>("ProductScroll"); var setPriceButton=InCatalog<Button>("SetPriceButton");
@@ -1451,7 +1472,7 @@ internal static class Program
         catalogView.PriceTariffId="terraza"; window.UpdateLayout();
         if(catalogView.PriceText!="5,00") throw new Exception("The tariff of the price form shows its price in force: "+catalogView.PriceText);
         Fits("catalog-price","SaveProductButton"); Save(Shot(window),"catalog-price.png");
-        catalogView.PriceText="5,20"; catalogView.PriceValidFrom="2026-10-20"; window.Shell.Status="";
+        catalogView.PriceText="5,20"; catalogView.PriceValidFrom="20/10/2026"; window.Shell.Status="";   // revision de C2b: se escribe dd/mm/aaaa; viaja AAAA-MM-DD
         var catalogPosts=server.Count("POST","");
         Press(InCatalog<Button>("SetPriceButton"),"Fijar precio"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the price is sent");
         if(CatalogPost()!="erp/catalog/commands/price-set {\"tariffId\":\"terraza\",\"productId\":\"albarino\",\"presentationId\":\"copa\",\"validFrom\":\"2026-10-20\",\"priceCents\":520}"
@@ -1486,7 +1507,7 @@ internal static class Program
         // Categorias: el arbol con sangria, la muestra de su color y sus recuentos; su ficha no filtra la lista de productos y "Ver sus
         // productos" la abre filtrada.
         Section(1,"categories");
-        if(catalogView.CategoryCount!="16 categorías, 1 desactivada"||catalogView.HasCategoryContext||!Shows("CategoryEmpty")||catalogView.CategoryEmptyHeading!="Elige una categoría"||!Shows("NewCategoryButton"))
+        if(catalogView.CategoryCount!="16 categorías · 1 desactivada"||catalogView.HasCategoryContext||!Shows("CategoryEmpty")||catalogView.CategoryEmptyHeading!="Elige una categoría"||!Shows("NewCategoryButton"))
             throw new Exception("The tree heads with its count and, with nothing chosen, the ficha says what to pick: "+catalogView.CategoryCount);
         if(!catalogView.Categories.Take(8).Select(c=>$"{new string('-',c.Depth)}{c.Category.Name}: {c.Detail}").SequenceEqual(["Vinos: 6 productos · 2 subcategorías","-Tintos: 3 productos · 2 subcategorías","--Rioja: 1 producto",
             "--Ribeira Sacra: 1 producto","-Blancos: 3 productos · 2 subcategorías","--Rías Baixas: 2 productos","--Rioja: 1 producto","Bebidas: 4 productos · 3 subcategorías"])
@@ -1554,7 +1575,10 @@ internal static class Program
         if(catalogView.TaxTitle!="IVA 21 %"||catalogView.TaxRate!="21"||catalogView.TaxProductsFigure!="6"
             ||catalogView.TaxProductsText!="Albariño Pazo de Señoráns · Do Ferreiro 2023 · Viña Gravonia 2015 · Vino de la casa · Guímaro Ribeira Sacra 2022 · Muga Reserva 2019."||!Ready("DeactivateTaxButton"))
             throw new Exception("The tax ficha names its products: "+catalogView.TaxProductsText);
+        // Revision de C2b: la captura de impuestos se toma con las mismas 3 tarifas que la de tarifas (la tarifa de prueba 'barra' no sale en ella).
+        catalogView.Render(wineCatalog); window.UpdateLayout();
         Fits("catalog-taxes","SaveTaxButton"); Save(Shot(window),"catalog-taxes.png");
+        catalogView.Render(server.Catalog); window.UpdateLayout();
         catalogPosts=server.Count("POST","");
         Press(InCatalog<Button>("SaveTaxButton"),"Guardar impuesto"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tax is saved");
         if(CatalogPost()!="erp/catalog/commands/tax-update {\"id\":\"iva-21\",\"name\":\"IVA 21 %\",\"rate\":21}") throw new Exception("Saving a tax sends the usual body: "+CatalogPost());
@@ -1622,7 +1646,7 @@ internal static class Program
             Press(InOffers<Button>(button),what);
             Wait(()=>!window.Shell.Busy&&server.Count("POST","")>before,what+" is sent"); window.UpdateLayout();
         }
-        string OfferRowsText()=>string.Join(" | ",offersView.Offers.Select(o=>o.Offer.Name+": "+o.Detail)).Replace(' ',' ');
+        string OfferRowsText()=>string.Join(" | ",offersView.Offers.Select(o=>o.Offer.Name+": "+o.Detail+" · "+o.Validity));
         string CourseRowsText()=>string.Join(" | ",offersView.Courses.Select(c=>$"{c.Number} {c.Course.Name}: {c.Detail} ({c.Count})"));
         string DishRowsText()=>string.Join(" | ",offersView.Dishes.Select(d=>d.ToString()));
         string ItemRowsText()=>string.Join(" | ",offersView.Items.Select(i=>i.ToString()));
@@ -1663,10 +1687,11 @@ internal static class Program
         if(!offersView.KindFilters.Select(k=>k.Label).SequenceEqual(["Todas · 4","Degustación · 2","Menú cerrado · 1","Carta · 1"])||offersView.KindFilter!="all"||kindChips.SelectedValue as string!="all"
             ||offersView.Summary!="3 ofertas activas · 1 desactivada · los menús se cobran por persona y la carta, plato a plato"||!OfferShows("OfferSearch")||!OfferShows("KindChips"))
             throw new Exception("Type chips and the summary carry their counts: "+string.Join(",",offersView.KindFilters.Select(k=>k.Label))+" / "+offersView.Summary);
-        if(OfferRowsText()!="Degustación Costiña: Degustación · Comida y cena · 6 pases · sin fechas | Menú del día: Menú cerrado · Comida · 3 pases · del 01/09/2026 al 31/12/2026"
-            +" | Carta: Carta · Comida y cena · 3 pases · sin fechas | Degustación de verano: Degustación · Cena · 3 pases · del 15/06/2026 al 15/09/2026")
+        if(OfferRowsText()!="Degustación Costiña: Degustación · Comida y cena · 6 pases · Sin fechas | Menú del día: Menú cerrado · Comida · 3 pases · Del 01/09/2026 al 31/12/2026"
+            +" | Carta: Carta · Comida y cena · 3 pases · Sin fechas | Degustación de verano: Degustación · Cena · 3 pases · Del 15/06/2026 al 15/09/2026")
             throw new Exception("Each row carries its kind, service, active courses and validity: "+OfferRowsText());
-        if(!offersView.Offers[1].Detail.EndsWith(" · del 01/09/2026 al 31/12/2026",StringComparison.Ordinal)) throw new Exception("The validity of a row never breaks in two lines: "+offersView.Offers[1].Detail);
+        // Revision de C2b: la vigencia va en su propia linea (antes se partia tras un "·" colgado).
+        if(offersView.Offers[1].Validity!="Del 01/09/2026 al 31/12/2026"||offersView.Offers[1].Detail.Contains("2026")) throw new Exception("The validity of a row has its own line: "+offersView.Offers[1].Detail+" / "+offersView.Offers[1].Validity);
         if(offerList.ItemContainerGenerator.ContainerFromItem(offersView.Offers[3]) is not ListBoxItem summerRow||!Painted(summerRow).Contains("Desactivada")
             ||offersView.Offers.Take(3).Any(o=>offerList.ItemContainerGenerator.ContainerFromItem(o) is ListBoxItem row&&Painted(row).Contains("Desactivada")))
             throw new Exception("Only the deactivated offer is marked 'Desactivada', in words.");
@@ -1676,7 +1701,7 @@ internal static class Program
             ||offerList.ItemContainerGenerator.ContainerFromItem(offerList.SelectedItem) is not ListBoxItem{IsSelected:true}
             ||offersView.OfferContext!="Degustación · Comida y cena · de martes a domingo"||offersView.OfferTitle!="Degustación Costiña"||offersView.OfferStateText!="Activa"||offersView.OfferStateTone!="ok"
             ||offersView.OfferId!="DEGUSTACION"||offersView.OfferKind!="tasting"||offersView.OfferService!="any"||offersView.Weekdays!=126||offersView.OfferValidFrom.Length!=0||offersView.OfferSort!="0"
-            ||offersView.OfferProductText!="Se vende por persona con su producto-menú del catálogo (código «menu-degustacion»): su precio se fija en ERP › Catálogo y tarifas."||Days()!="·MXJVSD"
+            ||offersView.OfferProductText!="Se vende por persona como el producto «Degustación Costiña»: su precio se fija en ERP › Catálogo y tarifas."||Days()!="·MXJVSD"
             ||!OfferReady("DeactivateOfferButton")||OfferShows("ReactivateOfferButton")||OfferShows("CancelOfferButton")||OfferShows("NewMenuFields")||OfferShows("NewOfferCoursesText"))
             throw new Exception("The first offer is chosen and its ficha shows its data, its menu product and its days as pressed toggles: "+offersView.OfferContext+" / "+Days());
         if(CourseRowsText()!="1 Aperitivos: Aperitivos de la casa (1 plato) | 2 Mar: Zamburiñas a la plancha (1 plato) | 3 Arroz: Arroz de bogavante (1 plato)"
@@ -1688,7 +1713,7 @@ internal static class Program
         if(!Descendants<Border>(InOffers<FrameworkElement>("SelectedCourseLine")).Any(b=>b.Tag as string=="done"&&Painted(b).Contains("1"))) throw new Exception("The unfolded course carries its number in the accent dot.");
         var tastingTexts=Painted(offersPanel).ToArray();
         foreach(var text in new[]{"Oferta: cartas y menús","Nueva oferta","Degustación Costiña","Activa","Degustación · Comida y cena · de martes a domingo","Datos de la oferta","Código (fijo)","Tipo","Servicio","Nombre",
-            "Orden","Desde (AAAA-MM-DD)","Hasta (AAAA-MM-DD)","Días","Degustación","Comida y cena","Degustación: se sirven todos sus platos, pase a pase.","Pases · 6","Pase","Aperitivos","Aperitivos de la casa",
+            "Orden","Desde (dd/mm/aaaa)","Hasta (dd/mm/aaaa)","Días","Degustación","Comida y cena","Degustación: se sirven todos sus platos, pase a pase.","Pases · 6","Pase","Aperitivos","Aperitivos de la casa",
             "Platos del pase · 1","Plato","Estación","Cocina fría","Datos del pase","Guardar pase","Desactivar pase","Guardar oferta","Desactivar oferta","Pescado","Rodaballo al horno, Salsa de vieiras","2 platos",
             "Todas · 4","Menú cerrado · 1","Una oferta se puede abrir cuando tiene al menos un pase activo con un plato activo.","Degustación de verano","Desactivada"})
             if(!tastingTexts.Contains(text)) throw new Exception("The offers view paints '"+text+"'.");
@@ -1738,8 +1763,8 @@ internal static class Program
         PickOffer("DIA");
         if(offersView.SelectedDish is not null||offersView.SelectedItem is not null||offersView.SelectedCourse?.Course.Id!="entrantes"||offersView.Dishes.Any(d=>d.Dish.OfferId!="DIA")||offerScroll.VerticalOffset!=0
             ||offersView.ToggleDishCommand.CanExecute(null)) throw new Exception("Choosing another offer shows its own first course, with no dish chosen, from the top.");
-        if(offersView.OfferContext!="Menú cerrado · Comida · de lunes a viernes"||offersView.OfferValidFrom!="2026-09-01"||offersView.OfferValidTo!="2026-12-31"||Days()!="LMXJV··"
-            ||offersView.KindHelp!="Menú cerrado: cada comensal elige un plato por pase antes de enviarlo a cocina."||!offersView.OfferProductText.Contains("«menu-dia»",StringComparison.Ordinal))
+        if(offersView.OfferContext!="Menú cerrado · Comida · de lunes a viernes"||offersView.OfferValidFrom!="01/09/2026"||offersView.OfferValidTo!="31/12/2026"||Days()!="LMXJV··"
+            ||offersView.KindHelp!="Menú cerrado: cada comensal elige un plato por pase antes de enviarlo a cocina."||!offersView.OfferProductText.Contains("«Menú del día»",StringComparison.Ordinal))
             throw new Exception("The set menu ficha: lunch from Monday to Friday, its dates and its menu product: "+offersView.OfferContext+" / "+Days());
         if(CourseRowsText()!="1 Entrantes: Ensalada de la huerta (1 plato · 1 desactivado) | 2 Principales: A elegir: Merluza a la gallega o Carrillera al vino (2 platos) | 3 Postres: A elegir: Tarta de queso o Flan de huevo (2 platos)")
             throw new Exception("A set menu course says which dishes are to choose from: "+CourseRowsText());
@@ -1790,7 +1815,7 @@ internal static class Program
         PickOffer("CARTA");
         if(offersView.OfferContext!="Carta · Comida y cena · todos los días"||!offersView.OfferProductText.StartsWith("Carta: sin producto-menú",StringComparison.Ordinal)||OfferShows("NewMenuFields")
             ||!OfferShows("CarteArea")||OfferShows("DishesArea")||OfferShows("AddDishButton")||offersView.SelectedCourse?.Course.Id!="entrantes"||offersView.DishesTitle!="Platos de la carta · 2"
-            ||CourseRowsText()!="1 Entrantes: Pulpo á feira, Croquetas de la casa (2 platos) | 2 Principales: Lubina a la plancha (1 plato) | 3 Postres: Filloas (1 plato · 1 desactivado)"
+            ||CourseRowsText()!="1 Entrantes: Pulpo á feira, Croquetas de la casa (2 platos) | 2 Principales: Lubina a la plancha (1 plato) | 3 Postres: Filloas (1 plato · 1 retirado)"
             ||ItemRowsText()!="Pulpo á feira · Ración · Cocina fría · activo | Croquetas de la casa · Ración · Cocina caliente · activo"||!Painted(itemList).Contains("Pulpo á feira · Ración"))
             throw new Exception("A carta lists its courses with catalogue dishes, each with its presentation and station: "+CourseRowsText()+" / "+ItemRowsText());
         var itemChoiceBox=InOffers<ComboBox>("ItemChoiceBox");
@@ -1915,7 +1940,9 @@ internal static class Program
         string ZoneRowsText()=>string.Join(" | ",organization.ZoneItems.Select(z=>z.Zone.Name+": "+z.Detail+(z.Tariff is {} tariff?" · "+tariff:"")+(z.Inactive?" · Desactivada":"")));
         string CardsText()=>string.Join(" | ",organization.TableItems.Select(t=>t.ToString()));
         ListBoxItem Card(string id)=>(ListBoxItem)tableList.ItemContainerGenerator.ContainerFromItem(organization.TableItems.Single(t=>t.Table.Id==id));
-        bool Marked(string id,string part)=>Card(id).Template.FindName(part,Card(id)) is UIElement{Visibility:Visibility.Visible};   // Dash (desactivada) o Ring (elegida)
+        bool Marked(string id,string part)=>Card(id).Template.FindName(part,Card(id)) is UIElement{Visibility:Visibility.Visible};   // Ring (elegida)
+        // Revision de C2b: una mesa desactivada es una tarjeta gris (Surface2); el borde discontinuo queda para 'Libre' en el Comedor.
+        bool Grey(string id)=>Card(id).Template.FindName("Bd",Card(id)) is Border{Background:SolidColorBrush b}&&b.Color==((SolidColorBrush)window.FindResource("Surface2")).Color;
         IEnumerable<string> RowPainted(ListBox list,Func<object,bool> pick)=>list.ItemContainerGenerator.ContainerFromItem(list.Items.Cast<object>().Single(pick)) is ListBoxItem row?Painted(row):[];
         void RoomsFit(string what,string bottom)
         {
@@ -1935,7 +1962,7 @@ internal static class Program
         // primera; el centro dice que pondra y la ficha no muestra campos.
         server.Organization=new([],[new("pase","Pase","Pass",0,true)],[new("general","General",0,true)]); window.Shell.Status="";
         OpenRooms("the configuration reads an empty organization");
-        if(organization.Section!="zones"||!organization.Sections.Select(s=>s.Label).SequenceEqual(["Salas y mesas","Estaciones"])||!organization.Sections[0].IsCurrent||organization.Sections[1].IsCurrent)
+        if(organization.Section!="zones"||!organization.Sections.Select(s=>s.Label).SequenceEqual(["Salas y mesas · 0","Estaciones · 1"])||!organization.Sections[0].IsCurrent||organization.Sections[1].IsCurrent)
             throw new Exception("The configuration opens on 'Salas y mesas', with its two tabs: "+string.Join(",",organization.Sections.Select(s=>s.Label)));
         if(!organization.ShowZoneListEmpty||organization.ZoneListHeading!="Aún no hay salas"||!RoomReady("EmptyNewZoneButton")||RoomShows("ZoneList")||!RoomReady("NewZoneButton")||RoomShows("NewStationButton")
             ||!RoomShows("TablesEmpty")||organization.TablesEmptyHeading!="Sin mesas todavía"||RoomShows("EmptyNewTableButton")||RoomShows("NewTableButton")||!RoomShows("ZoneEmpty")||RoomShows("ZoneDetail")
@@ -1971,8 +1998,8 @@ internal static class Program
             ||CardsText()!="Mesa 1 · 2 plazas · Activa | Mesa 2 · 4 plazas · Activa | Mesa 3 · 2 plazas · Activa | Mesa 4 · 4 plazas · Activa | Mesa 5 · 6 plazas · Activa | Mesa 6 · 2 plazas · Activa"
                 +" | Mesa 7 · 2 plazas · Activa | Mesa 8 · 4 plazas · Activa | Mesa 9 · 4 plazas · Desactivada"||organization.SelectedTable is not null||tableList.SelectedItem is not null)
             throw new Exception("The centre shows the chosen room's tables as cards (name, seats and state in words), none chosen: "+CardsText());
-        if(!Marked("M9","Dash")||organization.TableItems.Where(t=>t.Table.Id!="M9").Any(t=>Marked(t.Table.Id,"Dash"))||!Painted(Card("M9")).Contains("Desactivada")||!Painted(Card("M1")).Contains("Activa")
-            ||!Painted(Card("M5")).Contains("6 plazas")) throw new Exception("Only the deactivated table has a dashed border, and every card says its state in words.");
+        if(!Grey("M9")||organization.TableItems.Where(t=>t.Table.Id!="M9").Any(t=>Grey(t.Table.Id))||!Painted(Card("M9")).Contains("Desactivada")||!Painted(Card("M1")).Contains("Activa")
+            ||!Painted(Card("M5")).Contains("6 plazas")) throw new Exception("Only the deactivated table is a grey card, and every card says its state in words.");
         if(window.ActualWidth>=1270&&!window.Shell.SideNavCompact&&(Card("M1").TranslatePoint(new Point(),tableList).Y!=Card("M2").TranslatePoint(new Point(),tableList).Y
             ||Card("M3").TranslatePoint(new Point(),tableList).Y<=Card("M1").TranslatePoint(new Point(),tableList).Y||Card("M3").TranslatePoint(new Point(),tableList).X!=Card("M1").TranslatePoint(new Point(),tableList).X))
             throw new Exception("At 1280 px with the sidebar unfolded the tables sit in two columns.");
@@ -1993,15 +2020,15 @@ internal static class Program
         if(CatalogPost()!="organization/commands/table-deactivate {\"id\":\"M4\"}"||window.Shell.Status!="La mesa está en uso: no se puede desactivar. Actualiza antes de una nueva acción."
             ||organization.SelectedTable?.Id!="M4"||organization.SelectedTable.Active!=true||!RoomReady("DeactivateTableButton")||window.Shell.Api.Pending is not null)
             throw new Exception("A table in use is not deactivated: the server's rejection is shown as it is and the table stays chosen and active: "+window.Shell.Status);
-        // Una mesa libre si: el servidor la desactiva, la tarjeta pasa a discontinua con su palabra y la ficha ofrece reactivarla.
+        // Una mesa libre si: el servidor la desactiva, la tarjeta pasa a gris con su palabra y la ficha ofrece reactivarla.
         PickTable("M2");
         SendRooms("DeactivateTableButton","Desactivar mesa");
         if(CatalogPost()!="organization/commands/table-deactivate {\"id\":\"M2\"}"||window.Shell.Status!="Desactivar mesa Mesa 2: confirmado por el servidor."||organization.SelectedTable?.Id!="M2"
             ||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"M2"}||organization.TableStateText!="Desactivada"||!RoomReady("ReactivateTableButton")||RoomShows("DeactivateTableButton")
-            ||organization.TablesSummary!="7 mesas activas · 22 plazas · 2 desactivadas"||!Marked("M2","Dash")||!Painted(Card("M2")).Contains("Desactivada"))
-            throw new Exception("A free table is deactivated and stays chosen, dashed and offering to reactivate: "+organization.TablesSummary);
+            ||organization.TablesSummary!="7 mesas activas · 22 plazas · 2 desactivadas"||!Grey("M2")||!Painted(Card("M2")).Contains("Desactivada"))
+            throw new Exception("A free table is deactivated and stays chosen, grey and offering to reactivate: "+organization.TablesSummary);
         SendRooms("ReactivateTableButton","Reactivar mesa");
-        if(CatalogPost()!="organization/commands/table-reactivate {\"id\":\"M2\"}"||organization.SelectedTable?.Id!="M2"||organization.TableStateText!="Activa"||Marked("M2","Dash")||!RoomReady("DeactivateTableButton"))
+        if(CatalogPost()!="organization/commands/table-reactivate {\"id\":\"M2\"}"||organization.SelectedTable?.Id!="M2"||organization.TableStateText!="Activa"||Grey("M2")||!RoomReady("DeactivateTableButton"))
             throw new Exception("'Reactivar mesa' sends the usual body and the card is active again: "+CatalogPost());
         // F01: guardar una mesa con otra sala la lleva alli y la vista la sigue (esa sala y la mesa, elegidas); devolverla la trae de vuelta.
         PickTable("M8");
@@ -2071,7 +2098,7 @@ internal static class Program
         if(CatalogPost()!="organization/commands/zone-deactivate {\"id\":\"privado\"}"||organization.SelectedZone?.Id!="privado"||organization.ZoneStateText!="Desactivada"||organization.ZoneStateTone!="other"
             ||!RoomReady("ReactivateZoneButton")||RoomShows("DeactivateZoneButton")||!ZoneRowsText().EndsWith(" | Comedor privado: Sin mesas activas · Desactivada",StringComparison.Ordinal)
             ||!RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"privado"}).Contains("Desactivada")||RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"sala"}).Contains("Desactivada")
-            ||organization.TablesSummary!="Ninguna mesa activa · 1 desactivada"||!Marked("P1","Dash")||organization.Summary!="2 salas activas · 12 mesas activas (42 plazas) · 5 estaciones activas")
+            ||organization.TablesSummary!="Ninguna mesa activa · 1 desactivada"||!Grey("P1")||organization.Summary!="2 salas activas · 12 mesas activas (42 plazas) · 5 estaciones activas")
             throw new Exception("A room without active tables is deactivated and says so in words: "+ZoneRowsText());
         PickTable("P1");
         if(!organization.ZoneChoices.Select(z=>z.Name).SequenceEqual(["Sala principal","Terraza","Comedor privado (desactivada)"])||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Comedor privado (desactivada)"})
@@ -2220,7 +2247,7 @@ internal static class Program
         // Quitar en dos pasos (F9): la confirmacion nombra el dispositivo; "No" no envia nada; "Si, quitar" envia la orden del ELEGIDO y, releido,
         // deja de verse (queda quitado, no borrado) y la eleccion se vacia.
         Press(InDevices<Button>("RemoveButton"),"Quitar «tablet-terraza»");
-        if(!center.ConfirmingRemoval||!DeviceShows("ConfirmRemoveBar")||DeviceShows("RemoveButton")||!center.RemovalText.StartsWith("¿Quitar \"tablet-terraza\"?",StringComparison.Ordinal)||server.Requests.Length!=requestsBeforeDevicePick)
+        if(!center.ConfirmingRemoval||!DeviceShows("ConfirmRemoveBar")||DeviceShows("RemoveButton")||!center.RemovalText.StartsWith("¿Quitar «tablet-terraza»?",StringComparison.Ordinal)||server.Requests.Length!=requestsBeforeDevicePick)
             throw new Exception("Removing asks first, naming the device: "+center.RemovalText);
         DevicesFit("devices-confirm"); Save(Shot(window),"devices-confirm.png");
         center.CancelRemoveCommand.Execute(null); window.UpdateLayout();
@@ -2286,7 +2313,7 @@ internal static class Program
                 throw new Exception("Oferta paints the chosen offer, its numbered courses and the unfolded one with its dishes: missing '"+missingOffers+"'.");
             // C2b: Salas pinta las dos salas (la tarifa propia de la Terraza), las mesas de la Sala principal (la 9, desactivada, con su palabra)
             // y la ficha de la sala con sus cifras.
-            if(tab=="OrganizationTab"&&new[]{"Salas y mesas","Estaciones","Sala principal","8 mesas activas · 26 plazas","Terraza","Tarifa Terraza","Mesas de Sala principal","Mesa 1","Mesa 9","Desactivada",
+            if(tab=="OrganizationTab"&&new[]{window.Shell.Organization.Sections[0].Label,window.Shell.Organization.Sections[1].Label,"Sala principal","8 mesas activas · 26 plazas","Terraza","Tarifa Terraza","Mesas de Sala principal","Mesa 1","Mesa 9","Desactivada",
                 "Activa","Sala · tarifa General","Mesas activas","26","1 mesa desactivada: Mesa 9.","Guardar cambios","Desactivar sala"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingRooms)
                 throw new Exception("Salas paints both rooms, the chosen room's tables and its ficha in words: missing '"+missingRooms+"'.");
             // C2b: Dispositivos pinta el resumen, los dispositivos de Inicio con su tipo y estacion por su nombre y su conexion en palabras, y el

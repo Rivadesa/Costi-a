@@ -461,6 +461,7 @@
   <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
   <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/><Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
   <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+  <Setter Property="local:Ui.KeepSelectionInView" Value="True"/>
   <Setter Property="ItemContainerStyle">
    <Setter.Value><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Margin" Value="0,1,10,1"/></Style></Setter.Value>
   </Setter>
@@ -526,6 +527,12 @@
     </ControlTemplate>
    </Setter.Value>
   </Setter>
+ </Style>
+
+ <!-- Vacio de una FICHA ("Elige una cuenta"): centrado a la misma altura que el vacio de la lista de al lado, que lleva debajo su boton de alta
+      (14 + 38) y un margen de 24 (revision de C2b: los iconos de las dos columnas quedan a la misma altura). -->
+ <Style x:Key="FichaEmpty" TargetType="ContentControl" BasedOn="{StaticResource EmptyState}">
+  <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="0,0,0,76"/>
  </Style>
 
  <!-- Ficha: tarjeta con el encabezado arriba (contexto, nombre y estado con palabra), las secciones en FichaScroll y los botones abajo. -->

@@ -236,6 +236,8 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
             SelectedTable = null;
             SelectedTable = NewTable ? null : Tables.FirstOrDefault(t => t.Id == table);
             StationItems = Stations.Select(s => new StationRow(s, IsReserved(s))).ToArray();
+            // Revision de C2b: las pestanas llevan su recuento, como las del Catalogo ("Productos · 18").
+            Sections[0].Label = "Salas y mesas · " + Zones.Length; Sections[1].Label = "Estaciones · " + Stations.Length;
             SelectedStation = null;
             SelectedStation = NewStation ? null : Stations.FirstOrDefault(s => s.Id == station);
             var active = Zones.Where(z => z.Active).SelectMany(z => z.Tables.Where(t => t.Active)).ToArray();

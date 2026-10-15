@@ -27,7 +27,7 @@
      </ControlTemplate>
     </Setter.Value>
    </Setter>
-   <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers>
+   <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers>
   </Style>
   <!-- Linea de un pase (fila o cabecera del pase desplegado): numero en su circulo (en acento el elegido: Tag del presentador), nombre,
        sus platos activos por su nombre y, a la derecha, cuantos tiene y "Desactivado" si lo esta. -->
@@ -101,7 +101,7 @@
         <DataTemplate>
          <StackPanel AutomationProperties.Name="{Binding Offer.Name}">
           <StackPanel.Style>
-           <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+           <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
           </StackPanel.Style>
           <DockPanel>
            <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
@@ -109,7 +109,8 @@
            </Border>
            <TextBlock Text="{Binding Offer.Name}" Style="{StaticResource CardRowTitle}"/>
           </DockPanel>
-          <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
+          <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" Margin="0,2,0,0"/>
+          <TextBlock Text="{Binding Validity}" Style="{StaticResource RowDetail}"/>
          </StackPanel>
         </DataTemplate>
        </ListBox.ItemTemplate>
@@ -122,7 +123,7 @@
    <Border x:Name="OfferPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Offers.OfferFormTitle}">
     <Grid>
      <!-- Nada elegido: dice que elegir y no muestra campos ni botones. -->
-     <ContentControl x:Name="OfferEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconOffers}"
+     <ContentControl x:Name="OfferEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconOffers}"
                      local:Ui.Heading="{Binding Offers.EmptyHeading}" Content="{Binding Offers.EmptyText}" Visibility="{Binding Offers.HasOfferContext, Converter={StaticResource NotBool2Vis}}"/>
 
      <DockPanel x:Name="OfferDetail" Visibility="{Binding Offers.HasOfferContext, Converter={StaticResource Bool2Vis}}">
@@ -185,8 +186,8 @@
           <ColumnDefinition Width="130"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/>
          </Grid.ColumnDefinitions>
          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-         <TextBlock Text="Desde (AAAA-MM-DD)" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="2" Text="Hasta (AAAA-MM-DD)" Style="{StaticResource FieldLabel}"/>
+         <TextBlock Text="Desde (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
+         <TextBlock Grid.Column="2" Text="Hasta (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
          <TextBlock Grid.Column="4" Text="Días" Style="{StaticResource FieldLabel}"/>
          <TextBox Grid.Row="1" Text="{Binding Offers.OfferValidFrom, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Desde qué fecha se ofrece (vacío: sin límite)"/>
          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferValidTo, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Hasta qué fecha se ofrece (vacío: sin límite)"/>
@@ -249,7 +250,7 @@
                <DataTemplate>
                 <DockPanel AutomationProperties.Name="{Binding Dish.Name}">
                  <DockPanel.Style>
-                  <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+                  <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
                  </DockPanel.Style>
                  <TextBlock DockPanel.Dock="Right" Text="{Binding StationName}" Style="{StaticResource StationCell}" Foreground="{StaticResource InkSoft}" FontWeight="Normal"/>
                  <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,0,0,0" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Desactivado" FontWeight="SemiBold"/></Border>
@@ -308,7 +309,7 @@
                <DataTemplate>
                 <DockPanel AutomationProperties.Name="{Binding Item.Name}">
                  <DockPanel.Style>
-                  <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+                  <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
                  </DockPanel.Style>
                  <TextBlock DockPanel.Dock="Right" Text="{Binding StationName}" Style="{StaticResource StationCell}" Foreground="{StaticResource InkSoft}" FontWeight="Normal"/>
                  <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,0,0,0" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Retirado" FontWeight="SemiBold"/></Border>

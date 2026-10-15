@@ -79,7 +79,7 @@
         <ListBox.ItemTemplate><DataTemplate>
          <DockPanel ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding Product.Name}">
           <DockPanel.Style>
-           <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+           <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
           </DockPanel.Style>
           <Border DockPanel.Dock="Left" Style="{StaticResource ImageWell}" Width="34" Height="34" CornerRadius="7" Margin="0,1,10,1" VerticalAlignment="Top">
            <Grid>
@@ -117,7 +117,7 @@
          presentacion elegida (sus datos y "Fijar precio"); abajo, guardar y desactivar o reactivar. -->
     <Border x:Name="ProductPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Catalog.ProductFormTitle}">
      <Grid>
-      <ContentControl x:Name="ProductEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCatalog}"
+      <ContentControl x:Name="ProductEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconCatalog}"
                       local:Ui.Heading="{Binding Catalog.ProductEmptyHeading}" Content="{Binding Catalog.ProductEmptyText}" Visibility="{Binding Catalog.HasProductContext, Converter={StaticResource NotBool2Vis}}"/>
       <DockPanel x:Name="ProductDetail" Visibility="{Binding Catalog.HasProductContext, Converter={StaticResource Bool2Vis}}">
        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
@@ -266,7 +266,7 @@
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <TextBlock Text="Tarifa" Style="{StaticResource FieldLabel}"/>
               <TextBlock Grid.Column="2" Text="Importe (€)" Style="{StaticResource FieldLabel}"/>
-              <TextBlock Grid.Column="4" Text="Desde (AAAA-MM-DD)" Style="{StaticResource FieldLabel}"/>
+              <TextBlock Grid.Column="4" Text="Desde (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
               <ComboBox x:Name="PriceTariffBox" Grid.Row="1" ItemsSource="{Binding Catalog.ActiveTariffs}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.PriceTariffId}"
                         IsEnabled="{Binding Catalog.PriceEditable}" HorizontalAlignment="Stretch" AutomationProperties.Name="Tarifa del precio"/>
               <TextBox x:Name="PriceBox" Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.PriceText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PriceEditable}" TextAlignment="Right" AutomationProperties.Name="Importe en euros, IVA incluido"/>
@@ -304,7 +304,7 @@
         <ListBox.ItemTemplate><DataTemplate>
          <DockPanel Margin="{Binding Indent}" AutomationProperties.Name="{Binding Path}">
           <DockPanel.Style>
-           <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+           <Style TargetType="DockPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
           </DockPanel.Style>
           <Path DockPanel.Dock="Left" Data="M1,0 L1,6 Q1,9 4,9 L10,9" Stroke="{StaticResource StrokeStrong}" StrokeThickness="1.5" Width="12" Height="12" Margin="0,1,6,0" VerticalAlignment="Top"
                 Visibility="{Binding HasParent, Converter={StaticResource Bool2Vis}}"/>
@@ -327,7 +327,7 @@
 
     <Border x:Name="CategoryPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Catalog.CategoryFormTitle}">
      <Grid>
-      <ContentControl x:Name="CategoryEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCatalog}"
+      <ContentControl x:Name="CategoryEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconCatalog}"
                       local:Ui.Heading="{Binding Catalog.CategoryEmptyHeading}" Content="{Binding Catalog.CategoryEmptyText}" Visibility="{Binding Catalog.HasCategoryContext, Converter={StaticResource NotBool2Vis}}"/>
       <DockPanel x:Name="CategoryDetail" Visibility="{Binding Catalog.HasCategoryContext, Converter={StaticResource Bool2Vis}}">
        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
@@ -406,7 +406,7 @@
        <ListBox.ItemTemplate><DataTemplate>
         <StackPanel AutomationProperties.Name="{Binding Tariff.Name}">
          <StackPanel.Style>
-          <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+          <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
          </StackPanel.Style>
          <!-- Repaso de coherencia de C2b: la tarjeta de Oferta y Salas (nombre como titulo, el estado en su chip, el detalle que se parte). -->
          <DockPanel>
@@ -424,7 +424,7 @@
 
     <Border x:Name="TariffPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Catalog.TariffFormTitle}">
      <Grid>
-      <ContentControl x:Name="TariffEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCatalog}"
+      <ContentControl x:Name="TariffEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconCatalog}"
                       local:Ui.Heading="{Binding Catalog.TariffEmptyHeading}" Content="{Binding Catalog.TariffEmptyText}" Visibility="{Binding Catalog.HasTariffContext, Converter={StaticResource NotBool2Vis}}"/>
       <DockPanel x:Name="TariffDetail" Visibility="{Binding Catalog.HasTariffContext, Converter={StaticResource Bool2Vis}}">
        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
@@ -504,7 +504,7 @@
        <ListBox.ItemTemplate><DataTemplate>
         <StackPanel AutomationProperties.Name="{Binding Tax.Name}">
          <StackPanel.Style>
-          <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
+          <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
          </StackPanel.Style>
          <DockPanel>
           <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
@@ -521,7 +521,7 @@
 
     <Border x:Name="TaxPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Catalog.TaxFormTitle}">
      <Grid>
-      <ContentControl x:Name="TaxEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCatalog}"
+      <ContentControl x:Name="TaxEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconCatalog}"
                       local:Ui.Heading="{Binding Catalog.TaxEmptyHeading}" Content="{Binding Catalog.TaxEmptyText}" Visibility="{Binding Catalog.HasTaxContext, Converter={StaticResource NotBool2Vis}}"/>
       <DockPanel x:Name="TaxDetail" Visibility="{Binding Catalog.HasTaxContext, Converter={StaticResource Bool2Vis}}">
        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
