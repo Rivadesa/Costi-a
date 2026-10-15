@@ -31,7 +31,7 @@ public sealed partial class ShellViewModel : ObservableObject
     // La ventana selecciona la vista pedida cuando el responsable ya ha entrado (y al conectar, la primera visible).
     public event Action<string>? ViewRequested;
 
-    public HomeViewModel Home { get; }                   // corte A: Inicio (estado, accesos, dispositivos)
+    public HomeViewModel Home { get; }                   // corte A: Inicio (estado, accesos, dispositivos); C2: panel con cifras y mini plano
     public ServiceViewModel Service { get; }
     public CheckoutViewModel Checkout { get; }
     public DevicesViewModel Devices { get; }
@@ -76,6 +76,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Settings = DesktopSettings.Load();
         lastActivity = Clock();
         Home = new(this); Service = new(this); Checkout = new(this); Devices = new(this); Organization = new(this); Catalog = new(this); Offers = new(this);
+        Home.Watch(Service);   // C2: las cifras y el mini plano de Inicio siguen a las tarjetas del Comedor (sin lecturas propias)
         // C1 (arreglo): la direccion guardada se asigna DESPUES de crear las vistas. Si es distinta de la de por defecto (todo
         // puesto adicional: https://NOMBRE:PUERTO), OnEndpointChanged -> Sync() recorre las vistas y antes reventaba (NullReference).
         Endpoint = Settings.Endpoint; Username = Settings.Username;
@@ -343,9 +344,21 @@ public sealed partial class ShellViewModel : ObservableObject
         Status = $"{ViewTitle(view)} es solo para el responsable: entra con tu usuario y contraseña. El puesto sigue operativo.";
         Sync();
     }
+    // C2: una vista pedida desde un viewmodel (Inicio: abrir mesa, una mesa del mini plano, un asistente de Dispositivos) sigue la logica
+    // del menu: un apartado sensible en el nivel Puesto pide antes al responsable; el resto se abre sin mas.
+    public void OpenView(string view)
+    {
+        if (RequiresResponsible(view)) RequestElevation(view);
+        else ViewRequested?.Invoke(view);
+    }
     private bool CanCancelElevation() => RequestedView is not null && !Busy;
     [RelayCommand(CanExecute = nameof(CanCancelElevation))]
-    private void CancelElevation() { RequestedView = null; Status = "Sigues en el nivel Puesto."; Sync(); }
+    private void CancelElevation()
+    {
+        RequestedView = null;
+        Devices.Request(null);   // C2: un asistente pedido desde Inicio no se abre solo mas tarde, cuando nadie lo espera
+        Status = "Sigues en el nivel Puesto."; Sync();
+    }
 
     private bool CanConnectPaired() => ConnectEnabled && HasPairedDevice;
     [RelayCommand(CanExecute = nameof(CanConnectPaired))]

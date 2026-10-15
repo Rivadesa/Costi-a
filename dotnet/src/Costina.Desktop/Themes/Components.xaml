@@ -108,6 +108,11 @@
   <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentLine}"/>
   <Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="local:Ui.Icon" Value="{StaticResource IconCheck}"/>
  </Style>
+ <!-- C2: nota neutra (Inicio: servidor, copia de seguridad hecha): blanca con borde suave y texto gris, para lo que no pide hacer nada. -->
+ <Style x:Key="NoteBar" TargetType="ContentControl" BasedOn="{StaticResource InfoBar}">
+  <Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+  <Setter Property="Foreground" Value="{StaticResource InkSoft}"/>
+ </Style>
 
  <!-- Chip de estado: palabra en una pastilla (Listo, Próximamente, Conectado...). El color acompana; la palabra manda. Va arriba, a la
       altura de la primera linea del titulo que acompana (un titulo de dos lineas no lo baja). -->
@@ -247,7 +252,7 @@
   </Style.Triggers>
  </Style>
 
- <!-- Cifra (KPI): tarjeta con etiqueta e importe grande. En C1 solo el estilo; los datos llegan en C2 (Inicio como panel). -->
+ <!-- Cifra (KPI): tarjeta con etiqueta e importe grande (C2: las cuatro cifras del comedor en Inicio). -->
  <Style x:Key="Kpi" TargetType="Border" BasedOn="{StaticResource Card}"><Setter Property="Padding" Value="18,16"/></Style>
  <Style x:Key="KpiDanger" TargetType="Border" BasedOn="{StaticResource Kpi}">
   <Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="BorderBrush" Value="{StaticResource DangerLine}"/>

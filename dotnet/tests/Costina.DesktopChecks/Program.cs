@@ -463,7 +463,23 @@ internal static class Program
         if(!home.WhoText.StartsWith("Principal (antiguo)",StringComparison.Ordinal)) throw new Exception("Inicio states who is connected: "+home.WhoText);
         home.ApplyDevices([new("d1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("d2","tablet-sala-2","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null),
             new("d3","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-1),null,true),new("d4","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))]);
-        if(home.DevicesSummary!="2 comanderos (1 con conexión ahora) · 1 pantalla de cocina (1 con conexión ahora)") throw new Exception("Inicio summarises active devices and presence: "+home.DevicesSummary);
+        // C2: Inicio lista los dispositivos ACTIVOS (comanderos primero) con su conexion en palabras; los quitados solo en Dispositivos.
+        if(home.DevicesSummary!="2 de 3 con conexión"||!home.DeviceRows.Select(r=>r.Name+" "+r.State+" "+r.Dot).SequenceEqual(["tablet-sala-1 Conectado ok","tablet-sala-2 Sin conexión off","pantalla-fria Conectado ok"])
+            ||home.DevicesMore.Length!=0||home.DevicesEmpty.Length!=0) throw new Exception("Inicio lists active devices with their presence: "+home.DevicesSummary+" / "+string.Join(", ",home.DeviceRows.Select(r=>r.Name+" "+r.State)));
+        home.ApplyDevices([]);
+        if(home.DeviceRows.Length!=0||home.DevicesSummary.Length!=0||!home.DevicesEmpty.StartsWith("Ningún dispositivo conectado todavía",StringComparison.Ordinal)) throw new Exception("Without devices Inicio says so.");
+        home.ApplyDevices([..Enumerable.Range(1,7).Select(i=>new Costina.Client.DeviceRowDto("x"+i,"tablet-"+i,"service","sala-1","user:jefa",DateTimeOffset.Now,null,i%2==0)),
+            new("old","pc-viejo","main","","user:jefa",DateTimeOffset.Now,null)]);
+        if(home.DeviceRows.Length!=Costina.Desktop.ViewModels.HomeViewModel.DevicesShown||home.DevicesMore!="Y 3 dispositivos más en Dispositivos."||home.DevicesSummary!="3 de 8 con conexión"
+            ||!home.DevicesWarning.StartsWith("1 dispositivo antiguo con rol principal",StringComparison.Ordinal)) throw new Exception("A long list is cut, counted, and a legacy main device is warned about: "+home.DevicesMore+" / "+home.DevicesWarning);
+        // C2: saludo segun la hora local y servicio del dia con la regla de las ofertas (comida hasta las 17:00).
+        if(Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,9,0,0))!="Buenos días"||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,15,0,0))!="Buenas tardes"
+            ||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,14,22,0,0))!="Buenas noches"||Costina.Desktop.ViewModels.HomeViewModel.Greeting(new DateTime(2026,10,15,3,0,0))!="Buenas noches")
+            throw new Exception("The greeting follows the local time.");
+        if(Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,14,21,30,0),true)!="Miércoles, 14 de octubre · Servicio de cena"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
+            ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
         var soon=new Costina.Client.DiagnosticsDto("installation","0.33.0-b1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
@@ -693,7 +709,7 @@ internal static class Program
             [new("DEGUSTACION","Degustación Costiña","tasting",[]),
              new("DIA","Menú del día","set-menu",[new("entrantes","Entrantes",[new("ensalada","Ensalada de la huerta")]),new("principales","Principales",[new("merluza","Merluza a la gallega"),new("carrillera","Carrillera al vino")]),new("postres","Postres",[new("tarta","Tarta de queso"),new("flan","Flan de huevo")])]),
              new("CARTA","Carta","a-la-carte",[new("entrantes","Entrantes",[],[new("pulpo","racion","Pulpo á feira","Ración"),new("croquetas","racion","Croquetas de la casa","Ración")]),new("principales","Principales",[],[new("lubina","racion","Lubina a la plancha","Ración")]),new("postres","Postres",[],[new("filloas","racion","Filloas","Ración")])])],
-            [new("pase","Pase","pass"),new("cold","Cocina fría","kitchen"),new("hot","Cocina caliente","kitchen")]);
+            [new("pase","Pase","pass"),new("cold","Cocina fría","kitchen"),new("hot","Cocina caliente","kitchen"),new("sala-1","Sala 1","room"),new("terraza","Terraza","room")]);
         string[] tastingCourses=["Aperitivos","Mar","Arroz","Pescado","Carne","Postre"];
         Costina.Client.BoardEntry[] diningBoard=[
             Seat("s1","M1",2,"InService","DEGUSTACION",[
@@ -886,6 +902,116 @@ internal static class Program
         var salaTops=service.Groups[0].Tiles.Take(4).Select(t=>Math.Round(TileButton(t.Name).TranslatePoint(new Point(0,0),serviceView).Y)).ToArray();
         if(window.ActualWidth>=1270&&!window.Shell.SideNavCompact&&(salaTops[0]!=salaTops[1]||salaTops[1]!=salaTops[2]||salaTops[3]<=salaTops[2])) throw new Exception("At 1280 px with the sidebar unfolded the plan shows three tiles per row: "+string.Join(",",salaTops));
         if(Descendants<Button>(serviceView).Where(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile).Any(b=>b.ActualWidth<Costina.Desktop.Views.ServiceView.MinTile-0.5)) throw new Exception("No tile is narrower than its minimum.");
+        // ===== C2 (plan 2026-10-14): Inicio como panel (Main.dc.html) =====
+        // Las cifras y el mini plano salen de las MISMAS tarjetas del Comedor (sin lecturas propias); los dispositivos con su conexion y la
+        // conexion sencilla, del servidor simulado; sus botones abren el asistente de Dispositivos; una mesa del mini plano y "Abrir mesa"
+        // llevan al Comedor por el camino de siempre (F01). En el nivel Puesto no se ve nada del responsable.
+        var homeView=(FrameworkElement)window.FindName("HomeView");
+        Button HomeNamed(string name)=>(Button)homeView.FindName(name);
+        Button MiniTile(string name){ window.UpdateLayout(); return Descendants<Button>((FrameworkElement)homeView.FindName("MiniPlan")).FirstOrDefault(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile t&&t.Name==name)??throw new Exception("No mini tile painted for "+name); }
+        void ShowHome(){ tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.UpdateLayout(); Wait(()=>!window.Shell.Busy,"Inicio is read"); window.UpdateLayout(); }
+        var panelDevices=new Costina.Client.DeviceRowDto[]{new("h1","tablet-sala-1","service","sala-1","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),new("h2","tablet-terraza","service","terraza","user:jefa",DateTimeOffset.Now.AddDays(-3),null,true),
+            new("h3","pantalla-caliente","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-2),null,true),new("h4","pantalla-fria","kitchen","cold","user:jefa",DateTimeOffset.Now.AddDays(-2),null),
+            new("h5","pantalla-pase","kitchen","pase","user:jefa",DateTimeOffset.Now.AddDays(-2),null,true),new("h6","vieja","kitchen","hot","user:jefa",DateTimeOffset.Now.AddDays(-9),DateTimeOffset.Now.AddDays(-2))};
+        server.Organization=sampleOrganization with {Stations=stationsForDevices}; server.Devices=panelDevices; server.Network=SimpleOn; server.Diagnostics=soon;
+        var readsBeforeHome=server.Requests.Length;
+        ShowHome();
+        if(!server.Requests.Skip(readsBeforeHome).Select(r=>r.Path).ToHashSet().SetEquals(["diagnostics","auth/devices","installation/network"])) throw new Exception("Opening Inicio reads diagnostics, devices and network, never the board: "+string.Join(", ",server.Requests.Skip(readsBeforeHome).Select(r=>r.Path)));
+        string Kpis()=>$"{home.OccupiedText} {home.TablesText} | {home.DinersText} ({home.DinersDetail}) | {home.KitchenText} ({home.ReadyText}) | {home.ReviewText} ({home.ReviewDetail})";
+        if(Kpis()!="7 de 12 | 19 (2 degustaciones · 2 menús cerrados · 3 a la carta) | 2 (1 listo para servir) | 1 (Mesa 4 · ALERGIA frutos secos (grave))"||!home.ReviewAlarm||!home.HasReady
+            ||home.OccupiedShare.Value!=7||home.FreeShare.Value!=5) throw new Exception("The Inicio figures come from the Comedor tiles of the coherent sample: "+Kpis());
+        if(!home.Title.EndsWith(", Jefa",StringComparison.Ordinal)||!home.DateLine.EndsWith(c2Now.ToLocalTime().Hour<17?"· Servicio de comida":"· Servicio de cena",StringComparison.Ordinal)||!char.IsUpper(home.DateLine[0]))
+            throw new Exception("Inicio greets the responsible by name, with the date and the service: "+home.Title+" / "+home.DateLine);
+        if(!ReferenceEquals(home.Tiles,service.Tiles)||Descendants<Button>((FrameworkElement)homeView.FindName("MiniPlan")).Count(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile)!=12||home.ZonesText!="Sala principal · Terraza")
+            throw new Exception("'Sala ahora' paints the Comedor tiles, one per table: "+home.ZonesText);
+        if(!Texts(MiniTile("Mesa 4")).Contains("Alergia · por revisar")||!Texts(MiniTile("Mesa 4")).Contains("En cocina")||!Texts(MiniTile("Mesa 7")).Contains("Restricción")||!Texts(MiniTile("Mesa 2")).Contains("Libre"))
+            throw new Exception("A mini tile says its state and its allergy in words: "+string.Join(" | ",Texts(MiniTile("Mesa 4"))));
+        if(!home.Legend.Select(l=>l.Label).SequenceEqual(["Libre","Sentados","En cocina","Listo para servir","Comiendo","En pausa","Terminado, por liberar","Con alergia o restricción"])) throw new Exception("The legend names the states on the plan: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        if(home.DevicesSummary!="4 de 5 con conexión"||!home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}").SequenceEqual(["tablet-sala-1: Comandero · Sala 1 · Conectado","tablet-terraza: Comandero · Terraza · Conectado",
+            "pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado","pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión","pantalla-pase: Pantalla de cocina · Pase · Conectado"])||!home.DeviceRows.Single(r=>r.Name=="pantalla-fria").Screen)
+            throw new Exception("The device list names kind and station, with presence in words: "+string.Join(" | ",home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}")));
+        if(home.SimpleState!="Conexión sencilla activa · http://192.168.0.81:5089"||home.SimpleDot!="warn"||!home.SimpleNotice.Contains("sin cifrar",StringComparison.Ordinal)||home.NetworkNotice.Length!=0||!home.HasCertificateWarning)
+            throw new Exception("Inicio states the simple connection and warns about it and the certificate: "+home.SimpleState);
+        home.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
+        if(home.SimpleState!="Conexión sencilla desactivada"||home.SimpleNotice.Length!=0||!home.NetworkNotice.Contains("«Red 8»",StringComparison.Ordinal)) throw new Exception("A public Windows network is warned about on Inicio too: "+home.NetworkNotice);
+        home.ApplyNetwork(null);
+        if(home.SimpleState.Length!=0||home.NetworkNotice.Length!=0) throw new Exception("A server without the simple connection paints nothing about it on Inicio.");
+        home.ApplyNetwork(SimpleOn);
+        foreach(var name in new[]{"ConnectDeviceButton","FloorLinkButton","HomeOpenTableButton","HomeConnectWaiterButton","HomeConnectKitchenButton","HomeDevicesButton"})
+            if(!HomeNamed(name).IsVisible||!HomeNamed(name).IsEnabled) throw new Exception("The responsible sees "+name+" enabled from the start (GoToPage answered by the view, commands by their CanExecute).");
+        foreach(var name in new[]{"KpiRow","FloorCard","HomeDevicesCard","CertificateBar","SimpleNoticeBar","BackupNote","ServerNote"})
+            if(((FrameworkElement)homeView.FindName(name)).Visibility!=Visibility.Visible) throw new Exception(name+" is shown to the responsible.");
+        // "Conectar comandero": una sola estacion de sala, asi que el asistente de Dispositivos arranca y emite su codigo (la orden de siempre).
+        var pairingsBefore=server.Count("POST","auth/pairings");
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the waiter assistant opens in Dispositivos");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.AssistantTitle!="Conectar comandero · Sala 1"||center.PairingCode!="Home12_abc-def"||center.ChoosingStation
+            ||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("'Conectar comandero' opens its assistant with a one-use code: "+center.AssistantTitle);
+        center.CancelCommand.Execute(null); window.Shell.Status="";
+        // "Pantalla de cocina": varias estaciones posibles, asi que el asistente se abre en su primer paso (elegir la estacion) sin emitir nada.
+        ShowHome(); pairingsBefore=server.Count("POST","auth/pairings");
+        Press(HomeNamed("HomeConnectKitchenButton"),"Pantalla de cocina (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.ChoosingStation,"the kitchen screen assistant opens at choosing its station");
+        var devicesPanel=(FrameworkElement)window.FindName("DevicesView"); window.UpdateLayout();
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingIntent!="kitchen"||server.Count("POST","auth/pairings")!=pairingsBefore
+            ||((FrameworkElement)devicesPanel.FindName("ChooseStationBar")).Visibility!=Visibility.Visible||((FrameworkElement)devicesPanel.FindName("WaiterSection")).Visibility!=Visibility.Collapsed
+            ||((FrameworkElement)devicesPanel.FindName("KitchenSection")).Visibility!=Visibility.Visible||center.ChoosingText!="Pantalla de cocina: pulsa la estación donde va a estar la pantalla.")
+            throw new Exception("With several kitchen stations the assistant opens at choosing one, with only that section shown: "+center.ChoosingText);
+        RefuseRaw(window,"devices-choose"); Save(Shot(window),"devices-choose.png");
+        Press(Descendants<Button>((FrameworkElement)devicesPanel.FindName("KitchenButtons")).Single(b=>Texts(b).Contains("Cocina fría")),"Cocina fría");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"choosing the station starts the assistant");
+        if(center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.ChoosingStation||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("Choosing the station starts the usual assistant: "+center.AssistantTitle);
+        center.CancelCommand.Execute(null); window.Shell.Status="";
+        // Una mesa OCUPADA del mini plano: el Comedor con esa mesa leida por el camino de siempre (F01); una LIBRE: el formulario de abrir.
+        ShowHome(); var readsBeforeTile=server.Requests.Length;
+        Press(MiniTile("Mesa 3"),"mini Mesa 3");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id=="s3"&&service.SelectedEntry?.Service.Id=="s3","the mini plan opens Mesa 3 in Comedor");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||service.OpenForm||!server.Requests.Skip(readsBeforeTile).Any(r=>r.Method=="GET"&&r.Path=="dining/services/s3"))
+            throw new Exception("An occupied mini tile opens Comedor with that table read as usual.");
+        ShowHome(); readsBeforeTile=server.Requests.Length;
+        Press(MiniTile("Terraza 2"),"mini Terraza 2");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!service.OpenForm||service.SelectedTable?.Id!="T2"||service.SelectedEntry?.Service.Id!="s3"||server.Requests.Skip(readsBeforeTile).Any(r=>r.Path.StartsWith("dining/",StringComparison.Ordinal)))
+            throw new Exception("A free mini tile opens the open form for that table, reading nothing.");
+        service.CancelOpenCommand.Execute(null);
+        // "Abrir mesa" de la cabecera: el Comedor con el formulario de abrir mesa en una mesa libre (Service.StartOpen).
+        service.SelectedTable=service.Tables.Single(t=>t.Id=="M1"); ShowHome();
+        Press(HomeNamed("HomeOpenTableButton"),"Abrir mesa (Inicio)");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!service.OpenForm||service.SelectedTable?.Id!="M2") throw new Exception("'Abrir mesa' on Inicio opens the form on a free table: "+service.SelectedTable?.Id);
+        service.CancelOpenCommand.Execute(null);
+        // "Ver plano": el Comedor, como el menu.
+        ShowHome(); Press(HomeNamed("FloorLinkButton"),"Ver plano");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")) throw new Exception("'Ver plano' opens Comedor.");
+        // Nivel PUESTO: las cifras y el mini plano si (el comedor es del puesto); dispositivos, conectar, diagnostico y red, no: ni se leen.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        window.Shell.Session=new("service","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
+        server.Board=[..diningBoard.Select(AsStation)];
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.UpdateLayout();
+        readsBeforeHome=server.Requests.Length;
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the Puesto reads Inicio"); window.UpdateLayout();
+        if(server.Requests.Skip(readsBeforeHome).Any(r=>r.Path is "diagnostics" or "auth/devices" or "installation/network")) throw new Exception("At the Puesto level Inicio reads nothing of the responsible's.");
+        foreach(var name in new[]{"HomeDevicesCard","ConnectDeviceButton","CertificateBar","SimpleNoticeBar","BackupNote","HomeNetworkBar"})
+            if(((FrameworkElement)homeView.FindName(name)).IsVisible) throw new Exception("At the Puesto level Inicio hides "+name+".");
+        if(!((FrameworkElement)homeView.FindName("KpiRow")).IsVisible||!((FrameworkElement)homeView.FindName("FloorCard")).IsVisible||Grid.GetColumnSpan((FrameworkElement)homeView.FindName("FloorCard"))!=3
+            ||!HomeNamed("HomeOpenTableButton").IsVisible||!((FrameworkElement)homeView.FindName("ServerNote")).IsVisible||home.DeviceRows.Length!=0||Kpis()!="7 de 12 | 19 (2 degustaciones · 2 menús cerrados · 3 a la carta) | 2 (1 listo para servir) | 1 (Mesa 4 · ALERGIA frutos secos (grave))")
+            throw new Exception("At the Puesto level Inicio shows the dining figures and the whole-width plan: "+Kpis());
+        if(!home.Title.EndsWith(", pc-principal",StringComparison.Ordinal)||!home.WhoText.StartsWith("Puesto de sala pc-principal · Sala 1",StringComparison.Ordinal)) throw new Exception("At the Puesto level Inicio greets the puesto: "+home.Title);
+        RefuseRaw(window,"home-puesto"); Save(Shot(window),"home-puesto.png");
+        // Un asistente pedido en el nivel Puesto pide antes la contrasena (Dispositivos es del responsable); cancelar la entrada lo olvida.
+        home.ConnectDeviceCommand.Execute("kitchen");
+        if(!window.Shell.ElevationRequested||!window.Shell.LoginTitle.Contains("Dispositivos",StringComparison.Ordinal)||tabs.SelectedItem!=(TabItem)window.FindName("HomeTab"))
+            throw new Exception("An assistant asked at the Puesto level asks for the responsible first: "+window.Shell.LoginTitle);
+        window.Shell.CancelElevationCommand.Execute(null); window.Shell.Status="";
+        // De vuelta al responsable (sin desconectar, como al entrar con su contrasena: la peticion cancelada no debe sobrevivir) y con la
+        // Mesa 4 elegida en el Comedor (captura principal).
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        server.Board=diningBoard;
+        tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&center.KitchenStations.Length>0,"the responsible opens Dispositivos");
+        if(center.ChoosingStation||center.HasAssistant) throw new Exception("A cancelled request never opens an assistant later.");
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan again");
+        Pick("Mesa 4","s4");
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
         window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400,"bottle","Bebidas","general"),new Costina.Client.ProductChoice("wine","Vino de ensayo","Copa",950,"glass","Vinos","general")]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
@@ -894,7 +1020,7 @@ internal static class Program
         window.Shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",30400,0,30400,0,"Unpaid",window.Shell.Checkout.Charges,[],["add-product","payment"],[]));
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         center.ApplyNetwork(SimpleOn);   // B.2: la captura de Dispositivos muestra la conexion sencilla activa
-        home.ApplyDiagnostics(soon); home.ApplyDevices(activeDevices);
+        home.ApplyDiagnostics(soon); home.ApplyDevices(panelDevices); home.ApplyNetwork(SimpleOn);   // C2: Inicio con sus dispositivos y la conexion sencilla
         window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
         window.Shell.Home.Visible=true;
         foreach(var (tab,file) in new[]{("HomeTab","home.png"),("ServiceTab","service.png"),("CheckoutTab","checkout.png"),("OrganizationTab","configuration.png"),("CatalogTab","catalog.png"),("OffersTab","offers.png"),("DevicesTab","devices.png")})
@@ -906,11 +1032,24 @@ internal static class Program
             RefuseRaw(window,tab);
             if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Restricción","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
                 throw new Exception("Comedor paints the allergy in words on the panel and on the tile, and the station by its name: missing '"+missing+"'.");
+            // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
+            if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
+                "Alergia · por revisar","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
+                throw new Exception("Inicio paints its figures, the allergy to review, the plan and the devices in words: missing '"+missingHome+"'.");
             var shot=Shot(window);
             // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
             // margen entre la barra lateral y la vista.
             if(Pixel(shot,workspace.TranslatePoint(new Point(-12,12),window)) is var gutter&&gutter!=Color.FromArgb(255,0xF3,0xF4,0xF6)) throw new Exception(tab+": the window background must be opaque #F3F4F6, found "+gutter);
             Save(shot,file);
+            // C2: Inicio desplaza: la segunda captura es su final (accesos y notas: conexion sencilla, copia de seguridad y servidor).
+            if(tab=="HomeTab")
+            {
+                var homeScroll=(ScrollViewer)((FrameworkElement)window.FindName("HomeView")).FindName("HomeScroll");
+                homeScroll.ScrollToEnd(); window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
+                var homeEnd=(FrameworkElement)((FrameworkElement)window.FindName("HomeView")).FindName("HomeNotes");
+                if(homeEnd.TranslatePoint(new Point(0,homeEnd.ActualHeight),homeScroll).Y>homeScroll.ActualHeight+0.5) throw new Exception("Scrolled to the end, Inicio shows its notes.");
+                Save(Shot(window),"home-end.png"); homeScroll.ScrollToHome(); window.UpdateLayout();
+            }
         }
         // B.2: Dispositivos con la red de Windows en "Publica" y la conexion sencilla apagada, ofrecida y pidiendo confirmacion.
         center.ApplyNetwork(SimpleOn with {LanHttp=new(false,5089,true),Networks=[new("Red 8","public")]});
@@ -1079,6 +1218,11 @@ internal static class Program
         public Costina.Client.Configuration? Configuration { get; set; }
         public Costina.Client.BoardEntry[] Board { get; set; }=[];
         public Costina.Client.AccountChoice[] Accounts { get; set; }=[];
+        // C2: lo que lee Inicio del responsable (diagnostico, dispositivos, red) y lo que necesita un asistente de Dispositivos (solicitudes y
+        // el codigo de un uso que emite POST auth/pairings).
+        public Costina.Client.DiagnosticsDto? Diagnostics { get; set; }
+        public Costina.Client.DeviceRowDto[] Devices { get; set; }=[];
+        public Costina.Client.NetworkDto? Network { get; set; }
         public System.Collections.Concurrent.ConcurrentDictionary<string,(string Type,byte[] Content)> Images { get; }=new();
         private readonly List<Request> requests=[];
         public Request[] Requests { get { lock(requests) return [..requests]; } }
@@ -1107,10 +1251,15 @@ internal static class Program
                     return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.DiningDto>(entry.Version,entry.Service),Costina.Client.ApiClient.Json));
                 if(path=="checkout/accounts") return Json(200,JsonSerializer.Serialize(Accounts,Costina.Client.ApiClient.Json));
                 if(path=="checkout/catalog") return Json(200,"[]");
+                if(path=="diagnostics"&&Diagnostics is not null) return Json(200,JsonSerializer.Serialize(Diagnostics,Costina.Client.ApiClient.Json));
+                if(path=="auth/devices") return Json(200,JsonSerializer.Serialize(Devices,Costina.Client.ApiClient.Json));
+                if(path=="auth/pairings/pending") return Json(200,"[]");
+                if(path=="installation/network"&&Network is not null) return Json(200,JsonSerializer.Serialize(Network,Costina.Client.ApiClient.Json));
                 if(path.StartsWith("checkout/services/",StringComparison.Ordinal)&&Accounts.FirstOrDefault(a=>a.ServiceId==Uri.UnescapeDataString(path["checkout/services/".Length..])) is {} account)
                     return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.AccountDto>(1,new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
                 return Json(404,"{\"error\":\"not_found\"}");
             }
+            if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",code="Home12_abc-def",expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
             var command=JsonSerializer.Deserialize<JsonElement>(body);
             if(path=="erp/catalog/commands/product-image-set")
             {

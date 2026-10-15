@@ -3,7 +3,9 @@
       Hereda el DataContext del cascaron (ShellViewModel). C1: aspecto nuevo (tarjetas, avisos con icono) con la distribucion de siempre.
       Los botones de pantalla de cocina buscan el comando en el DataContext de la ventana (RelativeSource Window).
       Revision C1: cabecera de la vista como las demas; la tarjeta de conectar mide lo que su contenido (sin hueco blanco debajo); una
-      pantalla de cocina por estacion en botones iguales con icono; cada dispositivo con su punto de presencia. -->
+      pantalla de cocina por estacion en botones iguales con icono; cada dispositivo con su punto de presencia.
+      C2: los botones de Inicio abren aqui su asistente (Devices.Request): con una sola estacion posible arranca solo; con varias, la barra
+      ChooseStationBar pide elegirla y solo queda a la vista la seccion de ese tipo de dispositivo. -->
  <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
   <StackPanel Grid.ColumnSpan="3" Style="{StaticResource PageHeader}">
@@ -30,7 +32,13 @@
     <TextBlock Text="{Binding Devices.SimpleText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
    </DockPanel></ContentControl>
    <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Subtle}" Margin="0,10,0,10" TextWrapping="Wrap"/>
-   <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}">
+   <!-- C2: asistente pedido desde Inicio con varias estaciones posibles: primer paso, elegir la estacion (la otra seccion se recoge). -->
+   <ContentControl x:Name="ChooseStationBar" Style="{StaticResource InfoBar}" Margin="0,0,0,12" Visibility="{Binding Devices.ChoosingStation, Converter={StaticResource Bool2Vis}}"><DockPanel>
+    <Button DockPanel.Dock="Right" Content="Ver todo" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelChoosingCommand}" Margin="12,0,0,0" VerticalAlignment="Center"
+            ToolTip="Volver a ver los dos tipos de dispositivo"/>
+    <TextBlock Text="{Binding Devices.ChoosingText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+   </DockPanel></ContentControl>
+   <StackPanel x:Name="WaiterSection" Visibility="{Binding Devices.ShowWaiterSection, Converter={StaticResource Bool2Vis}}">
     <TextBlock Text="Comandero (sala)" Style="{StaticResource Section}"/>
     <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
      <ComboBox x:Name="RoomStationBox" Width="210" ItemsSource="{Binding Devices.RoomStations}" SelectedItem="{Binding Devices.SelectedRoomStation}" DisplayMemberPath="Name" Margin="0,0,8,0" ToolTip="Estación de sala (o barra) a la que pertenece el comandero"/>
@@ -44,7 +52,9 @@
      <Button x:Name="KeepThisPcButton" Content="Dejar este PC conectado para el servicio" Command="{Binding Devices.KeepThisPcConnectedCommand}" ToolTip="Este PC queda emparejado como puesto de sala en la estación elegida: al encenderlo entra solo y toma comandas; caja, configuración y dispositivos siguen pidiendo la contraseña del responsable."/>
      <TextBlock Text="{Binding Devices.ThisPcText}" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap" MaxWidth="360" Style="{StaticResource Subtle}"/>
     </WrapPanel>
-    <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,14,0,4"/>
+   </StackPanel>
+   <StackPanel x:Name="KitchenSection" Margin="0,14,0,0" Visibility="{Binding Devices.ShowKitchenSection, Converter={StaticResource Bool2Vis}}">
+    <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,0,0,4"/>
     <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">
      <!-- Cada boton mide su nombre (antes un ancho minimo de 160 dejaba la tercera estacion sola en otra linea). -->
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
