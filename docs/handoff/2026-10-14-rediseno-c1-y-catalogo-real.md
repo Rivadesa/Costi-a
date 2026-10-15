@@ -1,5 +1,7 @@
 # Traspaso 2026-10-14, al día el 15-10: cortes A, B, B.1, C1, E3.1, E3.2, B.2 y C2 mezclados; siguiente C2b y C3
 
+> **Ya no es el punto de entrada:** desde el 15-10 lo es `docs/handoff/2026-10-15-c2b-y-carta-bodega.md`. Este documento sigue valiendo para las decisiones, las PR hasta C2, el PC del promotor y las trampas.
+
 Para seguir desde cualquier equipo. Sustituye como punto de entrada al traspaso `2026-09-23-hito6-e4.md`, que queda como histórico y aún dice «faltan las cuatro decisiones».
 
 Leer antes, en este orden:
