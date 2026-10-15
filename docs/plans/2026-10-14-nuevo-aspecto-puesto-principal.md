@@ -96,7 +96,10 @@ Commits en este orden:
      - letra resuelta.
    - Capturas nuevas.
 
-### C2 — Inicio en panel y Comedor con plano de mesas (versión `0.36.0-c2`; la `0.35.0` la tomó E3.2)
+### C2 — Inicio en panel y Comedor con plano de mesas (versión `0.37.0-c2`; la `0.35.0` la tomó E3.2 y la `0.36.0`, B.2)
+
+**Aprobado el 15-10** («seguimos», con permiso para subir y mezclar en cuanto pase la CI). Se divide en dos: **C2** (Inicio, Comedor, `stations` y lo que dejaron C1 y E3.2) y **C2b** (reordenar Caja, Catálogo, Oferta, Salas y Dispositivos para el ancho que deja la barra lateral). C2 incluye además, en un commit propio, el **mensaje de la consola sin permisos**: el promotor lanzó `import-catalog` desde un PowerShell sin administrador y el motor dijo «Set COSTINA_MODE…», porque sin permisos `server.json` parece no existir (`File.Exists` da falso ante un acceso denegado). Debe decir que hay que abrir PowerShell como administrador.
+
 
 - **Motor, solo añade**: `GET /configuration` lleva `stations` (`id`, `name`, `kind`, `active`) para que un puesto y la PWA vean los nombres de las estaciones. Hoy `/organization` es solo del responsable.
 - **Inicio**:
@@ -111,7 +114,7 @@ Commits en este orden:
   - estado de la tarjeta, solo de presentación: Libre · Sentados · En cocina · Listo para servir · Comiendo · En pausa · Terminado, por liberar. Con «Alergias por revisar» encima;
   - `RefreshAll` relee `/configuration`, para que una mesa creada aparezca sin reconectar;
   - los datos de ejemplo de los checks pasan a ser coherentes (hoy la captura del comedor mezcla M3 y M1 a mano).
-- Caja, Catálogo, Oferta, Configuración y Dispositivos se reordenan para el ancho que deja la barra lateral (ficha a la derecha y listas con buscador), con capturas.
+- **C2b**: Caja, Catálogo, Oferta, Configuración y Dispositivos se reordenan para el ancho que deja la barra lateral (ficha a la derecha y listas con buscador), con capturas.
 - **Lo que dejaron C1 y E3.2 para C2:**
   - la columna «Estación» de las elaboraciones muestra el código (`hot`) hasta que `/configuration` traiga `stations`;
   - en la captura del Comedor, el texto largo de restricciones se corta en su celda;
