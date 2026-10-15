@@ -145,7 +145,9 @@ try {
         $diagnostics = $null
         for ($i = 0; $i -lt 10; $i++) {
             $diagnostics = Invoke-RestMethod "$api/diagnostics" -Headers $headers
-            if ($diagnostics.publisher.lastSuccessAt) { break }
+            # C2: la prueba anterior (B.2) deja dos eventos de lan-http-set en el outbox y el publicador da una vuelta cada 250 ms:
+            # se espera a que los despache en lugar de leer el diagnostico en plena carrera. El backlog debe seguir vaciandose.
+            if ($diagnostics.publisher.lastSuccessAt -and $diagnostics.outbox.pending -eq 0) { break }
             Start-Sleep -Seconds 1
         }
         Assert $diagnostics.runningAsService 'diagnostics must report a Windows service.'
