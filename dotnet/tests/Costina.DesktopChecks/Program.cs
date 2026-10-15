@@ -1945,7 +1945,9 @@ internal static class Program
         bool Grey(string id)
         {
             var card=Card(id); card.ApplyTemplate(); card.UpdateLayout();   // un contenedor recien generado aun no tiene aplicada su plantilla
-            return card.Template.FindName("Bd",card) is Border{Background:SolidColorBrush b}&&b.Color==((SolidColorBrush)window.FindResource("Surface2")).Color;
+            // El fondo gris lo pisa el raton por encima (en CI el cursor puede quedar sobre la unica mesa de la sala): se mira el gris del texto, que
+            // solo pone el disparador de mesa desactivada.
+            return card.Template.FindName("Bd",card) is Border bd&&System.Windows.Documents.TextElement.GetForeground(bd) is SolidColorBrush b&&b.Color==((SolidColorBrush)window.FindResource("InkSoft")).Color;
         }
         IEnumerable<string> RowPainted(ListBox list,Func<object,bool> pick)=>list.ItemContainerGenerator.ContainerFromItem(list.Items.Cast<object>().Single(pick)) is ListBoxItem row?Painted(row):[];
         void RoomsFit(string what,string bottom)
