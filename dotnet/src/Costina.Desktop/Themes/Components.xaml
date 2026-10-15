@@ -394,7 +394,9 @@
         FieldLabel y cifras (FigureBox); y FichaActions abajo, fijo, con los botones (BigAction, el grande). Sin nada elegido, la ficha es un
         EmptyState que dice que elegir y no muestra campos.
       - Pestanas internas con Segmented (lo elegido sale de IsCurrent del elemento, ver SegmentChoice) y tablas ligeras sin desplazamiento
-        propio con TableHead y TableRow (la ficha ya desplaza). Ningun desplazamiento anidado. -->
+        propio con TableHead y TableRow, o TableList si la fila se elige (la ficha ya desplaza). Ningun desplazamiento anidado.
+      - LinkButton para un enlace de texto junto a un recuento ("Ver todos" del Catalogo). -->
+
  <Style x:Key="PageBar" TargetType="DockPanel"><Setter Property="Margin" Value="0,0,0,14"/><Setter Property="LastChildFill" Value="True"/></Style>
  <Style x:Key="PageSummary" TargetType="TextBlock" BasedOn="{StaticResource Body}"><Setter Property="Margin" Value="0,2,0,0"/></Style>
  <!-- Accion principal de la cabecera ("Abrir mesa", "Producto"...): verde, con su icono (Ui.Icon; por defecto, el mas). -->
@@ -449,12 +451,16 @@
 
  <!-- Columna de lista: tarjeta blanca algo mas densa que la ficha. -->
  <Style x:Key="ListPane" TargetType="Border" BasedOn="{StaticResource Card}"><Setter Property="Padding" Value="12"/></Style>
- <!-- Lista larga (catalogo...): sin borde ni fondo propios dentro de su ListPane; filas de dos lineas con la fila comun (Controls.xaml). -->
+ <!-- Lista larga (catalogo...): sin borde ni fondo propios dentro de su ListPane; filas de dos lineas con la fila comun (Controls.xaml),
+      con margen derecho para la barra de desplazamiento de Fluent, que se superpone (no tapa el precio ni el final de la fila). -->
  <Style x:Key="PaneList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
   <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
   <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/><Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
   <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Margin" Value="0,1,10,1"/></Style></Setter.Value>
+  </Setter>
  </Style>
  <Style x:Key="RowTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="14"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>
  <Style x:Key="RowDetail" TargetType="TextBlock">
@@ -555,6 +561,58 @@
  <Style x:Key="TableRow" TargetType="Border">
   <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="BorderThickness" Value="0,0,0,1"/><Setter Property="Padding" Value="10,8"/>
   <Setter Property="SnapsToDevicePixels" Value="True"/>
+ </Style>
+ <!-- Tabla ligera con fila elegible (presentaciones de un producto...): las filas de TableRow; al pasar el raton, sombreada; la elegida, con
+      fondo de acento y la barra de la izquierda, como las listas. Sin desplazamiento propio: la rueda del raton mueve la ficha. -->
+ <Style x:Key="TableList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+  <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ItemsPresenter/></ControlTemplate></Setter.Value></Setter>
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value>
+    <Style TargetType="ListBoxItem">
+     <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+     <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+     <Setter Property="Template">
+      <Setter.Value>
+       <ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="Bd" Background="Transparent" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,0,1" Padding="10,8" SnapsToDevicePixels="True">
+         <Grid>
+          <Border x:Name="Pill" Width="3" CornerRadius="1.5" Margin="-9,1,0,1" HorizontalAlignment="Left" Background="{StaticResource Accent}" Visibility="Collapsed"/>
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+         </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+         <Trigger Property="IsSelected" Value="True">
+          <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Pill" Property="Visibility" Value="Visible"/>
+          <Setter Property="FontWeight" Value="SemiBold"/>
+         </Trigger>
+        </ControlTemplate.Triggers>
+       </ControlTemplate>
+      </Setter.Value>
+     </Setter>
+    </Style>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <!-- Enlace de texto ("Ver todos"): sin fondo ni borde, en el verde del acento y subrayado al pasar el raton; deshabilitado, gris. -->
+ <Style x:Key="LinkButton" TargetType="Button">
+  <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+  <Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="Cursor" Value="Hand"/><Setter Property="Padding" Value="4,2"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="Button">
+     <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+      <TextBlock x:Name="Text" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"/>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Text" Property="TextDecorations" Value="Underline"/></Trigger>
+      <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource InkDisabled}"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
  </Style>
 
  <!-- Accion grande de una ficha (C2, antes en ServiceView). Sin accion anunciada queda deshabilitada (relleno gris, como cualquier boton

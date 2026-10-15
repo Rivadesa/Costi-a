@@ -24,6 +24,8 @@ internal static class Program
         DesktopSettings.Folder=checksRoot;
         new DesktopSettings{Endpoint=ChecksEndpoint}.Save();
         if(!DesktopSettings.Path.StartsWith(checksRoot,StringComparison.Ordinal)||!File.Exists(DesktopSettings.Path)) throw new Exception("The checks must keep their settings in their own temporary folder.");
+        // C2b: sin el arranque normal de la aplicacion (instancia unica y BootAsync): los checks construyen la ventana ellos mismos.
+        App.Checks=true;
         var app=new App(); app.InitializeComponent();
         var window=new MainWindow(); window.Show(); window.UpdateLayout();
         if(window.Shell.Endpoint!=ChecksEndpoint||window.Shell.HasPairedDevice) throw new Exception("The window must start from the checks' own settings, never from this PC's installation: "+window.Shell.Endpoint);
@@ -275,8 +277,12 @@ internal static class Program
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
         if(catalogView.Categories.Select(c=>c.Category.Id).SequenceEqual(new[]{"bebidas","vinos","tintos","comida"})==false||catalogView.Categories[2].Depth!=2) throw new Exception("Categories render as an indented tree.");
         if(catalogView.Products.Length!=4||!catalogView.Summary.Contains("3 productos activos (3 vendibles hoy)")) throw new Exception("All products listed and summary counts sellables: "+catalogView.Summary);
+        // C2b: el filtro de la lista de productos es su desplegable de categoria (independiente de la categoria elegida en su pestana) y
+        // abarca sus subcategorias: Vinos muestra el vino de Vinos y el tinto de Tintos.
         catalogView.SelectedCategory=catalogView.Categories[1];
-        if(catalogView.AllCategories||catalogView.Products.Length!=1||catalogView.Products[0].Product.Id!="wine") throw new Exception("Selecting a category filters its products.");
+        if(!catalogView.AllCategories||catalogView.Products.Length!=4||catalogView.CategoryFilter!="") throw new Exception("Choosing a category in its tab does not filter the product list (C2b).");
+        catalogView.CategoryFilter="vinos";
+        if(catalogView.AllCategories||!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["wine","3760"])) throw new Exception("Filtering by a category lists its products and those of its subcategories: "+string.Join(",",catalogView.Products.Select(p=>p.Product.Id)));
         catalogView.SelectedProduct=catalogView.Products[0];
         if(catalogView.ProductName!="Vino de ensayo"||catalogView.ProductTaxId!="iva-21"||catalogView.ProductReference!="3754"||catalogView.Presentations.Length!=2) throw new Exception("Selecting a product fills its form and lists its presentations.");
         if(catalogView.SelectedPresentation?.Presentation.Id!="glass"||catalogView.PriceText!="9,50"||!catalogView.Presentations[0].PriceText.Contains("Terraza 12,00 €")) throw new Exception("The price in force today per tariff is shown (not the scheduled one): "+catalogView.Presentations[0].PriceText);
@@ -302,7 +308,7 @@ internal static class Program
         window.Shell.Busy=true;
         if(catalogView.SaveProductCommand.CanExecute(null)||catalogView.SetPriceCommand.CanExecute(null)) throw new Exception("Busy must gate every catalog command.");
         window.Shell.Busy=false;
-        catalogView.SelectedCategory=catalogView.Categories[1]; catalogView.SelectedProduct=catalogView.Products[0];
+        catalogView.CategoryFilter="vinos"; catalogView.SelectedProduct=catalogView.Products[0];
         // E3.2: imagenes de los articulos y tarifa de cada sala. La ventana habla con un servidor SIMULADO en memoria (un HttpMessageHandler):
         // ordenes, relecturas e imagenes pasan por el ApiClient real, sin red ni puerto. Las fotos son botellas dibujadas aqui y guardadas
         // como PNG y JPEG de verdad. Las esperas dejan trabajar al despachador: las imagenes se decodifican fuera de la ventana y vuelven a ella.
@@ -333,7 +339,9 @@ internal static class Program
         if(!Descendants<Border>(wineItem).Any(b=>b.IsVisible&&b.Background is ImageBrush{ImageSource:var shown}&&ReferenceEquals(shown,wineRow.Thumbnail))) throw new Exception("The row paints its thumbnail.");
         if(!Descendants<System.Windows.Shapes.Path>(waterItem).Any(p=>p.IsVisible&&p.Data==(Geometry)Application.Current.FindResource("IconImage"))||Descendants<Border>(waterItem).Any(b=>b.IsVisible&&b.Background is ImageBrush))
             throw new Exception("A row without an image paints the image placeholder icon.");
-        if(!Texts(wineItem).Contains("Vino de ensayo")||!Texts(wineItem).Any(t=>t.StartsWith("Vinos · Copa 9,50 €",StringComparison.Ordinal))) throw new Exception("The row shows the name and, below, category, prices and state: "+string.Join(" | ",Texts(wineItem)));
+        // C2b: a la derecha del nombre, el precio General de su primera presentacion; debajo, la ruta corta de su categoria y cuantas
+        // presentaciones activas tiene.
+        if(!Texts(wineItem).Contains("Vino de ensayo")||!Texts(wineItem).Contains("9,50 €")||!Texts(wineItem).Contains("Bebidas › Vinos · 2 presentaciones")) throw new Exception("The row shows the name with its General price and, below, category and presentations: "+string.Join(" | ",Texts(wineItem)));
         // Lista virtualizada: con 300 articulos con imagen solo piden la suya las filas que se pintan; al bajar al final llega la ultima.
         var manyProducts=Enumerable.Range(1,300).Select(i=>new Costina.Client.ProductDto($"v{i:000}",$"Vino de muestra {i:000}","tintos","iva-21",null,i,true,
             [new("botella","Botella",0,true,[new("general","1970-01-01",1500+i)])],null,i.ToString("x64"))).ToArray();
@@ -1247,6 +1255,291 @@ internal static class Program
             throw new Exception("Caja fits: the list keeps 320 px and the payment stays in view: "+InCheckout<FrameworkElement>("AccountPanel").ActualWidth);
         if(Clipped(checkoutView) is {Length:>0} clippedCaja) throw new Exception("Caja clips text: "+string.Join(" | ",clippedCaja));
         if(NestedScrolls(checkoutView) is {Length:>0} nestedCaja) throw new Exception("Caja nests scroll viewers: "+string.Join(", ",nestedCaja));
+        // ===== C2b (plan 2026-10-14): Catalogo y tarifas con pestanas, lista y ficha =====
+        // Catalogo de ejemplo COHERENTE con el comedor de C2 y las cuentas de Caja: los mismos productos y precios (Albarino 26,00 la botella
+        // y 4,50 la copa, Menu del dia 18,50...), una carta de vinos por tipo y region (Rioja bajo Tintos Y bajo Blancos, E3.1), botellas
+        // dibujadas como en E3.2, presentaciones Botella y Copa, tarifas General y Terraza (la de la sala Terraza: precios propios para
+        // vinos, agua y cafe; lo demas se cobra a precio General, como en la cuenta de Terraza 1) y los impuestos de serie. Las salas de la
+        // organizacion son las del plano de C2. Abrir la vista lo lee todo del servidor simulado; elegir, buscar y filtrar no envian nada.
+        Costina.Client.PresentationDto Pres(string id,string name,int sort,params (string Tariff,long Cents)[] prices)=>new(id,name,sort,true,[..prices.Select(p=>new Costina.Client.PriceDto(p.Tariff,"2026-01-01",p.Cents))]);
+        Costina.Client.ProductDto Wine(string id,string name,string category,string? reference,int sort,byte[]? photo,params Costina.Client.PresentationDto[] presentations)
+            =>new(id,name,category,"iva-21",reference,sort,true,presentations,null,photo is null?null:Sha(photo));
+        Costina.Client.ProductDto Dish(string id,string name,string category,string? station,int sort,params Costina.Client.PresentationDto[] presentations)
+            =>new(id,name,category,"iva-10",null,sort,true,presentations,station);
+        var bottles=new Dictionary<string,(string Type,byte[] Content)>{
+            ["albarino"]=("image/png",greenBottle),
+            ["do-ferreiro"]=("image/png",Bottle(Color.FromRgb(0x6B,0x8F,0x3A),Color.FromRgb(0xFF,0xFF,0xFF),new PngBitmapEncoder())),
+            ["gravonia"]=("image/jpeg",Bottle(Color.FromRgb(0x9A,0x6B,0x13),Color.FromRgb(0xF4,0xEC,0xD8),new JpegBitmapEncoder{QualityLevel=90})),
+            ["guimaro"]=("image/jpeg",Bottle(Color.FromRgb(0x3A,0x15,0x20),Color.FromRgb(0xEB,0xDC,0xB8),new JpegBitmapEncoder{QualityLevel=90})),
+            ["muga"]=("image/jpeg",redBottle),
+            ["estrella"]=("image/png",Bottle(Color.FromRgb(0x5A,0x3A,0x1A),Color.FromRgb(0xC8,0x10,0x2E),new PngBitmapEncoder()))};
+        var albarinoCopa=Pres("copa","Copa",1,("general",450),("terraza",500)); albarinoCopa=albarinoCopa with {Prices=[..albarinoCopa.Prices,new("terraza","2026-11-01",550)]};   // la copa en la Terraza sube el 1 de noviembre
+        var wineCatalog=new Costina.Client.CatalogDto(
+            [new("iva-10","IVA 10 %",10m,true),new("iva-21","IVA 21 %",21m,true),new("iva-4","IVA 4 %",4m,true),new("iva-0","Exento",0m,false)],
+            [new("vinos","Vinos",null,"#8C1D1D",0,true),new("tintos","Tintos","vinos",null,0,true),new("tintos-rioja","Rioja","tintos",null,0,true),new("tintos-ribeira-sacra","Ribeira Sacra","tintos",null,1,true),
+             new("blancos","Blancos","vinos",null,1,true),new("blancos-rias-baixas","Rías Baixas","blancos",null,0,true),new("blancos-rioja","Rioja","blancos",null,1,true),
+             new("bebidas","Bebidas",null,"#2F6BC2",1,true),new("cervezas","Cervezas","bebidas",null,0,true),new("cafes","Cafés","bebidas",null,1,true),new("vermus","Vermús","bebidas",null,2,false),
+             new("cocina","Cocina",null,"#B5673A",2,true),new("entrantes","Entrantes","cocina",null,0,true),new("principales","Principales","cocina",null,1,true),new("postres","Postres","cocina",null,2,true),
+             new("menus","Menús",null,"#0E7A5F",3,true)],
+            [Wine("albarino","Albariño Pazo de Señoráns","blancos-rias-baixas","VB-0112",0,greenBottle,Pres("botella","Botella",0,("general",2600),("terraza",2800)),albarinoCopa),
+             Wine("do-ferreiro","Do Ferreiro 2023","blancos-rias-baixas","VB-0131",1,bottles["do-ferreiro"].Content,Pres("botella","Botella",0,("general",2900)),Pres("copa","Copa",1,("general",550))),
+             Wine("gravonia","Viña Gravonia 2015","blancos-rioja","VB-0208",2,bottles["gravonia"].Content,Pres("botella","Botella",0,("general",3800))),
+             Wine("vino-casa","Vino de la casa","tintos",null,3,null,Pres("botella","Botella",0,("general",1200),("terraza",1300))),
+             Wine("guimaro","Guímaro Ribeira Sacra 2022","tintos-ribeira-sacra","VT-0310",4,bottles["guimaro"].Content,Pres("botella","Botella",0,("general",2200),("terraza",2400)),Pres("copa","Copa",1,("general",400))),
+             Wine("muga","Muga Reserva 2019","tintos-rioja","VT-0415",5,redBottle,Pres("botella","Botella",0,("general",3200),("terraza",3500))),
+             new("agua","Agua mineral","bebidas","iva-10",null,6,true,[Pres("botella","Botella",0,("general",250),("terraza",300))]),
+             new("estrella","Estrella Galicia","cervezas","iva-10",null,7,true,[Pres("botellin","Botellín",0,("general",280))],null,Sha(bottles["estrella"].Content)),
+             new("cafe","Café solo","cafes","iva-10",null,8,true,[Pres("unidad","Unidad",0,("general",150),("terraza",180))]),
+             new("vermu","Vermú de grifo","vermus","iva-10",null,9,false,[Pres("copa","Copa",0,("general",300))]),
+             Dish("pulpo","Pulpo á feira","entrantes","cold",10,Pres("racion","Ración",0,("general",1650)),Pres("media","Media ración",1,("general",950))),
+             Dish("croquetas","Croquetas de la casa","entrantes","hot",11,Pres("racion","Ración",0,("general",900))),
+             Dish("empanada","Empanada de zamburiñas","entrantes","cold",12,Pres("racion","Ración",0)),
+             Dish("lubina","Lubina a la plancha","principales","hot",13,Pres("racion","Ración",0,("general",2200))),
+             Dish("filloas","Filloas","postres","cold",14,Pres("racion","Ración",0,("general",600))),
+             Dish("tarta","Tarta de queso","postres","cold",15,Pres("racion","Ración",0,("general",650))),
+             Dish("menu-degustacion","Degustación Costiña","menus",null,16,Pres("persona","Por persona",0,("general",6500))),
+             Dish("menu-dia","Menú del día","menus",null,17,Pres("persona","Por persona",0,("general",1850)))],
+            [new("general","General",0,true),new("terraza","Terraza",1,true),new("eventos","Eventos",2,false)],"2026-10-15");
+        var wineOrganization=new Costina.Client.OrganizationDto(
+            [new("sala","Sala principal",0,true,[..diningConfig.Tables.Where(t=>t.ZoneId=="sala").Select((t,i)=>new Costina.Client.TableDto(t.Id,t.Name,t.Capacity,"sala",i,true))]),
+             new("terraza","Terraza",1,true,[..diningConfig.Tables.Where(t=>t.ZoneId=="terraza").Select((t,i)=>new Costina.Client.TableDto(t.Id,t.Name,t.Capacity,"terraza",i,true))],"terraza")],
+            [new("pase","Pase","Pass",0,true),new("cold","Cocina fría","Kitchen",1,true),new("hot","Cocina caliente","Kitchen",2,true),new("sala-1","Sala 1","Room",3,true),new("terraza","Terraza","Room",4,true)],
+            wineCatalog.Tariffs);
+        T InCatalog<T>(string name) where T:FrameworkElement=>(T)catalogPanel.FindName(name);
+        bool Shows(string name)=>InCatalog<FrameworkElement>(name).IsVisible;
+        bool Ready(string name)=>InCatalog<Button>(name) is {IsVisible:true,IsEnabled:true};
+        // El cuerpo enviado, con sus tildes tal cual (el cliente las escapa en JSON) para compararlo con el texto esperado.
+        string CatalogPost()=>server.Requests.Last(r=>r.Method=="POST") is var post?post.Path+" "+JsonSerializer.Serialize(JsonSerializer.Deserialize<JsonElement>(post.Body),new JsonSerializerOptions{Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping}):"";
+        var sectionTabs=InCatalog<ListBox>("SectionTabs"); var filterBox=InCatalog<ComboBox>("CategoryFilterBox"); var catalogSearch=InCatalog<TextBox>("ProductSearch");
+        void OpenCatalog(string what)
+        {
+            var before=server.Count("GET","erp/catalog");
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); tabs.SelectedItem=(TabItem)window.FindName("CatalogTab"); window.UpdateLayout();
+            Wait(()=>!window.Shell.Busy&&server.Count("GET","erp/catalog")>before,what); window.UpdateLayout();
+        }
+        void Section(int index,string id){ sectionTabs.SelectedIndex=index; window.UpdateLayout(); if(catalogView.Section!=id||!catalogView.Sections[index].IsCurrent||catalogView.Sections.Count(s=>s.IsCurrent)!=1) throw new Exception("The tab "+id+" is chosen and painted as chosen."); }
+        void PickProduct(string id){ productList.SelectedItem=catalogView.Products.Single(p=>p.Product.Id==id); window.UpdateLayout(); }   // como pulsar la fila
+        string RowsText()=>string.Join(" | ",catalogView.Products.Select(p=>$"{p.Product.Name}: {p.MainPrice} · {p.Detail}"));
+        string PriceRows()=>string.Join(" | ",catalogView.Presentations.Select(p=>p.Presentation.Name+": "+string.Join(" / ",p.Cells.Select(c=>c.Text))));
+        void Fits(string what,string bottom)
+        {
+            window.Shell.Status=""; window.UpdateLayout();   // como en el resto de capturas: sin aviso abierto window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var button=InCatalog<Button>(bottom);
+            if(button.TranslatePoint(new Point(0,button.ActualHeight),catalogPanel).Y>catalogPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
+            if(Clipped(catalogPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
+            if(NestedScrolls(catalogPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
+            RefuseRaw(window,what);
+        }
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
+        // Catalogo vacio (una instalacion recien hecha: solo la tarifa General y los impuestos de serie): cada lista explica que falta y
+        // ofrece crear el primero; la ficha no muestra campos.
+        server.Organization=wineOrganization; server.Images.Clear(); foreach(var (id,bottle) in bottles) server.Images[id]=bottle;
+        server.Catalog=new([..wineCatalog.Taxes.Select(t=>t with {Active=true})],[],[],[new("general","General",0,true)],"2026-10-15");
+        window.Shell.Status="";
+        OpenCatalog("the catalog reads an empty catalogue");
+        if(catalogView.Section!="products"||!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 0","Categorías · 0","Tarifas · 1","Impuestos · 4"])||!catalogView.Sections[0].IsCurrent)
+            throw new Exception("The catalog opens on Productos, with a tab per kind and its count: "+string.Join(",",catalogView.Sections.Select(s=>s.Label)));
+        if(!catalogView.ShowProductListEmpty||catalogView.ProductListHeading!="Aún no hay productos"||!Ready("EmptyNewProductButton")||Shows("EmptyShowAllButton")||Shows("ProductList")||Shows("ShowAllButton")
+            ||!Shows("ProductEmpty")||Shows("ProductDetail")||catalogView.ProductEmptyHeading!="Sin productos todavía"||!Texts(catalogPanel).Contains("Crea el primero o importa el catálogo desde un fichero en el equipo servidor."))
+            throw new Exception("An empty catalogue says what is missing and offers 'Nuevo producto'; the ficha shows no fields: "+catalogView.ProductListHeading+" / "+catalogView.ProductEmptyHeading);
+        if(Shows("ProductSearch")||Shows("CategoryFilterBox")||Shows("ProductCountText")) throw new Exception("Without products there is nothing to search or filter: the list is just the explained empty state.");
+        Fits("catalog-empty","NewProductButton"); Save(Shot(window),"catalog-empty.png");
+        Section(1,"categories");
+        if(!Shows("CategoriesEmpty")||!Ready("EmptyNewCategoryButton")||catalogView.CategoryListHeading!="Aún no hay categorías"||!Shows("NewCategoryButton")||Shows("NewProductButton")||catalogView.CategoryEmptyHeading!="Sin categorías todavía")
+            throw new Exception("Without categories the tree says so and offers 'Nueva categoría'; the page action follows the tab.");
+        Section(0,"products");
+        // Un alta: la lista queda sin eleccion y la ficha es la del producto nuevo (sin foto todavia ni presentaciones; pide la primera);
+        // "Cancelar" vuelve a la ficha vacia. Nada se envia.
+        var postsBeforeNew=server.Count("POST","");
+        Press(InCatalog<Button>("EmptyNewProductButton"),"Nuevo producto (catálogo vacío)");
+        if(!catalogView.NewProduct||!Shows("ProductDetail")||catalogView.ProductTitle!="Nuevo producto"||catalogView.ProductContext!="Alta de producto"||catalogView.ProductSaveText!="Crear producto"
+            ||!Ready("CancelProductButton")||Shows("DeactivateProductButton")||Shows("PresentationsArea")||catalogView.PhotoText!="Guarda el producto para añadirle una imagen."
+            ||!Texts(catalogPanel).Contains("Primera presentación (p. ej. Botella, Ración)")||catalogView.ChangeImageCommand.CanExecute(null)||catalogView.ProductPresentationName!="Unidad")
+            throw new Exception("'Nuevo producto' opens the new-product ficha: "+catalogView.ProductTitle);
+        Press(InCatalog<Button>("CancelProductButton"),"Cancelar el alta");
+        if(catalogView.NewProduct||Shows("ProductDetail")||!Shows("ProductEmpty")||server.Count("POST","")!=postsBeforeNew) throw new Exception("Cancelling the new product returns to the empty ficha and sends nothing.");
+        // La carta de vinos: pestanas con su recuento, resumen, filas con su precio General y su categoria, miniaturas.
+        server.Catalog=wineCatalog;
+        OpenCatalog("the catalog reads the wine list");
+        if(!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 18","Categorías · 16","Tarifas · 3","Impuestos · 4"])
+            ||catalogView.Summary!="17 productos activos (16 vendibles hoy) · precios con IVA incluido"||catalogView.ProductCount!="18 productos · precio General"||Shows("ShowAllButton"))
+            throw new Exception("Tabs and summary carry the counts of the read catalogue: "+string.Join(",",catalogView.Sections.Select(s=>s.Label))+" / "+catalogView.Summary);
+        if(!Shows("ProductSearch")||!Texts(filterBox).Contains("Todas las categorías")) throw new Exception("With products the list offers the search and the category filter, on every category.");
+        if(RowsText()!="Albariño Pazo de Señoráns: 26,00 € · Blancos › Rías Baixas · 2 presentaciones | Do Ferreiro 2023: 29,00 € · Blancos › Rías Baixas · 2 presentaciones"
+            +" | Viña Gravonia 2015: 38,00 € · Blancos › Rioja · 1 presentación | Vino de la casa: 12,00 € · Vinos › Tintos · 1 presentación"
+            +" | Guímaro Ribeira Sacra 2022: 22,00 € · Tintos › Ribeira Sacra · 2 presentaciones | Muga Reserva 2019: 32,00 € · Tintos › Rioja · 1 presentación"
+            +" | Agua mineral: 2,50 € · Bebidas · 1 presentación | Estrella Galicia: 2,80 € · Bebidas › Cervezas · 1 presentación | Café solo: 1,50 € · Bebidas › Cafés · 1 presentación"
+            +" | Vermú de grifo: Desactivado · Bebidas › Vermús · 1 presentación | Pulpo á feira: 16,50 € · Cocina › Entrantes · 2 presentaciones"
+            +" | Croquetas de la casa: 9,00 € · Cocina › Entrantes · 1 presentación | Empanada de zamburiñas: Sin precio · Cocina › Entrantes · 1 presentación"
+            +" | Lubina a la plancha: 22,00 € · Cocina › Principales · 1 presentación | Filloas: 6,00 € · Cocina › Postres · 1 presentación | Tarta de queso: 6,50 € · Cocina › Postres · 1 presentación"
+            +" | Degustación Costiña: 65,00 € · Menús · 1 presentación | Menú del día: 18,50 € · Menús · 1 presentación")
+            throw new Exception("Each row carries its General price (or why it has none) and, below, its category (Rioja says whether white or red) and presentations: "+RowsText());
+        Wait(()=>catalogView.Images.Waiting==0&&catalogView.Products.Take(8).Where(p=>p.Product.ImageSha is not null).All(p=>p.Thumbnail is not null),"the visible rows show their bottle");
+        if(catalogView.HasProductContext||!Shows("ProductEmpty")||catalogView.ProductEmptyHeading!="Elige un producto"||Shows("ProductDetail")||productList.SelectedItem is not null)
+            throw new Exception("With nothing chosen the ficha says what to pick and shows no fields.");
+        // Filtro de categoria: el arbol al abrirlo (con su recuento y su sangria), la ruta cerrado; la categoria y sus subcategorias.
+        if(!catalogView.FilterChoices.Select(c=>c.ListText).SequenceEqual(["Todas las categorías · 18","Vinos · 6","Tintos · 3","Rioja · 1","Ribeira Sacra · 1","Blancos · 3","Rías Baixas · 2","Rioja · 1",
+            "Bebidas · 4","Cervezas · 1","Cafés · 1","Vermús (desactivada) · 1","Cocina · 6","Entrantes · 3","Principales · 1","Postres · 2","Menús · 2"]))
+            throw new Exception("The category filter is the tree with its counts: "+string.Join(",",catalogView.FilterChoices.Select(c=>c.ListText)));
+        filterBox.IsDropDownOpen=true; window.UpdateLayout();
+        Wait(()=>filterBox.ItemContainerGenerator.ContainerFromIndex(7) is ComboBoxItem{IsVisible:true},"the filter opens its tree");
+        if(filterBox.ItemContainerGenerator.ContainerFromIndex(7) is not ComboBoxItem{Padding.Left:43} whiteRioja||!Texts(whiteRioja).Contains("Rioja · 1")
+            ||filterBox.ItemContainerGenerator.ContainerFromIndex(1) is not ComboBoxItem{Padding.Left:11} vinos||!Texts(vinos).Contains("Vinos · 6"))
+            throw new Exception("Opened, the filter shows the tree indented by level with each count.");
+        filterBox.IsDropDownOpen=false; window.UpdateLayout();
+        filterBox.SelectedValue="tintos"; window.UpdateLayout();
+        if(catalogView.CategoryFilter!="tintos"||!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["vino-casa","guimaro","muga"])||catalogView.ProductCount!="3 de 18 productos"
+            ||!Ready("ShowAllButton")||!Texts(filterBox).Contains("Vinos › Tintos")) throw new Exception("Filtering by Tintos lists its reds and those of its regions; closed, the filter shows the path: "+catalogView.ProductCount);
+        filterBox.SelectedValue="blancos-rioja"; window.UpdateLayout();
+        if(!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["gravonia"])||!Texts(filterBox).Contains("Vinos › Blancos › Rioja")) throw new Exception("The white Rioja is not the red Rioja.");
+        filterBox.SelectedValue="tintos"; catalogSearch.Text="rioja"; window.UpdateLayout();
+        if(!catalogView.ShowProductListEmpty||catalogView.ProductListHeading!="Ningún producto coincide"||catalogView.ProductListText!="Ningún producto de Vinos › Tintos coincide con «rioja»."
+            ||!Ready("EmptyShowAllButton")||Shows("EmptyNewProductButton")||Shows("ShowAllButton")) throw new Exception("A filter without results says so and offers 'Ver todos los productos': "+catalogView.ProductListText);
+        catalogSearch.Text="muga"; window.UpdateLayout(); PickProduct("muga");
+        if(catalogView.ProductTitle!="Muga Reserva 2019"||catalogView.ProductContext!="Vinos › Tintos › Rioja") throw new Exception("Choosing a row fills the ficha: "+catalogView.ProductContext);
+        Press(InCatalog<Button>("ShowAllButton"),"Ver todos");
+        if(catalogView.Search.Length!=0||catalogSearch.Text.Length!=0||!catalogView.AllCategories||catalogView.Products.Length!=18||catalogView.SelectedProduct?.Product.Id!="muga"
+            ||!ReferenceEquals(productList.SelectedItem,catalogView.SelectedProduct)||!Texts(filterBox).Contains("Todas las categorías")) throw new Exception("'Ver todos' clears search and category and keeps the chosen product.");
+        catalogSearch.Text="albarino"; window.UpdateLayout();
+        if(!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["albarino"])||catalogView.SelectedProduct is not null||catalogView.HasProductContext)
+            throw new Exception("The search ignores accents ('albarino' finds Albariño) and a search that hides the chosen product deselects it.");
+        catalogSearch.Text=""; window.UpdateLayout();
+        // Ficha del Albarino: ruta, nombre y estado; foto; datos (la categoria por su ruta, el impuesto y la estacion por su nombre);
+        // presentaciones con su precio vigente en la General y en la Terraza; el precio programado, aparte.
+        PickProduct("albarino");
+        Wait(()=>catalogView.ProductPhoto is not null,"the ficha shows the bottle");
+        if(catalogView.ProductContext!="Vinos › Blancos › Rías Baixas"||catalogView.ProductTitle!="Albariño Pazo de Señoráns"||catalogView.ProductStateText!="Activo"||catalogView.ProductWarnText.Length!=0
+            ||catalogView.ProductId!="albarino"||catalogView.ProductName!="Albariño Pazo de Señoráns"||catalogView.ProductCategoryId!="blancos-rias-baixas"||catalogView.ProductTaxId!="iva-21"
+            ||catalogView.ProductStationId!=""||catalogView.ProductReference!="VB-0112"||catalogView.ProductSort!="0") throw new Exception("The ficha shows the read product: "+catalogView.ProductContext+" / "+catalogView.ProductCategoryId);
+        var albarinoTexts=Texts(catalogPanel).ToArray();
+        foreach(var text in new[]{"Vinos › Blancos › Rías Baixas","Albariño Pazo de Señoráns","Activo","Código (fijo)","Nombre","Categoría","Impuesto","Estación de cocina","Referencia externa","Orden",
+            "IVA 21 %","No pasa por cocina","Presentaciones y precios","Presentación","General","Terraza","Botella","Copa","26,00 €","28,00 €","4,50 €","5,00 €","Fijar precio (IVA incluido)",
+            "Guardar cambios","Desactivar producto","Cambiar imagen…","Quitar imagen","Precios vigentes hoy, con IVA incluido.","18 productos · precio General"})
+            if(!albarinoTexts.Contains(text)) throw new Exception("The product ficha paints '"+text+"'.");
+        if(!Texts(InCatalog<ComboBox>("ProductCategoryBox")).Contains("Vinos › Blancos › Rías Baixas")) throw new Exception("Closed, the product category shows its path.");
+        if(!catalogView.PriceColumns.SequenceEqual(["General","Terraza"])||PriceRows()!="Botella: 26,00 € / 28,00 € | Copa: 4,50 € / 5,00 €"||catalogView.SelectedPresentation?.Presentation.Id!="botella"
+            ||!Shows("PresentationEditor")||catalogView.PresentationFormTitle!="Presentación: Botella"||!Ready("DeactivateProductButton")||Shows("ReactivateProductButton")||Shows("CancelProductButton"))
+            throw new Exception("Presentations show their price in force in each active tariff and the first one is chosen: "+PriceRows());
+        if(!ReferenceEquals(productList.SelectedItem,catalogView.SelectedProduct)||productList.ItemContainerGenerator.ContainerFromItem(catalogView.SelectedProduct) is not ListBoxItem{IsSelected:true}) throw new Exception("The chosen row is marked.");
+        var presentationList=InCatalog<ListBox>("PresentationList");
+        presentationList.SelectedIndex=1; window.UpdateLayout();
+        if(catalogView.SelectedPresentation?.Presentation.Id!="copa"||catalogView.PriceText!="4,50"||catalogView.PriceValidFrom!="2026-10-15"||catalogView.ScheduledText!="Programado: Terraza 5,50 € desde el 01/11/2026"||!Shows("ScheduledPriceText"))
+            throw new Exception("Choosing the glass shows its General price in the form and its scheduled Terraza price apart: "+catalogView.ScheduledText);
+        // Pulsar una presentacion trae a la vista su ficha con "Fijar precio", que a 1.280 x 860 queda debajo de la tabla.
+        var productScroll=InCatalog<ScrollViewer>("ProductScroll"); var setPriceButton=InCatalog<Button>("SetPriceButton");
+        bool PriceFormInView()=>setPriceButton.TranslatePoint(new Point(0,0),productScroll).Y>=-0.5&&setPriceButton.TranslatePoint(new Point(0,setPriceButton.ActualHeight),productScroll).Y<=productScroll.ViewportHeight+0.5;
+        if(!PriceFormInView())
+        {
+            presentationList.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,0,System.Windows.Input.MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonUpEvent});
+            Wait(()=>{ window.UpdateLayout(); return PriceFormInView(); },"clicking a presentation brings its price form into view");
+        }
+        catalogView.PriceTariffId="terraza"; window.UpdateLayout();
+        if(catalogView.PriceText!="5,00") throw new Exception("The tariff of the price form shows its price in force: "+catalogView.PriceText);
+        Fits("catalog-price","SaveProductButton"); Save(Shot(window),"catalog-price.png");
+        catalogView.PriceText="5,20"; catalogView.PriceValidFrom="2026-10-20"; window.Shell.Status="";
+        var catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SetPriceButton"),"Fijar precio"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the price is sent");
+        if(CatalogPost()!="erp/catalog/commands/price-set {\"tariffId\":\"terraza\",\"productId\":\"albarino\",\"presentationId\":\"copa\",\"validFrom\":\"2026-10-20\",\"priceCents\":520}"
+            ||window.Shell.Status!="Fijar precio 5,20 € de Albariño Pazo de Señoráns · Copa en Terraza: confirmado por el servidor.") throw new Exception("'Fijar precio' sends the usual body for the chosen product and presentation: "+CatalogPost()+" / "+window.Shell.Status);
+        // (el aviso de confirmacion ocupa sitio arriba y la ficha encoge: se mira que no haya vuelto arriba, no que todo siga a la vista)
+        if(catalogView.SelectedProduct?.Product.Id!="albarino"||catalogView.SelectedPresentation?.Presentation.Id!="copa"||productScroll.VerticalOffset<1)
+            throw new Exception("After the command the catalog is read again: the same product and presentation stay chosen and the ficha does not jump to the top.");
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SaveProductButton"),"Guardar cambios"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the product is saved");
+        if(CatalogPost()!="erp/catalog/commands/product-update {\"id\":\"albarino\",\"name\":\"Albariño Pazo de Señoráns\",\"categoryId\":\"blancos-rias-baixas\",\"taxId\":\"iva-21\",\"reference\":\"VB-0112\",\"sort\":0,\"stationId\":\"\"}")
+            throw new Exception("'Guardar cambios' sends the usual product-update body: "+CatalogPost());
+        // Otros estados de la ficha: un tinto sin precio propio de copa en la Terraza (guion y nota), una empanada sin precio General (no se
+        // vende: aviso con palabras), un plato con su estacion por el nombre y un vermu desactivado en una categoria desactivada (el
+        // desplegable conserva su categoria, marcada; se ofrece reactivar).
+        PickProduct("guimaro");
+        if(productScroll.VerticalOffset!=0) throw new Exception("Choosing another product shows its ficha from the top.");
+        if(PriceRows()!="Botella: 22,00 € / 24,00 € | Copa: 4,00 € / —"||!catalogView.PriceNote.EndsWith("«—»: sin precio propio en esa tarifa; se cobra el de la General.",StringComparison.Ordinal))
+            throw new Exception("A tariff without its own price shows a dash, explained: "+PriceRows()+" / "+catalogView.PriceNote);
+        PickProduct("empanada");
+        if(catalogView.ProductWarnText!="No se vende: sin precio General"||PriceRows()!="Ración: Sin precio / —"||catalogView.Presentations[0].Cells[0].Tone!="missing"||!Texts(catalogPanel).Contains("No se vende: sin precio General"))
+            throw new Exception("A product without a General price says it is not sold, in words: "+catalogView.ProductWarnText);
+        PickProduct("pulpo");
+        if(catalogView.ProductStationId!="cold"||!Texts(InCatalog<ComboBox>("ProductStationBox")).Contains("Cocina fría")||PriceRows()!="Ración: 16,50 € / — | Media ración: 9,50 € / —") throw new Exception("A dish names its kitchen station: "+catalogView.ProductStationId);
+        PickProduct("vermu");
+        if(catalogView.ProductStateText!="Desactivado"||catalogView.ProductCategoryId!="vermus"||!Texts(InCatalog<ComboBox>("ProductCategoryBox")).Contains("Bebidas › Vermús (desactivada)")
+            ||!Ready("ReactivateProductButton")||Shows("DeactivateProductButton")||catalogView.ProductWarnText.Length!=0) throw new Exception("A deactivated product in a deactivated category keeps its category and offers reactivating: "+catalogView.ProductCategoryId);
+        // La ficha final (la captura): el Albarino con su botella elegida; cabe a 1.280 x 860 sin cortar textos y con una barra por columna.
+        PickProduct("albarino"); presentationList.SelectedIndex=0; catalogView.PriceTariffId="general";
+        Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Images.Waiting==0,"the final ficha shows the bottle");
+        if(Math.Abs(InCatalog<FrameworkElement>("ProductsPane").ActualWidth-360)>0.5||InCatalog<FrameworkElement>("ProductPanel").ActualWidth<460) throw new Exception("The product list keeps 360 px.");
+        Fits("catalog","SaveProductButton");
+        // Categorias: el arbol con sangria, la muestra de su color y sus recuentos; su ficha no filtra la lista de productos y "Ver sus
+        // productos" la abre filtrada.
+        Section(1,"categories");
+        if(catalogView.CategoryCount!="16 categorías, 1 desactivada"||catalogView.HasCategoryContext||!Shows("CategoryEmpty")||catalogView.CategoryEmptyHeading!="Elige una categoría"||!Shows("NewCategoryButton"))
+            throw new Exception("The tree heads with its count and, with nothing chosen, the ficha says what to pick: "+catalogView.CategoryCount);
+        if(!catalogView.Categories.Take(8).Select(c=>$"{new string('-',c.Depth)}{c.Category.Name}: {c.Detail}").SequenceEqual(["Vinos: 6 productos · 2 subcategorías","-Tintos: 3 productos · 2 subcategorías","--Rioja: 1 producto",
+            "--Ribeira Sacra: 1 producto","-Blancos: 3 productos · 2 subcategorías","--Rías Baixas: 2 productos","--Rioja: 1 producto","Bebidas: 4 productos · 3 subcategorías"])
+            ||catalogView.Categories.Single(c=>c.Category.Id=="vermus").Detail!="Desactivada · 1 producto"||catalogView.Categories[0].Swatch is not SolidColorBrush{Color:{R:0x8C,G:0x1D,B:0x1D}}||catalogView.Categories[1].Swatch is not null)
+            throw new Exception("The tree rows carry their counts, their state in words and their colour: "+string.Join(" | ",catalogView.Categories.Select(c=>c.Category.Name+": "+c.Detail)));
+        var categoryList=InCatalog<ListBox>("CategoryList");
+        categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="tintos"); window.UpdateLayout();
+        if(catalogView.CategoryContext!="Dentro de Vinos"||catalogView.CategoryTitle!="Tintos"||catalogView.CategoryStateText!="Activa"||catalogView.CategoryId!="tintos"||catalogView.CategoryParentId!="vinos"
+            ||catalogView.CategoryProductsFigure!="3"||catalogView.CategoryChildrenFigure!="2"||catalogView.CategoryChildrenText!="Subcategorías: Rioja · Ribeira Sacra"
+            ||!Texts(InCatalog<ComboBox>("CategoryParentBox")).Contains("Vinos")||!Ready("DeactivateCategoryButton")||!Ready("ShowCategoryProductsButton"))
+            throw new Exception("The category ficha shows its parent, data, counts and subcategories: "+catalogView.CategoryContext+" / "+catalogView.CategoryChildrenText);
+        if(catalogView.Products.Length!=18||catalogView.CategoryFilter!=""||catalogView.SelectedProduct?.Product.Id!="albarino") throw new Exception("Choosing a category in its tab leaves the product list as it was.");
+        Fits("catalog-categories","SaveCategoryButton"); Save(Shot(window),"catalog-categories.png");
+        categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="blancos-rioja"); window.UpdateLayout();
+        if(catalogView.CategoryContext!="Dentro de Vinos › Blancos"||catalogView.CategoryChildrenText!="Sin subcategorías.") throw new Exception("The white Rioja says where it hangs: "+catalogView.CategoryContext);
+        categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="tintos"); window.UpdateLayout();
+        Press(InCatalog<Button>("ShowCategoryProductsButton"),"Ver sus productos");
+        if(catalogView.Section!="products"||!Shows("ProductsSection")||catalogView.CategoryFilter!="tintos"||catalogView.Products.Length!=3||catalogView.SelectedProduct is not null)
+            throw new Exception("'Ver sus productos' opens Productos filtered by the category: "+catalogView.CategoryFilter);
+        Press(InCatalog<Button>("ShowAllButton"),"Ver todos"); PickProduct("albarino");
+        // Tarifas: la General siempre (sin desactivar), las salas que usan cada una (de las salas leidas) y cuantos precios tiene.
+        Section(2,"tariffs");
+        if(!catalogView.TariffItems.Select(t=>t.Tariff.Name+": "+t.Detail).SequenceEqual(["General: Sala principal · 20 precios vigentes","Terraza: Terraza · 7 precios vigentes","Eventos: Desactivada · ninguna sala · 0 precios vigentes"])
+            ||catalogView.HasTariffContext||!Shows("TariffEmpty")||catalogView.TariffEmptyHeading!="Elige una tarifa"||!Shows("NewTariffButton"))
+            throw new Exception("Each tariff names the rooms that use it and its prices: "+string.Join(" | ",catalogView.TariffItems.Select(t=>t.Tariff.Name+": "+t.Detail)));
+        var tariffList=InCatalog<ListBox>("TariffList");
+        tariffList.SelectedIndex=0; window.UpdateLayout();
+        if(catalogView.SelectedTariff?.Id!="general"||!catalogView.IsGeneralTariff||!catalogView.TariffZones.SequenceEqual(["Sala principal"])||catalogView.TariffPricedFigure!="20"||catalogView.TariffUnpricedFigure!="1"
+            ||catalogView.TariffUnpricedLabel!="Sin precio: no se venden"||Shows("DeactivateTariffButton")||catalogView.ToggleTariffCommand.CanExecute(null)||!Texts(catalogPanel).Contains("Siempre presente")
+            ||catalogView.TariffNote!="La tarifa General existe siempre y no se puede desactivar.") throw new Exception("The General tariff: rooms without their own tariff, its prices, never deactivated.");
+        tariffList.SelectedIndex=1; window.UpdateLayout();
+        if(catalogView.TariffTitle!="Terraza"||catalogView.TariffId!="terraza"||!catalogView.TariffZones.SequenceEqual(["Terraza"])||catalogView.TariffPricedFigure!="7"||catalogView.TariffUnpricedFigure!="14"
+            ||catalogView.TariffUnpricedLabel!="Sin precio propio"||!Ready("DeactivateTariffButton")||!Texts(catalogPanel).Contains("Lo que no tiene precio propio en esta tarifa se cobra al precio de la General."))
+            throw new Exception("The Terraza tariff names its room and its own prices: "+catalogView.TariffPricedFigure);
+        Fits("catalog-tariffs","SaveTariffButton"); Save(Shot(window),"catalog-tariffs.png");
+        tariffList.SelectedIndex=2; window.UpdateLayout();
+        if(catalogView.TariffZones.Length!=0||!catalogView.TariffZonesText.StartsWith("Ninguna sala usa esta tarifa.",StringComparison.Ordinal)||!Ready("ReactivateTariffButton")||catalogView.TariffStateText!="Desactivada")
+            throw new Exception("A deactivated tariff no room uses says so and offers reactivating.");
+        // Alta de tarifa: la accion de la cabecera abre su ficha; al confirmarla el servidor, la nueva queda elegida tras releer.
+        Press(InCatalog<Button>("NewTariffButton"),"Nueva tarifa");
+        if(!catalogView.NewTariff||tariffList.SelectedItem is not null||catalogView.TariffTitle!="Nueva tarifa"||catalogView.TariffSaveText!="Crear tarifa"||!Ready("CancelTariffButton")||catalogView.HasZoneInfo)
+            throw new Exception("'Nueva tarifa' opens an empty ficha with nothing chosen in the list.");
+        catalogView.TariffId="barra"; catalogView.TariffName="Barra"; catalogView.TariffSort="3"; catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SaveTariffButton"),"Crear tarifa"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tariff is created");
+        if(CatalogPost()!="erp/catalog/commands/tariff-create {\"id\":\"barra\",\"name\":\"Barra\",\"sort\":3}"||catalogView.NewTariff||catalogView.SelectedTariff?.Id!="barra"||catalogView.TariffTitle!="Barra"
+            ||!catalogView.Sections[2].Label.EndsWith("· 4",StringComparison.Ordinal)) throw new Exception("A created tariff is chosen once the server confirms it: "+CatalogPost());
+        // Impuestos: tipo y productos que lo llevan.
+        Section(3,"taxes");
+        if(!catalogView.TaxItems.Select(t=>t.Tax.Name+": "+t.Detail).SequenceEqual(["IVA 10 %: 10 % · 12 productos","IVA 21 %: 21 % · 6 productos","IVA 4 %: 4 % · 0 productos","Exento: Desactivado · 0 % · 0 productos"])
+            ||catalogView.HasTaxContext||!Shows("TaxEmpty")||!Shows("NewTaxButton")) throw new Exception("Each tax shows its rate and how many products use it: "+string.Join(" | ",catalogView.TaxItems.Select(t=>t.Detail)));
+        var taxList=InCatalog<ListBox>("TaxList");
+        taxList.SelectedIndex=1; window.UpdateLayout();
+        if(catalogView.TaxTitle!="IVA 21 %"||catalogView.TaxRate!="21"||catalogView.TaxProductsFigure!="6"
+            ||catalogView.TaxProductsText!="Albariño Pazo de Señoráns · Do Ferreiro 2023 · Viña Gravonia 2015 · Vino de la casa · Guímaro Ribeira Sacra 2022 · Muga Reserva 2019."||!Ready("DeactivateTaxButton"))
+            throw new Exception("The tax ficha names its products: "+catalogView.TaxProductsText);
+        Fits("catalog-taxes","SaveTaxButton"); Save(Shot(window),"catalog-taxes.png");
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SaveTaxButton"),"Guardar impuesto"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tax is saved");
+        if(CatalogPost()!="erp/catalog/commands/tax-update {\"id\":\"iva-21\",\"name\":\"IVA 21 %\",\"rate\":21}") throw new Exception("Saving a tax sends the usual body: "+CatalogPost());
+        taxList.SelectedIndex=3; window.UpdateLayout();
+        if(!Ready("ReactivateTaxButton")||Shows("DeactivateTaxButton")||catalogView.TaxStateText!="Desactivado") throw new Exception("A deactivated tax offers reactivating.");
+        // Vuelta a la carta tal cual (sin la tarifa creada) y a Productos con el Albarino: es la captura catalog.png del bucle de capturas.
+        server.Catalog=wineCatalog;
+        OpenCatalog("the catalog is read again for the capture");
+        Section(0,"products");
+        if(catalogView.SelectedProduct?.Product.Id!="albarino"||catalogView.PriceColumns.Length!=2) throw new Exception("The capture shows the Albariño with General and Terraza.");
+        Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Images.Waiting==0&&catalogView.Products.Take(8).Where(p=>p.Product.ImageSha is not null).All(p=>p.Thumbnail is not null),"the capture shows the bottles");
+        Fits("catalog","SaveProductButton");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
@@ -1550,6 +1843,9 @@ internal static class Program
                 var id=command.GetProperty("productId").GetString()!; Images.TryRemove(id,out _);
                 Catalog=Catalog with {Products=[..Catalog.Products.Select(p=>p.Id==id?p with {ImageSha=null}:p)]};
             }
+            // C2b: un alta de tarifa se aplica en memoria, como el motor, para comprobar que lo recien creado queda elegido al releer.
+            if(path=="erp/catalog/commands/tariff-create")
+                Catalog=Catalog with {Tariffs=[..Catalog.Tariffs,new(command.GetProperty("id").GetString()!,command.GetProperty("name").GetString()!,command.GetProperty("sort").GetInt32(),true)]};
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
         private static System.Net.Http.HttpResponseMessage Json(int status,string json)=>new((System.Net.HttpStatusCode)status){Content=new System.Net.Http.StringContent(json,System.Text.Encoding.UTF8,"application/json")};
