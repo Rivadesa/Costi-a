@@ -2389,7 +2389,9 @@ internal static class Program
                 if(ficha is not null) fichaLefts.Add(((FrameworkElement)view.FindName(ficha)).TranslatePoint(new Point(0,0),view).X);
                 foreach(var card in Descendants<Border>(view).Where(b=>b.IsVisible&&b.Style is {} s&&(ReferenceEquals(s,window.FindResource("Card"))||ReferenceEquals(s,window.FindResource("ListPane"))||ReferenceEquals(s,window.FindResource("Ficha")))))
                     if(card.CornerRadius!=new CornerRadius(12)) throw new Exception(mode+": "+viewName+" draws its cards with radius 12.");
-                if(Clipped(view) is {Length:>0} clipped) throw new Exception(mode+": "+viewName+" clips text: "+string.Join(" | ",clipped));
+                // Por debajo de 1270 px (la pantalla del CI) la ventana pliega la barra por si sola: con la barra forzada abierta a ese ancho el
+                // recorte no dice nada (el encaje a 1.280 x 860 lo comprueba un PC ancho; la barra plegada se comprueba en todos).
+                if((window.ActualWidth>=1270||window.Shell.SideNavCompact)&&Clipped(view) is {Length:>0} clipped) throw new Exception(mode+": "+viewName+" clips text: "+string.Join(" | ",clipped));
                 if(NestedScrolls(view) is {Length:>0} nested) throw new Exception(mode+": "+viewName+" nests scroll viewers: "+string.Join(", ",nested));
                 RefuseRaw(window,mode+" "+viewName);
             }
