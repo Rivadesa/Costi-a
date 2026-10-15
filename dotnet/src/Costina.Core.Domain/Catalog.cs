@@ -138,7 +138,9 @@ public static class Catalog
         => prices.Where(p => p.ValidFrom <= on).OrderByDescending(p => p.ValidFrom).FirstOrDefault();
 
     // Codigo derivado de un texto libre (importacion): minusculas ASCII, digitos y guiones; nunca vacio.
-    public static string Slug(string text)
+    public static string Slug(string text) => Slug(text, Organization.MaxCodeLength);
+    // E4d: el mismo codigo recortado a `max` (el de una oferta deja sitio al prefijo de su producto-menu).
+    public static string Slug(string text, int max)
     {
         var normalized = text.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
         var chars = new List<char>(); var dash = false;
@@ -150,7 +152,23 @@ public static class Catalog
         }
         while (chars.Count > 0 && chars[^1] == '-') chars.RemoveAt(chars.Count - 1);
         var slug = new string(chars.ToArray());
-        if (slug.Length > Organization.MaxCodeLength) slug = slug[..Organization.MaxCodeLength].TrimEnd('-');
+        if (slug.Length > max) slug = slug[..max].TrimEnd('-');
         return slug.Length == 0 ? "x" : slug;
     }
+
+    // E4d: codigo generado de un nombre que no choque con los que ya existen en su ambito: el slug y, si esta usado, un sufijo -2, -3...
+    // que sigue cabiendo en `max` (la regla de la importacion de categorias, sacada aqui para todas las altas sin codigo).
+    public static string FreeCode(string name, Func<string, bool> taken, int max = Organization.MaxCodeLength)
+    {
+        var id = Slug(name, max);
+        if (!taken(id)) return id;
+        var stem = id.Length > max - 3 ? id[..(max - 3)].TrimEnd('-') : id;
+        for (var n = 2; ; n++)
+        {
+            var candidate = stem + "-" + n;
+            if (!taken(candidate)) return candidate;
+        }
+    }
+    // E4d: un alta sin orden va al final de sus hermanos (el mayor + 10, con el tope de Organization.Sort); sin hermanos, 0.
+    public static int NextSort(IEnumerable<int> siblings) => siblings.DefaultIfEmpty(-10).Max() is var top && top < 0 ? 0 : Math.Min(9999, top + 10);
 }

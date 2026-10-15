@@ -461,5 +461,19 @@ class Catalog(unittest.TestCase):
             self.assertEqual(at_root.returncode, 0, at_root.stdout + at_root.stderr); self.assertIn('images set 1.', at_root.stdout)
             self.assertEqual(product('3796')['imageSha'], sha(memoria))
 
+    def test_08_e4d_creates_without_a_code_take_it_from_the_name(self):
+        # E4d: sin codigo, el servidor lo genera del nombre (unico en su lista) y sin orden va al final.
+        self.assertEqual(json.loads(command('tax-create', name='IVA súper reducido', rate=4)[1])['id'], 'iva-super-reducido')
+        first = json.loads(command('category-create', name='Postres caseros')[1])
+        self.assertEqual(first['id'], 'postres-caseros')
+        second = json.loads(command('category-create', name='Postres caseros')[1])
+        self.assertEqual((second['id'], second['sort']), ('postres-caseros-2', first['sort'] + 10))
+        self.assertEqual(json.loads(command('product-create', name='Tarta de Santiago', categoryId='postres-caseros')[1])['id'], 'tarta-de-santiago')
+        presentation = json.loads(command('presentation-create', productId='tarta-de-santiago', name='Ración')[1])
+        self.assertEqual((presentation['id'], presentation['sort']), ('racion', 10))
+        self.assertEqual(json.loads(command('tariff-create', name='Terraza de verano')[1])['id'], 'terraza-de-verano')
+        self.assertIn(command('product-create', name='')[0], (409, 422))
+        self.assertEqual(command('product-create', id='tarta-de-santiago', name='Otra')[0], 409)   # un codigo enviado se respeta y choca
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)
