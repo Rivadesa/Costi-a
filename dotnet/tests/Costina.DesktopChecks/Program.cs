@@ -698,7 +698,7 @@ internal static class Program
         // C1: las capturas muestran cada vista con sus datos de ejemplo (las comprobaciones de niveles las vaciaron al salir del modo
         // responsable) y con un responsable identificado, como en el uso real. Solo datos: ninguna asercion anterior cambia.
         window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.34.0-c1",Actor:"user:jefa",Modules:["dining"]));
-        organization.Render(sampleOrganization); organization.SelectedZone=organization.Zones[1];   // E3.2: la sala con tarifa propia
+        // C2b: la captura de Salas, mesas y estaciones es la del estado que deja su seccion (la organizacion del comedor de C2), no la de aqui.
         // E3.2: el catalogo de la captura lleva fotos (lista y ficha), cargadas por la tuberia real desde el servidor simulado; despues la
         // ventana se queda sin conexion, como en el resto de capturas.
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
@@ -1842,6 +1842,261 @@ internal static class Program
         PickOffer("DEGUSTACION"); PickCourseRow("pescado");
         if(offersView.SelectedCourse?.Course.Id!="pescado"||offersView.SelectedDish is not null) throw new Exception("The capture shows the Degustación Costiña with Pescado unfolded.");
         OffersFit("offers","SaveOfferButton");
+        // ===== C2b (plan 2026-10-14): Salas, mesas y estaciones con pestanas, salas, mesas en tarjetas y ficha =====
+        // La organizacion de ejemplo es la del comedor de C2 (la de los checks del Catalogo: Sala principal con sus 8 mesas, Terraza con sus 4
+        // y su tarifa propia, y las estaciones Pase, Cocina fria, Cocina caliente, Sala 1 y Terraza) mas lo que el comedor no ve: la Mesa 9,
+        // desactivada. El servidor simulado aplica las ordenes en memoria como el motor y rechaza desactivar una mesa en uso (las siete
+        // ocupadas del tablero de C2) o una sala con mesas activas. Elegir no envia nada; cada orden lleva la sala, la mesa o la estacion
+        // elegidas (F01).
+        var roomsOrganization=wineOrganization with {Zones=[..wineOrganization.Zones.Select(z=>z.Id!="sala"?z:z with {Tables=[..z.Tables,new("M9","Mesa 9",4,"sala",8,false)]})]};
+        server.TablesInUse.Clear(); foreach(var seated in diningBoard) server.TablesInUse.Add(seated.Service.TableId);
+        T InRooms<T>(string name) where T:FrameworkElement=>(T)organizationPanel.FindName(name);
+        bool RoomShows(string name)=>InRooms<FrameworkElement>(name).IsVisible;
+        bool RoomReady(string name)=>InRooms<Button>(name) is {IsVisible:true,IsEnabled:true};
+        var zoneList=InRooms<ListBox>("ZoneList"); var tableList=InRooms<ListBox>("TableList"); var stationList=InRooms<ListBox>("StationList");
+        var roomTabs=InRooms<ListBox>("SectionTabs"); var tableZoneBox=InRooms<ComboBox>("TableZoneBox"); var stationKindBox=InRooms<ComboBox>("StationKindBox");
+        void OpenRooms(string what)
+        {
+            var before=server.Count("GET","organization");
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); tabs.SelectedItem=(TabItem)window.FindName("OrganizationTab"); window.UpdateLayout();
+            Wait(()=>!window.Shell.Busy&&server.Count("GET","organization")>before,what); window.UpdateLayout();
+        }
+        void SendRooms(string button,string what)
+        {
+            var before=server.Count("POST","organization/commands/");
+            Press(InRooms<Button>(button),what);
+            Wait(()=>!window.Shell.Busy&&server.Count("POST","organization/commands/")>before,what+" is sent"); window.UpdateLayout();
+        }
+        // Como pulsar la tarjeta o la fila.
+        void PickZone(string id){ zoneList.SelectedItem=organization.ZoneItems.Single(z=>z.Zone.Id==id); window.UpdateLayout(); }
+        void PickTable(string id){ tableList.SelectedItem=organization.TableItems.Single(t=>t.Table.Id==id); window.UpdateLayout(); }
+        void PickStation(string id){ stationList.SelectedItem=organization.StationItems.Single(s=>s.Station.Id==id); window.UpdateLayout(); }
+        string ZoneRowsText()=>string.Join(" | ",organization.ZoneItems.Select(z=>z.Zone.Name+": "+z.Detail+(z.Tariff is {} tariff?" · "+tariff:"")+(z.Inactive?" · Desactivada":"")));
+        string CardsText()=>string.Join(" | ",organization.TableItems.Select(t=>t.ToString()));
+        ListBoxItem Card(string id)=>(ListBoxItem)tableList.ItemContainerGenerator.ContainerFromItem(organization.TableItems.Single(t=>t.Table.Id==id));
+        bool Marked(string id,string part)=>Card(id).Template.FindName(part,Card(id)) is UIElement{Visibility:Visibility.Visible};   // Dash (desactivada) o Ring (elegida)
+        IEnumerable<string> RowPainted(ListBox list,Func<object,bool> pick)=>list.ItemContainerGenerator.ContainerFromItem(list.Items.Cast<object>().Single(pick)) is ListBoxItem row?Painted(row):[];
+        void RoomsFit(string what,string bottom)
+        {
+            window.Shell.Status=""; window.UpdateLayout();
+            window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var button=InRooms<Button>(bottom);
+            if(button.TranslatePoint(new Point(0,button.ActualHeight),organizationPanel).Y>organizationPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
+            if(organization.ShowZones&&(Math.Abs(InRooms<FrameworkElement>("ZonesPane").ActualWidth-250)>0.5||Math.Abs(InRooms<FrameworkElement>("ZonePanel").ActualWidth-360)>0.5||InRooms<FrameworkElement>("TablesArea").ActualWidth<300))
+                throw new Exception(what+": the rooms keep 250 px, the ficha 360 px and the tables the rest.");
+            if(organization.ShowStations&&(Math.Abs(InRooms<FrameworkElement>("StationsPane").ActualWidth-360)>0.5||InRooms<FrameworkElement>("StationPanel").ActualWidth<460))
+                throw new Exception(what+": the stations keep 360 px and the ficha the rest.");
+            if(Clipped(organizationPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
+            if(NestedScrolls(organizationPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
+            RefuseRaw(window,what);
+        }
+        // Sin salas (una instalacion recien hecha: solo la estacion Pase y la tarifa General): la lista explica que falta y ofrece crear la
+        // primera; el centro dice que pondra y la ficha no muestra campos.
+        server.Organization=new([],[new("pase","Pase","Pass",0,true)],[new("general","General",0,true)]); window.Shell.Status="";
+        OpenRooms("the configuration reads an empty organization");
+        if(organization.Section!="zones"||!organization.Sections.Select(s=>s.Label).SequenceEqual(["Salas y mesas","Estaciones"])||!organization.Sections[0].IsCurrent||organization.Sections[1].IsCurrent)
+            throw new Exception("The configuration opens on 'Salas y mesas', with its two tabs: "+string.Join(",",organization.Sections.Select(s=>s.Label)));
+        if(!organization.ShowZoneListEmpty||organization.ZoneListHeading!="Aún no hay salas"||!RoomReady("EmptyNewZoneButton")||RoomShows("ZoneList")||!RoomReady("NewZoneButton")||RoomShows("NewStationButton")
+            ||!RoomShows("TablesEmpty")||organization.TablesEmptyHeading!="Sin mesas todavía"||RoomShows("EmptyNewTableButton")||RoomShows("NewTableButton")||!RoomShows("ZoneEmpty")||RoomShows("ZoneDetail")
+            ||RoomShows("TableDetail")||organization.ZoneEmptyHeading!="Sin salas todavía"
+            ||organization.Summary!="Aún no hay salas: crea la primera con «Nueva sala»."||!Painted(organizationPanel).Contains("Crea la primera sala del local (Sala principal, Terraza…) y después sus mesas."))
+            throw new Exception("Without rooms the list says what is missing and offers 'Nueva sala'; the centre says what will be there and the ficha shows no fields: "+organization.ZoneListHeading+" / "+organization.ZoneEmptyHeading);
+        RoomsFit("configuration-empty","NewZoneButton"); Save(Shot(window),"configuration-empty.png");
+        // El alta de una sala: su ficha (codigo editable, tarifa General) y el centro dice que sus mesas vendran despues; "Cancelar" no envia nada.
+        var postsBeforeNewZone=server.Count("POST","");
+        Press(InRooms<Button>("EmptyNewZoneButton"),"Nueva sala (sin salas)");
+        if(!organization.NewZone||!RoomShows("ZoneDetail")||organization.ZoneTitle!="Nueva sala"||organization.ZoneContext!="Alta de sala"||organization.ZoneSaveText!="Crear sala"||!RoomReady("CancelZoneButton")
+            ||RoomShows("DeactivateZoneButton")||RoomShows("ReactivateZoneButton")||RoomShows("ZoneTablesArea")||!RoomShows("TablesEmpty")||organization.TablesEmptyHeading!="Sala nueva"
+            ||!Descendants<TextBox>(organizationPanel).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Código de la sala").IsEnabled
+            ||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"})
+            throw new Exception("'Nueva sala' opens the new-room ficha with the General tariff: "+organization.ZoneTitle);
+        Press(InRooms<Button>("CancelZoneButton"),"Cancelar el alta de sala");
+        if(organization.NewZone||RoomShows("ZoneDetail")||!RoomShows("ZoneEmpty")||server.Count("POST","")!=postsBeforeNewZone) throw new Exception("Cancelling the new room returns to the empty ficha and sends nothing.");
+        // La organizacion del comedor: resumen, una tarjeta por sala (mesas activas y plazas; la tarifa propia solo en Terraza) y, sin eleccion
+        // previa, la primera sala elegida con sus mesas en el centro (la desactivada, con borde discontinuo y su palabra) y su ficha.
+        server.Organization=roomsOrganization;
+        OpenRooms("the configuration reads the C2 organization");
+        if(organization.Summary!="2 salas activas · 12 mesas activas (42 plazas) · 5 estaciones activas"||ZoneRowsText()!="Sala principal: 8 mesas activas · 26 plazas | Terraza: 4 mesas activas · 16 plazas · Tarifa Terraza")
+            throw new Exception("Each room card carries its active tables, its seats and its own tariff (never 'General'): "+ZoneRowsText()+" / "+organization.Summary);
+        if(!RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"terraza"}).Contains("Tarifa Terraza")||RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"sala"}).Any(t=>t.StartsWith("Tarifa",StringComparison.Ordinal)))
+            throw new Exception("Only the room with its own tariff paints it.");
+        if(organization.SelectedZone?.Id!="sala"||zoneList.SelectedItem is not Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"sala"}||zoneList.ItemContainerGenerator.ContainerFromItem(zoneList.SelectedItem) is not ListBoxItem{IsSelected:true}
+            ||!RoomShows("ZoneDetail")||RoomShows("TableDetail")||RoomShows("ZoneEmpty")||organization.ZoneContext!="Sala · tarifa General"||organization.ZoneTitle!="Sala principal"||organization.ZoneStateText!="Activa"
+            ||organization.ZoneStateTone!="ok"||organization.ZoneId!="sala"||organization.ZoneName!="Sala principal"||organization.ZoneSort!="0"||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"General"}
+            ||organization.ZoneTablesFigure!="8"||organization.ZoneSeatsFigure!="26"||organization.ZoneTablesText!="1 mesa desactivada: Mesa 9."||organization.ZoneSaveText!="Guardar cambios"
+            ||!RoomReady("SaveZoneButton")||!RoomReady("DeactivateZoneButton")||RoomShows("ReactivateZoneButton")||RoomShows("CancelZoneButton"))
+            throw new Exception("The first room is chosen and its ficha shows its data, its tariff and its tables: "+organization.ZoneContext+" / "+organization.ZoneTablesText);
+        if(organization.TablesTitle!="Mesas de Sala principal"||organization.TablesSummary!="8 mesas activas · 26 plazas · 1 desactivada"||!RoomReady("NewTableButton")||RoomShows("TablesEmpty")
+            ||CardsText()!="Mesa 1 · 2 plazas · Activa | Mesa 2 · 4 plazas · Activa | Mesa 3 · 2 plazas · Activa | Mesa 4 · 4 plazas · Activa | Mesa 5 · 6 plazas · Activa | Mesa 6 · 2 plazas · Activa"
+                +" | Mesa 7 · 2 plazas · Activa | Mesa 8 · 4 plazas · Activa | Mesa 9 · 4 plazas · Desactivada"||organization.SelectedTable is not null||tableList.SelectedItem is not null)
+            throw new Exception("The centre shows the chosen room's tables as cards (name, seats and state in words), none chosen: "+CardsText());
+        if(!Marked("M9","Dash")||organization.TableItems.Where(t=>t.Table.Id!="M9").Any(t=>Marked(t.Table.Id,"Dash"))||!Painted(Card("M9")).Contains("Desactivada")||!Painted(Card("M1")).Contains("Activa")
+            ||!Painted(Card("M5")).Contains("6 plazas")) throw new Exception("Only the deactivated table has a dashed border, and every card says its state in words.");
+        if(window.ActualWidth>=1270&&!window.Shell.SideNavCompact&&(Card("M1").TranslatePoint(new Point(),tableList).Y!=Card("M2").TranslatePoint(new Point(),tableList).Y
+            ||Card("M3").TranslatePoint(new Point(),tableList).Y<=Card("M1").TranslatePoint(new Point(),tableList).Y||Card("M3").TranslatePoint(new Point(),tableList).X!=Card("M1").TranslatePoint(new Point(),tableList).X))
+            throw new Exception("At 1280 px with the sidebar unfolded the tables sit in two columns.");
+        RoomsFit("configuration-room","SaveZoneButton");
+        // Elegir una mesa solo la elige (nada se lee ni se envia): su ficha sustituye a la de la sala, con su sala por nombre y las salas
+        // activas para moverla. El anillo de acento marca su tarjeta.
+        var requestsBeforeTable=server.Requests.Length;
+        PickTable("M4");
+        if(organization.SelectedTable?.Id!="M4"||!RoomShows("TableDetail")||RoomShows("ZoneDetail")||organization.TableContext!="Mesa de Sala principal"||organization.TableTitle!="Mesa 4"
+            ||organization.TableStateText!="Activa"||organization.TableId!="M4"||organization.TableName!="Mesa 4"||organization.TableCapacity!="4"||organization.TableSort!="3"||organization.TableZoneId!="sala"
+            ||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Sala principal"}||!organization.ZoneChoices.Select(z=>z.Name).SequenceEqual(["Sala principal","Terraza"])
+            ||!RoomReady("SaveTableButton")||!RoomReady("DeactivateTableButton")||RoomShows("ReactivateTableButton")||RoomShows("CancelTableButton")||!RoomReady("ShowZoneButton")
+            ||!Marked("M4","Ring")||Marked("M1","Ring")||server.Requests.Length!=requestsBeforeTable)
+            throw new Exception("Choosing a table card shows its ficha, reads and sends nothing: "+organization.TableContext+" / "+organization.TableTitle);
+        RoomsFit("configuration-table","SaveTableButton"); Save(Shot(window),"configuration-table.png");
+        // Una mesa en uso no se desactiva: el servidor lo rechaza (table_in_use) y su texto sale tal cual; la mesa sigue elegida y activa.
+        SendRooms("DeactivateTableButton","Desactivar mesa en uso");
+        if(CatalogPost()!="organization/commands/table-deactivate {\"id\":\"M4\"}"||window.Shell.Status!="La mesa está en uso: no se puede desactivar. Actualiza antes de una nueva acción."
+            ||organization.SelectedTable?.Id!="M4"||organization.SelectedTable.Active!=true||!RoomReady("DeactivateTableButton")||window.Shell.Api.Pending is not null)
+            throw new Exception("A table in use is not deactivated: the server's rejection is shown as it is and the table stays chosen and active: "+window.Shell.Status);
+        // Una mesa libre si: el servidor la desactiva, la tarjeta pasa a discontinua con su palabra y la ficha ofrece reactivarla.
+        PickTable("M2");
+        SendRooms("DeactivateTableButton","Desactivar mesa");
+        if(CatalogPost()!="organization/commands/table-deactivate {\"id\":\"M2\"}"||window.Shell.Status!="Desactivar mesa Mesa 2: confirmado por el servidor."||organization.SelectedTable?.Id!="M2"
+            ||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"M2"}||organization.TableStateText!="Desactivada"||!RoomReady("ReactivateTableButton")||RoomShows("DeactivateTableButton")
+            ||organization.TablesSummary!="7 mesas activas · 22 plazas · 2 desactivadas"||!Marked("M2","Dash")||!Painted(Card("M2")).Contains("Desactivada"))
+            throw new Exception("A free table is deactivated and stays chosen, dashed and offering to reactivate: "+organization.TablesSummary);
+        SendRooms("ReactivateTableButton","Reactivar mesa");
+        if(CatalogPost()!="organization/commands/table-reactivate {\"id\":\"M2\"}"||organization.SelectedTable?.Id!="M2"||organization.TableStateText!="Activa"||Marked("M2","Dash")||!RoomReady("DeactivateTableButton"))
+            throw new Exception("'Reactivar mesa' sends the usual body and the card is active again: "+CatalogPost());
+        // F01: guardar una mesa con otra sala la lleva alli y la vista la sigue (esa sala y la mesa, elegidas); devolverla la trae de vuelta.
+        PickTable("M8");
+        tableZoneBox.SelectedValue="terraza"; window.UpdateLayout();
+        SendRooms("SaveTableButton","Guardar mesa en la terraza");
+        if(CatalogPost()!="organization/commands/table-update {\"id\":\"M8\",\"name\":\"Mesa 8\",\"capacity\":4,\"zoneId\":\"terraza\",\"sort\":7}"||organization.SelectedZone?.Id!="terraza"
+            ||organization.SelectedTable?.Id!="M8"||zoneList.SelectedItem is not Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"terraza"}||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"M8"}
+            ||organization.TableContext!="Mesa de Terraza"||CardsText()!="Terraza 1 · 4 plazas · Activa | Terraza 2 · 2 plazas · Activa | Terraza 3 · 4 plazas · Activa | Terraza 4 · 6 plazas · Activa | Mesa 8 · 4 plazas · Activa")
+            throw new Exception("A table moved to another room is followed there, with that room and the table chosen (F01): "+CatalogPost()+" / "+CardsText());
+        tableZoneBox.SelectedValue="sala"; window.UpdateLayout();
+        SendRooms("SaveTableButton","Devolver la mesa a su sala");
+        if(organization.SelectedZone?.Id!="sala"||organization.SelectedTable?.Id!="M8"||organization.Tables.Length!=9||organization.Tables[7].Id!="M8") throw new Exception("The table is back in its room, chosen.");
+        // "Ver la sala" (o pulsar otra vez la sala elegida) vuelve a la ficha de la sala: la mesa deja de estar elegida y sus ordenes, de poder enviarse.
+        Press(InRooms<Button>("ShowZoneButton"),"Ver la sala");
+        if(organization.SelectedTable is not null||tableList.SelectedItem is not null||!RoomShows("ZoneDetail")||RoomShows("TableDetail")||organization.SelectedZone?.Id!="sala"||organization.TableId.Length!=0
+            ||organization.SaveTableCommand.CanExecute(null)||organization.ToggleTableCommand.CanExecute(null)||Marked("M8","Ring")) throw new Exception("'Ver la sala' shows the room's ficha and leaves no table chosen.");
+        PickTable("M5");
+        ((ListBoxItem)zoneList.ItemContainerGenerator.ContainerFromItem(zoneList.SelectedItem)).RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,0,System.Windows.Input.MouseButton.Left)
+            {RoutedEvent=UIElement.PreviewMouseUpEvent}); window.UpdateLayout();   // la pulsacion baja hasta la fila; cada elemento la convierte en la del boton izquierdo
+        if(organization.SelectedTable is not null||!RoomShows("ZoneDetail")||organization.SelectedZone?.Id!="sala") throw new Exception("Clicking the chosen room again shows its ficha.");
+        // Otra sala (F01): ninguna mesa de la anterior queda elegida ni en su ficha. Terraza muestra su tarifa propia (E3.2) y la guarda por codigo.
+        PickTable("M4"); PickZone("terraza");
+        if(organization.SelectedTable is not null||organization.TableId.Length!=0||organization.SaveTableCommand.CanExecute(null)||!RoomShows("ZoneDetail")||organization.ZoneContext!="Sala · tarifa Terraza"
+            ||organization.ZoneTitle!="Terraza"||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"Terraza"}||organization.ZoneTariffId!="terraza"||!organization.TariffChoices.Select(t=>t.Name).SequenceEqual(["General","Terraza"])
+            ||organization.TablesTitle!="Mesas de Terraza"||organization.TablesSummary!="4 mesas activas · 16 plazas"||organization.ZoneTablesText!="Todas sus mesas están activas.")
+            throw new Exception("Choosing another room drops the table of the previous one and shows the room with its own tariff: "+organization.ZoneContext);
+        SendRooms("SaveZoneButton","Guardar sala");
+        if(CatalogPost()!="organization/commands/zone-update {\"id\":\"terraza\",\"name\":\"Terraza\",\"sort\":1,\"tariffId\":\"terraza\"}"||organization.SelectedZone?.Id!="terraza"
+            ||zoneTariffBox.SelectedItem is not Costina.Client.TariffDto{Name:"Terraza"}) throw new Exception("'Guardar cambios' sends the usual body of the chosen room, its tariff by code: "+CatalogPost());
+        // Una sala con mesas activas no se desactiva: lo rechaza el servidor (zone_in_use) y su texto sale tal cual.
+        SendRooms("DeactivateZoneButton","Desactivar sala con mesas");
+        if(CatalogPost()!="organization/commands/zone-deactivate {\"id\":\"terraza\"}"||window.Shell.Status!="La sala está en uso: no se puede desactivar. Actualiza antes de una nueva acción."
+            ||organization.SelectedZone?.Active!=true||!RoomReady("DeactivateZoneButton")) throw new Exception("A room with active tables is not deactivated: the server's rejection is shown as it is: "+window.Shell.Status);
+        // Alta de una sala con la Mesa 1 elegida: la lista queda sin eleccion y el centro dice que sus mesas vendran despues. Al confirmarla, la
+        // sala nueva queda elegida, sin mesas (lo explica y ofrece la primera); la mesa nueva nace en ella y queda elegida.
+        PickZone("sala"); PickTable("M1");
+        Press(InRooms<Button>("NewZoneButton"),"Nueva sala");
+        if(!organization.NewZone||organization.SelectedZone is not null||organization.SelectedTable is not null||zoneList.SelectedItem is not null||organization.TableItems.Length!=0||!RoomShows("TablesEmpty")
+            ||organization.TablesEmptyHeading!="Sala nueva"||RoomShows("NewTableButton")||organization.ZoneSort!="2"||!RoomShows("ZoneDetail")) throw new Exception("'Nueva sala' leaves the list with nothing chosen.");
+        Press(InRooms<Button>("CancelZoneButton"),"Cancelar el alta de sala");
+        if(organization.SelectedZone?.Id!="sala"||organization.SelectedTable?.Id!="M1"||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"M1"}||!RoomShows("TableDetail"))
+            throw new Exception("Cancelling the new room returns to the room and table chosen before.");
+        Press(InRooms<Button>("NewZoneButton"),"Nueva sala");
+        organization.ZoneId="privado"; organization.ZoneName="Comedor privado"; window.UpdateLayout();
+        SendRooms("SaveZoneButton","Crear sala");
+        if(CatalogPost()!="organization/commands/zone-create {\"id\":\"privado\",\"name\":\"Comedor privado\",\"sort\":2,\"tariffId\":\"\"}"||organization.NewZone||organization.SelectedZone?.Id!="privado"
+            ||zoneList.SelectedItem is not Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"privado"}||!RoomShows("ZoneDetail")||organization.ZoneTitle!="Comedor privado"||!RoomShows("TablesEmpty")
+            ||organization.TablesEmptyHeading!="Sala sin mesas"||organization.TablesEmptyText!="Comedor privado aún no tiene mesas: añade la primera."||!RoomReady("EmptyNewTableButton")
+            ||organization.ZoneTablesText!="Aún no tiene mesas: añádelas con «Mesa»."||!ZoneRowsText().EndsWith(" | Comedor privado: Sin mesas activas",StringComparison.Ordinal))
+            throw new Exception("A created room is chosen once the server confirms it and explains it has no tables yet: "+CatalogPost()+" / "+ZoneRowsText());
+        Press(InRooms<Button>("EmptyNewTableButton"),"Nueva mesa (sala sin mesas)");
+        if(!organization.NewTable||!RoomShows("TableDetail")||organization.TableTitle!="Nueva mesa"||organization.TableContext!="Alta de mesa en Comedor privado"||organization.TableZoneId!="privado"
+            ||organization.TableSaveText!="Crear mesa"||!RoomReady("CancelTableButton")||RoomShows("DeactivateTableButton")||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Comedor privado"})
+            throw new Exception("'Nueva mesa' opens the new-table ficha inside the chosen room: "+organization.TableContext);
+        organization.TableId="P1"; organization.TableName="Mesa del reservado"; organization.TableCapacity="10"; window.UpdateLayout();
+        SendRooms("SaveTableButton","Crear mesa");
+        if(CatalogPost()!="organization/commands/table-create {\"id\":\"P1\",\"name\":\"Mesa del reservado\",\"capacity\":10,\"zoneId\":\"privado\",\"sort\":0}"||organization.SelectedZone?.Id!="privado"
+            ||organization.SelectedTable?.Id!="P1"||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"P1"}||organization.TableTitle!="Mesa del reservado"||organization.NewTable)
+            throw new Exception("A created table is chosen in its room once the server confirms it: "+CatalogPost());
+        // La sala se desactiva cuando ya no le quedan mesas activas: lista y ficha lo dicen con su palabra, y su mesa ofrece su sala marcada.
+        SendRooms("DeactivateTableButton","Desactivar la mesa del reservado");
+        Press(InRooms<Button>("ShowZoneButton"),"Ver la sala");
+        SendRooms("DeactivateZoneButton","Desactivar sala");
+        if(CatalogPost()!="organization/commands/zone-deactivate {\"id\":\"privado\"}"||organization.SelectedZone?.Id!="privado"||organization.ZoneStateText!="Desactivada"||organization.ZoneStateTone!="other"
+            ||!RoomReady("ReactivateZoneButton")||RoomShows("DeactivateZoneButton")||!ZoneRowsText().EndsWith(" | Comedor privado: Sin mesas activas · Desactivada",StringComparison.Ordinal)
+            ||!RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"privado"}).Contains("Desactivada")||RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"sala"}).Contains("Desactivada")
+            ||organization.TablesSummary!="Ninguna mesa activa · 1 desactivada"||!Marked("P1","Dash")||organization.Summary!="2 salas activas · 12 mesas activas (42 plazas) · 5 estaciones activas")
+            throw new Exception("A room without active tables is deactivated and says so in words: "+ZoneRowsText());
+        PickTable("P1");
+        if(!organization.ZoneChoices.Select(z=>z.Name).SequenceEqual(["Sala principal","Terraza","Comedor privado (desactivada)"])||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Comedor privado (desactivada)"})
+            throw new Exception("A table of a deactivated room is offered its room, marked: "+string.Join(",",organization.ZoneChoices.Select(z=>z.Name)));
+        RoomsFit("configuration-inactive","SaveTableButton"); Save(Shot(window),"configuration-inactive.png");
+        PickZone("sala"); PickTable("M1");
+        if(!organization.ZoneChoices.Select(z=>z.Name).SequenceEqual(["Sala principal","Terraza"])) throw new Exception("Another table is never offered a deactivated room.");
+        // "Mesa" con una mesa elegida: la lista queda sin eleccion; "Cancelar" vuelve a la mesa de antes sin enviar nada.
+        var postsBeforeNewTable=server.Count("POST","");
+        Press(InRooms<Button>("NewTableButton"),"Nueva mesa");
+        if(!organization.NewTable||organization.SelectedTable is not null||tableList.SelectedItem is not null||organization.TableSort!="9"||organization.TableZoneId!="sala") throw new Exception("'Mesa' leaves the cards with none chosen.");
+        Press(InRooms<Button>("CancelTableButton"),"Cancelar el alta de mesa");
+        if(organization.NewTable||organization.SelectedTable?.Id!="M1"||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"M1"}||server.Count("POST","")!=postsBeforeNewTable)
+            throw new Exception("Cancelling the new table returns to the table chosen before and sends nothing.");
+        // Estaciones: su pestana, la lista (la Pase, reservada, con su palabra) y, sin eleccion, la ficha que dice que elegir.
+        roomTabs.SelectedIndex=1; window.UpdateLayout();
+        if(organization.Section!="stations"||!organization.Sections[1].IsCurrent||organization.Sections[0].IsCurrent||!RoomShows("StationsSection")||RoomShows("ZonesSection")||!RoomReady("NewStationButton")
+            ||RoomShows("NewZoneButton")) throw new Exception("The 'Estaciones' tab is chosen and painted as chosen, with its own create button.");
+        if(string.Join(" | ",organization.StationItems.Select(s=>s.ToString()))!="Pase · Pase · existe siempre · reservada | Cocina fría · Cocina | Cocina caliente · Cocina | Sala 1 · Sala | Terraza · Sala"
+            ||organization.SelectedStation is not null||!RoomShows("StationEmpty")||RoomShows("StationDetail")||organization.StationEmptyHeading!="Elige una estación")
+            throw new Exception("Each station row carries its kind; the pass station is reserved; nothing chosen, the ficha says what to pick: "+string.Join(" | ",organization.StationItems.Select(s=>s.ToString())));
+        if(!RowPainted(stationList,o=>o is Costina.Desktop.ViewModels.StationRow{Station.Id:"pase"}).Contains("Reservada")||organization.StationItems.Skip(1).Any(s=>RowPainted(stationList,o=>ReferenceEquals(o,s)).Contains("Reservada")))
+            throw new Exception("Only the pass station is marked 'Reservada', in words.");
+        RoomsFit("configuration-stations-unselected","NewStationButton");
+        PickStation("pase");
+        if(organization.StationContext!="Estación · Pase"||organization.StationTitle!="Pase"||organization.StationStateText!="Activa"||!organization.IsReservedStation||!Painted(InRooms<FrameworkElement>("StationDetail")).Contains("Reservada")
+            ||RoomShows("DeactivateStationButton")||RoomShows("ReactivateStationButton")||!RoomReady("SaveStationButton")||organization.StationNote!="La estación Pase existe siempre: no se puede desactivar ni cambiar de tipo."
+            ||organization.StationKind!="pass"||stationKindBox.SelectedItem is not ComboBoxItem{Content:"Pase"}||!organization.StationKindHelp.StartsWith("Pase:",StringComparison.Ordinal))
+            throw new Exception("The pass station is reserved: no deactivate button and its note says why: "+organization.StationContext);
+        PickStation("hot");
+        if(organization.StationContext!="Estación · Cocina"||organization.StationTitle!="Cocina caliente"||organization.IsReservedStation||!RoomReady("DeactivateStationButton")||organization.StationKind!="kitchen"
+            ||stationKindBox.SelectedItem is not ComboBoxItem{Content:"Cocina"}||organization.StationId!="hot"||organization.StationSort!="2"||!organization.StationKindHelp.StartsWith("Cocina:",StringComparison.Ordinal))
+            throw new Exception("A kitchen station shows its data and kind: "+organization.StationContext);
+        SendRooms("SaveStationButton","Guardar estación");
+        if(CatalogPost()!="organization/commands/station-update {\"id\":\"hot\",\"name\":\"Cocina caliente\",\"kind\":\"kitchen\",\"sort\":2}"||organization.SelectedStation?.Id!="hot"
+            ||stationList.SelectedItem is not Costina.Desktop.ViewModels.StationRow{Station.Id:"hot"}) throw new Exception("'Guardar cambios' sends the usual body of the chosen station: "+CatalogPost());
+        PickStation("sala-1");
+        SendRooms("DeactivateStationButton","Desactivar estación");
+        if(CatalogPost()!="organization/commands/station-deactivate {\"id\":\"sala-1\"}"||organization.SelectedStation?.Id!="sala-1"||organization.StationStateText!="Desactivada"||!RoomReady("ReactivateStationButton")
+            ||RoomShows("DeactivateStationButton")||!RowPainted(stationList,o=>o is Costina.Desktop.ViewModels.StationRow{Station.Id:"sala-1"}).Contains("Desactivada")||!organization.Summary.EndsWith(" · 4 estaciones activas",StringComparison.Ordinal))
+            throw new Exception("A deactivated station stays chosen and says so in words: "+organization.Summary);
+        SendRooms("ReactivateStationButton","Reactivar estación");
+        if(CatalogPost()!="organization/commands/station-reactivate {\"id\":\"sala-1\"}"||organization.StationStateText!="Activa") throw new Exception("'Reactivar estación' sends the usual body: "+CatalogPost());
+        // Alta de estacion: la lista queda sin eleccion; "Cancelar" vuelve a la de antes; al confirmarla el servidor, la nueva queda elegida.
+        Press(InRooms<Button>("NewStationButton"),"Nueva estación");
+        if(!organization.NewStation||stationList.SelectedItem is not null||organization.StationTitle!="Nueva estación"||organization.StationContext!="Alta de estación"||organization.StationKind!="kitchen"
+            ||organization.StationSort!="5"||!RoomReady("CancelStationButton")||RoomShows("DeactivateStationButton")||organization.StationSaveText!="Crear estación") throw new Exception("'Nueva estación' opens the new-station ficha.");
+        Press(InRooms<Button>("CancelStationButton"),"Cancelar el alta de estación");
+        if(organization.NewStation||organization.SelectedStation?.Id!="sala-1") throw new Exception("Cancelling the new station returns to the station chosen before.");
+        Press(InRooms<Button>("NewStationButton"),"Nueva estación");
+        organization.StationId="barra"; organization.StationName="Barra"; stationKindBox.SelectedValue="bar"; window.UpdateLayout();
+        if(organization.StationKind!="bar"||!organization.StationKindHelp.StartsWith("Barra:",StringComparison.Ordinal)) throw new Exception("The kind box writes its code and explains it.");
+        SendRooms("SaveStationButton","Crear estación");
+        if(CatalogPost()!="organization/commands/station-create {\"id\":\"barra\",\"name\":\"Barra\",\"kind\":\"bar\",\"sort\":5}"||organization.SelectedStation?.Id!="barra"||organization.StationItems.Length!=6
+            ||stationList.SelectedItem is not Costina.Desktop.ViewModels.StationRow{Station.Id:"barra"}||organization.StationContext!="Estación · Barra") throw new Exception("A created station is chosen once the server confirms it: "+CatalogPost());
+        window.Shell.Busy=true;
+        if(organization.StartTableCommand.CanExecute(null)||organization.SaveStationCommand.CanExecute(null)||organization.ToggleStationCommand.CanExecute(null)) throw new Exception("Busy gates the organization commands.");
+        window.Shell.Busy=false;
+        // Las capturas, con la organizacion de ejemplo otra vez (sin lo creado arriba): Estaciones con la Cocina caliente elegida
+        // (configuration-stations.png) y Salas y mesas con la Sala principal y su ficha (configuration.png, del bucle de capturas).
+        server.Organization=roomsOrganization;
+        OpenRooms("the organization is read again for the captures");
+        PickStation("hot");
+        RoomsFit("configuration-stations","SaveStationButton"); Save(Shot(window),"configuration-stations.png");
+        roomTabs.SelectedIndex=0; window.UpdateLayout();
+        PickZone("sala");
+        if(organization.SelectedTable is not null) Press(InRooms<Button>("ShowZoneButton"),"Ver la sala");
+        if(!RoomShows("ZoneDetail")||organization.SelectedZone?.Id!="sala"||organization.TableItems.Length!=9) throw new Exception("The capture shows the Sala principal with its ficha and its tables.");
+        RoomsFit("configuration","SaveZoneButton");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
@@ -1867,6 +2122,11 @@ internal static class Program
             if(tab=="OffersTab"&&new[]{"Degustación Costiña","Degustación · Comida y cena · de martes a domingo","Pases · 6","Pescado","Platos del pase · 2","Rodaballo al horno","Salsa de vieiras","Pase",
                 "Menú del día","Carta","Degustación de verano","Desactivada","Todas · 4"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingOffers)
                 throw new Exception("Oferta paints the chosen offer, its numbered courses and the unfolded one with its dishes: missing '"+missingOffers+"'.");
+            // C2b: Salas pinta las dos salas (la tarifa propia de la Terraza), las mesas de la Sala principal (la 9, desactivada, con su palabra)
+            // y la ficha de la sala con sus cifras.
+            if(tab=="OrganizationTab"&&new[]{"Salas y mesas","Estaciones","Sala principal","8 mesas activas · 26 plazas","Terraza","Tarifa Terraza","Mesas de Sala principal","Mesa 1","Mesa 9","Desactivada",
+                "Activa","Sala · tarifa General","Mesas activas","26","1 mesa desactivada: Mesa 9.","Guardar cambios","Desactivar sala"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingRooms)
+                throw new Exception("Salas paints both rooms, the chosen room's tables and its ficha in words: missing '"+missingRooms+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
                 "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
@@ -2136,6 +2396,8 @@ internal static class Program
                 if(path=="auth/devices") return Json(200,JsonSerializer.Serialize(Devices,Costina.Client.ApiClient.Json));
                 if(path=="auth/pairings/pending") return Json(200,"[]");
                 if(path=="installation/network"&&Network is not null) return Json(200,JsonSerializer.Serialize(Network,Costina.Client.ApiClient.Json));
+                // C2b: tras un rechazo definitivo el cliente pregunta por su clave: no consta (el motor no la aplico).
+                if(path.StartsWith("commands/",StringComparison.Ordinal)) return Json(200,JsonSerializer.Serialize(new Costina.Client.CommandLookup(Uri.UnescapeDataString(path["commands/".Length..]),false),Costina.Client.ApiClient.Json));
                 if(path.StartsWith("checkout/services/",StringComparison.Ordinal)&&Accounts.FirstOrDefault(a=>a.ServiceId==Uri.UnescapeDataString(path["checkout/services/".Length..])) is {} account)
                     return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.AccountDto>(1,AccountDetails.TryGetValue(account.ServiceId,out var detail)?detail
                         :new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
@@ -2183,7 +2445,58 @@ internal static class Program
                         break;
                 }
             }
+            // C2b: las ordenes de la organizacion se aplican en memoria, como el motor, con sus dos reglas de desactivar: una sala con mesas
+            // activas (zone_in_use) y una mesa en uso (table_in_use: las de TablesInUse, las ocupadas del tablero). El rechazo es definitivo:
+            // 409 con su codigo y el eco de la clave (y GET commands/{clave} dice que no consta), como el del motor.
+            if(path.StartsWith("organization/commands/",StringComparison.Ordinal)&&OrganizationCommand(path["organization/commands/".Length..],command) is {} rejected)
+            {
+                var refused=Json(409,"{\"error\":\""+rejected+"\"}"); refused.Headers.Add("Idempotency-Key",key); return refused;
+            }
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
+        }
+        public HashSet<string> TablesInUse { get; }=[];
+        private string? OrganizationCommand(string action,JsonElement command)
+        {
+            string Text(string name)=>command.GetProperty(name).GetString()!;
+            int Number(string name)=>command.GetProperty(name).GetInt32();
+            string? Tariff()=>command.TryGetProperty("tariffId",out var t)&&t.ValueKind==JsonValueKind.String?t.GetString():null;   // null = sin cambio
+            var id=Text("id"); var zones=Organization.Zones; var stations=Organization.Stations;
+            Costina.Client.TableDto? table=zones.SelectMany(z=>z.Tables).FirstOrDefault(t=>t.Id==id);
+            Costina.Client.ZoneDto[] Tables(Func<Costina.Client.TableDto,Costina.Client.TableDto?> change)=>[..zones.Select(z=>z with {Tables=[..z.Tables.Select(change).OfType<Costina.Client.TableDto>()]})];
+            static string Kind(string kind)=>kind switch{"kitchen"=>"Kitchen","pass"=>"Pass","bar"=>"Bar","room"=>"Room",_=>kind};
+            switch(action)
+            {
+                case "zone-create":
+                    zones=[..zones,new(id,Text("name"),Number("sort"),true,[],Tariff() is {Length:>0} own?own:null)];
+                    break;
+                case "zone-update":   // tariffId: null = sin cambio, "" = la General
+                    zones=[..zones.Select(z=>z.Id!=id?z:z with {Name=Text("name"),Sort=Number("sort"),TariffId=Tariff() is {} t?(t.Length==0?null:t):z.TariffId})];
+                    break;
+                case "zone-deactivate" or "zone-reactivate":
+                    if(action=="zone-deactivate"&&zones.Single(z=>z.Id==id).Tables.Any(t=>t.Active)) return "zone_in_use";
+                    zones=[..zones.Select(z=>z.Id==id?z with {Active=action=="zone-reactivate"}:z)];
+                    break;
+                case "table-create" or "table-update":   // la mesa va a su sala (una mesa movida sale de la anterior), por orden y codigo
+                    var moved=new Costina.Client.TableDto(id,Text("name"),Number("capacity"),Text("zoneId"),Number("sort"),table?.Active??true);
+                    zones=[..Tables(t=>t.Id==id?null:t).Select(z=>z.Id!=moved.ZoneId?z:z with {Tables=[..z.Tables.Append(moved).OrderBy(t=>t.Sort).ThenBy(t=>t.Id,StringComparer.Ordinal)]})];
+                    break;
+                case "table-deactivate" or "table-reactivate":
+                    if(action=="table-deactivate"&&TablesInUse.Contains(id)) return "table_in_use";
+                    zones=Tables(t=>t.Id==id?t with {Active=action=="table-reactivate"}:t);
+                    break;
+                case "station-create":
+                    stations=[..stations,new(id,Text("name"),Kind(Text("kind")),Number("sort"),true)];
+                    break;
+                case "station-update":
+                    stations=[..stations.Select(s=>s.Id!=id?s:s with {Name=Text("name"),Kind=Kind(Text("kind")),Sort=Number("sort")})];
+                    break;
+                case "station-deactivate" or "station-reactivate":
+                    if(id=="pase") return "reserved_station";
+                    stations=[..stations.Select(s=>s.Id==id?s with {Active=action=="station-reactivate"}:s)];
+                    break;
+            }
+            Organization=Organization with {Zones=zones,Stations=stations};
+            return null;
         }
         private static System.Net.Http.HttpResponseMessage Json(int status,string json)=>new((System.Net.HttpStatusCode)status){Content=new System.Net.Http.StringContent(json,System.Text.Encoding.UTF8,"application/json")};
     }
