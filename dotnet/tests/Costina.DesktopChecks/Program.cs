@@ -1942,7 +1942,11 @@ internal static class Program
         ListBoxItem Card(string id)=>(ListBoxItem)tableList.ItemContainerGenerator.ContainerFromItem(organization.TableItems.Single(t=>t.Table.Id==id));
         bool Marked(string id,string part)=>Card(id).Template.FindName(part,Card(id)) is UIElement{Visibility:Visibility.Visible};   // Ring (elegida)
         // Revision de C2b: una mesa desactivada es una tarjeta gris (Surface2); el borde discontinuo queda para 'Libre' en el Comedor.
-        bool Grey(string id)=>Card(id).Template.FindName("Bd",Card(id)) is Border{Background:SolidColorBrush b}&&b.Color==((SolidColorBrush)window.FindResource("Surface2")).Color;
+        bool Grey(string id)
+        {
+            var card=Card(id); card.ApplyTemplate(); card.UpdateLayout();   // un contenedor recien generado aun no tiene aplicada su plantilla
+            return card.Template.FindName("Bd",card) is Border{Background:SolidColorBrush b}&&b.Color==((SolidColorBrush)window.FindResource("Surface2")).Color;
+        }
         IEnumerable<string> RowPainted(ListBox list,Func<object,bool> pick)=>list.ItemContainerGenerator.ContainerFromItem(list.Items.Cast<object>().Single(pick)) is ListBoxItem row?Painted(row):[];
         void RoomsFit(string what,string bottom)
         {
@@ -2099,7 +2103,8 @@ internal static class Program
             ||!RoomReady("ReactivateZoneButton")||RoomShows("DeactivateZoneButton")||!ZoneRowsText().EndsWith(" | Comedor privado: Sin mesas activas · Desactivada",StringComparison.Ordinal)
             ||!RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"privado"}).Contains("Desactivada")||RowPainted(zoneList,o=>o is Costina.Desktop.ViewModels.ZoneRow{Zone.Id:"sala"}).Contains("Desactivada")
             ||organization.TablesSummary!="Ninguna mesa activa · 1 desactivada"||!Grey("P1")||organization.Summary!="2 salas activas · 12 mesas activas (42 plazas) · 5 estaciones activas")
-            throw new Exception("A room without active tables is deactivated and says so in words: "+ZoneRowsText());
+            throw new Exception("A room without active tables is deactivated and says so in words: "+ZoneRowsText()+" / state "+organization.ZoneStateText+" "+organization.ZoneStateTone
+                +" / reactivate "+RoomReady("ReactivateZoneButton")+" deactivate "+RoomShows("DeactivateZoneButton")+" / tables "+organization.TablesSummary+" / grey "+Grey("P1")+" / summary "+organization.Summary+" / post "+CatalogPost());
         PickTable("P1");
         if(!organization.ZoneChoices.Select(z=>z.Name).SequenceEqual(["Sala principal","Terraza","Comedor privado (desactivada)"])||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Comedor privado (desactivada)"})
             throw new Exception("A table of a deactivated room is offered its room, marked: "+string.Join(",",organization.ZoneChoices.Select(z=>z.Name)));
