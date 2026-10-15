@@ -1,6 +1,6 @@
 # Plan: menús, carta y bodega más intuitivos (cortes E4d, E3.3, C3a, C3b, E4e, C3c, E4c, E4f y E4g)
 
-Fecha: 2026-10-15. **Estado: BORRADOR, pendiente de aprobación del promotor** (se le enseñaron la maqueta y el resumen el 15-10; aún no contestó).
+Fecha: 2026-10-15. **Estado: APROBADO por el promotor el 15-10-2026.** Contestó las siete preguntas del resumen; las respuestas y lo que cambian están en la sección 10, y las decisiones en la 9. El orden de entrega pasa a ser E4d, E3.3, C3a, C3b, E4e, C3c, **E4f, E4c**, E4g.
 
 **Maqueta del comandero:** `docs/plans/maquetas/2026-10-15-comandero.html`. Se abre en el navegador y tiene pestañas para abrir mesa, mesa, bodega, ronda, combinados, menú cerrado, carta y PC. Capturas en `docs/plans/maquetas/2026-10-15-comandero/`.
 
@@ -29,6 +29,8 @@ Lo que vas a tener, en este orden, después de C2b (que ya arregla el fallo que 
 5. ¿Necesitas ya que un comensal no tome el menú, o cambiar las personas con la mesa abierta? (más adelante)
 6. ¿Tu menú lleva un vino incluido en cada pase (maridaje)? (si no lo lleva, nada cambia)
 7. ¿Quieres «El menú en una pantalla» antes que los combinados? (sí, si ya usas el menú del día)
+
+Contestadas el 15-10: 1 sí; 2 sí; 3 el IVA queda pendiente del gestor y configurable desde el programa; 4 basta por ahora; 5 más adelante; 6 un menú puede llevar maridaje o no; 7 sí, el programa sirve para distintos negocios y hay que poder añadir un menú del día.
 
 ## Base técnica
 
@@ -253,13 +255,13 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
 | 4 | **C3b** — Bodega y bebidas: comandero y mesa del puesto | `0.42.0-c3b` | sin cambio | Buscador, Copa/Botella, rondas, fotos y lo que lleva la mesa; en el PC, «Añadir consumición» en la mesa abierta, sin ir a Caja ni pedir contraseña |
 | 5 | **E4e** — Alergias adaptadas antes de enviar y cocina por plato | `0.43.0-e4e` | sin cambio (sí cambian las reglas de las instantáneas) | La adaptación queda escrita; cocina marca por plato |
 | 6 | **C3c** — Comandero y cocina: abrir mesa y servir el menú | `0.44.0-c3c` | sin cambio | Abrir en 3 toques, menú agrupado, cocina por plato |
-| 7 | **E4c** — Combinados a precio fijo | `0.45.0-e4c` | **v9** | «Gin tonic Premium» con base y refresco a elegir |
-| 8 | **E4f** — El menú en una pantalla | `0.46.0-e4f` | sin cambio | Cambiar los platos del menú, o del menú del día, en un minuto |
+| 7 | **E4f** — El menú en una pantalla | `0.45.0-e4f` | sin cambio | Cambiar los platos del menú, o del menú del día, en un minuto; vino incluido por pase (maridaje) |
+| 8 | **E4c** — Combinados a precio fijo | `0.46.0-e4c` | **v9** | «Gin tonic Premium» con base y refresco a elegir |
 | 9 | **E4g** — Carta por familias y comanda de una vez | `0.47.0-e4g` | sin cambio | Una carta de entrantes, carnes, pescados y postres que se usa bien |
 
 - E4c conserva el nombre que los documentos ya daban a los combinados, aunque llegue después de E4d y E4e.
 - **C3 se parte en tres** (revisión): el aspecto nuevo reescribe todos los selectores E2E y añade el proyecto móvil sin tocar el motor (C3a); la bodega trae los cambios del motor de las rondas (C3b); el menú y la cocina agrupada dependen de E4e (C3c). Así cada PR cambia una sola cosa difícil.
-- El orden de 1 a 6 entrega antes lo que el promotor pidió: palabras, bodega y comandero. Los cortes 7, 8 y 9 se pueden reordenar entre sí sin tocar nada más. Como el promotor nombró el **menú del día**, que cambia cada día, conviene preguntarle si E4f va antes que los combinados (E4c).
+- El orden de 1 a 6 entrega antes lo que el promotor pidió: palabras, bodega y comandero. Los cortes 7, 8 y 9 se pueden reordenar entre sí sin tocar nada más. **Decidido el 15-10: E4f va antes que E4c**, porque el programa sirve para distintos tipos de negocio y el menú del día tiene que poder añadirse pronto. Las secciones 4.7 y 4.8 conservan su numeración; solo cambian las versiones.
 - **Coordinación con C2b**, que está en curso: C2b solo recoloca Caja, Catálogo y Oferta, y arregla el cierre del programa al guardar (sección 4.1). Los campos de esos formularios (códigos, «Más opciones», buscador de Caja) los cambian E4d y E3.3; si C2b ya pone el buscador en Caja, E3.3 solo le añade la agrupación por vino.
 - Cada corte lleva:
   - rama propia y un commit por paso;
@@ -378,6 +380,7 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
   Las dos llevan prueba de regresión en `catalog_http.py`.
 - **Avisos en ráfaga:** una orden de 300 vinos deja 600 eventos `catalog.*`, que son operativos y llegan a todos los equipos. Los clientes ya agrupan las ráfagas (D6.2); se comprueba en la prueba real.
 - La copa hereda el IVA del vino (pregunta abierta 2).
+- **`products-tax-set {productIds:[…], taxId}`** (decisión 15-10): cambia el IVA de varios productos de una vez, con un tipo ya definido en Impuestos (`TaxDefinition`). En el puesto, «Cambiar IVA de los marcados» junto a «Vinos por copa». Los vinos siguen entrando al 21 % hasta que el gestor diga otra cosa; cuando lo diga, el promotor lo cambia desde aquí sin reimportar.
 
 **Puesto principal (WPF), ERP › Catálogo:**
 - **Dos pestañas grandes, Cocina y Bodega y bebidas**, cada una con su árbol de familias.
@@ -670,7 +673,7 @@ Lleva también la petición del promotor del 15-10 de añadir una consumición d
 
 **Capturas:** abrir mesa, ficha de un menú cerrado con línea adaptada, cocina agrupada y «Por revisar».
 
-### 4.7. E4c — Combinados a precio fijo (`0.45.0-e4c`, esquema **v9**)
+### 4.7. E4c — Combinados a precio fijo (`0.46.0-e4c`, esquema **v9**; se entrega después de E4f)
 
 Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium 9,00 €»), y la base y el refresco se eligen sin cambiar el precio.
 
@@ -714,7 +717,7 @@ Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium
 
 **Capturas:** ficha del combinado, Caja y hoja del comandero.
 
-### 4.8. E4f — El menú en una pantalla (`0.46.0-e4f`, sin cambio de esquema)
+### 4.8. E4f — El menú en una pantalla (`0.45.0-e4f`, sin cambio de esquema; se entrega antes que E4c)
 
 **Motor:** una orden nueva, `offer-dishes-set {offerId, expected:[dishId…], courses:[{courseId, dishes:[{name, stationId?, productId?}]}]}`. Es solo para el responsable, auditada, y va en una transacción:
 - cada plato se reconoce **por su nombre** dentro del pase, sin tildes ni mayúsculas. Si ya existía, activo o no, se reactiva y se reordena: no se duplica. Es reconocer por nombre **y por padre** (la oferta y el pase), como E3.1; la clave sigue siendo el código generado (E3.1: «nunca por el nombre solo»). Dos nombres iguales en el mismo pase se rechazan (`duplicate_name`);
@@ -729,6 +732,13 @@ Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium
 - la estación es un chip dentro de «Más opciones»;
 - enseña una vista previa, «Así lo verá el camarero», y un único botón «Guardar»;
 - sirve igual para un menú del día con elección.
+
+**Maridaje (decisión 15-10: un menú puede llevarlo o no):**
+- un plato de un pase puede ser un **vino de la Bodega**: `{productId}` de un producto sin estación de cocina ni de pase, sin `stationId`. La pantalla lo añade con «＋ vino del pase» y lo pinta como «Vino: …».
+- No va a ninguna estación de cocina; el camarero lo ve en el pase (C3c lo muestra con el resto del pase, sin precio). No se cobra aparte: el precio del menú lo incluye, y en Caja la mesa de menú no lleva línea por él.
+- `offer-dishes-set` y `offer-create` lo admiten solo en un **Menú cerrado** (`pairing_requires_fixed_menu`); en un menú con elección no hay maridaje.
+- Deja de valer la regla «un plato del menú siempre tiene estación» en esos productos: la exclusión de la revisión 25 (productos-menú sin estación) se amplía a los vinos de pase. Sin cambio de esquema: es una fila más de `core.offer_dishes`.
+- Hasta E4f, un vino del menú se sirve sin anotarlo, como hoy.
 
 **Mesas abiertas:**
 - Un menú cerrado guardó sus platos al abrir (`DiningOperations.cs:28-29`), así que no cambia.
@@ -859,6 +869,14 @@ Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium
   - La elección por comensal se conserva para otros restaurantes, fuera del camino principal.
   - **«Tenemos que hacer el sistema más intuitivo.»**
 - **15-10:** en el puesto principal, **añadir una consumición desde la mesa abierta** del Comedor, sin salir a Caja y sin contraseña en el nivel Puesto, con el mismo selector que el comandero; Caja queda para cobrar, anular y cerrar (C3b). Se le contestó así al promotor.
+- **15-10 (respuestas a las siete preguntas):**
+  - cocina decide cada plato de un comensal con alergia o intolerancia **antes de que salga el pase**, y el pase espera (E4e);
+  - lo mismo para las **preferencias e intolerancias leves**: cocina las despacha con un toque;
+  - el **IVA de los vinos queda pendiente del gestor**, y mientras tanto **configurable** desde el programa en bloque (E3.3, `products-tax-set`); no se cambia el 21 % de la importación;
+  - las bebidas y los combinados **van a la cuenta y se ven en la mesa y en Caja**; sin pantalla de barra por ahora;
+  - comensal sin menú y cambio de personas con la mesa abierta: **más adelante** (después de E4g);
+  - un menú **puede llevar maridaje o no**: el vino incluido es un plato más del pase, sin cocina y sin cargo (E4f);
+  - **el programa sirve para distintos tipos de negocio**: hay que poder añadir un **menú del día** pronto, así que **E4f va antes que E4c**.
 - **14-10 (E3.2):** los precios importados de la web son los de sala y van en la General. Se pueden crear más tarifas, pero no se rellenan.
 - **14-10 (nuevo aspecto):**
   - tema claro con acento `#0E7A5F` y rojo solo para alergias;
@@ -866,6 +884,8 @@ Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium
   - el vocabulario se puede cambiar antes de C3.
 
 ## 10. Preguntas abiertas (solo las que necesitan al promotor)
+
+**Contestadas el 15-10-2026** (respuesta del promotor → qué hace el plan): 1 «sí» → E4e como está, con preferencias e intolerancias leves incluidas (su 2, también «sí»). 2 «déjalo pendiente y configurable» → E3.3 añade `products-tax-set` y el botón «Cambiar IVA de los marcados»; el tipo lo confirma el gestor, sin fecha. 4 «basta por ahora» → sin pantalla de barra (diferimiento). 5 «más adelante» → diferimiento, después de E4g. 6 «puede ser menú con maridaje o sin él» → E4f admite un vino de la Bodega como plato de un pase en los menús cerrados. 7 «hay que poder añadir menú del día» → E4f antes que E4c (versiones `0.45.0-e4f` y `0.46.0-e4c`). Queda solo una cosa pendiente del promotor, y no bloquea nada: el tipo de IVA que diga su gestor. El texto original de las preguntas se conserva a continuación porque el resto del plan lo cita.
 
 El «Resumen para el promotor» las hace en palabras llanas, para contestar con una palabra o una línea. La 1 se parte en dos (sus 1 y 2); su segundo detalle, «toda la mesa», no se le pregunta, porque es lo seguro. La 2, 4, 5, 6 y 7 son sus 3, 4, 5, 6 y 7. La 3 ya no se pregunta: el resumen la da como algo que se queda igual. La numeración de aquí se conserva porque el resto del plan la cita.
 
