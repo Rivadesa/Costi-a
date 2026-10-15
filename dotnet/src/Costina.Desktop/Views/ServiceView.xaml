@@ -1,124 +1,419 @@
 <UserControl x:Class="Costina.Desktop.Views.ServiceView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="clr-namespace:Costina.Desktop">
- <!-- C1: Comedor y cocina (modulo Dining), con el aspecto nuevo y la distribucion de siempre (C2 trae el plano de mesas y la ficha).
-      Hereda el DataContext del cascaron (ShellViewModel). Los estados se enlazan a sus etiquetas en castellano (StateLabel, GuestLabel,
-      ServedAtLabel en hora local) y las mesas por su nombre (BoardItems); nunca al valor crudo.
-      La estacion de cada elaboracion sigue saliendo por su codigo hasta C2, cuando /configuration traiga los nombres de estacion. -->
- <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-  <Border Grid.Column="0" Style="{StaticResource CardDense}">
-   <DockPanel>
-    <StackPanel DockPanel.Dock="Top" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
-     <TextBlock Text="Abrir mesa" Style="{StaticResource Section}"/>
-     <ComboBox ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" Margin="0,0,0,6" HorizontalAlignment="Stretch"/>
-     <ComboBox ItemsSource="{Binding Service.Offers}" SelectedItem="{Binding Service.SelectedOffer}" Margin="0,0,0,6" HorizontalAlignment="Stretch" ToolTip="Oferta vigente: degustación, menú cerrado o carta"/>
-     <DockPanel><Button DockPanel.Dock="Right" Content="Abrir" Style="{StaticResource Primary}" Command="{Binding Service.OpenCommand}" Margin="0"/>
-      <StackPanel Orientation="Horizontal"><TextBlock Text="Personas" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="64"/></StackPanel></DockPanel>
-     <TextBlock Text="Mesas ocupadas" Style="{StaticResource Section}" Margin="0,18,0,8"/>
-    </StackPanel>
-    <ListBox x:Name="BoardList" ItemsSource="{Binding Service.BoardItems}" DisplayMemberPath="Text" SelectedValuePath="Entry" SelectedValue="{Binding Service.SelectedEntry}" BorderThickness="0" Padding="0" Background="Transparent"/>
-   </DockPanel>
-  </Border>
-  <Border Grid.Column="2" Style="{StaticResource Card}">
-   <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel Grid.Row="0" Margin="0,0,0,10"><TextBlock Text="{Binding Service.ServiceTitle}" Style="{StaticResource PageTitle}" FontSize="22"/>
-     <TextBlock Text="Seguimiento operativo. Sin precios, cuenta ni pagos." Style="{StaticResource Subtle}" Margin="0,2,0,0"/></StackPanel>
-    <StackPanel Grid.Row="1" Margin="0,0,0,6">
-     <ContentControl Style="{StaticResource AllergyBar}" Margin="0,0,0,10" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}">
-      <TextBlock TextWrapping="Wrap"
-       Text="CAMBIO DE RESTRICCIONES SIN REVISAR POR COCINA — cada elaboración marcada PENDIENTE DE REVISIÓN exige una decisión (no afecta / adaptar / rehacer) antes de validar, servir o disparar."/>
-     </ContentControl>
-     <!-- Restricciones (flujo de alergias, revision C1): la lista declarada (o "sin restricciones": una lista vacia parecia un campo) con
-          "Retirar" a su lado (actua sobre la elegida) y, debajo, la declaracion con cada campo etiquetado. -->
-     <TextBlock Text="Restricciones" Style="{StaticResource Section}" Margin="0,0,0,4"/>
-     <DockPanel Margin="0,0,0,6">
-      <Button DockPanel.Dock="Right" Content="Retirar con motivo" Style="{StaticResource DangerButton}" Command="{Binding Service.RemoveRestrictionCommand}" VerticalAlignment="Top" Margin="8,0,0,0"
-              ToolTip="Retira la restricción elegida en la lista; el motivo va abajo, en «Motivo»"/>
-      <TextBlock Text="Sin restricciones declaradas." Style="{StaticResource Subtle}" FontSize="13" VerticalAlignment="Center" Visibility="{Binding Service.HasRestrictions, Converter={StaticResource NotBool2Vis}}"/>
-      <ListBox ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" MaxHeight="78" Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}"/>
+ <!-- C2 (plan 2026-10-14): Comedor y cocina con plano de mesas y ficha, como el lienzo aprobado (Comedor.dc.html).
+      Hereda el DataContext del cascaron (ShellViewModel). A la izquierda, cabecera de pagina, salas, filtros y una tarjeta por mesa ACTIVA
+      (agrupadas por sala); a la derecha, la ficha de la mesa elegida o el formulario de abrir mesa. Todo texto sale de Labels/FloorPlan
+      (castellano; un valor desconocido, tal cual) y toda alerta lleva su palabra (nunca solo color). Una tarjeta solo mueve la seleccion
+      (PickTile -> SelectedEntry o SelectedTable); cada boton de accion sigue enlazado a su orden de siempre y a su CanExecute, que sale
+      solo de lo que anuncia el servidor. -->
+ <UserControl.Resources>
+  <!-- Tarjeta de mesa: blanca con borde suave; libre, con borde discontinuo y sin fondo; con alerta, borde rojo; la elegida, anillo de
+       acento. El tono (Tag) es el codigo de estado de la mesa. -->
+  <Style x:Key="PlanTile" TargetType="Button">
+   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Padding" Value="12,10,12,12"/>
+   <Setter Property="Margin" Value="0,0,10,10"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+   <Setter Property="Template">
+    <Setter.Value>
+     <ControlTemplate TargetType="Button">
+      <Grid SnapsToDevicePixels="True">
+       <Border x:Name="Bd" CornerRadius="12" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" Padding="{TemplateBinding Padding}">
+        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Top" RecognizesAccessKey="False"/>
+       </Border>
+       <Rectangle x:Name="Dash" RadiusX="12" RadiusY="12" Stroke="{StaticResource StrokeStrong}" StrokeThickness="1.5" StrokeDashArray="3 2.5" Visibility="Collapsed" IsHitTestVisible="False"/>
+       <Border x:Name="Ring" CornerRadius="12" BorderThickness="2" BorderBrush="{StaticResource Accent}" Visibility="Collapsed" IsHitTestVisible="False"/>
+      </Grid>
+      <ControlTemplate.Triggers>
+       <Trigger Property="Tag" Value="free">
+        <Setter TargetName="Bd" Property="Background" Value="Transparent"/><Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/><Setter TargetName="Dash" Property="Visibility" Value="Visible"/>
+       </Trigger>
+       <DataTrigger Binding="{Binding AlertAlarming}" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource DangerLine}"/></DataTrigger>
+       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#FAFCFB"/></Trigger>
+       <Trigger Property="local:Ui.Current" Value="True"><Setter TargetName="Ring" Property="Visibility" Value="Visible"/></Trigger>
+      </ControlTemplate.Triggers>
+     </ControlTemplate>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <!-- Lista sin desplazamiento propio (la ficha ya desplaza): una rueda de raton sobre ella mueve la ficha. Filas con el estilo comun. -->
+  <Style x:Key="PlainList" TargetType="ListBox">
+   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="Focusable" Value="False"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+   <Setter Property="Template">
+    <Setter.Value>
+     <ControlTemplate TargetType="ListBox">
+      <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="8" Padding="4"><ItemsPresenter/></Border>
+     </ControlTemplate>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <!-- Pases: una fila gris por pase (numero, nombre, detalle y chip); el elegido, con borde de acento (servir, validar, omitir, elegir y
+       pedir plato actuan sobre el). -->
+  <Style x:Key="CourseList" TargetType="ListBox" BasedOn="{StaticResource PlainList}">
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ItemsPresenter/></ControlTemplate></Setter.Value></Setter>
+   <Setter Property="ItemContainerStyle">
+    <Setter.Value>
+     <Style TargetType="ListBoxItem">
+      <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+       <Setter.Value>
+        <ControlTemplate TargetType="ListBoxItem">
+         <Border x:Name="Bd" CornerRadius="10" Padding="10,7" Background="{StaticResource Surface2}" BorderBrush="Transparent" BorderThickness="1.5" SnapsToDevicePixels="True">
+          <ContentPresenter/>
+         </Border>
+         <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface}"/></Trigger>
+         </ControlTemplate.Triggers>
+        </ControlTemplate>
+       </Setter.Value>
+      </Setter>
+     </Style>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <!-- Restricciones: una pastilla por restriccion con su texto completo (se parte, nunca se corta); en rojo salvo una intolerancia o
+       preferencia moderada o leve. La elegida (borde de acento) es la que retira "Retirar la elegida". -->
+  <Style x:Key="RestrictionChips" TargetType="ListBox">
+   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="Focusable" Value="False"/>
+   <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></Setter.Value></Setter>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ItemsPresenter/></ControlTemplate></Setter.Value></Setter>
+   <Setter Property="ItemTemplate"><Setter.Value><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Setter.Value></Setter>
+   <Setter Property="ItemContainerStyle">
+    <Setter.Value>
+     <Style TargetType="ListBoxItem">
+      <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="12"/><Setter Property="Margin" Value="0,0,6,6"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+       <Setter.Value>
+        <ControlTemplate TargetType="ListBoxItem">
+         <Border x:Name="Bd" CornerRadius="10" Padding="9,3,10,4" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" SnapsToDevicePixels="True">
+          <ContentPresenter/>
+         </Border>
+         <ControlTemplate.Triggers>
+          <DataTrigger Binding="{Binding Alarming}" Value="True">
+           <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource DangerLine}"/><Setter Property="Foreground" Value="{StaticResource DangerText}"/><Setter Property="FontWeight" Value="SemiBold"/>
+          </DataTrigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Bd" Property="BorderThickness" Value="2"/><Setter TargetName="Bd" Property="Padding" Value="8,2,9,3"/></Trigger>
+         </ControlTemplate.Triggers>
+        </ControlTemplate>
+       </Setter.Value>
+      </Setter>
+     </Style>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <!-- Texto de un boton que puede partirse. Va en ContentTemplate (no como TextBlock hijo): asi hereda el color que la plantilla Fluent
+       pone segun el estado y un boton deshabilitado se ve gris (un hijo logico heredaria el blanco del boton de acento). -->
+  <DataTemplate x:Key="ButtonText"><TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/></DataTemplate>
+  <!-- Tarjeta de una mesa: nombre y tiempo; personas y oferta (o plazas si esta libre); estado con su palabra; avance de los pases con
+       su cifra; y el aviso de restricciones con su texto. -->
+  <DataTemplate x:Key="TileTemplate">
+   <Button Style="{StaticResource PlanTile}" Tag="{Binding Tone}" local:Ui.Current="{Binding IsSelected}" AutomationProperties.Name="{Binding Description}"
+           Command="{Binding DataContext.Service.PickTileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+    <StackPanel>
+     <DockPanel>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0" TextElement.Foreground="{StaticResource InkSoft}"
+                  Visibility="{Binding Elapsed, Converter={StaticResource Text2Vis}}">
+       <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconClock}"/>
+       <TextBlock Text="{Binding Elapsed}" FontSize="12" Margin="3,0,0,0" VerticalAlignment="Center"/>
+      </StackPanel>
+      <TextBlock Text="{Binding Name}" FontFamily="{StaticResource DisplayFont}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
      </DockPanel>
-     <WrapPanel>
-      <StackPanel Margin="0,0,8,0"><TextBlock Text="Comensal" Style="{StaticResource FieldLabel}"/>
-       <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" Width="64" ToolTip="Número de comensal; vacío = toda la mesa"/></StackPanel>
-      <StackPanel Margin="0,0,8,0"><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
-       <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}">
-        <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
-       </ComboBox></StackPanel>
-      <StackPanel Margin="0,0,8,0"><TextBlock Text="Sustancia o preferencia" Style="{StaticResource FieldLabel}"/>
-       <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}" Width="170"/></StackPanel>
-      <StackPanel Margin="0,0,8,0"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
-       <ComboBox Width="118" SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}">
-        <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
-       </ComboBox></StackPanel>
-      <Button Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}" VerticalAlignment="Bottom" Margin="0"/>
-     </WrapPanel>
-    </StackPanel>
-    <WrapPanel Grid.Row="2" Margin="0,2,0,2">
-     <Button Content="Iniciar servicio" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="start"/>
-     <Button Content="Enviar siguiente pase" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="fire-next"/>
-     <Button Content="Marcar servido" Command="{Binding Service.ActCommand}" CommandParameter="serve"/>
-     <Button Content="Pausar" Command="{Binding Service.ActCommand}" CommandParameter="pause"/>
-     <Button Content="Reanudar" Command="{Binding Service.ActCommand}" CommandParameter="resume"/>
-    </WrapPanel>
-    <DockPanel Grid.Row="3" Margin="0,4,0,8">
-     <!-- E4a: eleccion de plato por comensal en un pase de menu cerrado (solo si el servidor anuncia 'choose' en el pase) -->
-     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Margin="0,8,0,0" Visibility="{Binding Service.CanChoose, Converter={StaticResource Bool2Vis}}"><StackPanel>
-      <TextBlock Text="Menú cerrado: cada comensal elige su plato antes de enviar el pase" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding Service.ChoicesText}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,6"/>
-      <WrapPanel><TextBlock Text="Comensal" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.ChoiceGuest, UpdateSourceTrigger=PropertyChanged}" Width="52"/>
-       <ComboBox ItemsSource="{Binding Service.ChoiceDishes}" SelectedItem="{Binding Service.SelectedChoiceDish}" Width="220" Margin="8,0,8,0"/>
-       <Button Content="Elegir plato" Style="{StaticResource Primary}" Command="{Binding Service.ChooseCommand}"/></WrapPanel>
-     </StackPanel></Border>
-     <!-- E4b: pedir un plato de la carta en un grupo pendiente (solo si el servidor anuncia 'add-dish' en el pase) -->
-     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Margin="0,8,0,0" Visibility="{Binding Service.CanAddDish, Converter={StaticResource Bool2Vis}}"><StackPanel>
-      <TextBlock Text="Carta: pedir platos de este grupo (se apuntan en la cuenta al pedirlos)" FontWeight="SemiBold" Margin="0,0,0,6"/>
-      <WrapPanel><ComboBox ItemsSource="{Binding Service.DishItems}" SelectedItem="{Binding Service.SelectedDishItem}" Width="260"/>
-       <TextBlock Text="Comensal" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishGuest, UpdateSourceTrigger=PropertyChanged}" Width="52" ToolTip="Vacío = toda la mesa"/>
-       <TextBlock Text="Cantidad" VerticalAlignment="Center" Margin="8,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishQuantity, UpdateSourceTrigger=PropertyChanged}" Width="52" Margin="0,0,8,0"/>
-       <Button Content="Pedir plato" Style="{StaticResource Primary}" Command="{Binding Service.AddDishCommand}"/></WrapPanel>
-     </StackPanel></Border>
-     <DataGrid ItemsSource="{Binding Service.Courses}" SelectedItem="{Binding Service.SelectedCourse}"><DataGrid.Columns>
-      <DataGridTextColumn Header="Pase" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Estado" Binding="{Binding StateLabel}" Width="150"/>
-      <DataGridTextColumn Header="Servido" Binding="{Binding ServedAtLabel}" Width="100"/>
-     </DataGrid.Columns></DataGrid>
-    </DockPanel>
-    <!-- Cocina: dos lineas con su etiqueta a la izquierda (revision C1: "Revision" quedaba suelta al final de la primera). -->
-    <Grid Grid.Row="4" Visibility="{Binding IsKitchen, Converter={StaticResource Bool2Vis}}">
-     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <TextBlock Text="Cocina / pase" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0,0,12,0"/>
-     <WrapPanel Grid.Column="1">
-      <Button Content="Iniciar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
-      <Button Content="Elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
-      <Button Content="Validar pase listo" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="ready"/>
-     </WrapPanel>
-     <TextBlock Grid.Row="1" Text="Nota de revisión" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0,0,12,0"/>
-     <WrapPanel Grid.Row="1" Grid.Column="1">
-      <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="0,4,8,4" ToolTip="Obligatoria: qué se ha revisado o cambiado tras el cambio de restricciones"/>
-      <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected"/>
-      <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt"/>
-      <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake"/>
-     </WrapPanel>
-    </Grid>
-    <DataGrid Grid.Row="5" ItemsSource="{Binding Service.Preparations}" SelectedItem="{Binding Service.SelectedPreparation}" Margin="0,4,0,0" FontSize="13"><DataGrid.Columns>
-     <DataGridTextColumn Header="Preparación" Binding="{Binding Name}" Width="*" MinWidth="104" ElementStyle="{StaticResource WrapCell}"/><DataGridTextColumn Header="Estación" Binding="{Binding StationId}" Width="90"/>
-     <DataGridTextColumn Header="Comensal" Binding="{Binding GuestLabel}" Width="96" ElementStyle="{StaticResource WrapCell}"/><DataGridTextColumn Header="Estado" Binding="{Binding StateLabel}" Width="108" ElementStyle="{StaticResource WrapCell}"/>
-     <DataGridTextColumn Header="Restricciones" Binding="{Binding RestrictionsText}" Width="*" MinWidth="112" ElementStyle="{StaticResource WrapCell}"/>
-     <!-- Una revision pendiente es una senal de seguridad por plato: en rojo y seminegrita, ademas de su texto (nunca solo color). -->
-     <DataGridTextColumn Header="Revisión" Binding="{Binding ReviewText}" Width="130">
-      <DataGridTextColumn.ElementStyle>
-       <Style TargetType="TextBlock" BasedOn="{StaticResource WrapCell}">
-        <Style.Triggers><DataTrigger Binding="{Binding ReviewPending}" Value="True"><Setter Property="Foreground" Value="{StaticResource DangerText}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
+     <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource InkSoft}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+     <Border Style="{StaticResource ToneChip}" Tag="{Binding Tone}" HorizontalAlignment="Left" Margin="0,10,0,0"><TextBlock Text="{Binding StateLabel}" TextTrimming="CharacterEllipsis"/></Border>
+     <DockPanel Margin="0,10,0,0" Visibility="{Binding HasSteps, Converter={StaticResource Bool2Vis}}">
+      <TextBlock DockPanel.Dock="Right" Text="{Binding Progress}" FontSize="11" Foreground="{StaticResource InkSoft}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+      <ItemsControl ItemsSource="{Binding Steps}" VerticalAlignment="Center" Focusable="False">
+       <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+       <ItemsControl.ItemTemplate><DataTemplate><Border Style="{StaticResource StepBar}" Tag="{Binding}"/></DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </DockPanel>
+     <Border Margin="0,10,0,0" CornerRadius="6" Padding="6,2,8,3" HorizontalAlignment="Left" Visibility="{Binding HasAlert, Converter={StaticResource Bool2Vis}}">
+      <Border.Style>
+       <Style TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource WarnText}"/>
+        <Style.Triggers><DataTrigger Binding="{Binding AlertAlarming}" Value="True"><Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource DangerText}"/></DataTrigger></Style.Triggers>
        </Style>
-      </DataGridTextColumn.ElementStyle>
-     </DataGridTextColumn>
-    </DataGrid.Columns></DataGrid>
-    <StackPanel Grid.Row="6" Margin="0,10,0,0">
-     <TextBlock Text="Motivo (pausa, omisión o liberación)" Style="{StaticResource FieldLabel}"/>
-     <TextBox Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" ToolTip="Motivo para pausa, omisión o liberación"/>
-     <WrapPanel Margin="0,2,0,0"><Button Content="Omitir pase con motivo" Command="{Binding Service.ActCommand}" CommandParameter="skip"/>
-      <Button Content="Terminar servicio" Command="{Binding Service.ActCommand}" CommandParameter="complete"/>
-      <Button Content="Liberar mesa" Style="{StaticResource DangerButton}" Command="{Binding Service.ReleaseCommand}"/></WrapPanel>
+      </Border.Style>
+      <StackPanel Orientation="Horizontal">
+       <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconAlert}"/>
+       <TextBlock Text="{Binding Alert}" FontSize="12" FontWeight="SemiBold" Margin="4,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+      </StackPanel>
+     </Border>
     </StackPanel>
+   </Button>
+  </DataTemplate>
+ </UserControl.Resources>
+
+ <Grid>
+  <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="400"/></Grid.ColumnDefinitions>
+
+  <!-- ===== Plano: cabecera de pagina, salas, filtros y tarjetas por sala ===== -->
+  <DockPanel Grid.Column="0">
+   <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+    <Button x:Name="StartOpenButton" DockPanel.Dock="Right" Style="{StaticResource Primary}" Command="{Binding Service.StartOpenCommand}" MinHeight="38" Padding="12,0,16,0" Margin="12,0,0,0"
+            VerticalAlignment="Center" Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}" ToolTip="Abrir una mesa: mesa, oferta y personas" Content="Abrir mesa">
+     <Button.ContentTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource Icon}" Data="{StaticResource IconPlus}" Margin="0,0,6,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate></Button.ContentTemplate>
+    </Button>
+    <StackPanel>
+     <TextBlock Text="Comedor y cocina" Style="{StaticResource PageTitle}"/>
+     <TextBlock x:Name="FloorSummaryText" Text="{Binding Service.FloorSummary}" Style="{StaticResource Body}" Margin="0,2,0,0" Visibility="{Binding Service.FloorSummary, Converter={StaticResource Text2Vis}}"/>
+    </StackPanel>
+   </DockPanel>
+   <ListBox x:Name="ZoneTabList" DockPanel.Dock="Top" Style="{StaticResource Segmented}" Margin="0,0,0,10" AutomationProperties.Name="Salas"
+            ItemsSource="{Binding Service.ZoneTabs}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Service.SelectedZone}"
+            Visibility="{Binding Service.HasZoneTabs, Converter={StaticResource Bool2Vis}}"/>
+   <ListBox x:Name="FilterList" DockPanel.Dock="Top" Style="{StaticResource FilterChips}" Margin="0,0,0,8" AutomationProperties.Name="Filtros"
+            ItemsSource="{Binding Service.Filters}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Service.Filter}"/>
+   <TextBlock DockPanel.Dock="Top" Text="{Binding Service.FloorEmpty}" Style="{StaticResource Body}" Margin="0,8,0,0" Visibility="{Binding Service.FloorEmpty, Converter={StaticResource Text2Vis}}"/>
+   <ScrollViewer x:Name="FloorScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" SizeChanged="FloorSizeChanged" Focusable="False">
+    <ItemsControl x:Name="FloorPlan" ItemsSource="{Binding Service.Groups}" Focusable="False">
+     <ItemsControl.ItemTemplate>
+      <DataTemplate>
+       <StackPanel Margin="0,2,0,6">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15"/>
+         <TextBlock Text="{Binding Summary}" Style="{StaticResource Subtle}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ItemsControl ItemsSource="{Binding Tiles}" ItemTemplate="{StaticResource TileTemplate}" Margin="0,0,-10,0" Focusable="False">
+         <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel ItemWidth="{Binding TileWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"/></ItemsPanelTemplate>
+         </ItemsControl.ItemsPanel>
+        </ItemsControl>
+       </StackPanel>
+      </DataTemplate>
+     </ItemsControl.ItemTemplate>
+    </ItemsControl>
+   </ScrollViewer>
+  </DockPanel>
+
+  <!-- ===== Ficha de la mesa elegida ===== -->
+  <Border x:Name="TablePanel" Grid.Column="2" Style="{StaticResource Card}" Padding="18,16">
+   <Grid>
+    <!-- Nada elegido -->
+    <StackPanel x:Name="EmptyPanel" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="280" Visibility="{Binding Service.ShowEmpty, Converter={StaticResource Bool2Vis}}">
+     <Border Style="{StaticResource IconBox}" HorizontalAlignment="Center"><Path Style="{StaticResource Icon}" Data="{StaticResource IconDining}" HorizontalAlignment="Center"/></Border>
+     <TextBlock Text="{Binding Service.EmptyText}" Style="{StaticResource Body}" TextAlignment="Center" Margin="0,12,0,0"/>
+    </StackPanel>
+
+    <!-- Abrir mesa: la mesa libre elegida en el plano (o la que proponga "Abrir mesa"), su oferta y las personas -->
+    <DockPanel x:Name="OpenPanel" Visibility="{Binding Service.ShowOpen, Converter={StaticResource Bool2Vis}}">
+     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+      <TextBlock Text="{Binding Service.OpenInfo}" Style="{StaticResource Body}"/>
+      <WrapPanel Margin="0,2,0,0">
+       <TextBlock Text="{Binding Service.OpenTitle}" Style="{StaticResource PanelTitle}" FontSize="22" Margin="0,0,10,0"/>
+       <Border Style="{StaticResource ToneChip}" Tag="{Binding Service.OpenTone}" Margin="0,5,0,0" VerticalAlignment="Top"><TextBlock Text="{Binding Service.OpenState}"/></Border>
+      </WrapPanel>
+     </StackPanel>
+     <StackPanel Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
+      <TextBlock Text="Mesa" Style="{StaticResource FieldLabel}"/>
+      <ComboBox x:Name="OpenTableBox" ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" HorizontalAlignment="Stretch" Margin="0,0,0,12"/>
+      <TextBlock Text="Oferta" Style="{StaticResource FieldLabel}"/>
+      <ComboBox x:Name="OpenOfferBox" ItemsSource="{Binding Service.Offers}" SelectedItem="{Binding Service.SelectedOffer}" HorizontalAlignment="Stretch" Margin="0,0,0,12" ToolTip="Oferta vigente: degustación, menú cerrado o carta"/>
+      <TextBlock Text="Personas" Style="{StaticResource FieldLabel}"/>
+      <TextBox x:Name="OpenPaxBox" Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="96" HorizontalAlignment="Left" Margin="0,0,0,14"/>
+      <ContentControl Style="{StaticResource WarnBar}" Margin="0,0,0,10" Visibility="{Binding Service.OpenWarning, Converter={StaticResource Text2Vis}}">
+       <TextBlock Text="{Binding Service.OpenWarning}" TextWrapping="Wrap"/>
+      </ContentControl>
+      <Button x:Name="OpenTableButton" Style="{StaticResource Primary}" Command="{Binding Service.OpenCommand}" MinHeight="46" FontSize="15" Margin="0" HorizontalAlignment="Stretch"
+              Content="{Binding Service.OpenButtonText}" ContentTemplate="{StaticResource ButtonText}"/>
+      <TextBlock Text="La mesa se abre con la oferta elegida; sus pases y su cuenta los lleva el servidor." Style="{StaticResource Subtle}" Margin="0,10,0,0"/>
+      <Button Style="{StaticResource Ghost}" Content="{Binding Service.BackText}" Command="{Binding Service.CancelOpenCommand}" HorizontalAlignment="Left" Margin="-8,8,0,0"
+              Visibility="{Binding Service.BackText, Converter={StaticResource Text2Vis}}"/>
+     </StackPanel>
+     <TextBlock Text="Este acceso no abre mesas." Style="{StaticResource Body}" Visibility="{Binding CanOpen, Converter={StaticResource NotBool2Vis}}"/>
+    </DockPanel>
+
+    <!-- Detalle de la mesa ocupada elegida -->
+    <DockPanel x:Name="TableDetail" Visibility="{Binding Service.ShowDetail, Converter={StaticResource Bool2Vis}}">
+     <!-- Cabecera: sala y oferta (con "Ver cuenta" a su altura), mesa con su estado, y personas y tiempo a todo lo ancho. -->
+     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <TextBlock Text="{Binding Service.DetailZoneOffer}" Style="{StaticResource Body}" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+      <Button x:Name="ViewAccountButton" Grid.Column="1" Style="{StaticResource BarButton}" Margin="8,0,0,0" Command="{Binding Service.ViewAccountCommand}" Content="Ver cuenta"
+              ToolTip="Abre la cuenta de esta mesa en Cuenta / Caja (apartado del responsable)">
+       <Button.ContentTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconLock}" Margin="0,0,6,0"/><TextBlock Text="{Binding}"/></StackPanel></DataTemplate></Button.ContentTemplate>
+      </Button>
+      <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,2,0,0">
+       <TextBlock x:Name="DetailTitleText" Text="{Binding Service.DetailTitle}" Style="{StaticResource PanelTitle}" FontSize="22" Margin="0,0,10,0"/>
+       <Border Style="{StaticResource ToneChip}" Tag="{Binding Service.DetailTone}" Margin="0,5,0,0" VerticalAlignment="Top" Visibility="{Binding Service.DetailState, Converter={StaticResource Text2Vis}}">
+        <TextBlock Text="{Binding Service.DetailState}"/>
+       </Border>
+      </WrapPanel>
+      <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Service.DetailInfo}" Style="{StaticResource Body}" Margin="0,2,0,0"/>
+     </Grid>
+
+     <!-- Acciones, siempre a la vista: la grande es la mas relevante de las anunciadas; debajo, las demas anunciadas. -->
+     <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,12,0,0" Visibility="{Binding Service.HasContext, Converter={StaticResource Bool2Vis}}">
+     <StackPanel x:Name="ActionArea">
+      <DockPanel Margin="0,0,0,10" Visibility="{Binding Service.ReasonNeeded, Converter={StaticResource Bool2Vis}}"
+                 ToolTip="Obligatorio para pausar, omitir un pase, cancelar la mesa, retirar una restricción o liberar la mesa">
+       <TextBlock Text="Motivo" Style="{StaticResource FieldLabel}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+       <TextBox x:Name="ReasonBox" Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Motivo (pausa, omisión, cancelación, retirada o liberación)"/>
+      </DockPanel>
+      <Button x:Name="PrimaryActionButton" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="{Binding Service.PrimaryAction}"
+              MinHeight="46" FontSize="15" Margin="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Content="{Binding Service.PrimaryText}" ContentTemplate="{StaticResource ButtonText}"/>
+      <ItemsControl x:Name="SecondaryActionList" ItemsSource="{Binding Service.SecondaryActions}" Margin="0,8,-8,-8" Focusable="False">
+       <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+       <ItemsControl.ItemTemplate>
+        <DataTemplate>
+         <Grid>
+          <Button Command="{Binding DataContext.Service.ActCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding Action}" Margin="0,0,8,8"
+                  HorizontalAlignment="Stretch" FontSize="13" Content="{Binding Text}" ContentTemplate="{StaticResource ButtonText}" Visibility="{Binding Danger, Converter={StaticResource NotBool2Vis}}"/>
+          <Button Style="{StaticResource DangerButton}" Command="{Binding DataContext.Service.ActCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding Action}"
+                  Margin="0,0,8,8" HorizontalAlignment="Stretch" FontSize="13" Content="{Binding Text}" ContentTemplate="{StaticResource ButtonText}" Visibility="{Binding Danger, Converter={StaticResource Bool2Vis}}"/>
+         </Grid>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </StackPanel>
+     </Border>
+
+     <!-- Lectura en curso o fallida: nada de otra mesa queda a la vista ni accionable. -->
+     <TextBlock DockPanel.Dock="Top" Text="{Binding Service.ServiceTitle}" Style="{StaticResource Body}" Visibility="{Binding Service.HasContext, Converter={StaticResource NotBool2Vis}}"/>
+
+     <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Padding="0,0,12,0" Margin="0,0,-8,0"
+                   Visibility="{Binding Service.HasContext, Converter={StaticResource Bool2Vis}}">
+      <StackPanel>
+       <!-- Restricciones (flujo de alergias): rojo con texto cuando hay algo que vigilar; cada restriccion entera, y la declaracion con sus
+            campos etiquetados. -->
+       <Border x:Name="RestrictionsBlock" CornerRadius="12" Padding="12" BorderThickness="1" Margin="0,0,0,14">
+        <Border.Style>
+         <Style TargetType="Border">
+          <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/>
+          <Style.Triggers>
+           <DataTrigger Binding="{Binding Service.RestrictionsAlarming}" Value="True">
+            <Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="BorderBrush" Value="{StaticResource DangerLine}"/><Setter Property="TextElement.Foreground" Value="{StaticResource DangerText}"/>
+           </DataTrigger>
+          </Style.Triggers>
+         </Style>
+        </Border.Style>
+        <StackPanel>
+         <StackPanel Orientation="Horizontal">
+          <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconAlert}"/>
+          <TextBlock Text="{Binding Service.RestrictionsTitle}" FontWeight="SemiBold" FontSize="13" Margin="6,0,0,0" VerticalAlignment="Center"/>
+         </StackPanel>
+         <ListBox x:Name="RestrictionList" Style="{StaticResource RestrictionChips}" ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" Margin="0,10,0,0"
+                  Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}"/>
+         <TextBlock Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}"
+                    Text="SIN REVISAR POR COCINA: cada elaboración «Pendiente de revisión» necesita su decisión (no afecta, adaptar o rehacer) antes de validar, servir o enviar otro pase."/>
+         <!-- Declarar abre el formulario debajo; retirar actua sobre la pastilla elegida, con el motivo de abajo. -->
+         <WrapPanel Margin="0,10,0,0">
+          <ToggleButton x:Name="DeclareToggle" Content="Declarar una restricción" MinHeight="28" Padding="10,2,10,3" FontSize="12" Margin="0,0,8,0"/>
+          <Button Style="{StaticResource DangerButton}" Content="Retirar la elegida" Command="{Binding Service.RemoveRestrictionCommand}" Margin="0" MinHeight="28" Padding="10,2,10,3" FontSize="12"
+                  Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}" ToolTip="Retira la restricción elegida; el motivo va abajo, en «Motivo»"/>
+         </WrapPanel>
+         <Border x:Name="DeclarePanel" Margin="0,10,0,0" Visibility="{Binding IsChecked, ElementName=DeclareToggle, Converter={StaticResource Bool2Vis}}" TextElement.Foreground="{StaticResource Ink}">
+          <StackPanel>
+           <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="Comensal" Style="{StaticResource FieldLabel}"/>
+             <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" ToolTip="Número de comensal; vacío = toda la mesa"/></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock Text="Sustancia o preferencia" Style="{StaticResource FieldLabel}"/>
+             <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+           </Grid>
+           <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
+             <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}" HorizontalAlignment="Stretch">
+              <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
+             </ComboBox></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
+             <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}" HorizontalAlignment="Stretch">
+              <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
+             </ComboBox></StackPanel>
+            <Button Grid.Column="3" Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
+           </Grid>
+          </StackPanel>
+         </Border>
+        </StackPanel>
+       </Border>
+
+       <!-- Pases: numero, nombre, detalle y estado (Labels.Course con las personas: "Falta elegir plato" exacto). -->
+       <TextBlock Text="{Binding Service.CoursesTitle}" Style="{StaticResource Section}"/>
+       <ListBox x:Name="CourseList" Style="{StaticResource CourseList}" ItemsSource="{Binding Service.CourseRows}" SelectedValuePath="Course" SelectedValue="{Binding Service.SelectedCourse}">
+        <ListBox.ItemTemplate>
+         <DataTemplate>
+          <DockPanel>
+           <Border DockPanel.Dock="Left" Style="{StaticResource StepDot}" Tag="{Binding Tone}" Margin="0,0,10,0"><TextBlock Text="{Binding Number}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+           <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Tag="{Binding Tone}" Margin="8,0,0,0" MaxWidth="150"><TextBlock Text="{Binding State}" TextWrapping="Wrap"/></Border>
+           <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding Course.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Detail}" Style="{StaticResource Subtle}" Visibility="{Binding Detail, Converter={StaticResource Text2Vis}}"/>
+           </StackPanel>
+          </DockPanel>
+         </DataTemplate>
+        </ListBox.ItemTemplate>
+       </ListBox>
+
+       <!-- E4a: eleccion de plato por comensal en un pase de menu cerrado (solo si el servidor anuncia 'choose' en el pase elegido) -->
+       <Border Style="{StaticResource FormPanel}" Margin="0,4,0,6" Visibility="{Binding Service.CanChoose, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="Menú cerrado: cada comensal elige su plato antes de enviar el pase" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding Service.ChoicesText}" Style="{StaticResource Subtle}" Margin="0,2,0,8"/>
+        <ComboBox ItemsSource="{Binding Service.ChoiceDishes}" SelectedItem="{Binding Service.SelectedChoiceDish}" HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+        <DockPanel><Button DockPanel.Dock="Right" Content="Elegir plato" Style="{StaticResource Primary}" Command="{Binding Service.ChooseCommand}" Margin="0"/>
+         <StackPanel Orientation="Horizontal"><TextBlock Text="Comensal" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.ChoiceGuest, UpdateSourceTrigger=PropertyChanged}" Width="56"/></StackPanel></DockPanel>
+       </StackPanel></Border>
+       <!-- E4b: pedir un plato de la carta en un grupo pendiente (solo si el servidor anuncia 'add-dish' en el pase elegido) -->
+       <Border Style="{StaticResource FormPanel}" Margin="0,4,0,6" Visibility="{Binding Service.CanAddDish, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="Carta: pedir platos de este grupo (se apuntan en la cuenta al pedirlos)" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,8"/>
+        <ComboBox ItemsSource="{Binding Service.DishItems}" SelectedItem="{Binding Service.SelectedDishItem}" HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+        <DockPanel><Button DockPanel.Dock="Right" Content="Pedir plato" Style="{StaticResource Primary}" Command="{Binding Service.AddDishCommand}" Margin="0"/>
+         <StackPanel Orientation="Horizontal">
+          <TextBlock Text="Comensal" VerticalAlignment="Center" Margin="0,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishGuest, UpdateSourceTrigger=PropertyChanged}" Width="52" ToolTip="Vacío = toda la mesa"/>
+          <TextBlock Text="Cantidad" VerticalAlignment="Center" Margin="10,0,6,0" Style="{StaticResource Subtle}"/><TextBox Text="{Binding Service.DishQuantity, UpdateSourceTrigger=PropertyChanged}" Width="52"/>
+         </StackPanel></DockPanel>
+       </StackPanel></Border>
+
+       <!-- Elaboraciones del pase elegido: estacion por su NOMBRE (configuration.stations), comensal, estado, restricciones y revision. -->
+       <StackPanel Margin="0,8,0,0" Visibility="{Binding Service.HasPreparations, Converter={StaticResource Bool2Vis}}">
+        <TextBlock Text="{Binding Service.PreparationsTitle}" Style="{StaticResource Section}"/>
+        <ListBox x:Name="PreparationList" Style="{StaticResource PlainList}" ItemsSource="{Binding Service.PreparationRows}" SelectedValuePath="Preparation" SelectedValue="{Binding Service.SelectedPreparation}">
+         <ListBox.ItemTemplate>
+          <DataTemplate>
+           <StackPanel>
+            <DockPanel>
+             <Border DockPanel.Dock="Right" Style="{StaticResource StateChip}" Margin="8,1,0,0"><TextBlock Text="{Binding Preparation.StateLabel}"/></Border>
+             <TextBlock Text="{Binding Preparation.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            </DockPanel>
+            <TextBlock Text="{Binding Line}" FontSize="12" Foreground="{StaticResource InkSoft}" TextWrapping="Wrap" FontWeight="Normal"/>
+            <TextBlock Text="{Binding Preparation.RestrictionsText}" FontSize="12" Foreground="{StaticResource DangerText}" TextWrapping="Wrap" FontWeight="Normal" Margin="0,2,0,0"
+                       Visibility="{Binding Preparation.RestrictionsText, Converter={StaticResource Text2Vis}}"/>
+            <!-- Una revision pendiente es una senal de seguridad por plato: en rojo y seminegrita, ademas de su texto (nunca solo color). -->
+            <TextBlock Text="{Binding Preparation.ReviewText}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="{Binding Preparation.ReviewText, Converter={StaticResource Text2Vis}}">
+             <TextBlock.Style>
+              <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="FontWeight" Value="Normal"/>
+               <Style.Triggers><DataTrigger Binding="{Binding Preparation.ReviewPending}" Value="True"><Setter Property="Foreground" Value="{StaticResource DangerText}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
+              </Style>
+             </TextBlock.Style>
+            </TextBlock>
+           </StackPanel>
+          </DataTemplate>
+         </ListBox.ItemTemplate>
+        </ListBox>
+       </StackPanel>
+
+       <!-- Cocina y pase: lo que el servidor anuncia sobre la elaboracion elegida (solo cocina o responsable lo reciben). -->
+       <WrapPanel Margin="0,6,0,0" Visibility="{Binding Service.PreparationActionsAnnounced, Converter={StaticResource Bool2Vis}}">
+        <Button Content="Empezar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
+        <Button Content="Marcar elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
+       </WrapPanel>
+       <Border Style="{StaticResource FormPanel}" Margin="0,6,0,0" Visibility="{Binding Service.ReviewAnnounced, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="Revisión de cocina de la elaboración elegida" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="Nota de revisión (obligatoria)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+        <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" ToolTip="Obligatoria: qué se ha revisado o cambiado tras el cambio de restricciones"/>
+        <UniformGrid Columns="3" Margin="0,6,-8,0">
+         <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected" HorizontalAlignment="Stretch"/>
+         <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt" HorizontalAlignment="Stretch"/>
+         <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake" HorizontalAlignment="Stretch"/>
+        </UniformGrid>
+       </StackPanel></Border>
+       <TextBlock Text="Seguimiento operativo: sin precios, cuenta ni pagos." Style="{StaticResource Subtle}" Margin="0,12,0,0"/>
+      </StackPanel>
+     </ScrollViewer>
+    </DockPanel>
    </Grid>
   </Border>
  </Grid>

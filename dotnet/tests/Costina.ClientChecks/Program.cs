@@ -440,6 +440,7 @@ var vocabulary=new (string Family,string[] Codes,Func<string,string> Label)[]{
     ("rol de dispositivo",["service","kitchen","main"],Labels.DeviceRole),
     ("rol de sesion",["main","service","kitchen"],Labels.SessionRole),
     ("tiempo real",["connected","reconnecting","closed","unavailable","inactive"],Labels.Realtime),
+    ("estado de mesa (plano)",[FloorPlan.Free,FloorPlan.Seated,FloorPlan.Kitchen,FloorPlan.Ready,FloorPlan.Eating,FloorPlan.Paused,FloorPlan.Finished,FloorPlan.Cancelled],Labels.TableState),
     ("accion",actions,Labels.Action),
     ("vista",["HomeTab","ServiceTab","CheckoutTab","CatalogTab","OffersTab","OrganizationTab","DevicesTab"],Labels.View)};
 foreach(var (family,codes,label) in vocabulary)
@@ -464,6 +465,8 @@ await Check("vocabulary: the exact words of the plan table",()=>{
     Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Pantalla de cocina","rol");
     Expect(string.Join("|",new[]{"connected","reconnecting","closed"}.Select(Labels.Realtime))=="Tiempo real activo|Reconectando…|Sin tiempo real, reintentando","tiempo real");
     Expect(Labels.Guest(null)=="Toda la mesa"&&Labels.Guest(3)=="Comensal 3","comensal");
+    Expect(string.Join("|",new[]{"free","seated","kitchen","ready","eating","paused","finished","cancelled"}.Select(Labels.TableState))
+        =="Libre|Sentados|En cocina|Listo para servir|Comiendo|En pausa|Terminado, por liberar|Cancelado, por liberar","estado de mesa");
     Expect(Labels.Presence(true,null)=="Conectado"&&Labels.Presence(false,null)=="Sin conexión","presencia");
     var removedAt=new DateTimeOffset(2026,10,14,21,30,0,TimeSpan.Zero);
     Expect(Labels.Presence(true,removedAt)=="Quitado el "+removedAt.ToLocalTime().ToString("dd/MM HH:mm",System.Globalization.CultureInfo.InvariantCulture),"quitado, en hora local");
@@ -529,6 +532,42 @@ await Check("vocabulary: actors without prefixes, plurals, active and names with
     Expect(names.Table("M1")=="Mesa 1"&&names.Table("M9")=="M9"&&names.Station("cold")=="Cocina fría"&&names.Station("hot")=="hot"&&Names.Empty.Table(null)=="","names");
     Expect(new AccountChoice("s1","M1","Open").StateLabel=="Abierta"&&new OfferChoice("c","Carta de ensayo","a-la-carte",[]).ToString()=="Carta de ensayo · Carta","account and offer choices");
     Expect(new BoardEntry(1,new DiningDto("s1","M1",1,"InService",[]),new OccupancyDto("o1","M1","s1","Occupied",null),1).ToString()=="M1 · 1 persona · En servicio","board entry fallback");
+    return Task.CompletedTask;});
+// C2: plano del comedor. El estado de la tarjeta, su tiempo, el avance de los pases y el aviso de restricciones salen SOLO de lo
+// leido (presentacion); un estado o un tipo de restriccion desconocidos salen tal cual y nunca se rebajan.
+await Check("floor plan: tile state, time, progress and alert come from the read data, unknown values raw",()=>{
+    var now=new DateTimeOffset(2026,10,15,20,40,0,TimeSpan.Zero);
+    CourseDto C(string state,int? fired=null,int? ready=null,int? served=null,PreparationDto[]? preps=null,bool choice=false,bool optional=false)
+        =>new("c-"+state,state,state,fired is {} f?now.AddMinutes(-f):null,ready is {} r?now.AddMinutes(-r):null,served is {} s?now.AddMinutes(-s):null,null,preps??[],null,choice,optional);
+    DiningDto D(string state,params CourseDto[] courses)=>new("s1","M1",4,state,courses);
+    Expect(FloorPlan.State(null)=="free"&&Labels.TableState(FloorPlan.State(null))=="Libre","free");
+    Expect(FloorPlan.State(D("Open",C("Pending")))=="seated"&&FloorPlan.State(D("InService",C("Pending"),C("Pending")))=="seated","seated: open, or running with nothing sent yet");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Fired",12),C("Pending")))=="kitchen","in the kitchen");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Ready",12,3)))=="ready","ready beats the rest");
+    Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Skipped"),C("Pending")))=="eating","eating between courses");
+    Expect(FloorPlan.State(D("Paused",C("Ready",12,3)))=="paused"&&FloorPlan.State(D("Completed",C("Served")))=="finished"&&FloorPlan.State(D("Cancelled",C("Pending")))=="cancelled","paused, finished, cancelled");
+    Expect(FloorPlan.State(D("Closing"))=="Closing"&&Labels.TableState("Closing")=="Closing","an unknown service state is shown raw");
+    Expect(FloorPlan.State(D("InService",C("Plating",5)))=="Plating","an unknown course state is shown raw, never softened to 'Comiendo'");
+    Expect(FloorPlan.Since(D("InService",C("Served",30,25,20),C("Fired",12)))==now.AddMinutes(-12)&&FloorPlan.Since(D("InService",C("Ready",12,3)))==now.AddMinutes(-3)
+        &&FloorPlan.Since(D("InService",C("Served",40,35,30),C("Served",20,15,8),C("Pending")))==now.AddMinutes(-8)&&FloorPlan.Since(D("Open",C("Pending"))) is null,"time of the state shown (never invented)");
+    Expect(Labels.Minutes(TimeSpan.FromMinutes(12.7))=="12 min"&&Labels.Minutes(TimeSpan.FromMinutes(65))=="1 h 05 min"&&Labels.Minutes(TimeSpan.FromMinutes(-2))=="0 min","minutes");
+    var running=D("InService",C("Served",30,25,20),C("Skipped"),C("Ready",12,3),C("Fired",2),C("Pending"));
+    Expect(string.Join(",",FloorPlan.Steps(running))=="done,done,ready,kitchen,pending"&&FloorPlan.Done(running)==2&&FloorPlan.Steps(null).Length==0,"course progress");
+    GuestRestrictionDto allergy=new("r1",2,"Allergy","frutos secos","Severe"),mild=new("r2",3,"Intolerance","lactosa","Mild"),odd=new("r3",1,"Anaphylaxis","cacahuete","Critical"),
+        severeIntolerance=new("r4",null,"Intolerance","gluten","Severe"),oddSeverity=new("r5",null,"Preference","picante","Extreme");
+    Expect(FloorPlan.Alert(D("InService"))==""&&!FloorPlan.AlertIsAlarming(D("InService")),"no restrictions, no alert");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild,allergy]})=="Alergia"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild,allergy]}),"an allergy is named");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild]})=="Restricción"&&!FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild]}),"a mild intolerance is a plain restriction");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[odd]})=="Restricción"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[odd]})&&odd.Alarming,"an unknown kind is never softened");
+    Expect(severeIntolerance.Alarming&&oddSeverity.Alarming&&!mild.Alarming&&allergy.Alarming,"severe or unknown severity is alarming");
+    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia · por revisar"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild],RestrictionsPendingAck=true})
+        &&FloorPlan.Alert(D("InService") with {RestrictionsPendingAck=true})=="Restricción · por revisar","a change kitchen has not reviewed is said");
+    var ready=new PreparationDto("p1","Merluza","hot",1,1,true,"Ready"); var fired=new PreparationDto("p2","Merluza","hot",1,2,true,"Fired");
+    Expect(FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2)=="En cocina desde las "+Labels.Clock(now.AddMinutes(-12))+" · 1 de 2 elaboraciones listas","kitchen detail: "+FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2));
+    Expect(FloorPlan.CourseDetail(C("Served",30,25,20),2)=="Servido a las "+Labels.Clock(now.AddMinutes(-20))&&FloorPlan.CourseDetail(C("Ready",12,3),2)=="Listo desde las "+Labels.Clock(now.AddMinutes(-3)),"served and ready");
+    Expect(FloorPlan.CourseDetail(C("Pending",preps:[ready],choice:true),4)=="Han elegido 1 de 4 personas"&&FloorPlan.CourseDetail(C("Pending",optional:true),2)=="Se piden platos de la carta"
+        &&FloorPlan.CourseDetail(C("Pending",preps:[ready,fired],optional:true),2)=="2 platos pedidos"&&FloorPlan.CourseDetail(C("Pending",preps:[ready]),2)=="1 elaboración","pending detail");
+    Expect(FloorPlan.CourseDetail(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]),2)=="Motivo: sin hambre"&&FloorPlan.CourseDetail(C("Plating"),2)=="","skipped and unknown");
     return Task.CompletedTask;});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));

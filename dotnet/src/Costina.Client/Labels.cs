@@ -43,6 +43,10 @@ public static class Labels
     private static readonly Vocabulary Severities = new(("Severe", "grave"), ("Moderate", "moderada"), ("Mild", "leve"));
     // Decision de cocina tras un cambio de restricciones (D3.5): la lectura (Unaffected...) y la orden (unaffected...) dan lo mismo.
     private static readonly Vocabulary Reviews = new(("Unaffected", "no afecta"), ("Adapt", "adaptada"), ("Remake", "rehecha"));
+    // C2: estado de una mesa en el plano del comedor (codigos de FloorPlan.State). Solo presentacion: nunca habilita nada.
+    private static readonly Vocabulary TableStates = new(("free", "Libre"), ("seated", "Sentados"), ("kitchen", "En cocina"),
+        ("ready", "Listo para servir"), ("eating", "Comiendo"), ("paused", "En pausa"), ("finished", "Terminado, por liberar"),
+        ("cancelled", "Cancelado, por liberar"));
     private static readonly Vocabulary RealtimeStates = new(("connected", "Tiempo real activo"), ("reconnecting", "Reconectando…"),
         ("closed", "Sin tiempo real, reintentando"), ("unavailable", "Tiempo real no disponible"), ("inactive", "Tiempo real inactivo"));
     // Acciones que anuncia el servidor (affordances) y que el puesto envia como orden: textos de los avisos y de la orden pendiente.
@@ -179,7 +183,17 @@ public static class Labels
     public static string RestrictionKind(string kind) => RestrictionKinds[kind];
     public static string Severity(string severity) => Severities[severity];
     public static string Review(string decision) => Reviews[decision];
+    public static string TableState(string state) => TableStates[state];
     public static string Realtime(string state) => RealtimeStates[state];
+    // C2: hora local del puesto (el servidor sella en UTC) y minutos transcurridos ("12 min", "1 h 05 min"; nunca negativos si el
+    // reloj del PC va por detras del servidor).
+    public static string Clock(DateTimeOffset at) => at.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+    public static string Minutes(TimeSpan elapsed)
+    {
+        var minutes = Math.Max(0, (int)elapsed.TotalMinutes);
+        return minutes < 60 ? minutes.ToString(CultureInfo.InvariantCulture) + " min"
+            : (minutes / 60).ToString(CultureInfo.InvariantCulture) + " h " + (minutes % 60).ToString("00", CultureInfo.InvariantCulture) + " min";
+    }
     public static string Action(string action) => Actions[action];
     public static string View(string view) => Views[view];
     public static string Rejection(string code)

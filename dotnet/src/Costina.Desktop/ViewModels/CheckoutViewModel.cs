@@ -48,6 +48,9 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         AccountState = $"Estado: {a.StateLabel} · {a.CoverageLabel}. {Labels.Plural(a.Payments.Length, "pago", "pagos")} y {Labels.Plural(a.Refunds?.Length ?? 0, "devolución", "devoluciones")} de prueba. Cerrar la cuenta no termina el servicio."
             + (a.State == "Closed" ? " CUENTA CERRADA: para admitir cambios, reábrela con motivo desde este puesto." : "");
     }
+    // C2: "Ver cuenta" desde la ficha de una mesa del comedor: la proxima lectura de Caja elige la cuenta de ese servicio (si el servidor
+    // la lista; si no, la primera, como siempre). Solo fija el destino: el contexto de las ordenes sigue siendo la cuenta leida.
+    internal void Request(string serviceId) => accountServiceId = serviceId;
     // Para las ordenes pendientes: "cuenta de Mesa 1" (Context garantiza que la cuenta seleccionada es la leida).
     private string Where() => "cuenta de " + shell.Names.Table(SelectedAccount?.TableId);
 

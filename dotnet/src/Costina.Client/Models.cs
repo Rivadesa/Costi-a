@@ -110,6 +110,8 @@ public sealed record GuestRestrictionDto(string Id, int? GuestPosition, string K
     public string KindLabel => Labels.RestrictionKind(Kind);
     public string SeverityLabel => Labels.Severity(Severity);
     public string GuestLabel => Labels.Guest(GuestPosition);
+    // C2: la ficha la pinta en rojo salvo que sea, con seguridad, una intolerancia o preferencia moderada o leve (el texto va siempre).
+    public bool Alarming => FloorPlan.Alarming(this);
     public override string ToString() => $"{GuestLabel} · {KindLabel} {Substance} ({SeverityLabel})";
 }
 // Decision de cocina sobre una elaboracion tras un cambio de restriccion (D3.5): siempre con texto.

@@ -252,7 +252,9 @@ public sealed partial class ShellViewModel : ObservableObject
     internal async Task RefreshAll()
     {
         if (Home.Visible) await Home.LoadAsync();
-        if (HasDining) await Service.LoadAsync();
+        // C2: la configuracion (mesas activas, ofertas vigentes, estaciones) se relee con el tablero: una mesa creada en Configuracion
+        // aparece en el plano sin reconectar y la oferta de la comida deja paso a la de la cena.
+        if (HasDining) { Service.ApplyConfiguration(await Api!.GetAsync<Configuration>("configuration")); await Service.LoadAsync(); }
         if (IsMain && Checkout.Visible) await Checkout.LoadAsync();
         if (IsMain && Devices.Visible) await Devices.LoadAsync();
         if (IsMain && Organization.Visible) await Organization.LoadAsync();
