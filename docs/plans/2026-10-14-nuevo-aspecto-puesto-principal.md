@@ -1,4 +1,4 @@
-# Plan: nuevo aspecto del puesto principal (cortes C1 y C2; C3 para comanderos y cocina)
+# Plan: nuevo aspecto del puesto principal (cortes C1, C2 y C2b; C3 para comanderos y cocina)
 
 Fecha: 2026-10-14. **Estado: APROBADO por el promotor el 14-10** («Claro · Barra lateral y menú · Adelante con el rediseño», sobre la propuesta visual del lienzo privado https://claude.ai/artifact/2nAGKqQSYsvpdMvXi2eCQZ: Inicio, Comedor con plano de mesas y Primeros pasos). Base: `develop` en `2749883` (B.1 mezclada, versión `0.33.1-b1.1`). Va **antes de E8 reservas**; el resto del orden no cambia.
 
@@ -123,6 +123,60 @@ Commits en este orden:
   - Catálogo (ya con fotos y miniaturas, E3.2), Oferta y Salas siguen densos a 1.280 px;
   - las cifras `Kpi` tienen estilo pero no datos;
   - el resto de botones de vistas con `GoToPage` necesitan que su vista responda `CanExecute` (ver `HomeView`).
+
+### C2b — Caja, Catálogo, Oferta, Salas y Dispositivos con el patrón del Comedor (versión `0.38.0-c2b`)
+
+**Aprobado el 15-10** («Adelante» a «Lo siguiente es C2b… Para C2b necesito otra vez tu permiso para subirlo y hacer el merge»), con permiso para subir y mezclar en cuanto pase la CI. Base: `develop` en `8bb94a0` (C2 y C2.1 mezcladas). **Sin cambio de esquema ni del motor.**
+
+**Por qué.** Las capturas de la 0.37 enseñan el problema:
+- Catálogo, Oferta y Salas meten tres o cuatro columnas en los unos 1.000 px que deja la barra lateral, con formularios que tienen su propia barra de desplazamiento dentro de cada columna.
+- Caja es una fila de campos sin jerarquía, y la cuenta se elige en un desplegable.
+- Las capturas de los checks muestran formularios llenos junto a listas vacías («Sin datos todavía»), porque sus datos de ejemplo no son coherentes.
+
+**Patrón común**, el del Comedor de C2, sin maquetas nuevas:
+- **Cabecera de página** sobre el fondo gris: título, un resumen de una línea y la acción principal a la derecha.
+- **Lista a la izquierda** con buscador y, cuando ayuden, chips de filtro con recuento. Cada fila trae dos líneas: nombre y detalle.
+- **Ficha a la derecha** con encabezado (nombre y estado con palabra), secciones con título, campos con etiqueta y los botones abajo.
+- **Una sola barra de desplazamiento por columna**, sin desplazamientos anidados.
+- **Sin nada elegido**, la ficha dice qué elegir y no muestra campos.
+- **Una lista vacía** explica qué falta y ofrece el botón para crearlo.
+- **Pestañas internas** (`Segmented` de C2) cuando una vista agrupa cosas distintas.
+- **Encaje** a 1.280 × 860 con la barra desplegada, como responsable y en el nivel Puesto.
+
+**Vistas:**
+- **Cuenta / Caja**:
+  - **Izquierda:** las cuentas abiertas como tarjetas (mesa, sala, personas, total y pendiente), con buscador.
+  - **Derecha, cabecera:** la cuenta elegida, con «Mesa 1 · Abierta» y tres cifras (Total, Pagado y Pendiente grande).
+  - **Consumos:** tabla con concepto, cantidad, importe y anulado, y encima la fila «Añadir un consumo».
+  - **Cobro:** importe, formas de pago como botones (Segmented) y «Registrar pago»; «Cerrar cuenta» cuando está saldada.
+  - **«Otras operaciones»:** devolver lo pagado de más y reabrir, con su motivo.
+  - **No cambia:** «Ver cuenta» desde el Comedor (`Checkout.Request`), el aviso de que es un registro de ensayo, F01 (la cuenta elegida dirige la lectura) y las órdenes según lo que anuncia el servidor.
+- **Catálogo y tarifas**, con pestañas Productos · Categorías · Tarifas · Impuestos:
+  - **Productos:** lista con buscador, filtro de categoría y «Ver todos». Cada fila lleva miniatura, nombre, categoría, número de presentaciones y precio General.
+  - **Ficha del producto:** foto con «Cambiar imagen…» y «Quitar imagen», datos (código fijo, nombre, categoría, impuesto, estación, referencia y orden), presentaciones con su precio en cada tarifa, «Fijar precio» y «Desactivar o reactivar».
+  - **Categorías:** árbol con sangría y ficha.
+  - **Tarifas:** lista con ficha (la General siempre presente) y las salas que usan cada tarifa, si se puede saber con lo que ya se lee.
+  - **Impuestos:** lista con ficha.
+  - **Se conservan:** la búsqueda sin perder la selección (E3.2), las imágenes por huella, el tamaño y el formato.
+- **Oferta: cartas y menús**:
+  - **Izquierda:** lista de ofertas con buscador y chips de tipo (Degustación · Menú cerrado · Carta). Cada fila lleva tipo, servicio, vigencia y número de pases.
+  - **Derecha:** ficha con sus datos (tipo, servicio, nombre, fechas, días y orden) y los **pases numerados**. El pase elegido despliega sus platos o los artículos de la carta, con sus botones de añadir.
+- **Salas, mesas y estaciones**, con pestañas «Salas y mesas» · «Estaciones»:
+  - **Salas y mesas:** las salas a la izquierda (nombre, tarifa y mesas activas); en el centro, las mesas de la sala como tarjetas (nombre, plazas y estado con palabra); a la derecha, la ficha de la sala o de la mesa elegida.
+  - **Estaciones:** lista con ficha (tipo y orden). La estación Pase se marca como reservada.
+- **Dispositivos**, retoques: la misma cabecera, la lista con el punto y la palabra de la conexión, la estación por su nombre y el vacío explicado. El asistente y la conexión sencilla no cambian.
+
+**Checks y capturas:**
+- **Datos de ejemplo coherentes en cada vista:**
+  - catálogo de vinos con categorías, fotos, tarifas General y Terraza, e impuestos;
+  - ofertas Degustación Costiña, Menú del día y Carta, con pases y platos;
+  - las salas y mesas de C2;
+  - cuentas que cuadran con el tablero de C2.
+- **Capturas** de cada vista con algo elegido, más alguna sin nada elegido o vacía.
+- **Siguen valiendo todas las comprobaciones anteriores:** imágenes, tarifa de sala, búsqueda que conserva la selección, «Ver cuenta» y los niveles.
+- **Barrido de textos** sin valores en crudo y **encaje** a 1.280 × 860.
+
+**Qué NO cambia:** el motor, el esquema (v8), los comandos y sus cuerpos, lo que anuncia el servidor, la orden incierta, los niveles Puesto y Responsable, Inicio y Comedor (C2), la barra de menús y la PWA (C3).
 
 ### C3 — Comanderos y pantallas de cocina (PWA)
 

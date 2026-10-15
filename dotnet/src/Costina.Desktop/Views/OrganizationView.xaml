@@ -1,81 +1,364 @@
-<UserControl x:Class="Costina.Desktop.Views.OrganizationView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
- <!-- C1: Configuracion: salas, mesas y estaciones (nucleo, E2, solo main).
-      Hereda el DataContext del cascaron (ShellViewModel). C1: aspecto nuevo; para caber junto a la barra lateral a 1280 px, salas y mesas
-      ganan ancho (2/1) y la ficha de estacion pasa bajo su lista (C2 reordena la vista). -->
- <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-  <StackPanel Grid.Row="0" Style="{StaticResource PageHeader}">
-   <TextBlock Text="Salas, mesas y estaciones" Style="{StaticResource PageTitle}"/>
-   <TextBlock Text="{Binding Organization.Summary}" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
-   <TextBlock Text="Nada se borra: una sala, mesa o estación se desactiva y conserva su historia; se puede reactivar cuando haga falta." Style="{StaticResource Subtle}"/>
-  </StackPanel>
-  <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-   <!-- Salas y mesas -->
-   <Border Grid.Column="0" Style="{StaticResource CardDense}">
-    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="220"/></Grid.ColumnDefinitions>
-     <DockPanel Grid.Column="0">
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Sala" Command="{Binding Organization.StartZoneCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Salas" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-      <TextBlock DockPanel.Dock="Bottom" Text="Aún no hay salas. Crea la primera con «＋ Sala»." Style="{StaticResource Subtle}" Margin="0,8,0,0" Visibility="{Binding Organization.HasZones, Converter={StaticResource NotBool2Vis}}"/>
-      <ListBox x:Name="ZoneList" ItemsSource="{Binding Organization.Zones}" SelectedItem="{Binding Organization.SelectedZone}"/>
-     </DockPanel>
-     <DockPanel Grid.Column="2">
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Mesa" Command="{Binding Organization.StartTableCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Mesas de la sala" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-      <ListBox x:Name="TableList" ItemsSource="{Binding Organization.Tables}" SelectedItem="{Binding Organization.SelectedTable}"/>
-     </DockPanel>
-     <!-- Margen derecho de 14: la barra de desplazamiento de Fluent se superpone; asi no tapa el borde de las fichas. -->
-     <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="0,0,14,0">
-      <Border Style="{StaticResource FormPanel}" Padding="10" Margin="0,0,0,10"><StackPanel>
-       <TextBlock Text="{Binding Organization.ZoneFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-       <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}"/>
-       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}"/>
-       <!-- E3.2: tarifa con la que cobra la sala (General por defecto). Las tarifas se crean en Catalogo y tarifas; aqui solo se eligen. -->
-       <TextBlock Text="Tarifa de la sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
-       <ComboBox x:Name="ZoneTariffBox" ItemsSource="{Binding Organization.TariffChoices}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Organization.ZoneTariffId}"
-                 IsEnabled="{Binding Organization.ZoneEditable}"/>
-       <TextBlock Text="Lo que no tenga precio en esa tarifa se cobra con la General. Las tarifas se crean en Catálogo y tarifas." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
-       <TextBlock Text="Orden" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" Width="80" HorizontalAlignment="Left"/>
-       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar sala" Style="{StaticResource Primary}" Command="{Binding Organization.SaveZoneCommand}"/>
-        <Button x:Name="ToggleZoneButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleZoneCommand}"/></WrapPanel>
-      </StackPanel></Border>
-      <Border Style="{StaticResource FormPanel}" Padding="10"><StackPanel>
-       <TextBlock Text="{Binding Organization.TableFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-       <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}"/>
-       <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/><TextBox Text="{Binding Organization.TableName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}"/>
-       <WrapPanel Margin="0,6,0,0">
-        <StackPanel Margin="0,0,10,0"><TextBlock Text="Plazas" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
-        <StackPanel Margin="0,0,10,0"><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" Width="70"/></StackPanel>
-       </WrapPanel>
-       <TextBlock Text="Sala" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
-       <ComboBox ItemsSource="{Binding Organization.ActiveZones}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}"/>
-       <WrapPanel Margin="0,8,0,0"><Button Content="Guardar mesa" Style="{StaticResource Primary}" Command="{Binding Organization.SaveTableCommand}"/>
-        <Button x:Name="ToggleTableButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleTableCommand}"/></WrapPanel>
-      </StackPanel></Border>
-     </StackPanel></ScrollViewer>
-    </Grid>
-   </Border>
-   <!-- Estaciones: lista arriba y ficha debajo -->
-   <Border Grid.Column="2" Style="{StaticResource CardDense}">
-    <DockPanel>
-     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"><Button DockPanel.Dock="Right" Content="＋ Estación" Command="{Binding Organization.StartStationCommand}" Style="{StaticResource AddButton}"/><TextBlock Text="Estaciones" Style="{StaticResource Section}" VerticalAlignment="Center" Margin="0"/></DockPanel>
-     <Border DockPanel.Dock="Bottom" Style="{StaticResource FormPanel}" Padding="10" Margin="0,10,0,0"><StackPanel>
-      <TextBlock Text="{Binding Organization.StationFormTitle}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition/></Grid.ColumnDefinitions>
-       <StackPanel><TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}"/></StackPanel>
-       <StackPanel Grid.Column="2"><TextBlock Text="Nombre" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.StationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}"/></StackPanel>
+<UserControl x:Class="Costina.Desktop.Views.OrganizationView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="clr-namespace:Costina.Desktop">
+ <!-- C2b (plan 2026-10-14): Configuracion > Salas, mesas y estaciones (nucleo, E2, solo main) con el patron del Comedor (ver el comentario C2b
+      de Components.xaml). Hereda el DataContext del cascaron (ShellViewModel). Cabecera de pagina con el alta de la pestana elegida; pestanas
+      "Salas y mesas" · "Estaciones". Salas y mesas: las salas a la izquierda (tarjetas con sus mesas activas, sus plazas y su tarifa propia;
+      "Desactivada" con su palabra), en el centro las mesas de la sala elegida como las tarjetas del plano del Comedor (nombre, plazas y estado
+      con palabra; una desactivada, en gris) con "Mesa", y a la derecha la ficha de la sala o de la mesa elegida. Estaciones:
+      lista y ficha; la estacion Pase, marcada como reservada. Una sola barra de desplazamiento por columna. Cada boton sigue con su orden y
+      su CanExecute de siempre; sin nada elegido la ficha dice que elegir y no muestra campos. -->
+ <UserControl.Resources>
+  <!-- Mesas de la sala: tarjetas blancas en columnas iguales (el ancho lo reparte la vista, TileWidth) sobre el fondo gris, como el plano
+       del Comedor; una desactivada, gris con el nombre en gris (el borde discontinuo queda para "Libre" en el Comedor: revision de C2b); la
+       elegida, con anillo de acento. La lista es el unico desplazamiento
+       de la columna. -->
+  <Style x:Key="TableCards" TargetType="ListBox">
+   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="Background" Value="Transparent"/>
+   <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="KeyboardNavigation.DirectionalNavigation" Value="Contained"/>
+   <Setter Property="Template">
+    <Setter.Value>
+     <ControlTemplate TargetType="ListBox">
+      <ScrollViewer Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer>
+     </ControlTemplate>
+    </Setter.Value>
+   </Setter>
+   <Setter Property="ItemsPanel">
+    <Setter.Value><ItemsPanelTemplate><WrapPanel ItemWidth="{Binding TileWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"/></ItemsPanelTemplate></Setter.Value>
+   </Setter>
+   <Setter Property="ItemContainerStyle">
+    <Setter.Value>
+     <Style TargetType="ListBoxItem">
+      <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,10,10"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+       <Setter.Value>
+        <ControlTemplate TargetType="ListBoxItem">
+         <Grid SnapsToDevicePixels="True">
+          <Border x:Name="Bd" CornerRadius="12" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" Padding="14,11,14,13">
+           <ContentPresenter HorizontalAlignment="Stretch"/>
+          </Border>
+          <Border x:Name="Ring" CornerRadius="12" BorderThickness="2" BorderBrush="{StaticResource Accent}" Visibility="Collapsed" IsHitTestVisible="False"/>
+         </Grid>
+         <ControlTemplate.Triggers>
+          <DataTrigger Binding="{Binding Inactive}" Value="True">
+           <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2}"/><Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/>
+           <Setter TargetName="Bd" Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/>
+          </DataTrigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#FAFCFB"/></Trigger>
+          <Trigger Property="IsSelected" Value="True"><Setter TargetName="Ring" Property="Visibility" Value="Visible"/></Trigger>
+         </ControlTemplate.Triggers>
+        </ControlTemplate>
+       </Setter.Value>
+      </Setter>
+     </Style>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <!-- Fila de una lista en gris (InkSoft, como Dispositivos) si lo que nombra esta desactivado (la palabra va en su chip); no se atenua
+       con opacidad, que dejaba el detalle de 12 px por debajo de 4,5:1 (revision de C2b). -->
+  <Style x:Key="RowPanel" TargetType="StackPanel">
+   <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers>
+  </Style>
+  <!-- El nombre de una fila en tarjeta (sala, estacion) es CardRowTitle, de Components.xaml (repaso de coherencia de C2b). -->
+ </UserControl.Resources>
+
+ <DockPanel>
+  <!-- ===== Cabecera de pagina: titulo, resumen y el alta de la pestana elegida ===== -->
+  <DockPanel DockPanel.Dock="Top" Style="{StaticResource PageBar}">
+   <Button x:Name="NewZoneButton" Style="{StaticResource PageAction}" Content="Nueva sala" Command="{Binding Organization.StartZoneCommand}" Visibility="{Binding Organization.ShowZones, Converter={StaticResource Bool2Vis}}"/>
+   <Button x:Name="NewStationButton" Style="{StaticResource PageAction}" Content="Nueva estación" Command="{Binding Organization.StartStationCommand}" Visibility="{Binding Organization.ShowStations, Converter={StaticResource Bool2Vis}}"/>
+   <StackPanel VerticalAlignment="Center">
+    <TextBlock Text="Salas, mesas y estaciones" Style="{StaticResource PageTitle}"/>
+    <TextBlock x:Name="OrganizationSummaryText" Text="{Binding Organization.Summary}" Style="{StaticResource PageSummary}"/>
+   </StackPanel>
+  </DockPanel>
+  <ListBox x:Name="SectionTabs" DockPanel.Dock="Top" Style="{StaticResource Segmented}" Margin="0,0,0,12" AutomationProperties.Name="Apartados de la configuración"
+           ItemsSource="{Binding Organization.Sections}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Organization.Section}"/>
+
+  <Grid>
+   <!-- ======================= Salas y mesas ======================= -->
+   <Grid x:Name="ZonesSection" Visibility="{Binding Organization.ShowZones, Converter={StaticResource Bool2Vis}}">
+    <Grid.ColumnDefinitions>
+     <ColumnDefinition Width="250"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="300"/><ColumnDefinition Width="16"/><ColumnDefinition Width="360"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Salas: una tarjeta por sala (nombre; mesas activas y plazas; su tarifa propia, si no es la General). Elegir una muestra sus mesas
+         en el centro y su ficha; pulsar otra vez la elegida vuelve a su ficha desde la de una mesa. -->
+    <Border x:Name="ZonesPane" Style="{StaticResource ListPane}">
+     <DockPanel>
+      <TextBlock DockPanel.Dock="Top" Text="Salas" Style="{StaticResource Section}" Margin="2,0,10,10"/>
+      <Grid>
+       <StackPanel x:Name="ZonesEmpty" VerticalAlignment="Center" Margin="4,0,4,24" Visibility="{Binding Organization.ShowZoneListEmpty, Converter={StaticResource Bool2Vis}}">
+        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconOrganization}" local:Ui.Heading="{Binding Organization.ZoneListHeading}" Content="{Binding Organization.ZoneListText}"/>
+        <Button x:Name="EmptyNewZoneButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva sala" Command="{Binding Organization.StartZoneCommand}"
+                Visibility="{Binding Organization.ShowCreateZone, Converter={StaticResource Bool2Vis}}"/>
+       </StackPanel>
+       <ListBox x:Name="ZoneList" Style="{StaticResource CardRows}" ItemsSource="{Binding Organization.ZoneItems}" SelectedValuePath="Zone" SelectedValue="{Binding Organization.SelectedZone}"
+                AutomationProperties.Name="Salas" PreviewMouseLeftButtonUp="ZoneClicked" Visibility="{Binding Organization.ShowZoneListEmpty, Converter={StaticResource NotBool2Vis}}">
+        <ListBox.ItemTemplate>
+         <DataTemplate>
+          <StackPanel Style="{StaticResource RowPanel}" AutomationProperties.Name="{Binding Zone.Name}">
+           <TextBlock Text="{Binding Zone.Name}" Style="{StaticResource CardRowTitle}"/>
+           <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
+           <!-- Revision de C2b: en 250 px el chip no comparte linea con el nombre; estado y tarifa van juntos en su fila. -->
+           <WrapPanel>
+            <Border Style="{StaticResource ToneChip}" Margin="0,8,6,1" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Desactivada"/></Border>
+            <Border Style="{StaticResource ToneChip}" Tag="info" Margin="0,8,6,1" Visibility="{Binding Tariff, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Tariff}"/></Border>
+           </WrapPanel>
+          </StackPanel>
+         </DataTemplate>
+        </ListBox.ItemTemplate>
+       </ListBox>
       </Grid>
-      <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="10"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
-       <StackPanel><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
-        <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Organization.StationKind}" IsEnabled="{Binding Organization.StationEditable}" HorizontalAlignment="Stretch">
-         <ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="pass">Pase</ComboBoxItem><ComboBoxItem Tag="bar">Barra</ComboBoxItem><ComboBoxItem Tag="room">Sala</ComboBoxItem>
-        </ComboBox></StackPanel>
-       <StackPanel Grid.Column="2"><TextBlock Text="Orden" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Organization.StationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}"/></StackPanel>
-      </Grid>
-      <WrapPanel Margin="0,8,0,0"><Button Content="Guardar estación" Style="{StaticResource Primary}" Command="{Binding Organization.SaveStationCommand}"/>
-       <Button x:Name="ToggleStationButton" Content="Desactivar / reactivar" Style="{StaticResource DangerButton}" Command="{Binding Organization.ToggleStationCommand}"/></WrapPanel>
-     </StackPanel></Border>
-     <TextBlock DockPanel.Dock="Bottom" Text="Cocina, pase, barra o sala. Los puestos emparejados se asignan a una estación activa. La estación Pase existe siempre." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
-     <ListBox x:Name="StationList" ItemsSource="{Binding Organization.Stations}" SelectedItem="{Binding Organization.SelectedStation}"/>
+     </DockPanel>
+    </Border>
+
+    <!-- Centro: las mesas de la sala elegida, con su recuento y "Mesa"; sin sala, o con una sala sin mesas, el vacio explicado. Elegir
+         una tarjeta solo mueve SelectedTable (lo que llevan las ordenes de la ficha de la mesa). -->
+    <DockPanel x:Name="TablesArea" Grid.Column="2">
+     <DockPanel DockPanel.Dock="Top" Margin="2,10,0,12" Visibility="{Binding Organization.HasZoneContext, Converter={StaticResource Bool2Vis}}">
+      <Button x:Name="NewTableButton" DockPanel.Dock="Right" Style="{StaticResource AddButton}" Content="Mesa" ContentTemplate="{StaticResource PlusText}" VerticalAlignment="Top"
+              Command="{Binding Organization.StartTableCommand}" AutomationProperties.Name="Añadir una mesa a la sala" ToolTip="Añadir una mesa a esta sala"/>
+      <StackPanel>
+       <TextBlock x:Name="TablesTitleText" Text="{Binding Organization.TablesTitle}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+       <TextBlock x:Name="TablesSummaryText" Text="{Binding Organization.TablesSummary}" Style="{StaticResource Subtle}" Margin="0,2,0,0"/>
+      </StackPanel>
+     </DockPanel>
+     <Grid>
+      <StackPanel x:Name="TablesEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Organization.ShowTablesEmpty, Converter={StaticResource Bool2Vis}}">
+       <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconDining}" local:Ui.Heading="{Binding Organization.TablesEmptyHeading}" Content="{Binding Organization.TablesEmptyText}"/>
+       <Button x:Name="EmptyNewTableButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva mesa" Command="{Binding Organization.StartTableCommand}"
+               Visibility="{Binding Organization.ShowCreateTable, Converter={StaticResource Bool2Vis}}"/>
+      </StackPanel>
+      <ListBox x:Name="TableList" Style="{StaticResource TableCards}" ItemsSource="{Binding Organization.TableItems}" SelectedValuePath="Table" SelectedValue="{Binding Organization.SelectedTable}"
+               AutomationProperties.Name="Mesas de la sala" SizeChanged="TablesSizeChanged" Visibility="{Binding Organization.ShowTablesEmpty, Converter={StaticResource NotBool2Vis}}">
+       <ListBox.ItemTemplate>
+        <DataTemplate>
+         <StackPanel AutomationProperties.Name="{Binding Table.Name}" ToolTip="{Binding}">
+          <StackPanel.Style>
+           <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
+          </StackPanel.Style>
+          <TextBlock Text="{Binding Table.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+          <StackPanel Orientation="Horizontal" Margin="0,3,0,0" TextElement.Foreground="{StaticResource InkSoft}">
+           <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPeople}"/>
+           <TextBlock Text="{Binding Seats}" FontSize="12" Margin="4,0,0,0" VerticalAlignment="Center"/>
+          </StackPanel>
+          <Border Style="{StaticResource ToneChip}" Tag="{Binding Tone}" HorizontalAlignment="Left" Margin="0,10,0,0"><TextBlock Text="{Binding StateText}"/></Border>
+         </StackPanel>
+        </DataTemplate>
+       </ListBox.ItemTemplate>
+      </ListBox>
+     </Grid>
     </DockPanel>
-   </Border>
+
+    <!-- Ficha: la de la mesa elegida (o la nueva) o, si no hay mesa, la de la sala elegida (o la nueva); sin nada, que elegir. -->
+    <Border x:Name="ZonePanel" Grid.Column="4" Style="{StaticResource Ficha}">
+     <Grid>
+      <ContentControl x:Name="ZoneEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconOrganization}"
+                      local:Ui.Heading="{Binding Organization.ZoneEmptyHeading}" Content="{Binding Organization.ZoneEmptyText}" Visibility="{Binding Organization.ShowZoneEmpty, Converter={StaticResource Bool2Vis}}"/>
+
+      <!-- Ficha de la sala: datos, su tarifa (E3.2: la General, las activas y, solo si ESTA sala la usa, una desactivada, marcada) y sus mesas. -->
+      <DockPanel x:Name="ZoneDetail" AutomationProperties.Name="{Binding Organization.ZoneFormTitle}" Visibility="{Binding Organization.ShowZoneFicha, Converter={StaticResource Bool2Vis}}">
+       <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+        <TextBlock x:Name="ZoneContextText" Text="{Binding Organization.ZoneContext}" Style="{StaticResource FichaContext}"/>
+        <WrapPanel Margin="0,2,0,0">
+         <TextBlock x:Name="ZoneTitleText" Text="{Binding Organization.ZoneTitle}" Style="{StaticResource FichaTitle}"/>
+         <Border Style="{StaticResource FichaChip}" Tag="{Binding Organization.ZoneStateTone}" Visibility="{Binding Organization.ZoneStateText, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Organization.ZoneStateText}"/></Border>
+        </WrapPanel>
+       </StackPanel>
+       <Border Style="{StaticResource FichaActions}">
+        <Grid>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <Button x:Name="SaveZoneButton" Style="{StaticResource BigAction}" Content="{Binding Organization.ZoneSaveText}" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Organization.SaveZoneCommand}"/>
+         <Button x:Name="DeactivateZoneButton" Grid.Column="1" Style="{StaticResource FichaDanger}" Content="Desactivar sala" Command="{Binding Organization.ToggleZoneCommand}"
+                 Visibility="{Binding Organization.ZoneDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="No se borra y se puede reactivar; antes no le pueden quedar mesas activas"/>
+         <Button x:Name="ReactivateZoneButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Reactivar sala" Command="{Binding Organization.ToggleZoneCommand}"
+                 Visibility="{Binding Organization.ZoneReactivates, Converter={StaticResource Bool2Vis}}"/>
+         <Button x:Name="CancelZoneButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Cancelar" Command="{Binding Organization.CancelZoneCommand}"
+                 Visibility="{Binding Organization.NewZone, Converter={StaticResource Bool2Vis}}"/>
+        </Grid>
+       </Border>
+       <ScrollViewer x:Name="ZoneScroll" Style="{StaticResource FichaScroll}">
+        <StackPanel>
+         <TextBlock Text="Datos" Style="{StaticResource Section}"/>
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+          <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}" AutomationProperties.Name="Código de la sala" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" AutomationProperties.Name="Orden de la sala"/>
+          <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
+          <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" AutomationProperties.Name="Nombre de la sala"/>
+         </Grid>
+         <!-- E3.2: tarifa con la que cobra la sala (General por defecto). Las tarifas se crean en Catalogo y tarifas; aqui solo se eligen. -->
+         <TextBlock Text="Tarifa de la sala" Style="{StaticResource NextLabel}"/>
+         <ComboBox x:Name="ZoneTariffBox" ItemsSource="{Binding Organization.TariffChoices}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Organization.ZoneTariffId}"
+                   IsEnabled="{Binding Organization.ZoneEditable}" HorizontalAlignment="Stretch" AutomationProperties.Name="Tarifa de la sala"/>
+         <TextBlock Text="Lo que no tenga precio en esa tarifa se cobra con la General. Las tarifas se crean en Catálogo y tarifas." Style="{StaticResource Subtle}" Margin="2,6,0,0"/>
+         <StackPanel x:Name="ZoneTablesArea" Visibility="{Binding Organization.NewZone, Converter={StaticResource NotBool2Vis}}">
+          <TextBlock Text="Mesas" Style="{StaticResource SectionGap}"/>
+          <UniformGrid Columns="2" Margin="0,0,-10,0">
+           <Border Style="{StaticResource FigureBox}" Margin="0,0,10,0">
+            <StackPanel><TextBlock Text="Mesas activas" Style="{StaticResource FigureLabel}"/><TextBlock x:Name="ZoneTablesFigure" Text="{Binding Organization.ZoneTablesFigure}" Style="{StaticResource FigureValue}"/></StackPanel>
+           </Border>
+           <Border Style="{StaticResource FigureBox}" Margin="0,0,10,0">
+            <StackPanel><TextBlock Text="Plazas" Style="{StaticResource FigureLabel}"/><TextBlock x:Name="ZoneSeatsFigure" Text="{Binding Organization.ZoneSeatsFigure}" Style="{StaticResource FigureValue}"/></StackPanel>
+           </Border>
+          </UniformGrid>
+          <TextBlock x:Name="ZoneTablesText" Text="{Binding Organization.ZoneTablesText}" Style="{StaticResource Body}" Margin="2,10,0,0"/>
+         </StackPanel>
+         <TextBlock Text="Nada se borra: una sala desactivada conserva su historia y se puede reactivar. Para desactivarla no le pueden quedar mesas activas."
+                    Style="{StaticResource FichaNote}"/>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+
+      <!-- Ficha de la mesa: datos, plazas y su sala ("Ver la sala" vuelve a la ficha de la sala). Una mesa en uso no se desactiva: lo
+           impide el servidor y su rechazo sale en el aviso. -->
+      <DockPanel x:Name="TableDetail" AutomationProperties.Name="{Binding Organization.TableFormTitle}" Visibility="{Binding Organization.ShowTableFicha, Converter={StaticResource Bool2Vis}}">
+       <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+        <DockPanel>
+         <Button x:Name="ShowZoneButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Ver la sala" Command="{Binding Organization.ShowZoneCommand}" Padding="4,0"
+                 ToolTip="Volver a la ficha de la sala" AutomationProperties.Name="Ver la ficha de la sala"/>
+         <TextBlock x:Name="TableContextText" Text="{Binding Organization.TableContext}" Style="{StaticResource FichaContext}"/>
+        </DockPanel>
+        <WrapPanel Margin="0,2,0,0">
+         <TextBlock x:Name="TableTitleText" Text="{Binding Organization.TableTitle}" Style="{StaticResource FichaTitle}"/>
+         <Border Style="{StaticResource FichaChip}" Tag="{Binding Organization.TableStateTone}" Visibility="{Binding Organization.TableStateText, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Organization.TableStateText}"/></Border>
+        </WrapPanel>
+       </StackPanel>
+       <Border Style="{StaticResource FichaActions}">
+        <Grid>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <Button x:Name="SaveTableButton" Style="{StaticResource BigAction}" Content="{Binding Organization.TableSaveText}" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Organization.SaveTableCommand}"/>
+         <Button x:Name="DeactivateTableButton" Grid.Column="1" Style="{StaticResource FichaDanger}" Content="Desactivar mesa" Command="{Binding Organization.ToggleTableCommand}"
+                 Visibility="{Binding Organization.TableDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="No se borra y se puede reactivar; una mesa en uso no se desactiva"/>
+         <Button x:Name="ReactivateTableButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Reactivar mesa" Command="{Binding Organization.ToggleTableCommand}"
+                 Visibility="{Binding Organization.TableReactivates, Converter={StaticResource Bool2Vis}}"/>
+         <Button x:Name="CancelTableButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Cancelar" Command="{Binding Organization.CancelTableCommand}"
+                 Visibility="{Binding Organization.NewTable, Converter={StaticResource Bool2Vis}}"/>
+        </Grid>
+       </Border>
+       <ScrollViewer x:Name="TableScroll" Style="{StaticResource FichaScroll}">
+        <StackPanel>
+         <TextBlock Text="Datos" Style="{StaticResource Section}"/>
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="80"/><ColumnDefinition Width="12"/><ColumnDefinition Width="80"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+          <TextBlock Grid.Column="2" Text="Plazas" Style="{StaticResource FieldLabel}"/>
+          <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}" AutomationProperties.Name="Código de la mesa" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" AutomationProperties.Name="Plazas de la mesa"/>
+          <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" AutomationProperties.Name="Orden de la mesa"/>
+          <TextBlock Grid.Row="2" Grid.ColumnSpan="5" Text="Nombre" Style="{StaticResource NextLabel}"/>
+          <TextBox Grid.Row="3" Grid.ColumnSpan="5" Text="{Binding Organization.TableName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" AutomationProperties.Name="Nombre de la mesa"/>
+          <TextBlock Grid.Row="4" Grid.ColumnSpan="5" Text="Sala" Style="{StaticResource NextLabel}"/>
+          <ComboBox x:Name="TableZoneBox" Grid.Row="5" Grid.ColumnSpan="5" ItemsSource="{Binding Organization.ZoneChoices}" DisplayMemberPath="Name" SelectedValuePath="Id"
+                    SelectedValue="{Binding Organization.TableZoneId}" IsEnabled="{Binding Organization.TableEditable}" HorizontalAlignment="Stretch" AutomationProperties.Name="Sala de la mesa"/>
+         </Grid>
+         <TextBlock Text="Plazas: cuántas personas caben en la mesa, de 1 a 60. Cambiar la sala lleva la mesa a otra sala del plano." Style="{StaticResource Subtle}" Margin="2,8,0,0"/>
+         <TextBlock Text="Nada se borra: una mesa desactivada deja de ofrecerse para abrir y conserva su historia. Una mesa en uso (abierta en el comedor) no se puede desactivar: hay que liberarla antes."
+                    Style="{StaticResource FichaNote}"/>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+     </Grid>
+    </Border>
+   </Grid>
+
+   <!-- ======================= Estaciones ======================= -->
+   <Grid x:Name="StationsSection" Visibility="{Binding Organization.ShowStations, Converter={StaticResource Bool2Vis}}">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Border x:Name="StationsPane" Style="{StaticResource ListPane}">
+     <DockPanel>
+      <TextBlock DockPanel.Dock="Top" Text="Cada plato sale en la pantalla de su estación. Los puestos emparejados se asignan a una estación activa." Style="{StaticResource Subtle}" Margin="2,2,10,10"/>
+      <Grid>
+       <StackPanel x:Name="StationsEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Organization.ShowStationListEmpty, Converter={StaticResource Bool2Vis}}">
+        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconFlame}" local:Ui.Heading="{Binding Organization.StationListHeading}" Content="{Binding Organization.StationListText}"/>
+        <Button x:Name="EmptyNewStationButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva estación" Command="{Binding Organization.StartStationCommand}"/>
+       </StackPanel>
+       <ListBox x:Name="StationList" Style="{StaticResource CardRows}" ItemsSource="{Binding Organization.StationItems}" SelectedValuePath="Station" SelectedValue="{Binding Organization.SelectedStation}"
+                AutomationProperties.Name="Estaciones" Visibility="{Binding Organization.ShowStationListEmpty, Converter={StaticResource NotBool2Vis}}">
+        <ListBox.ItemTemplate>
+         <DataTemplate>
+          <StackPanel Style="{StaticResource RowPanel}" AutomationProperties.Name="{Binding Station.Name}">
+           <DockPanel>
+            <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
+             <TextBlock Text="Desactivada"/>
+            </Border>
+            <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Tag="info" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Reserved, Converter={StaticResource Bool2Vis}}">
+             <TextBlock Text="Reservada"/>
+            </Border>
+            <TextBlock Text="{Binding Station.Name}" Style="{StaticResource CardRowTitle}"/>
+           </DockPanel>
+           <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
+          </StackPanel>
+         </DataTemplate>
+        </ListBox.ItemTemplate>
+       </ListBox>
+      </Grid>
+     </DockPanel>
+    </Border>
+
+    <Border x:Name="StationPanel" Grid.Column="2" Style="{StaticResource Ficha}" AutomationProperties.Name="{Binding Organization.StationFormTitle}">
+     <Grid>
+      <ContentControl x:Name="StationEmpty" Style="{StaticResource FichaEmpty}" local:Ui.Icon="{StaticResource IconFlame}"
+                      local:Ui.Heading="{Binding Organization.StationEmptyHeading}" Content="{Binding Organization.StationEmptyText}" Visibility="{Binding Organization.HasStationContext, Converter={StaticResource NotBool2Vis}}"/>
+      <DockPanel x:Name="StationDetail" Visibility="{Binding Organization.HasStationContext, Converter={StaticResource Bool2Vis}}">
+       <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+        <TextBlock x:Name="StationContextText" Text="{Binding Organization.StationContext}" Style="{StaticResource FichaContext}"/>
+        <WrapPanel Margin="0,2,0,0">
+         <TextBlock x:Name="StationTitleText" Text="{Binding Organization.StationTitle}" Style="{StaticResource FichaTitle}"/>
+         <Border Style="{StaticResource FichaChip}" Tag="{Binding Organization.StationStateTone}" Visibility="{Binding Organization.StationStateText, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Organization.StationStateText}"/></Border>
+         <Border Style="{StaticResource FichaChip}" Tag="info" Visibility="{Binding Organization.IsReservedStation, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Reservada"/></Border>
+        </WrapPanel>
+       </StackPanel>
+       <Border Style="{StaticResource FichaActions}">
+        <Grid>
+         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <Button x:Name="SaveStationButton" Style="{StaticResource BigAction}" Content="{Binding Organization.StationSaveText}" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Organization.SaveStationCommand}"/>
+         <Button x:Name="DeactivateStationButton" Grid.Column="1" Style="{StaticResource FichaDanger}" Content="Desactivar estación" Command="{Binding Organization.ToggleStationCommand}"
+                 Visibility="{Binding Organization.StationDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="No se borra y se puede reactivar"/>
+         <Button x:Name="ReactivateStationButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Reactivar estación" Command="{Binding Organization.ToggleStationCommand}"
+                 Visibility="{Binding Organization.StationReactivates, Converter={StaticResource Bool2Vis}}"/>
+         <Button x:Name="CancelStationButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Cancelar" Command="{Binding Organization.CancelStationCommand}"
+                 Visibility="{Binding Organization.NewStation, Converter={StaticResource Bool2Vis}}"/>
+        </Grid>
+       </Border>
+       <ScrollViewer x:Name="StationScroll" Style="{StaticResource FichaScroll}">
+        <StackPanel>
+         <TextBlock Text="Datos" Style="{StaticResource Section}"/>
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+           <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+          <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}" AutomationProperties.Name="Código de la estación" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.StationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" AutomationProperties.Name="Orden de la estación"/>
+          <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
+          <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Organization.StationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" AutomationProperties.Name="Nombre de la estación"/>
+          <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Text="Tipo" Style="{StaticResource NextLabel}"/>
+          <!-- El desplegable envia el codigo (Tag) y muestra el texto. -->
+          <ComboBox x:Name="StationKindBox" Grid.Row="5" SelectedValuePath="Tag" SelectedValue="{Binding Organization.StationKind}" IsEnabled="{Binding Organization.StationEditable}"
+                    HorizontalAlignment="Stretch" AutomationProperties.Name="Tipo de estación">
+           <ComboBoxItem Tag="kitchen">Cocina</ComboBoxItem><ComboBoxItem Tag="pass">Pase</ComboBoxItem><ComboBoxItem Tag="bar">Barra</ComboBoxItem><ComboBoxItem Tag="room">Sala</ComboBoxItem>
+          </ComboBox>
+         </Grid>
+         <TextBlock x:Name="StationKindHelpText" Text="{Binding Organization.StationKindHelp}" Style="{StaticResource Body}" Margin="2,8,0,0" Visibility="{Binding Organization.StationKindHelp, Converter={StaticResource Text2Vis}}"/>
+         <TextBlock x:Name="StationNoteText" Text="{Binding Organization.StationNote}" Style="{StaticResource FichaNote}"/>
+        </StackPanel>
+       </ScrollViewer>
+      </DockPanel>
+     </Grid>
+    </Border>
+   </Grid>
   </Grid>
- </Grid>
+ </DockPanel>
 </UserControl>

@@ -154,6 +154,11 @@
    <Trigger Property="Tag" Value="paused"><Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
    <Trigger Property="Tag" Value="finished"><Setter Property="Background" Value="{StaticResource Surface}"/></Trigger>
    <Trigger Property="Tag" Value="cancelled"><Setter Property="Background" Value="{StaticResource Surface}"/></Trigger>
+   <!-- C2b: tonos genericos de las vistas de gestion (cobertura de una cuenta, activo / desactivado...): ok, warn, info y danger. -->
+   <Trigger Property="Tag" Value="ok"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource AccentText}"/></Trigger>
+   <Trigger Property="Tag" Value="warn"><Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource WarnSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource WarnText}"/></Trigger>
+   <Trigger Property="Tag" Value="info"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource InfoText}"/></Trigger>
+   <Trigger Property="Tag" Value="danger"><Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="BorderBrush" Value="{StaticResource DangerLine}"/><Setter Property="TextElement.Foreground" Value="{StaticResource DangerText}"/></Trigger>
   </Style.Triggers>
  </Style>
  <!-- C2: numero de un pase en la ficha (circulo) y tramo de la barra de avance de una mesa; mismo tono que su chip (Tag). -->
@@ -375,4 +380,280 @@
   <Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/>
   <Setter Property="BorderThickness" Value="1.5"/><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/>
  </Style>
+
+ <!-- ===== C2b (plan 2026-10-14): patron comun de las vistas de gestion, el del Comedor de C2 =====
+      Una vista de gestion se compone asi (CheckoutView es la primera que lo usa):
+      - Cabecera de pagina sobre el fondo gris: PageBar (DockPanel) con, a la derecha, PageAction (la accion principal, icono en Ui.Icon)
+        o PageNote (una nota neutra cuando la vista no crea nada), y el titulo (PageTitle) con su resumen de una linea (PageSummary).
+      - Lista a la izquierda: ListPane (tarjeta blanca, en una columna de ancho ListWidth) con SearchField (lupa y texto de ayuda en Ui.Hint), FilterChips si ayudan y la lista:
+        PaneList (filas de dos lineas, RowTitle y RowDetail, seleccion con fondo de acento y barra) o CardRows (filas en tarjeta gris; la
+        elegida, blanca con borde de acento, como los pases de la ficha del Comedor). Las dos virtualizan y son el UNICO desplazamiento de
+        su columna. Una lista vacia es un EmptyState (icono, titulo en Ui.Heading y la explicacion en Content) con su boton de crear debajo.
+      - Ficha a la derecha: Ficha (tarjeta, ancho fijo de unos 400 px o flexible segun el plan) con FichaContext, FichaTitle y un ToneChip
+        con la palabra del estado arriba; FichaScroll (el unico desplazamiento de la columna) con secciones (Section / SectionGap), campos con
+        FieldLabel y cifras (FigureBox); y FichaActions abajo, fijo, con los botones (BigAction, el grande). Sin nada elegido, la ficha es un
+        EmptyState que dice que elegir y no muestra campos.
+      - Pestanas internas con Segmented (lo elegido sale de IsCurrent del elemento, ver SegmentChoice) y tablas ligeras sin desplazamiento
+        propio con TableHead y TableRow, o TableList si la fila se elige (la ficha ya desplaza). Ningun desplazamiento anidado.
+      - LinkButton para un enlace de texto junto a un recuento ("Ver todos" del Catalogo). -->
+
+ <!-- Ancho de la columna de lista en las vistas de lista y ficha (Caja, Catalogo, Oferta, Estaciones): el mismo en todas, para que la
+      ficha empiece siempre en el mismo sitio al pasar de una vista a otra (repaso de coherencia de C2b; antes 320, 330 y 360). -->
+ <GridLength x:Key="ListWidth">360</GridLength>
+ <Style x:Key="PageBar" TargetType="DockPanel"><Setter Property="Margin" Value="0,0,0,14"/><Setter Property="LastChildFill" Value="True"/></Style>
+ <Style x:Key="PageSummary" TargetType="TextBlock" BasedOn="{StaticResource Body}"><Setter Property="Margin" Value="0,2,0,0"/></Style>
+ <!-- Accion principal de la cabecera ("Abrir mesa", "Producto"...): verde, con su icono (Ui.Icon; por defecto, el mas). -->
+ <Style x:Key="PageAction" TargetType="Button" BasedOn="{StaticResource Primary}">
+  <Setter Property="DockPanel.Dock" Value="Right"/><Setter Property="MinHeight" Value="38"/><Setter Property="Padding" Value="12,0,16,0"/>
+  <Setter Property="Margin" Value="12,0,0,0"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="local:Ui.Icon" Value="{StaticResource IconPlus}"/>
+  <Setter Property="ContentTemplate">
+   <Setter.Value>
+    <DataTemplate>
+     <StackPanel Orientation="Horizontal">
+      <Path Style="{StaticResource Icon}" Data="{Binding (local:Ui.Icon), RelativeSource={RelativeSource AncestorType=Button}}" Margin="0,0,6,0"/>
+      <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+     </StackPanel>
+    </DataTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <!-- Nota de la cabecera en lugar de una accion (Caja: "registro operativo de ensayo"): neutra, con icono y texto que se parte. -->
+ <Style x:Key="PageNote" TargetType="ContentControl" BasedOn="{StaticResource NoteBar}">
+  <Setter Property="DockPanel.Dock" Value="Right"/><Setter Property="MaxWidth" Value="430"/><Setter Property="Margin" Value="16,0,0,0"/>
+  <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Padding" Value="12,7"/><Setter Property="FontSize" Value="12"/>
+ </Style>
+
+ <!-- Buscador: campo con lupa y texto de ayuda (Ui.Hint) mientras esta vacio; el borde se pone de acento con el foco. -->
+ <Style x:Key="SearchField" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+  <Setter Property="MinHeight" Value="34"/><Setter Property="FontSize" Value="13"/><Setter Property="Margin" Value="0,0,0,10"/>
+  <!-- Sin el relleno de Fluent: el texto escrito empieza donde el de ayuda (la plantilla ya deja el sitio de la lupa). -->
+  <Setter Property="Padding" Value="0"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="TextBox">
+     <Border x:Name="Bd" Background="{StaticResource Surface}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1" CornerRadius="8" SnapsToDevicePixels="True">
+      <Grid>
+       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconSearch}" Stroke="{StaticResource InkSoft}" Margin="10,0,6,0"/>
+       <TextBlock x:Name="Hint" Grid.Column="1" Text="{TemplateBinding local:Ui.Hint}" Foreground="{StaticResource InkDisabled}" VerticalAlignment="Center" Margin="2,0,8,0"
+                  TextTrimming="CharacterEllipsis" IsHitTestVisible="False" Visibility="Collapsed"/>
+       <ScrollViewer x:Name="PART_ContentHost" Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0" Focusable="False"
+                     HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+      </Grid>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="Text" Value=""><Setter TargetName="Hint" Property="Visibility" Value="Visible"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="#B8BEC6"/></Trigger>
+      <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+      <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Background" Value="{StaticResource FillDisabled}"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+
+ <!-- Columna de lista: tarjeta blanca algo mas densa que la ficha. -->
+ <Style x:Key="ListPane" TargetType="Border" BasedOn="{StaticResource Card}"><Setter Property="Padding" Value="12"/></Style>
+ <!-- Lista larga (catalogo...): sin borde ni fondo propios dentro de su ListPane; filas de dos lineas con la fila comun (Controls.xaml),
+      con margen derecho para la barra de desplazamiento de Fluent, que se superpone (no tapa el precio ni el final de la fila). -->
+ <Style x:Key="PaneList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+  <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
+  <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+  <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/><Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+  <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+  <Setter Property="local:Ui.KeepSelectionInView" Value="True"/>
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Margin" Value="0,1,10,1"/></Style></Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="RowTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="14"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style>
+ <Style x:Key="RowDetail" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/>
+  <Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="Margin" Value="0,1,0,0"/>
+ </Style>
+ <!-- Titulo de una fila en tarjeta (CardRows): el de las cuentas, ofertas, salas, estaciones, tarifas, impuestos y dispositivos (antes en
+      OrganizationView; el repaso de coherencia de C2b lo lleva a todas las listas en tarjeta). Su estado, en un ToneChip a la derecha. -->
+ <Style x:Key="CardRowTitle" TargetType="TextBlock">
+  <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/><Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="TextWrapping" Value="Wrap"/>
+ </Style>
+ <!-- Lista de pocas filas ricas (cuentas abiertas, salas...): cada fila es una tarjeta gris; al pasar el raton, borde; la elegida, blanca con
+      borde de acento (como los pases de la ficha del Comedor). Margen derecho para la barra de desplazamiento de Fluent, que se superpone. -->
+ <Style x:Key="CardRows" TargetType="ListBox" BasedOn="{StaticResource PaneList}">
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value>
+    <Style TargetType="ListBoxItem">
+     <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+     <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,0,10,8"/><Setter Property="Cursor" Value="Hand"/>
+     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+     <Setter Property="Template">
+      <Setter.Value>
+       <ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="Bd" CornerRadius="10" Padding="12,10" Background="{StaticResource Surface2}" BorderBrush="Transparent" BorderThickness="1.5" SnapsToDevicePixels="True">
+         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+        </Border>
+        <ControlTemplate.Triggers>
+         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
+         <Trigger Property="IsSelected" Value="True">
+          <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface}"/>
+         </Trigger>
+        </ControlTemplate.Triggers>
+       </ControlTemplate>
+      </Setter.Value>
+     </Setter>
+    </Style>
+   </Setter.Value>
+  </Setter>
+ </Style>
+
+ <!-- Vacio explicado (lista vacia, ficha sin nada elegido): icono en su caja, titulo (Ui.Heading) y la explicacion (Content, texto que se
+      parte). Los botones (crear, ir a otra vista) van debajo, en la vista. -->
+ <Style x:Key="EmptyState" TargetType="ContentControl">
+  <Setter Property="Focusable" Value="False"/><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="MaxWidth" Value="300"/>
+  <Setter Property="local:Ui.Icon" Value="{StaticResource IconInfo}"/>
+  <Setter Property="ContentTemplate"><Setter.Value><DataTemplate><TextBlock Text="{Binding}" Style="{StaticResource Body}" TextAlignment="Center"/></DataTemplate></Setter.Value></Setter>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="ContentControl">
+     <StackPanel>
+      <Border Style="{StaticResource IconBox}" HorizontalAlignment="Center">
+       <Path Style="{StaticResource Icon}" Data="{Binding (local:Ui.Icon), RelativeSource={RelativeSource TemplatedParent}}" HorizontalAlignment="Center"/>
+      </Border>
+      <TextBlock Text="{Binding (local:Ui.Heading), RelativeSource={RelativeSource TemplatedParent}}" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Ink}"
+                 TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"
+                 Visibility="{Binding (local:Ui.Heading), RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource Text2Vis}}"/>
+      <ContentPresenter Margin="0,6,0,0"/>
+     </StackPanel>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+
+ <!-- Vacio de una FICHA ("Elige una cuenta"): centrado a la misma altura que el vacio de la lista de al lado, que lleva debajo su boton de alta
+      (14 + 38) y un margen de 24 (revision de C2b: los iconos de las dos columnas quedan a la misma altura). -->
+ <Style x:Key="FichaEmpty" TargetType="ContentControl" BasedOn="{StaticResource EmptyState}">
+  <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="0,0,0,76"/>
+ </Style>
+
+ <!-- Ficha: tarjeta con el encabezado arriba (contexto, nombre y estado con palabra), las secciones en FichaScroll y los botones abajo. -->
+ <Style x:Key="Ficha" TargetType="Border" BasedOn="{StaticResource Card}"><Setter Property="Padding" Value="18,16"/></Style>
+ <Style x:Key="FichaContext" TargetType="TextBlock" BasedOn="{StaticResource Body}"><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="TextWrapping" Value="NoWrap"/></Style>
+ <Style x:Key="FichaTitle" TargetType="TextBlock" BasedOn="{StaticResource PanelTitle}"><Setter Property="FontSize" Value="22"/><Setter Property="Margin" Value="0,0,10,0"/></Style>
+ <!-- Chip de estado junto al nombre de la ficha: a la altura de su primera linea. -->
+ <Style x:Key="FichaChip" TargetType="Border" BasedOn="{StaticResource ToneChip}"><Setter Property="Margin" Value="0,5,6,0"/><Setter Property="VerticalAlignment" Value="Top"/></Style>
+ <!-- Unico desplazamiento de la columna de la ficha; el margen deja sitio a la barra de Fluent, que se superpone. -->
+ <Style x:Key="FichaScroll" TargetType="ScrollViewer" BasedOn="{StaticResource {x:Type ScrollViewer}}">
+  <Setter Property="VerticalScrollBarVisibility" Value="Auto"/><Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/><Setter Property="Focusable" Value="False"/>
+  <Setter Property="Padding" Value="0,0,12,0"/><Setter Property="Margin" Value="0,0,-8,0"/>
+ </Style>
+ <!-- Botones de la ficha, abajo y siempre a la vista, separados por una linea. -->
+ <Style x:Key="FichaActions" TargetType="Border">
+  <Setter Property="DockPanel.Dock" Value="Bottom"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="BorderThickness" Value="0,1,0,0"/>
+  <Setter Property="Margin" Value="0,8,0,0"/><Setter Property="Padding" Value="0,12,0,0"/>
+ </Style>
+ <!-- Seccion que sigue a otra dentro de la ficha. -->
+ <Style x:Key="SectionGap" TargetType="TextBlock" BasedOn="{StaticResource Section}"><Setter Property="Margin" Value="0,18,0,8"/></Style>
+ <!-- Cifra de una ficha (Total, Pagado...): etiqueta y valor en una caja gris; FigureBoxStrong resalta la que manda (Pendiente). -->
+ <Style x:Key="FigureBox" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="14,9,14,10"/>
+ </Style>
+ <Style x:Key="FigureBoxStrong" TargetType="Border" BasedOn="{StaticResource FigureBox}">
+  <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentLine}"/>
+ </Style>
+ <Style x:Key="FigureLabel" TargetType="TextBlock"><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/></Style>
+ <Style x:Key="FigureValue" TargetType="TextBlock">
+  <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/><Setter Property="FontSize" Value="20"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,1,0,0"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+ </Style>
+ <Style x:Key="FigureValueStrong" TargetType="TextBlock" BasedOn="{StaticResource FigureValue}">
+  <Setter Property="FontSize" Value="26"/><Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="Margin" Value="0,-2,0,-2"/>
+ </Style>
+ <!-- Tabla ligera (consumos de una cuenta...): cabecera gris y filas con una linea debajo; sin desplazamiento propio (la ficha desplaza). -->
+ <Style x:Key="TableHead" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="10,6"/>
+  <Setter Property="TextElement.FontSize" Value="12"/><Setter Property="TextElement.FontWeight" Value="SemiBold"/><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/>
+ </Style>
+ <Style x:Key="TableRow" TargetType="Border">
+  <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="BorderThickness" Value="0,0,0,1"/><Setter Property="Padding" Value="10,8"/>
+  <Setter Property="SnapsToDevicePixels" Value="True"/>
+ </Style>
+ <!-- Tabla ligera con fila elegible (presentaciones de un producto...): las filas de TableRow; al pasar el raton, sombreada; la elegida, con
+      fondo de acento y la barra de la izquierda, como las listas. Sin desplazamiento propio: la rueda del raton mueve la ficha. -->
+ <Style x:Key="TableList" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+  <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBox"><ItemsPresenter/></ControlTemplate></Setter.Value></Setter>
+  <Setter Property="ItemContainerStyle">
+   <Setter.Value>
+    <Style TargetType="ListBoxItem">
+     <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+     <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+     <Setter Property="Template">
+      <Setter.Value>
+       <ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="Bd" Background="Transparent" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,0,1" Padding="10,8" SnapsToDevicePixels="True">
+         <Grid>
+          <Border x:Name="Pill" Width="3" CornerRadius="1.5" Margin="-9,1,0,1" HorizontalAlignment="Left" Background="{StaticResource Accent}" Visibility="Collapsed"/>
+          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+         </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+         <Trigger Property="IsSelected" Value="True">
+          <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Pill" Property="Visibility" Value="Visible"/>
+          <Setter Property="FontWeight" Value="SemiBold"/>
+         </Trigger>
+        </ControlTemplate.Triggers>
+       </ControlTemplate>
+      </Setter.Value>
+     </Setter>
+    </Style>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <!-- Enlace de texto ("Ver todos"): sin fondo ni borde, en el verde del acento y subrayado al pasar el raton; deshabilitado, gris. -->
+ <Style x:Key="LinkButton" TargetType="Button">
+  <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+  <Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="Cursor" Value="Hand"/><Setter Property="Padding" Value="4,2"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="Button">
+     <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+      <TextBlock x:Name="Text" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"/>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Text" Property="TextDecorations" Value="Underline"/></Trigger>
+      <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource InkDisabled}"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+
+ <!-- Accion grande de una ficha (C2, antes en ServiceView). Sin accion anunciada queda deshabilitada (relleno gris, como cualquier boton
+      deshabilitado) y su texto dice que se espera ("Esperando la revision de cocina"): ese texto va en gris oscuro (InkSoft) y no en el gris
+      claro de los deshabilitados (3:1), porque es la linea mas util de la ficha. -->
+ <Style x:Key="BigAction" TargetType="Button" BasedOn="{StaticResource Primary}">
+  <Style.Resources><SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#5A616B"/></Style.Resources>
+  <Setter Property="MinHeight" Value="46"/><Setter Property="FontSize" Value="15"/><Setter Property="Margin" Value="0"/>
+  <Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Center"/>
+ </Style>
+ <!-- Texto de un boton que puede partirse (C2, antes en ServiceView). Va en ContentTemplate (no como TextBlock hijo): asi hereda el color
+      que la plantilla Fluent pone segun el estado y un boton deshabilitado se ve gris (un hijo logico heredaria el blanco del boton de acento). -->
+ <DataTemplate x:Key="ButtonText"><TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/></DataTemplate>
+ <!-- C2b (antes en CatalogView): botones secundarios de la barra de abajo de una ficha, a la altura del grande (desactivar en rojo de
+      contorno; reactivar o cancelar, normales). -->
+ <Style x:Key="FichaSecondary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
+ </Style>
+ <Style x:Key="FichaDanger" TargetType="Button" BasedOn="{StaticResource DangerButton}">
+  <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
+ </Style>
+ <!-- Nota al pie de una ficha (nada se borra...). -->
+ <Style x:Key="FichaNote" TargetType="TextBlock" BasedOn="{StaticResource Subtle}"><Setter Property="Margin" Value="0,18,0,4"/></Style>
+ <!-- Etiqueta de campo que sigue a otra fila de campos. -->
+ <Style x:Key="NextLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}"><Setter Property="Margin" Value="0,10,0,4"/></Style>
+ <!-- Contenido de un boton de alta pequeno (AddButton) con el mas delante: "+ Presentacion", "+ Pase", "+ Plato". -->
+ <DataTemplate x:Key="PlusText"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}" Margin="0,0,5,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate>
 </ResourceDictionary>

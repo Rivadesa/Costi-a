@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,12 +15,23 @@ namespace Costina.Desktop.ViewModels;
 // solo se ofrece lo que encaja. El QR lleva SOLO el codigo de un uso, en el fragmento: nunca un token ni una credencial (D6.5).
 public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableObject
 {
-    // Fila de la lista: el dispositivo, su grupo (comanderos / pantalla por estacion) y si es este mismo PC (corte B).
-    public sealed record DeviceRow(DeviceRowDto Device, string Group, bool IsThisPc)
+    // Fila de la lista: el dispositivo, su tipo con la estacion por su nombre y si es este mismo PC (corte B).
+    // C2b: la fila de Inicio en tarjeta (icono, nombre, tipo y estacion; a la derecha, el punto y la palabra de la conexion) y una tercera
+    // linea con quien lo aprobo y cuando. Text es la fila entera en una linea (nombre accesible de la tarjeta).
+    public sealed class DeviceRow(DeviceRowDto device, string kind, bool isThisPc)
     {
-        public string Text => (IsThisPc ? "ESTE PC · " : "") + $"{Device.Name} · {Device.StateLabel} · aprobado por {Labels.Actor(Device.ApprovedBy)} el {Device.CreatedAt.ToLocalTime():dd/MM/yyyy}";
+        public DeviceRowDto Device { get; } = device;
+        public string Kind { get; } = kind;
+        public bool IsThisPc { get; } = isThisPc;
+        public string Name => Device.Name;
+        public string State => Device.StateLabel;
+        public string Approved => (Labels.Actor(Device.ApprovedBy) is { Length: > 0 } actor ? "Aprobado por " + actor + " el " : "Aprobado el ")
+            + Device.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        public string Text => (IsThisPc ? "Este PC · " : "") + $"{Device.Name} · {Kind} · {Device.StateLabel} · " + char.ToLowerInvariant(Approved[0]) + Approved[1..];
         // C1 (revision): punto de presencia junto al texto (que ya lo dice con palabras): verde con conexion, gris sin ella o quitado.
         public string PresenceDot => Device.Active && Device.Online ? "ok" : "off";
+        public bool Screen => Device.Role == "kitchen";   // icono de pantalla; comandero (y cualquier otro), el de tablet
+        public bool Removed => !Device.Active;
     }
 
     private bool rendering;
@@ -36,15 +46,31 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private StationDto[] stations = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsRoomStation), nameof(ChoosingText))] private StationDto[] roomStations = [];   // sala o barra: donde va un comandero
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ChoosingText))] private StationDto[] kitchenStations = [];                       // cocina, pase o barra: donde va una pantalla
-    [ObservableProperty] private StationDto? selectedRoomStation;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowEmptyConnect), nameof(EmptyConnectText))] private StationDto? selectedRoomStation;
     [ObservableProperty] private PairingPendingDto[] pending = [];
     [ObservableProperty] private PairingPendingDto? selectedPending;
     [ObservableProperty] private DeviceRowDto[] devices = [];
     [ObservableProperty] private DeviceRow[] rows = [];
-    [ObservableProperty] private DeviceRow? selectedRow;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(RemoveText))] private DeviceRow? selectedRow;
     [ObservableProperty] private bool showRevoked;
-    [ObservableProperty] private string listSummary = "";
     public bool NeedsRoomStation => RoomStations.Length == 0;
+
+    // C2b: cabecera de pagina, cabecera de la lista y vacio explicado (patron comun de las vistas de gestion). Sin leer, nada se supone.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowEmptyConnect))] private bool devicesRead;
+    [ObservableProperty] private string summary = "";
+    [ObservableProperty] private string onlineText = "";
+    [ObservableProperty] private string revokedToggleText = "";
+    [ObservableProperty] private bool hasRemoved;
+    [ObservableProperty] private string legacyWarning = "";
+    [ObservableProperty] private bool showListEmpty = true;
+    [ObservableProperty] private string listEmptyHeading = "Sin leer todavía";
+    [ObservableProperty] private string listEmptyText = "Los dispositivos aparecerán aquí al leerlos del servidor.";
+    // El boton del vacio abre el asistente de siempre (StartWaiter) con la estacion de sala elegida a la izquierda, que dice su nombre.
+    public bool ShowEmptyConnect => DevicesRead && SelectedRoomStation is not null;
+    public string EmptyConnectText => SelectedRoomStation is { } station ? "Conectar comandero · " + station.Name : "";
+    // El boton de quitar dice a quien quita; sin nada elegido, que elegir.
+    public string RemoveText => SelectedRow is not { } row ? "Elige un dispositivo para quitarlo"
+        : row.Device.Active ? $"Quitar «{row.Name}»" : $"«{row.Name}» ya está quitado";
 
     // Asistente en curso (intencion ligada al pairingId emitido)
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAssistant), nameof(ShowWaiterSection), nameof(ShowKitchenSection))] private string assistantTitle = "";
@@ -80,7 +106,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     internal void Request(string? role) => requestedIntent = role;   // null = olvidar la peticion (se cancelo la entrada del responsable)
     public bool HasDuplicateWarning => DuplicateWarning.Length > 0;
     public string IntentLabel => IntentRole == "service" ? $"comandero en {IntentStationName}" : $"pantalla de cocina de {IntentStationName}";
-    public string RecognisedText => Recognised is null ? "" : $"\"{Recognised.DeviceName}\" pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
+    public string RecognisedText => Recognised is null ? "" : $"«{Recognised.DeviceName}» pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
 
     // QR del enlace https://EQUIPO:PUERTO/app/#pair=CODIGO (D6.5)
     private const string QrIdle = "Al generar el código aparece aquí su QR: el dispositivo lo lee con la cámara y abre la aplicación con el código ya puesto.";
@@ -97,7 +123,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // Quitar en dos pasos (F9: nada irreversible con un solo toque)
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ConfirmingRemoval))] [NotifyPropertyChangedFor(nameof(RemovalText))] private DeviceRow? removalCandidate;
     public bool ConfirmingRemoval => RemovalCandidate is not null;
-    public string RemovalText => RemovalCandidate is null ? "" : $"¿Quitar \"{RemovalCandidate.Device.Name}\"? Dejará de funcionar en el acto y habrá que conectarlo de nuevo"
+    public string RemovalText => RemovalCandidate is null ? "" : $"¿Quitar «{RemovalCandidate.Device.Name}»? Dejará de funcionar en el acto y habrá que conectarlo de nuevo"
         + (RemovalCandidate.IsThisPc ? ". ES ESTE PC: tendrás que volver a conectarlo como responsable" : "") + ".";
 
     public bool Visible { get; set; }
@@ -119,7 +145,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         try
         {
             Stations = []; knownStations = []; stationNames = Names.Empty; RoomStations = []; KitchenStations = []; SelectedRoomStation = null; Pending = []; SelectedPending = null;
-            Devices = []; Rows = []; SelectedRow = null; ListSummary = ""; RemovalCandidate = null;
+            Devices = []; DevicesRead = false; Rows = []; SelectedRow = null; RemovalCandidate = null; RebuildRows();
             AssistantTitle = ""; AssistantText = ""; IntentRole = ""; IntentStationId = ""; IntentStationName = ""; PairingId = ""; PairingCode = "";
             Recognised = null; DuplicateWarning = ""; codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
             Network = null; ConfirmingSimple = false; requestedIntent = null; ChoosingIntent = "";
@@ -176,11 +202,11 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             ExpireCode();
             var previous = SelectedPending?.PairingId;
             Pending = pendingRows; SelectedPending = pendingRows.FirstOrDefault(p => p.PairingId == previous) ?? pendingRows.FirstOrDefault();
-            Devices = deviceRows;
+            Devices = deviceRows; DevicesRead = true;
             // Solo la solicitud del asistente abierto se reconoce (y se puede aprobar): la intencion vive aqui, ligada al pairingId.
             Recognised = PairingId.Length == 0 ? null : pendingRows.FirstOrDefault(p => p.PairingId == PairingId);
             DuplicateWarning = Recognised is { } request && deviceRows.Any(d => d.Active && string.Equals(d.Name, request.DeviceName, StringComparison.OrdinalIgnoreCase))
-                ? $"Ya hay un dispositivo activo llamado \"{request.DeviceName}\". Dos con el mismo nombre comparten identidad en la auditoría: quita el antiguo antes o pide otro nombre en el dispositivo."
+                ? $"Ya hay un dispositivo activo llamado «{request.DeviceName}». Dos con el mismo nombre comparten identidad en la auditoría: quita el antiguo antes o pide otro nombre en el dispositivo."
                 : "";
             RebuildRows();
         }
@@ -188,28 +214,45 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         Sync();
     }
 
+    // C2b: la lista sin grupos, como la de Inicio: cada tarjeta dice su tipo y su estacion por su nombre (configuracion leida; sin nombre,
+    // su codigo; un tipo desconocido, tal cual). Orden, el de Inicio: comanderos, pantallas de cocina y el resto; dentro, por nombre. La
+    // eleccion se conserva por id (las filas son clases: una fila nueva siempre avisa a la lista).
     private void RebuildRows()
     {
         var me = shell.Session?.Actor;   // "device:<nombre>" cuando este PC trabaja como puesto (corte B)
-        string Group(DeviceRowDto d) => d.Role switch
-        {
-            "service" => "Comanderos",
-            "kitchen" => "Pantalla de cocina · " + stationNames.Station(d.Station),
-            "main" => "Dispositivos antiguos con rol principal (quítalos y conéctalos de nuevo)",
-            var other => other
-        };
+        string Kind(DeviceRowDto d) => d.Role is "service" or "kitchen" && d.Station.Length > 0
+            ? Labels.DeviceRole(d.Role) + " · " + stationNames.Station(d.Station)
+            : Labels.DeviceRole(d.Role);
+        var selected = SelectedRow?.Device.Id;
         Rows = Devices.Where(d => ShowRevoked || d.Active)
-            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => d.Station, StringComparer.Ordinal).ThenBy(d => d.Name, StringComparer.Ordinal)
-            .Select(d => new DeviceRow(d, Group(d), me is not null && me == "device:" + d.Name)).ToArray();
-        var view = CollectionViewSource.GetDefaultView(Rows);
-        view.GroupDescriptions.Clear(); view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(DeviceRow.Group)));
-        var selected = SelectedRow?.Device.Id; SelectedRow = Rows.FirstOrDefault(r => r.Device.Id == selected);
+            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal)
+            .Select(d => new DeviceRow(d, Kind(d), me is not null && me == "device:" + d.Name)).ToArray();
+        SelectedRow = Rows.FirstOrDefault(r => r.Device.Id == selected);
         if (RemovalCandidate is { } candidate && Rows.All(r => r.Device.Id != candidate.Device.Id)) RemovalCandidate = null;
         var active = Devices.Where(d => d.Active).ToArray();
         var removed = Devices.Length - active.Length;
-        ListSummary = active.Length == 0 ? "Todavía no hay dispositivos conectados."
-            : $"Activos: {Labels.Plural(active.Count(d => d.Role == "service"), "comandero", "comanderos")} y {Labels.Plural(active.Count(d => d.Role == "kitchen"), "pantalla de cocina", "pantallas de cocina")}; {active.Count(d => d.Online)} con conexión ahora."
-              + (removed > 0 && !ShowRevoked ? " " + Labels.Plural(removed, "quitado (oculto)", "quitados (ocultos)") + "." : "");
+        int service = active.Count(d => d.Role == "service"), kitchen = active.Count(d => d.Role == "kitchen"), legacy = active.Count(d => d.Role == "main");
+        var other = active.Length - service - kitchen - legacy;
+        string[] kinds = [.. new[] { (service, "comandero", "comanderos"), (kitchen, "pantalla de cocina", "pantallas de cocina"),
+                (legacy, "principal (antiguo)", "principales (antiguos)"), (other, "de otro tipo", "de otro tipo") }
+            .Where(k => k.Item1 > 0).Select(k => Labels.Plural(k.Item1, k.Item2, k.Item3))];
+        var kindsText = kinds.Length <= 1 ? string.Concat(kinds) : string.Join(", ", kinds[..^1]) + " y " + kinds[^1];
+        var removedText = removed == 0 ? "" : Labels.Plural(removed, "quitado", "quitados");
+        Summary = !DevicesRead ? ""
+            : Devices.Length == 0 ? "Aún no hay dispositivos: conecta el primero con el asistente de «Conectar un dispositivo»."
+            : active.Length == 0 ? "Ningún dispositivo activo · " + removedText
+            : $"{Labels.Plural(active.Length, "dispositivo activo", "dispositivos activos")}: {kindsText}" + (removed > 0 ? " · " + removedText : "");
+        OnlineText = active.Length == 0 ? "" : $"{active.Count(d => d.Online)} de {active.Length} con conexión";
+        HasRemoved = removed > 0;
+        RevokedToggleText = $"Mostrar también los quitados ({removed.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+        LegacyWarning = legacy == 0 ? ""
+            : legacy == 1 ? "1 dispositivo antiguo con rol principal: conviene quitarlo y conectarlo de nuevo como comandero o pantalla de cocina."
+            : $"{legacy} dispositivos antiguos con rol principal: conviene quitarlos y conectarlos de nuevo como comanderos o pantallas de cocina.";
+        ShowListEmpty = Rows.Length == 0;
+        (ListEmptyHeading, ListEmptyText) = !DevicesRead ? ("Sin leer todavía", "Los dispositivos aparecerán aquí al leerlos del servidor.")
+            : Devices.Length == 0 ? ("Aún no hay dispositivos", "Conecta las tablets y los móviles de sala (comanderos) y las pantallas de cocina con el asistente: cada uno, con un código de un solo uso.")
+            : ("Ningún dispositivo activo", removed == 1 ? "El único dispositivo está quitado: marca «Mostrar también los quitados» para verlo."
+                : $"Los {removed.ToString(System.Globalization.CultureInfo.InvariantCulture)} dispositivos están quitados: marca «Mostrar también los quitados» para verlos.");
     }
     partial void OnShowRevokedChanged(bool value) { if (!rendering) RebuildRows(); }
     partial void OnSelectedRowChanged(DeviceRow? value) { if (!rendering) Sync(); }
@@ -377,7 +420,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         var collect = await auth.CollectAsync(claim.PairingId, claim.PollSecret);
         if (collect.Status != "approved" || collect.DeviceToken is null) throw new InvalidOperationException("No se pudo recoger la credencial del puesto.");
         new DpapiDeviceStore(uri).Save(collect.DeviceToken);
-        shell.Status = $"Este PC queda conectado como puesto \"{name}\" en {station.Name}. Al encenderlo entrará solo; al salir del modo responsable seguirá operativo.";
+        shell.Status = $"Este PC queda conectado como puesto «{name}» en {station.Name}. Al encenderlo entrará solo; al salir del modo responsable seguirá operativo.";
         OnPropertyChanged(nameof(ThisPcText)); shell.Sync();
         await LoadAsync();
     });
@@ -476,7 +519,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     {
         var request = Recognised!;
         await shell.Api!.PostRawAsync("auth/pairings/" + ApiClient.Segment(request.PairingId) + "/approve", new { role = IntentRole, station = IntentStationId });
-        shell.Status = $"\"{request.DeviceName}\" conectado como {IntentLabel}. En unos segundos entra solo en su pantalla.";
+        shell.Status = $"«{request.DeviceName}» conectado como {IntentLabel}. En unos segundos entra solo en su pantalla.";
         CloseAssistant();
         await LoadAsync();
     });
@@ -486,7 +529,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     private Task Deny() => shell.Run(async () =>
     {
         await shell.Api!.PostRawAsync("auth/pairings/" + ApiClient.Segment(SelectedPending!.PairingId) + "/deny", new { });
-        shell.Status = $"Solicitud de \"{SelectedPending.DeviceName}\" denegada.";
+        shell.Status = $"Solicitud de «{SelectedPending.DeviceName}» denegada.";
         await LoadAsync();
     });
 
@@ -517,7 +560,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     {
         var row = RemovalCandidate!; RemovalCandidate = null;
         await shell.Api!.PostRawAsync("auth/devices/" + ApiClient.Segment(row.Device.Id) + "/revoke", new { });
-        shell.Status = $"\"{row.Device.Name}\" quitado: expulsado también del tiempo real. Para volver a usarlo, conéctalo de nuevo.";
+        shell.Status = $"«{row.Device.Name}» quitado: expulsado también del tiempo real. Para volver a usarlo, conéctalo de nuevo.";
         await LoadAsync();
     });
 

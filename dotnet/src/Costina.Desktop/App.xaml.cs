@@ -16,9 +16,15 @@ public partial class App : Application
     // constructor estatico para que llegue tambien a los checks, que hacen new App() sin pasar por OnStartup.
     static App() => AppContext.SetSwitch("Switch.System.Windows.Appearance.DisableFluentThemeWindowBackdrop", true);
 
+    // C2b (checks): los checks del WPF hacen new App() y construyen la ventana ellos mismos, pero WPF lanza igualmente OnStartup en el
+    // primer bombeo del despachador. Con un Costina real abierto en el PC, la instancia unica lo traia al frente y cerraba la aplicacion
+    // de los checks a mitad; sin el, abria una segunda ventana que arrancaba sola. Con Checks no se arranca nada.
+    internal static bool Checks { get; set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (Checks) return;
         single = new Mutex(true, @"Local\Costina.Desktop.Single", out var first);
         if (!first)
         {

@@ -103,15 +103,7 @@
     </Setter.Value>
    </Setter>
   </Style>
-  <!-- Accion grande de la ficha. Sin accion anunciada queda deshabilitada (relleno gris, como cualquier boton deshabilitado) y su texto
-       dice que espera la mesa ("Esperando la revision de cocina"): ese texto va en gris oscuro (InkSoft) y no en el gris claro de los
-       deshabilitados (3:1), porque es la linea mas util de la ficha. -->
-  <Style x:Key="BigAction" TargetType="Button" BasedOn="{StaticResource Primary}">
-   <Style.Resources><SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#5A616B"/></Style.Resources>
-  </Style>
-  <!-- Texto de un boton que puede partirse. Va en ContentTemplate (no como TextBlock hijo): asi hereda el color que la plantilla Fluent
-       pone segun el estado y un boton deshabilitado se ve gris (un hijo logico heredaria el blanco del boton de acento). -->
-  <DataTemplate x:Key="ButtonText"><TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/></DataTemplate>
+  <!-- La accion grande de la ficha (BigAction) y el texto de boton que se parte (ButtonText) viven en Components.xaml desde C2b. -->
   <!-- Tarjeta de una mesa: nombre y tiempo; personas y oferta (o plazas si esta libre); estado con su palabra; avance de los pases con
        su cifra; y el aviso de restricciones con su texto. -->
   <DataTemplate x:Key="TileTemplate">
