@@ -18,7 +18,21 @@ using Npgsql;
 // arranque normal usa el rol de EJECUCION y jamas migra, siembra ni lee las credenciales del propietario.
 var administrative = (args.Length == 1 && args[0] is "provision" or "init" or "upgrade" or "init-lab" or "load-demo")
     || (args.Length == 2 && args[0] == "restore");
-var settings = new ServerSettings(administrative);
+// C2: una ORDEN de consola que falla dice su motivo sin la traza de la excepcion y sale con codigo 1. Sin argumentos (el servicio,
+// el laboratorio de las pruebas) nada cambia: un fallo sigue siendo una excepcion sin capturar, con su traza.
+if(args.Length > 0)
+    AppDomain.CurrentDomain.UnhandledException += (_,failure) => { Console.Error.WriteLine(CommandFailure(failure.ExceptionObject)); Environment.Exit(1); };
+static string CommandFailure(object error)
+{
+    // Los mensajes de la cadena (sin repetir el envoltorio de AggregateException); el tipo solo si no es un rechazo explicado.
+    var lines = new List<string>(); var seen = new HashSet<string>(StringComparer.Ordinal);
+    for(var e = error as Exception; e is not null; e = e.InnerException)
+        if(e is not AggregateException && seen.Add(e.Message))
+            lines.Add(e is InvalidOperationException or ArgumentException or InvalidDataException ? e.Message : $"{e.Message} ({e.GetType().Name})");
+    return "ERROR: " + (lines.Count == 0 ? error.ToString() : string.Join(Environment.NewLine + "  ", lines));
+}
+// 'status' resume lo que puede leer aunque la configuracion no sea legible desde esta consola; cualquier otra orden se detiene.
+var settings = new ServerSettings(administrative,tolerateUnreadable: args is ["status"]);
 // ADR-012: modulos COMPILADOS en este binario. Los ACTIVOS se deciden tras abrir la base (E1b): core.installation.modules
 // (NULL = todos) y, solo en laboratorio/CI, COSTINA_MODULES. El esquema y la copia cubren siempre todos los compilados.
 IModule[] compiled = [new DiningModule()];

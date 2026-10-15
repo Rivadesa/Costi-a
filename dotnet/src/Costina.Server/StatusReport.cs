@@ -23,7 +23,9 @@ public static class StatusReport
         var provisioned=false;
         try { provisioned=File.Exists(ServerSettings.ServerFile); }
         catch(UnauthorizedAccessException) { }
-        Line("Provisioned",provisioned ? "yes" : "no (or not readable: run from an elevated console)");
+        // C2: File.Exists da falso ante un acceso denegado; ServerSettings ya sabe si la configuracion existe pero no se pudo leer.
+        Line("Provisioned",settings.Unreadable is not null ? "yes, but not readable from this console: open PowerShell as administrator"
+            : provisioned ? "yes" : "no (or not readable: run from an elevated console)");
         Line("Mode",settings.Get("COSTINA_MODE") ?? (settings.Get("COSTINA_LAB_MODE")=="true" ? "laboratory" : "unknown"));
         Line("Scope",$"{settings.Get("COSTINA_TENANT")}/{settings.Get("COSTINA_COMPANY")}/{settings.Get("COSTINA_LOCATION")}");
         if(OperatingSystem.IsWindows())

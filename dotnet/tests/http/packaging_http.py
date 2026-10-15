@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import socket
 import ssl
 import subprocess
@@ -610,6 +611,45 @@ class Packaging(unittest.TestCase):
             self.assertEqual(status, 200, opened)
             status, account = call('/api/native/v1/checkout/services/' + opened['serviceId'], token=login['token'], base='http://127.0.0.1:5096')
             self.assertEqual((account['data']['charges'][0]['productId'], account['data']['charges'][0]['unitPriceCents'], account['data']['totalCents']), ('menu-lab-tasting', 15000, 30000))
+
+    def test_06f_an_unreadable_configuration_asks_for_an_administrator_console(self):
+        """C2: without elevation config\\ of an installation is unreadable and File.Exists said 'absent': the engine asked for
+        COSTINA_MODE with a stack trace. Now any command says to open PowerShell as administrator, with no stack trace."""
+        if os.name != 'nt': self.skipTest('Windows ACL story')
+        system32 = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32'
+        root = Path(tempfile.mkdtemp(prefix='costina-denied-'))
+        config = root / 'config'
+        config.mkdir()
+        (config / 'server.json').write_text(json.dumps({'COSTINA_MODE': 'installation'}), encoding='utf8')
+        # El SID y no el nombre: icacls no resuelve todas las cuentas (Azure AD) por su nombre. Se deniega solo leer datos y listar
+        # (RD), nunca READ_CONTROL: mkdtemp da la carpeta a DERECHOS DE PROPIETARIO y, sin leer su ACL, icacls no podria quitar la
+        # denegacion. Vale tambien en una consola elevada. Como propietario, File.Exists aun ve el fichero (en la instalacion real,
+        # de Administradores, daba falso); el arreglo ya no depende de File.Exists.
+        sid = subprocess.run([str(system32 / 'whoami.exe'), '/user', '/fo', 'csv', '/nh'], capture_output=True, text=True).stdout.strip().split(',')[-1].strip('"')
+        self.assertTrue(sid.startswith('S-1-'), sid)
+        icacls = str(system32 / 'icacls.exe')
+        denied = subprocess.run([icacls, str(config), '/deny', '*' + sid + ':(OI)(CI)(RD)'], capture_output=True, text=True)
+        self.assertEqual(denied.returncode, 0, denied.stdout + denied.stderr)
+        try:
+            with self.assertRaises(PermissionError): (config / 'server.json').read_text()   # premisa: este usuario ya no la lee
+            failed = cli('import-catalog', str(root / 'vinos.csv'), env=clean_env(COSTINA_DATA=str(root)))
+            output = failed.stdout + failed.stderr
+            self.assertNotEqual(failed.returncode, 0, output)
+            self.assertIn('No se puede leer la configuracion de Costina', output)
+            self.assertIn('PowerShell como administrador', output)
+            self.assertIn(os.path.join(root.name, 'config', 'server.json'), output)   # the file it could not read (8.3 names expanded)
+            self.assertNotIn('COSTINA_MODE', output)                           # the misleading advice is gone
+            self.assertNotIn('   at ', output)                                 # and so is the raw stack trace
+            # With the mode in the environment (laboratory, CI, the HTTP suites on a PC with a real installation) the environment
+            # rules: an unreadable file is ignored as before and the run fails, if at all, for what it really lacks.
+            lab = cli('import-catalog', str(root / 'vinos.csv'), env=clean_env(COSTINA_DATA=str(root), COSTINA_LAB_MODE='true'))
+            self.assertNotEqual(lab.returncode, 0)
+            self.assertIn('Missing COSTINA_DB', lab.stdout + lab.stderr)
+            self.assertNotIn('No se puede leer', lab.stdout + lab.stderr)
+        finally:
+            subprocess.run([icacls, str(config), '/remove:d', '*' + sid], capture_output=True)
+            shutil.rmtree(root, ignore_errors=True)
+        self.assertFalse(root.exists(), 'the denied folder must be cleaned up')
 
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')

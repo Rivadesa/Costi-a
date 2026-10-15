@@ -32,18 +32,35 @@ public sealed class ServerSettings
     public static string ServerFile => Path.Combine(ConfigDirectory,"server.json");
     public static string OwnerFile => Path.Combine(ConfigDirectory,"owner.json");
 
-    public ServerSettings(bool administrative)
+    // C2: una configuracion que existe pero este usuario no puede leer (consola sin administrador en una instalacion: config\ es
+    // solo de SYSTEM y Administradores) detiene cualquier orden con un mensaje claro. 'status' la tolera: resume lo que puede leer.
+    // Si el ENTORNO define el modo (laboratorio, CI, pruebas en un PC con una instalacion real) la ejecucion no depende del fichero
+    // y uno ilegible se ignora, como hasta ahora: las variables de entorno mandan.
+    public ServerSettings(bool administrative,bool tolerateUnreadable=false)
     {
         Load(ServerFile);
         if(administrative) Load(OwnerFile);
+        var environmentDefinesMode=Environment.GetEnvironmentVariable("COSTINA_MODE") is {Length:>0} || Environment.GetEnvironmentVariable("COSTINA_LAB_MODE") is {Length:>0};
+        if(Unreadable is not null && !tolerateUnreadable && !environmentDefinesMode) throw new InvalidOperationException(UnreadableMessage(Unreadable));
     }
+
+    // Primer fichero de configuracion que existe y no se pudo leer por permisos (null si todo se leyo o no hay configuracion).
+    public string? Unreadable { get; private set; }
+
+    public static string UnreadableMessage(string path) => OperatingSystem.IsWindows()
+        ? $"No se puede leer la configuracion de Costina ({path}): abre PowerShell como administrador (clic derecho > Ejecutar como administrador) y repite la orden."
+            + Environment.NewLine + $"Costina's configuration ({path}) is not readable by this user: open PowerShell as administrator (right click > Run as administrator) and run the command again."
+        : $"No se puede leer la configuracion de Costina ({path}): repite la orden con sudo o como el usuario de la instalacion."
+            + Environment.NewLine + $"Costina's configuration ({path}) is not readable by this user: run the command again with sudo or as the installation user.";
 
     private void Load(string path)
     {
-        if(!File.Exists(path)) return;
+        // C2: se intenta leer directamente. File.Exists da FALSO ante un acceso denegado (sin administrador, server.json parecia no
+        // existir y el motor acababa pidiendo COSTINA_MODE); solo 'no existe' (fichero o carpeta) cuenta como configuracion ausente.
         string text;
         try { text=File.ReadAllText(path); }
-        catch(UnauthorizedAccessException) { throw new InvalidOperationException($"{path} is not readable by this user: run this command from an elevated (administrator) console."); }
+        catch(Exception e) when (e is FileNotFoundException or DirectoryNotFoundException) { return; }
+        catch(UnauthorizedAccessException) { Unreadable??=path; return; }
         using var document=JsonDocument.Parse(text);
         foreach(var property in document.RootElement.EnumerateObject())
             if(property.Name.StartsWith("COSTINA_",StringComparison.Ordinal) && property.Value.ValueKind==JsonValueKind.String)
