@@ -175,13 +175,20 @@ public static class CatalogUnit
 
 // Lecturas del catalogo para el puesto principal (edicion) y para los catalogos operativos de los clientes.
 public sealed record PriceView(string TariffId, string ValidFrom, long PriceCents);
-public sealed record PresentationView(string Id, string Name, int Sort, bool Active, PriceView[] Prices);
+// E3.3: Glass = es la copa (lo decide el servidor: presentacion 'copa' o la 'glass' de ensayo).
+public sealed record PresentationView(string Id, string Name, int Sort, bool Active, PriceView[] Prices, bool Glass = false);
 // E3.2: ImageSha = huella de la imagen VIGENTE del producto (null sin imagen o quitada); campo anadido al final: solo anade.
-public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations, string? StationId = null, string? ImageSha = null);
+// E3.3: Section ('cocina' | 'bodega' | null para un producto-menu), Family (la familia bajo la seccion) y CategoryPath (de la raiz a
+// la hoja, sin la seccion): campos anadidos al final, sin dinero; un cliente anterior los ignora.
+public sealed record ProductView(string Id, string Name, string? CategoryId, string TaxId, string? Reference, int Sort, bool Active, PresentationView[] Presentations, string? StationId = null, string? ImageSha = null,
+    string? Section = null, string? Family = null, string[]? CategoryPath = null);
 public sealed record CatalogView(TaxDefinition[] Taxes, CategoryDefinition[] Categories, ProductView[] Products, TariffDefinition[] Tariffs, string Today);
 // Vendible tal como lo ven los clientes: sala sin dinero (SellableView); caja con el precio de la tarifa general (PricedSellableView).
-public sealed record SellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, string? ImageSha = null);
-public sealed record PricedSellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, long PriceCents, string TariffId, string? ImageSha = null);
+// E3.3: Section, Family, CategoryPath, Reference y Glass al final, sin vocabulario de dinero (la guarda de la PWA los acepta).
+public sealed record SellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, string? ImageSha = null,
+    string? Section = null, string? Family = null, string[]? CategoryPath = null, string? Reference = null, bool Glass = false);
+public sealed record PricedSellableView(string Id, string PresentationId, string Name, string Presentation, string? CategoryId, string? CategoryName, long PriceCents, string TariffId, string? ImageSha = null,
+    string? Section = null, string? Family = null, string[]? CategoryPath = null, string? Reference = null, bool Glass = false);
 // E3.2: datos de la imagen de un producto sin sus bytes (ordenes, importacion) y la imagen vigente con sus bytes (lectura).
 public sealed record ImageInfo(string ProductId, string ContentType, string Sha256, int Bytes, bool Active);
 public sealed record StoredImage(byte[] Content, string ContentType, string Sha256);
@@ -202,11 +209,25 @@ public static class CatalogReads
             .ToDictionary(i => i.Product, i => i.Sha, StringComparer.Ordinal);
         var byProduct = presentations.ToLookup(p => p.ProductId);
         var byPresentation = prices.ToLookup(p => (p.ProductId, p.PresentationId));
+        var index = new SectionIndex(categories, await StationKinds(reads, scope, ct));
         return new(taxes.ToArray(), categories.ToArray(), products.Select(p => new ProductView(p.Id, p.Name, p.CategoryId, p.TaxId, p.Reference, p.Sort, p.Active,
             byProduct[p.Id].Select(s => new PresentationView(s.Id, s.Name, s.Sort, s.Active,
-                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray())).ToArray(), p.StationId,
-                images.GetValueOrDefault(p.Id))).ToArray(),
+                byPresentation[(p.Id, s.Id)].Select(x => new PriceView(x.TariffId, x.ValidFrom.ToString("yyyy-MM-dd"), x.PriceCents)).ToArray(), Domain.Catalog.IsGlass(s.Id))).ToArray(), p.StationId,
+                images.GetValueOrDefault(p.Id), index.Section(p.CategoryId, p.StationId), index.Family(p.CategoryId), index.Path(p.CategoryId))).ToArray(),
             tariffs.ToArray(), today.ToString("yyyy-MM-dd"));
+    }
+
+    // E3.3: seccion, familia y ruta de cada producto, calculadas al leer con las categorias y los tipos de estacion del ambito.
+    private static async Task<Dictionary<string, string>> StationKinds(DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)
+        => (await reads.Query(scope, $"SELECT id,kind FROM core.stations WHERE {Scope}", r => (Id: r.GetString(0), Kind: r.GetString(1)), ct)).ToDictionary(s => s.Id, s => s.Kind, StringComparer.Ordinal);
+    private sealed class SectionIndex(IReadOnlyList<CategoryDefinition> categories, IReadOnlyDictionary<string, string> stationKinds)
+    {
+        private readonly Dictionary<string, CategoryDefinition> byId = categories.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        private string? ParentOf(string id) => byId.GetValueOrDefault(id)?.ParentId;
+        private string? NameOf(string id) => byId.GetValueOrDefault(id)?.Name;
+        public string? Section(string? categoryId, string? stationId) => Domain.Catalog.SectionOf(categoryId, ParentOf, stationId is null ? null : stationKinds.GetValueOrDefault(stationId));
+        public string[] Path(string? categoryId) => Domain.Catalog.CategoryPath(categoryId, ParentOf, NameOf);
+        public string? Family(string? categoryId) => Path(categoryId) is { Length: > 0 } path ? path[0] : null;
     }
 
     // E3.2: imagen VIGENTE de un producto con sus bytes, o null (sin imagen, quitada o de otro ambito).
@@ -216,7 +237,7 @@ public static class CatalogReads
 
     // Vendibles con precio vigente en la tarifa GENERAL hoy: producto y presentacion activos, con su categoria. Orden estable.
     private const string SellableSql =
-        "SELECT p.id,s.id,p.name,s.name,c.id,c.name,x.price_cents,i.sha256 FROM core.products p " +
+        "SELECT p.id,s.id,p.name,s.name,c.id,c.name,x.price_cents,i.sha256,p.reference,p.station_id FROM core.products p " +
         "JOIN core.presentations s ON s.tenant=p.tenant AND s.company=p.company AND s.location=p.location AND s.product_id=p.id AND s.active " +
         "LEFT JOIN core.categories c ON c.tenant=p.tenant AND c.company=p.company AND c.location=p.location AND c.id=p.category_id " +
         // E3.2: huella de la imagen vigente (null sin imagen o quitada).
@@ -225,10 +246,20 @@ public static class CatalogReads
         " AND x.product_id=p.id AND x.presentation_id=s.id AND x.valid_from<=@today ORDER BY x.valid_from DESC LIMIT 1) x ON true " +
         // E4a: los productos-menu (categoria 'menus') se venden abriendo la mesa con su oferta, no como consumo suelto.
         "WHERE p.tenant=@tenant AND p.company=@company AND p.location=@location AND p.active AND coalesce(p.category_id,'')<>'menus' ORDER BY c.sort,c.id,p.sort,p.id,s.sort,s.id LIMIT 5000";
-    public static Task<List<SellableView>> Sellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
-        => reads.Query(scope, SellableSql, r => new SellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
-            r.IsDBNull(7) ? null : r.GetString(7)), ct, ("today", today));
-    public static Task<List<PricedSellableView>> PricedSellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
-        => reads.Query(scope, SellableSql, r => new PricedSellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt64(6), Domain.Catalog.GeneralTariff,
-            r.IsDBNull(7) ? null : r.GetString(7)), ct, ("today", today));
+    // E3.3: las filas se completan con seccion, familia, ruta, referencia y copa a partir de las categorias y estaciones del ambito.
+    private static async Task<SectionIndex> Index(DesktopReadRepository reads, BusinessScope scope, CancellationToken ct)
+        => new(await reads.Query(scope, $"SELECT {CatalogUnit.CategoryColumns} FROM core.categories WHERE {Scope}", CatalogUnit.CategoryRow, ct), await StationKinds(reads, scope, ct));
+    public static async Task<List<SellableView>> Sellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
+    {
+        var index = await Index(reads, scope, ct);
+        return await reads.Query(scope, SellableSql, r => new SellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
+            r.IsDBNull(7) ? null : r.GetString(7), index.Section(Text(r, 4), Text(r, 9)), index.Family(Text(r, 4)), index.Path(Text(r, 4)), Text(r, 8), Domain.Catalog.IsGlass(r.GetString(1))), ct, ("today", today));
+    }
+    public static async Task<List<PricedSellableView>> PricedSellables(this DesktopReadRepository reads, BusinessScope scope, DateOnly today, CancellationToken ct)
+    {
+        var index = await Index(reads, scope, ct);
+        return await reads.Query(scope, SellableSql, r => new PricedSellableView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt64(6), Domain.Catalog.GeneralTariff,
+            r.IsDBNull(7) ? null : r.GetString(7), index.Section(Text(r, 4), Text(r, 9)), index.Family(Text(r, 4)), index.Path(Text(r, 4)), Text(r, 8), Domain.Catalog.IsGlass(r.GetString(1))), ct, ("today", today));
+    }
+    private static string? Text(NpgsqlDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
 }

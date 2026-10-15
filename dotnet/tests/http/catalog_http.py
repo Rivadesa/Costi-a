@@ -101,7 +101,7 @@ class Catalog(unittest.TestCase):
         c = catalog()
         self.assertEqual([t['id'] for t in c['taxes']], ['iva-21', 'iva-10', 'iva-4', 'iva-0'])           # lo que existe siempre
         self.assertEqual([t['id'] for t in c['tariffs']], ['general'])
-        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('bebidas', None), ('vinos', 'bebidas'), ('comida', None), ('menus', None)])   # E4a/E4b: menus y platos de la carta de ensayo
+        self.assertEqual([(x['id'], x['parentId']) for x in c['categories']], [('_cocina', None), ('bebidas', None), ('_bodega', None), ('vinos', 'bebidas'), ('comida', None), ('menus', None)])   # E4a/E4b: menus y platos de la carta de ensayo; E3.3: las dos secciones
         wine = product('wine')
         self.assertEqual((wine['categoryId'], wine['taxId'], wine['reference']), ('vinos', 'iva-21', '3754'))
         self.assertEqual({(p['id'], p['prices'][0]['tariffId'], p['prices'][0]['priceCents']) for p in wine['presentations']}, {('glass', 'general', 950), ('bottle', 'general', 4200)})
@@ -474,6 +474,81 @@ class Catalog(unittest.TestCase):
         self.assertEqual(json.loads(command('tariff-create', name='Terraza de verano')[1])['id'], 'terraza-de-verano')
         self.assertIn(command('product-create', name='')[0], (409, 422))
         self.assertEqual(command('product-create', id='tarta-de-santiago', name='Otra')[0], 409)   # un codigo enviado se respeta y choca
+
+    def test_09_e33_sections_glass_sales_moves_tax_and_import_keeps_links(self):
+        # E3.3: seccion, familia, ruta, referencia y copa en los tres catalogos; las secciones reservadas; glass-sale-set, products-move y
+        # products-tax-set; /catalog con ETag; la reimportacion conserva familia, IVA y estacion.
+        full = catalog()
+        self.assertEqual([(c['id'], c['name'], c['parentId']) for c in full['categories'] if c['id'].startswith('_')], [('_cocina', 'Cocina', None), ('_bodega', 'Bodega y bebidas', None)])
+        wine = product('wine')
+        self.assertEqual((wine['section'], wine['family'], wine['categoryPath']), ('bodega', 'Bebidas', ['Bebidas', 'Vinos']))   # sin estacion y sin seccion: bodega
+        self.assertEqual([(p['id'], p['glass']) for p in wine['presentations']], [('glass', True), ('bottle', False)])
+        menu = next(p for p in full['products'] if p['id'] == 'menu-lab-tasting')
+        self.assertIsNone(menu['section'])                                                                           # los productos-menu no son de ninguna
+        row = next(i for i in ok('/catalog') if i['id'] == 'wine' and i['presentationId'] == 'glass')
+        self.assertEqual((row['section'], row['family'], row['categoryPath'], row['reference'], row['glass']), ('bodega', 'Bebidas', ['Bebidas', 'Vinos'], '3754', True))
+        self.assertEqual(list(money_keys(ok('/catalog'))), [])
+        till = next(i for i in ok('/checkout/catalog') if i['id'] == 'wine' and i['presentationId'] == 'bottle')
+        self.assertEqual((till['section'], till['glass'], till['reference']), ('bodega', False, '3754'))
+        # ETag: la misma lectura responde 304 con If-None-Match.
+        status, body = request('/catalog', role='service')
+        etag = h.LAST_HEADERS.get('ETag') or h.LAST_HEADERS.get('etag')
+        self.assertEqual((status, bool(etag), h.LAST_HEADERS.get('Cache-Control') or h.LAST_HEADERS.get('cache-control')), (200, True, 'private, no-cache'))
+        self.assertEqual(request('/catalog', role='service', headers={'If-None-Match': etag})[0], 304)
+        # Secciones reservadas: ni alta con su codigo, ni colgarlas de otra, ni desactivarlas; cambiar el nombre, si.
+        self.assertEqual(json.loads(command('category-create', id='_cocina', name='Otra')[1])['error'], 'reserved_category')
+        self.assertEqual(json.loads(command('category-update', id='_bodega', parentId='bebidas')[1])['error'], 'reserved_category')
+        self.assertEqual(json.loads(command('category-deactivate', id='_cocina')[1])['error'], 'reserved_category')
+        self.assertEqual(command('category-update', id='_bodega', name='Bodega')[0], 200)
+        self.assertEqual(command('category-update', id='_bodega', name='Bodega y bebidas')[0], 200)
+        # Mover familias y productos: la familia bajo la seccion es la raiz de antes.
+        self.assertEqual(command('category-update', id='bebidas', parentId='_bodega')[0], 200)
+        self.assertEqual((product('wine')['section'], product('wine')['family'], product('wine')['categoryPath']), ('bodega', 'Bebidas', ['Bebidas', 'Vinos']))
+        status, body = command('products-move', productIds=['wine', 'water'], categoryId='_cocina')
+        self.assertEqual((status, json.loads(body)['moved']), (200, 2), body)
+        self.assertEqual((product('wine')['section'], product('wine')['family'], product('wine')['categoryPath']), ('cocina', None, []))
+        self.assertEqual(command('products-move', productIds=['wine'], categoryId='vinos')[0], 200)
+        self.assertEqual(command('products-move', productIds=['water'], categoryId='bebidas')[0], 200)
+        self.assertEqual(command('products-move', productIds=['no-existe'], categoryId='vinos')[0], 404)
+        self.assertEqual(command('products-move', productIds=['wine'], categoryId='no-existe')[0], 404)
+        self.assertEqual(command('category-update', id='bebidas', parentId='')[0], 200)
+        # IVA en bloque.
+        status, body = command('products-tax-set', productIds=['wine', 'water'], taxId='iva-4')
+        self.assertEqual((status, json.loads(body)['changed']), (200, 2), body)
+        self.assertEqual((product('wine')['taxId'], product('water')['taxId']), ('iva-4', 'iva-4'))
+        self.assertEqual(command('products-tax-set', productIds=['wine'], taxId='iva-21')[0], 200)
+        self.assertEqual(command('products-tax-set', productIds=['water'], taxId='iva-10')[0], 200)
+        self.assertEqual(command('products-tax-set', productIds=['wine'], taxId='no-existe')[0], 404)
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.product_updated' AND aggregate_id='water'") >= '2', True)
+        # Vinos por copa en bloque: crea la copa con su precio, repite igual con la misma clave, para con stop y reactiva despues.
+        key = 'glass-' + datetime.datetime.now().strftime('%H%M%S%f')
+        status, body = request('/erp/catalog/commands/glass-sale-set', dict(items=[dict(productId='water', priceCents=250)]), key=key)
+        self.assertEqual((status, json.loads(body)), (200, {'marked': 1, 'priced': 1, 'stopped': 0}), body)
+        self.assertEqual(request('/erp/catalog/commands/glass-sale-set', dict(items=[dict(productId='water', priceCents=250)]), key=key), (200, body))
+        glass = next(i for i in ok('/checkout/catalog') if i['id'] == 'water' and i['presentationId'] == 'copa')
+        self.assertEqual((glass['presentation'], glass['glass'], glass['priceCents']), ('Copa', True, 250))
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='water', priceCents=300)])[1]), {'marked': 0, 'priced': 1, 'stopped': 0})
+        self.assertEqual(json.loads(command('glass-sale-set', stop=['water'])[1]), {'marked': 0, 'priced': 0, 'stopped': 1})
+        self.assertNotIn(('water', 'copa'), [(i['id'], i['presentationId']) for i in ok('/catalog')])
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='water', priceCents=300)])[1]), {'marked': 1, 'priced': 0, 'stopped': 0})   # reactivada, mismo precio
+        self.assertIn(('water', 'copa'), [(i['id'], i['presentationId']) for i in ok('/catalog')])
+        self.assertEqual(command('glass-sale-set', items=[dict(productId='no-existe', priceCents=1)])[0], 404)
+        self.assertIn(command('glass-sale-set', items=[dict(productId='water', priceCents=1)] * 301)[0], (409, 422))
+        self.assertIn(command('glass-sale-set')[0], (409, 422))
+        self.assertEqual(command('glass-sale-set', role='service', items=[dict(productId='water', priceCents=1)])[0], 403)
+        self.assertEqual(json.loads(command('glass-sale-set', stop=['water'])[1])['stopped'], 1)
+        # La reimportacion conserva familia, IVA y estacion de un producto que ya existe (solo nombre, referencia, precio e imagen).
+        self.assertEqual(command('product-update', id='wine', stationId='cold')[0], 200)
+        folder = Path(tempfile.mkdtemp(prefix='costina-e33-'))
+        csv = folder / 'tienda.csv'
+        csv.write_text('code;reference;name;category;parent;presentation;price;tax;active\nwine;3754;Vino de ensayo 2024;Blancos;Vinos;Botella;45,00;10;1\n', encoding='utf8')
+        result = import_csv(csv)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('1 existing product(s) brought another family or tax', result.stdout)
+        wine = product('wine')
+        self.assertEqual((wine['name'], wine['categoryId'], wine['taxId'], wine['stationId']), ('Vino de ensayo 2024', 'vinos', 'iva-21', 'cold'))
+        self.assertEqual(max((p for p in next(s for s in wine['presentations'] if s['id'] == 'bottle')['prices'] if p['tariffId'] == 'general'), key=lambda p: p['validFrom'])['priceCents'], 4500)
+        self.assertEqual(command('product-update', id='wine', name='Vino de ensayo', stationId='')[0], 200)
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)

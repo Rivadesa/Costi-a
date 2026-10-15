@@ -53,7 +53,7 @@ class Pwa(unittest.TestCase):
             items = json.loads(body)
             # E3: un vendible por presentacion (water/bottle, wine/glass, wine/bottle); categoria sin dinero; nunca 'tariff'.
             self.assertEqual(sorted((i['id'], i['presentationId']) for i in items), [('croquetas', 'unit'), ('lubina', 'unit'), ('tarta', 'unit'), ('water', 'bottle'), ('wine', 'bottle'), ('wine', 'glass')])   # E4b: platos de la carta de ensayo
-            self.assertEqual(set(items[0]), {'id', 'presentationId', 'name', 'presentation', 'categoryId', 'categoryName', 'imageSha'})   # E3.2: huella de la foto, no dinero
+            self.assertEqual(set(items[0]), {'id', 'presentationId', 'name', 'presentation', 'categoryId', 'categoryName', 'imageSha', 'section', 'family', 'categoryPath', 'reference', 'glass'})   # E3.2: huella de la foto; E3.3: seccion, familia, ruta, referencia y copa; nunca dinero
             self.assertEqual(list(money_keys(items)), [])
         self.assertEqual(h.request('/catalog', role='kitchen')[0], 403)
         self.assertEqual(fetch('/api/native/v1/catalog')[0], 401)
