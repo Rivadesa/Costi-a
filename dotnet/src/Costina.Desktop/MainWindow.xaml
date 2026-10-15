@@ -65,7 +65,7 @@
     </MenuItem>
     <MenuItem Header="_ERP" x:Name="ErpMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
      <MenuItem Header="Catálogo y tarifas" Tag="CatalogTab" Click="ShowView"/>
-     <MenuItem Header="Oferta: cartas y menús" Tag="OffersTab" Click="ShowView"/>
+     <MenuItem Header="Menús y cartas" Tag="OffersTab" Click="ShowView"/>
      <MenuItem Header="Informes" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
      <MenuItem Header="Stock, proveedores y compras" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
     </MenuItem>
@@ -119,7 +119,7 @@
       <StackPanel x:Name="NavManageSection">
        <TextBlock Text="Gestión" Style="{StaticResource NavSection}"/>
        <Button x:Name="NavCatalog" Style="{StaticResource NavItem}" Tag="CatalogTab" local:Ui.Icon="{StaticResource IconCatalog}" Content="Catálogo y tarifas" ToolTip="Catálogo y tarifas" Click="ShowView"/>
-       <Button x:Name="NavOffers" Style="{StaticResource NavItem}" Tag="OffersTab" local:Ui.Icon="{StaticResource IconOffers}" Content="Oferta: cartas y menús" ToolTip="Oferta: cartas y menús" Click="ShowView"/>
+       <Button x:Name="NavOffers" Style="{StaticResource NavItem}" Tag="OffersTab" local:Ui.Icon="{StaticResource IconOffers}" Content="Menús y cartas" ToolTip="Menús y cartas" Click="ShowView"/>
        <Button x:Name="NavOrganization" Style="{StaticResource NavItem}" Tag="OrganizationTab" local:Ui.Icon="{StaticResource IconOrganization}" Content="Salas, mesas y estaciones" ToolTip="Salas, mesas y estaciones" Click="ShowView"/>
        <Button x:Name="NavDevices" Style="{StaticResource NavItem}" Tag="DevicesTab" local:Ui.Icon="{StaticResource IconDevices}" Content="Dispositivos" ToolTip="Dispositivos" Click="ShowView"/>
       </StackPanel>
@@ -188,8 +188,8 @@
     <TabItem Header="Catálogo" x:Name="CatalogTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
      <views:CatalogView x:Name="CatalogView"/>
     </TabItem>
-    <!-- ═══════════════ ERP › Oferta: cartas y menus (nucleo, E4a, solo main) ═══════════════ -->
-    <TabItem Header="Oferta" x:Name="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
+    <!-- ═══════════════ ERP › Menus y cartas (nucleo, E4a; E4d: palabras claras) ═══════════════ -->
+    <TabItem Header="Menús y cartas" x:Name="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
      <views:OffersView x:Name="OffersView"/>
     </TabItem>
     <!-- ═══════════════ Configuracion (nucleo, E2, solo main) ═══════════════ -->

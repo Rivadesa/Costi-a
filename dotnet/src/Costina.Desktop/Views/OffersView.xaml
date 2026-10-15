@@ -64,11 +64,11 @@
  </UserControl.Resources>
 
  <DockPanel>
-  <!-- ===== Cabecera de pagina: titulo, resumen y "Nueva oferta" ===== -->
+  <!-- ===== Cabecera de pagina: titulo, resumen y "Nuevo menu o carta" (E4d: palabras claras; "oferta" sonaba a rebaja) ===== -->
   <DockPanel DockPanel.Dock="Top" Style="{StaticResource PageBar}">
-   <Button x:Name="NewOfferButton" Style="{StaticResource PageAction}" Content="Nueva oferta" Command="{Binding Offers.StartOfferCommand}"/>
+   <Button x:Name="NewOfferButton" Style="{StaticResource PageAction}" Content="Nuevo menú o carta" Command="{Binding Offers.StartOfferCommand}"/>
    <StackPanel VerticalAlignment="Center">
-    <TextBlock Text="Oferta: cartas y menús" Style="{StaticResource PageTitle}"/>
+    <TextBlock Text="Menús y cartas" Style="{StaticResource PageTitle}"/>
     <TextBlock x:Name="OffersSummaryText" Text="{Binding Offers.Summary}" Style="{StaticResource PageSummary}"/>
    </StackPanel>
   </DockPanel>
@@ -80,22 +80,22 @@
    <Border x:Name="OffersPane" Style="{StaticResource ListPane}">
     <DockPanel>
      <TextBox x:Name="OfferSearch" DockPanel.Dock="Top" Style="{StaticResource SearchField}" local:Ui.Hint="Buscar por nombre o código" Visibility="{Binding Offers.ShowListTools, Converter={StaticResource Bool2Vis}}"
-              Text="{Binding Offers.Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar una oferta por nombre o código"/>
-     <ListBox x:Name="KindChips" DockPanel.Dock="Top" Style="{StaticResource FilterChips}" Margin="0,0,0,4" AutomationProperties.Name="Tipos de oferta"
+              Text="{Binding Offers.Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar un menú o una carta por nombre o código"/>
+     <ListBox x:Name="KindChips" DockPanel.Dock="Top" Style="{StaticResource FilterChips}" Margin="0,0,0,4" AutomationProperties.Name="Tipos de menú o carta"
               ItemsSource="{Binding Offers.KindFilters}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Offers.KindFilter}"
               Visibility="{Binding Offers.ShowListTools, Converter={StaticResource Bool2Vis}}"/>
      <Grid>
       <!-- Lista vacia: dice que falta y ofrece crear la primera o volver a verlas todas. -->
       <StackPanel x:Name="OffersEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Offers.ShowListEmpty, Converter={StaticResource Bool2Vis}}">
        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconOffers}" local:Ui.Heading="{Binding Offers.ListEmptyHeading}" Content="{Binding Offers.ListEmptyText}"/>
-       <Button x:Name="EmptyNewOfferButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nueva oferta" Command="{Binding Offers.StartOfferCommand}"
+       <Button x:Name="EmptyNewOfferButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Nuevo menú o carta" Command="{Binding Offers.StartOfferCommand}"
                Visibility="{Binding Offers.ShowCreateOffer, Converter={StaticResource Bool2Vis}}"/>
-       <Button x:Name="EmptyShowAllButton" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Ver todas las ofertas" Command="{Binding Offers.ShowAllCommand}"
+       <Button x:Name="EmptyShowAllButton" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Ver todos" Command="{Binding Offers.ShowAllCommand}"
                Visibility="{Binding Offers.ShowShowAll, Converter={StaticResource Bool2Vis}}"/>
       </StackPanel>
       <!-- Cada oferta: nombre (y "Desactivada" si lo esta) y debajo su tipo, servicio, pases activos y vigencia. Es el unico desplazamiento
            de la columna; elegir una fila mueve SelectedOffer (lo que leen y llevan las ordenes de la ficha). -->
-      <ListBox x:Name="OfferList" Style="{StaticResource CardRows}" ItemsSource="{Binding Offers.Offers}" SelectedItem="{Binding Offers.SelectedOffer}" AutomationProperties.Name="Ofertas"
+      <ListBox x:Name="OfferList" Style="{StaticResource CardRows}" ItemsSource="{Binding Offers.Offers}" SelectedItem="{Binding Offers.SelectedOffer}" AutomationProperties.Name="Menús y cartas"
                SelectionChanged="OfferChosen" Visibility="{Binding Offers.ShowListEmpty, Converter={StaticResource NotBool2Vis}}">
        <ListBox.ItemTemplate>
         <DataTemplate>
@@ -103,14 +103,14 @@
           <StackPanel.Style>
            <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/></DataTrigger></Style.Triggers></Style>
           </StackPanel.Style>
-          <DockPanel>
-           <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
-            <TextBlock Text="Desactivada"/>
-           </Border>
-           <TextBlock Text="{Binding Offer.Name}" Style="{StaticResource CardRowTitle}"/>
-          </DockPanel>
+          <TextBlock Text="{Binding Offer.Name}" Style="{StaticResource CardRowTitle}"/>
           <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" Margin="0,2,0,0"/>
           <TextBlock Text="{Binding Validity}" Style="{StaticResource RowDetail}"/>
+          <!-- E4d: la marca "Menu del dia" (la que se propone al abrir mesa) y "Desactivado" en su fila, como en Salas. -->
+          <WrapPanel>
+           <Border Style="{StaticResource ToneChip}" Tag="ok" Margin="0,8,6,1" Visibility="{Binding IsDaily, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Menú del día"/></Border>
+           <Border Style="{StaticResource ToneChip}" Margin="0,8,6,1" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"><TextBlock Text="Desactivado"/></Border>
+          </WrapPanel>
          </StackPanel>
         </DataTemplate>
        </ListBox.ItemTemplate>
@@ -133,84 +133,93 @@
        <WrapPanel Margin="0,2,0,0">
         <TextBlock x:Name="OfferTitleText" Text="{Binding Offers.OfferTitle}" Style="{StaticResource FichaTitle}"/>
         <Border Style="{StaticResource FichaChip}" Tag="{Binding Offers.OfferStateTone}" Visibility="{Binding Offers.OfferStateText, Converter={StaticResource Text2Vis}}"><TextBlock Text="{Binding Offers.OfferStateText}"/></Border>
+        <Border x:Name="DailyChip" Style="{StaticResource FichaChip}" Tag="ok" Visibility="{Binding Offers.IsDailyOffer, Converter={StaticResource Bool2Vis}}" ToolTip="Se propone al abrir mesa"><TextBlock Text="Menú del día"/></Border>
        </WrapPanel>
       </StackPanel>
 
-      <!-- Abajo y siempre a la vista: guardar la oferta y desactivarla o reactivarla (o cancelar el alta). -->
+      <!-- Abajo y siempre a la vista: guardar y desactivar o reactivar (o cancelar el alta); "Hacerlo menu del dia" cuando no lo es. -->
       <Border Style="{StaticResource FichaActions}">
        <Grid>
-        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <Button x:Name="SaveOfferButton" Style="{StaticResource BigAction}" Content="{Binding Offers.OfferSaveText}" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Offers.SaveOfferCommand}"/>
-        <Button x:Name="DeactivateOfferButton" Grid.Column="1" Style="{StaticResource FichaDanger}" Content="Desactivar oferta" Command="{Binding Offers.ToggleOfferCommand}"
+        <Button x:Name="MakeDailyButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Hacerlo menú del día" Command="{Binding Offers.MakeDailyCommand}" ToolTip="Pasa a ser el que se propone al abrir mesa"
+                Visibility="{Binding Offers.ShowMakeDaily, Converter={StaticResource Bool2Vis}}"/>
+        <Button x:Name="DeactivateOfferButton" Grid.Column="2" Style="{StaticResource FichaDanger}" Content="Desactivar" Command="{Binding Offers.ToggleOfferCommand}"
                 Visibility="{Binding Offers.OfferDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="Deja de ofrecerse al abrir mesa; no se borra y se puede reactivar"/>
-        <Button x:Name="ReactivateOfferButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Reactivar oferta" Command="{Binding Offers.ToggleOfferCommand}"
+        <Button x:Name="ReactivateOfferButton" Grid.Column="2" Style="{StaticResource FichaSecondary}" Content="Reactivar" Command="{Binding Offers.ToggleOfferCommand}"
                 Visibility="{Binding Offers.OfferReactivates, Converter={StaticResource Bool2Vis}}"/>
-        <Button x:Name="CancelOfferButton" Grid.Column="1" Style="{StaticResource FichaSecondary}" Content="Cancelar" Command="{Binding Offers.CancelOfferCommand}"
+        <Button x:Name="CancelOfferButton" Grid.Column="2" Style="{StaticResource FichaSecondary}" Content="Cancelar" Command="{Binding Offers.CancelOfferCommand}"
                 Visibility="{Binding Offers.NewOffer, Converter={StaticResource Bool2Vis}}"/>
        </Grid>
       </Border>
 
       <ScrollViewer x:Name="OfferScroll" Style="{StaticResource FichaScroll}">
        <StackPanel>
-        <!-- Datos de la oferta: codigo fijo (solo se teclea en un alta), tipo y servicio; nombre y orden; vigencia y dias. -->
-        <TextBlock Text="Datos de la oferta" Style="{StaticResource Section}"/>
-        <Grid x:Name="OfferFields">
-         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="170"/><ColumnDefinition Width="12"/><ColumnDefinition Width="170"/>
-         </Grid.ColumnDefinitions>
-         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-         <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="2" Text="Tipo" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="4" Text="Servicio" Style="{StaticResource FieldLabel}"/>
-         <TextBox Grid.Row="1" Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" AutomationProperties.Name="Código de la oferta" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
-         <ComboBox x:Name="OfferKindBox" Grid.Row="1" Grid.Column="2" SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferKind}" IsEnabled="{Binding Offers.OfferEditable}" HorizontalAlignment="Stretch"
-                   AutomationProperties.Name="Tipo de oferta">
-          <ComboBoxItem Tag="tasting">Degustación</ComboBoxItem><ComboBoxItem Tag="set-menu">Menú cerrado</ComboBoxItem><ComboBoxItem Tag="a-la-carte">Carta</ComboBoxItem>
-         </ComboBox>
-         <ComboBox x:Name="OfferServiceBox" Grid.Row="1" Grid.Column="4" SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferService}" IsEnabled="{Binding Offers.OfferEditable}" HorizontalAlignment="Stretch"
-                   AutomationProperties.Name="Servicio de la oferta">
-          <ComboBoxItem Tag="any">Comida y cena</ComboBoxItem><ComboBoxItem Tag="lunch">Comida</ComboBoxItem><ComboBoxItem Tag="dinner">Cena</ComboBoxItem>
-         </ComboBox>
-        </Grid>
+        <!-- E4d: camino principal: nombre, tipo en dos botones, precio por persona (en un menu) y cuando se ofrece. Lo tecnico (menu con
+             eleccion, servicio, codigo, orden, fechas, dias y producto existente) va plegado en "Mas opciones". -->
+        <TextBlock Text="Datos" Style="{StaticResource Section}"/>
+        <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}"/>
+        <TextBox x:Name="OfferNameBox" Text="{Binding Offers.OfferName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Nombre de la oferta"/>
+        <TextBlock Text="Tipo" Style="{StaticResource NextLabel}"/>
+        <ListBox x:Name="OfferKindBox" Style="{StaticResource Segmented}" ItemsSource="{Binding Offers.KindChoices}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Offers.KindSegment}"
+                 IsEnabled="{Binding Offers.OfferEditable}" HorizontalAlignment="Left" AutomationProperties.Name="Tipo de oferta"/>
         <TextBlock x:Name="KindHelpText" Text="{Binding Offers.KindHelp}" Style="{StaticResource Subtle}" Margin="0,6,0,0" Visibility="{Binding Offers.KindHelp, Converter={StaticResource Text2Vis}}"/>
-        <Grid Margin="0,10,0,0">
-         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
-         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-         <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-         <TextBox Grid.Row="1" Text="{Binding Offers.OfferName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Nombre de la oferta"/>
-         <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Orden de la oferta"/>
-        </Grid>
-        <Grid Margin="0,10,0,0">
-         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="130"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/>
-         </Grid.ColumnDefinitions>
-         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-         <TextBlock Text="Desde (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="2" Text="Hasta (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="4" Text="Días" Style="{StaticResource FieldLabel}"/>
-         <TextBox Grid.Row="1" Text="{Binding Offers.OfferValidFrom, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Desde qué fecha se ofrece (vacío: sin límite)"/>
-         <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferValidTo, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Hasta qué fecha se ofrece (vacío: sin límite)"/>
-         <StackPanel x:Name="OfferDaysPanel" Grid.Row="1" Grid.Column="4" Orientation="Horizontal" IsEnabled="{Binding Offers.OfferEditable}">
-          <ToggleButton Style="{StaticResource DayToggle}" Content="L" IsChecked="{Binding Offers.OfferDays[0]}" ToolTip="Lunes" AutomationProperties.Name="Lunes"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="M" IsChecked="{Binding Offers.OfferDays[1]}" ToolTip="Martes" AutomationProperties.Name="Martes"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="X" IsChecked="{Binding Offers.OfferDays[2]}" ToolTip="Miércoles" AutomationProperties.Name="Miércoles"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="J" IsChecked="{Binding Offers.OfferDays[3]}" ToolTip="Jueves" AutomationProperties.Name="Jueves"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="V" IsChecked="{Binding Offers.OfferDays[4]}" ToolTip="Viernes" AutomationProperties.Name="Viernes"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="S" IsChecked="{Binding Offers.OfferDays[5]}" ToolTip="Sábado" AutomationProperties.Name="Sábado"/>
-          <ToggleButton Style="{StaticResource DayToggle}" Content="D" IsChecked="{Binding Offers.OfferDays[6]}" ToolTip="Domingo" AutomationProperties.Name="Domingo" Margin="0"/>
-         </StackPanel>
-        </Grid>
-        <!-- Solo al crear un menu (no una carta): su precio por persona o un producto existente. -->
-        <Grid x:Name="NewMenuFields" Margin="0,10,0,0" Visibility="{Binding Offers.NewMenuOffer, Converter={StaticResource Bool2Vis}}">
+        <Grid x:Name="PriceFields" Margin="0,10,0,0" Visibility="{Binding Offers.ShowPrice, Converter={StaticResource Bool2Vis}}">
          <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-         <TextBlock Text="Precio por persona (€, IVA incl.)" Style="{StaticResource FieldLabel}"/>
-         <TextBlock Grid.Column="2" Text="o código de un producto existente" Style="{StaticResource FieldLabel}"/>
-         <TextBox Grid.Row="1" Text="{Binding Offers.OfferPrice, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right" AutomationProperties.Name="Precio por persona en euros, IVA incluido"/>
-         <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferProductId, UpdateSourceTrigger=PropertyChanged}" ToolTip="Código de un producto del catálogo que tenga la presentación «Por persona»"
-                  AutomationProperties.Name="Código de un producto existente con la presentación Por persona"/>
+         <TextBlock Text="{Binding Offers.PriceLabel}" Style="{StaticResource FieldLabel}" Grid.ColumnSpan="3"/>
+         <TextBox x:Name="OfferPriceBox" Grid.Row="1" Text="{Binding Offers.OfferPrice, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" TextAlignment="Right" AutomationProperties.Name="Precio por persona en euros, IVA incluido"/>
+         <TextBlock x:Name="OfferPriceTextBlock" Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferPriceText}" Style="{StaticResource Subtle}" VerticalAlignment="Center"/>
         </Grid>
+        <TextBlock Text="Cuándo se ofrece" Style="{StaticResource NextLabel}"/>
+        <TextBlock x:Name="WhenTextBlock" Text="{Binding Offers.WhenText}" Style="{StaticResource Body}" TextWrapping="Wrap"/>
+        <Expander x:Name="MoreOptions" Header="Más opciones" Margin="0,12,0,0" IsExpanded="False">
+         <Border Style="{StaticResource FormPanel}" Margin="0,8,0,0">
+          <StackPanel>
+           <CheckBox x:Name="WithChoiceBox" Content="Menú con elección: cada persona elige su plato en cada pase" IsChecked="{Binding Offers.WithChoice}" IsEnabled="{Binding Offers.ChoiceEnabled}"/>
+           <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="Servicio" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Grid.Column="2" Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
+            <ComboBox x:Name="OfferServiceBox" Grid.Row="1" SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferService}" IsEnabled="{Binding Offers.OfferEditable}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="Servicio de la oferta">
+             <ComboBoxItem Tag="any">Comida y cena</ComboBoxItem><ComboBoxItem Tag="lunch">Comida</ComboBoxItem><ComboBoxItem Tag="dinner">Cena</ComboBoxItem>
+            </ComboBox>
+            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" AutomationProperties.Name="Código de la oferta" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+            <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.OfferSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Orden de la oferta"/>
+           </Grid>
+           <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+             <ColumnDefinition Width="130"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="Desde (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Grid.Column="2" Text="Hasta (dd/mm/aaaa)" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Grid.Column="4" Text="Días" Style="{StaticResource FieldLabel}"/>
+            <TextBox Grid.Row="1" Text="{Binding Offers.OfferValidFrom, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Desde qué fecha se ofrece (vacío: sin límite)"/>
+            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.OfferValidTo, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.OfferEditable}" AutomationProperties.Name="Hasta qué fecha se ofrece (vacío: sin límite)"/>
+            <StackPanel x:Name="OfferDaysPanel" Grid.Row="1" Grid.Column="4" Orientation="Horizontal" IsEnabled="{Binding Offers.OfferEditable}">
+             <ToggleButton Style="{StaticResource DayToggle}" Content="L" IsChecked="{Binding Offers.OfferDays[0]}" ToolTip="Lunes" AutomationProperties.Name="Lunes"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="M" IsChecked="{Binding Offers.OfferDays[1]}" ToolTip="Martes" AutomationProperties.Name="Martes"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="X" IsChecked="{Binding Offers.OfferDays[2]}" ToolTip="Miércoles" AutomationProperties.Name="Miércoles"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="J" IsChecked="{Binding Offers.OfferDays[3]}" ToolTip="Jueves" AutomationProperties.Name="Jueves"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="V" IsChecked="{Binding Offers.OfferDays[4]}" ToolTip="Viernes" AutomationProperties.Name="Viernes"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="S" IsChecked="{Binding Offers.OfferDays[5]}" ToolTip="Sábado" AutomationProperties.Name="Sábado"/>
+             <ToggleButton Style="{StaticResource DayToggle}" Content="D" IsChecked="{Binding Offers.OfferDays[6]}" ToolTip="Domingo" AutomationProperties.Name="Domingo" Margin="0"/>
+            </StackPanel>
+           </Grid>
+           <!-- Solo al crear un menu: en vez de un precio, el codigo de un producto existente que se venda por persona. -->
+           <Grid x:Name="NewMenuFields" Margin="0,10,0,0" Visibility="{Binding Offers.NewMenuOffer, Converter={StaticResource Bool2Vis}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="En vez del precio, código de un producto existente que se venda «Por persona»" Style="{StaticResource FieldLabel}"/>
+            <TextBox Grid.Row="1" Text="{Binding Offers.OfferProductId, UpdateSourceTrigger=PropertyChanged}" ToolTip="Código de un producto del catálogo que tenga la presentación «Por persona»"
+                     AutomationProperties.Name="Código de un producto existente con la presentación Por persona"/>
+           </Grid>
+          </StackPanel>
+         </Border>
+        </Expander>
         <!-- El producto-menu de la oferta (o por que una carta no lo tiene). -->
         <ContentControl x:Name="OfferProductNote" Style="{StaticResource NoteBar}" Margin="0,12,0,0">
          <TextBlock x:Name="OfferProductTextBlock" Text="{Binding Offers.OfferProductText}" TextWrapping="Wrap"/>
@@ -223,8 +232,8 @@
                   Click="ShowNewCourse" AutomationProperties.Name="Añadir un pase"/>
           <TextBlock x:Name="CoursesTitleText" Text="{Binding Offers.CoursesTitle}" Style="{StaticResource Section}" Margin="0" VerticalAlignment="Center"/>
          </DockPanel>
-         <TextBlock Text="Una oferta se puede abrir cuando tiene al menos un pase activo con un plato activo." Style="{StaticResource Subtle}" Margin="0,0,0,10"/>
-         <TextBlock x:Name="NoCoursesText" Text="Esta oferta aún no tiene pases: añade el primero con «Pase»." Style="{StaticResource Body}" Margin="0,0,0,8"
+         <TextBlock Text="Un menú o una carta se puede abrir cuando tiene al menos un pase activo con un plato activo." Style="{StaticResource Subtle}" Margin="0,0,0,10"/>
+         <TextBlock x:Name="NoCoursesText" Text="Aún no tiene pases: añade el primero con «Pase»." Style="{StaticResource Body}" Margin="0,0,0,8"
                     Visibility="{Binding Offers.CoursesEmpty, Converter={StaticResource Bool2Vis}}"/>
          <ItemsControl x:Name="CoursesBeforeList" ItemsSource="{Binding Offers.CoursesBefore}" ItemTemplate="{StaticResource CourseRow}" Focusable="False" AutomationProperties.Name="Pases"/>
 
@@ -261,21 +270,19 @@
              </ListBox>
              <TextBlock x:Name="NoDishesText" Text="{Binding Offers.DishesEmptyText}" Style="{StaticResource Body}" Visibility="{Binding Offers.DishesEmpty, Converter={StaticResource Bool2Vis}}"/>
 
-             <!-- Ficha del plato elegido (o del nuevo): codigo fijo, nombre y orden; estacion por su nombre y producto del catalogo. -->
+             <!-- Ficha del plato elegido (o del nuevo): codigo fijo y nombre (E4d: sin numero de orden; "Subir" y "Bajar"); estacion por su nombre y producto del catalogo. -->
              <Border x:Name="DishEditor" Style="{StaticResource FormPanel}" Margin="0,12,0,0" Visibility="{Binding Offers.HasDishEditor, Converter={StaticResource Bool2Vis}}">
               <StackPanel>
                <TextBlock x:Name="DishFormTitleText" Text="{Binding Offers.DishFormTitle}" FontWeight="SemiBold" Margin="0,0,0,8" TextWrapping="Wrap"/>
                <Grid>
                 <Grid.ColumnDefinitions>
-                 <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="64"/>
+                 <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
                 <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
-                <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
                 <TextBox Grid.Row="1" Text="{Binding Offers.DishId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewDish}" AutomationProperties.Name="Código del plato" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
                 <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.DishName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}" AutomationProperties.Name="Nombre del plato"/>
-                <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.DishSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}" AutomationProperties.Name="Orden del plato"/>
                </Grid>
                <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -289,6 +296,8 @@
                <TextBlock x:Name="DishProductTextBlock" Text="{Binding Offers.DishProductText}" Style="{StaticResource Subtle}" Margin="0,6,0,0" Visibility="{Binding Offers.DishProductText, Converter={StaticResource Text2Vis}}"/>
                <WrapPanel Margin="0,10,0,0">
                 <Button x:Name="SaveDishButton" Content="{Binding Offers.DishSaveText}" Style="{StaticResource Primary}" Command="{Binding Offers.SaveDishCommand}"/>
+                <Button x:Name="DishUpButton" Content="Subir" Command="{Binding Offers.MoveDishCommand}" CommandParameter="up" ToolTip="Un plato antes"/>
+                <Button x:Name="DishDownButton" Content="Bajar" Command="{Binding Offers.MoveDishCommand}" CommandParameter="down" ToolTip="Un plato después"/>
                 <Button x:Name="DeactivateDishButton" Content="Desactivar plato" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleDishCommand}"
                         Visibility="{Binding Offers.DishDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="Deja de servirse; no se borra y se puede reactivar"/>
                 <Button x:Name="ReactivateDishButton" Content="Reactivar plato" Command="{Binding Offers.ToggleDishCommand}" Visibility="{Binding Offers.DishReactivates, Converter={StaticResource Bool2Vis}}"/>
@@ -337,23 +346,23 @@
              </Border>
             </StackPanel>
 
-            <!-- Datos del pase elegido: codigo fijo, nombre y orden; guardar y desactivar o reactivar. -->
+            <!-- Datos del pase elegido: codigo fijo y nombre (E4d: sin numero de orden; "Subir" y "Bajar"); guardar y desactivar o reactivar. -->
             <Border Height="1" Background="{StaticResource Stroke}" Margin="0,16,0,12"/>
             <TextBlock Text="Datos del pase" Style="{StaticResource Section}"/>
             <Grid>
              <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="64"/>
+              <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/>
              </Grid.ColumnDefinitions>
              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
              <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
              <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
-             <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
              <TextBox Grid.Row="1" Text="{Binding Offers.CourseId, Mode=OneWay}" IsEnabled="False" AutomationProperties.Name="Código del pase"/>
              <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.CourseName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Nombre del pase"/>
-             <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.CourseSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Orden del pase"/>
             </Grid>
             <WrapPanel Margin="0,10,0,0">
              <Button x:Name="SaveCourseButton" Content="Guardar pase" Style="{StaticResource Primary}" Command="{Binding Offers.SaveCourseCommand}"/>
+             <Button x:Name="CourseUpButton" Content="Subir" Command="{Binding Offers.MoveCourseCommand}" CommandParameter="up" ToolTip="Un pase antes"/>
+             <Button x:Name="CourseDownButton" Content="Bajar" Command="{Binding Offers.MoveCourseCommand}" CommandParameter="down" ToolTip="Un pase después"/>
              <Button x:Name="DeactivateCourseButton" Content="Desactivar pase" Style="{StaticResource DangerButton}" Command="{Binding Offers.ToggleCourseCommand}"
                      Visibility="{Binding Offers.CourseDeactivates, Converter={StaticResource Bool2Vis}}" ToolTip="Deja de servirse; no se borra y se puede reactivar"/>
              <Button x:Name="ReactivateCourseButton" Content="Reactivar pase" Command="{Binding Offers.ToggleCourseCommand}" Visibility="{Binding Offers.CourseReactivates, Converter={StaticResource Bool2Vis}}"/>
@@ -371,15 +380,13 @@
            <TextBlock Text="Nuevo pase" FontWeight="SemiBold" Margin="0,0,0,8"/>
            <Grid>
             <Grid.ColumnDefinitions>
-             <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="64"/>
+             <ColumnDefinition Width="110"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
             <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
-            <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
             <TextBox Grid.Row="1" Text="{Binding Offers.CourseId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewCourse}" AutomationProperties.Name="Código del pase nuevo" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
             <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.CourseName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Nombre del pase nuevo"/>
-            <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.CourseSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Orden del pase nuevo"/>
            </Grid>
            <WrapPanel Margin="0,10,0,0">
             <Button x:Name="CreateCourseButton" Content="Crear pase" Style="{StaticResource Primary}" Command="{Binding Offers.SaveCourseCommand}"/>
@@ -388,9 +395,9 @@
           </StackPanel>
          </Border>
         </StackPanel>
-        <TextBlock x:Name="NewOfferCoursesText" Text="Guarda la oferta para añadirle sus pases y sus platos." Style="{StaticResource Body}" Margin="0,18,0,0"
+        <TextBlock x:Name="NewOfferCoursesText" Text="Guarda el menú o la carta para añadirle sus pases y sus platos." Style="{StaticResource Body}" Margin="0,18,0,0"
                    Visibility="{Binding Offers.NewOffer, Converter={StaticResource Bool2Vis}}"/>
-        <TextBlock Text="Nada se borra: una oferta, un pase o un plato desactivados dejan de ofrecerse y conservan su historia." Style="{StaticResource FichaNote}"/>
+        <TextBlock Text="Nada se borra: un menú, una carta, un pase o un plato desactivados dejan de ofrecerse y conservan su historia." Style="{StaticResource FichaNote}"/>
        </StackPanel>
       </ScrollViewer>
      </DockPanel>

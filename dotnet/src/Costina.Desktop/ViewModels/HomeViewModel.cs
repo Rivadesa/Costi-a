@@ -266,7 +266,7 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         FloorEmpty = all.Length == 0 ? "No hay mesas activas. Créalas en Salas, mesas y estaciones." : "";
     }
 
-    // Ofertas con las que estan abiertas las mesas: "2 degustaciones · 2 menús cerrados · 3 a la carta". Una mesa sin oferta (servidor
+    // Ofertas con las que estan abiertas las mesas: "2 menús degustación · 2 con elección · 3 a la carta". Una mesa sin oferta (servidor
     // anterior) o con una que ya no esta vigente se cuenta aparte; un tipo nuevo sale tal cual.
     private static string OfferMix(DiningDto[] dinings, OfferChoice[] offers)
     {
@@ -275,8 +275,8 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         static int Order(string kind) => Key(kind) switch { "tasting" => 0, "setmenu" => 1, "alacarte" => 2, "" => 4, _ => 3 };
         static string Count(string kind, int n) => Key(kind) switch
         {
-            "tasting" => Labels.Plural(n, "degustación", "degustaciones"),
-            "setmenu" => Labels.Plural(n, "menú cerrado", "menús cerrados"),
+            "tasting" => Labels.Plural(n, "menú degustación", "menús degustación"),
+            "setmenu" => n.ToString(CultureInfo.InvariantCulture) + " con elección",
             "alacarte" => n.ToString(CultureInfo.InvariantCulture) + " a la carta",
             "" => Labels.Plural(n, "mesa con otra oferta", "mesas con otra oferta"),
             _ => n.ToString(CultureInfo.InvariantCulture) + " " + Labels.OfferKind(kind)

@@ -207,7 +207,7 @@
      <StackPanel Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
       <TextBlock Text="Mesa" Style="{StaticResource FieldLabel}"/>
       <ComboBox x:Name="OpenTableBox" ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" HorizontalAlignment="Stretch" Margin="0,0,0,12"/>
-      <TextBlock Text="Oferta" Style="{StaticResource FieldLabel}"/>
+      <TextBlock Text="Menú o carta" Style="{StaticResource FieldLabel}"/>
       <ComboBox x:Name="OpenOfferBox" ItemsSource="{Binding Service.Offers}" SelectedItem="{Binding Service.SelectedOffer}" HorizontalAlignment="Stretch" Margin="0,0,0,12" ToolTip="Oferta vigente: degustación, menú cerrado o carta"/>
       <TextBlock Text="Personas" Style="{StaticResource FieldLabel}"/>
       <TextBox x:Name="OpenPaxBox" Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="96" HorizontalAlignment="Left" Margin="0,0,0,14"/>
@@ -362,7 +362,7 @@
 
        <!-- E4a: eleccion de plato por comensal en un pase de menu cerrado (solo si el servidor anuncia 'choose' en el pase elegido) -->
        <Border Style="{StaticResource FormPanel}" Margin="0,4,0,6" Visibility="{Binding Service.CanChoose, Converter={StaticResource Bool2Vis}}"><StackPanel>
-        <TextBlock Text="Menú cerrado: cada comensal elige su plato antes de enviar el pase" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="Menú con elección: cada persona elige su plato antes de enviar el pase" FontWeight="SemiBold" TextWrapping="Wrap"/>
         <TextBlock Text="{Binding Service.ChoicesText}" Style="{StaticResource Subtle}" Margin="0,2,0,8"/>
         <ComboBox ItemsSource="{Binding Service.ChoiceDishes}" SelectedItem="{Binding Service.SelectedChoiceDish}" HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
         <DockPanel><Button DockPanel.Dock="Right" Content="Elegir plato" Style="{StaticResource Primary}" Command="{Binding Service.ChooseCommand}" Margin="0"/>

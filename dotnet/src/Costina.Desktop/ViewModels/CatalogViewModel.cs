@@ -392,6 +392,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     }
     // Revision de C2b: el nombre de un producto del catalogo leido (la ficha de una oferta nombra su producto-menu, que Caja no vende).
     public string? NameOfProduct(string id) => catalog?.Products.FirstOrDefault(p => p.Id == id)?.Name;
+    // E4d: el precio General vigente hoy de un producto leido (su primera presentacion activa con precio), para la ficha de un menu.
+    public string? GeneralPriceText(string id) => catalog is null ? null
+        : catalog.Products.FirstOrDefault(p => p.Id == id)?.Presentations.Where(s => s.Active).Select(s => Current(s, "general", catalog.Today)).FirstOrDefault(c => c is not null) is { } price ? Money(price.PriceCents) : null;
 
     // Precio vigente hoy en una tarifa (la fila de mayor fecha no posterior a hoy), o null.
     private static PriceDto? Current(PresentationDto presentation, string tariffId, string today)

@@ -475,7 +475,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         else
         {
             SelectedTable = Tables.FirstOrDefault(t => t.Id == tile.Table.Id) ?? SelectedTable;
-            OpenForm = true;
+            ProposeDaily(); OpenForm = true;
         }
     }
 
@@ -489,8 +489,11 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             var free = Groups.SelectMany(g => g.Tiles).Concat(Tiles).FirstOrDefault(t => !t.Occupied);
             if (free is not null) SelectedTable = Tables.FirstOrDefault(t => t.Id == free.Table.Id) ?? SelectedTable;
         }
-        OpenForm = true;
+        ProposeDaily(); OpenForm = true;
     }
+    // E4d: al abrir mesa se propone SIEMPRE el menu del dia (la primera oferta vigente ahora, en el orden de Menus y cartas), no el
+    // elegido la vez anterior. Mientras el formulario esta abierto, una relectura no toca la eleccion.
+    private void ProposeDaily() { if (Offers.Length > 0) SelectedOffer = Offers[0]; }
     [RelayCommand] private void CancelOpen() => OpenForm = false;
 
     // "Ver cuenta": la cuenta de ESTA mesa en Caja (apartado del responsable: en el nivel Puesto pide la contrasena, como el menu). Si
