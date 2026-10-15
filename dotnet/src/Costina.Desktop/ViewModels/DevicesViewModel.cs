@@ -130,13 +130,16 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     internal async Task LoadAsync()
     {
         if (shell.Api is null || !shell.IsMain) return;
+        // C2: el asistente pedido desde Inicio se consume ANTES de leer: si una lectura falla no queda para despues (otra visita o una
+        // actualizacion lo abririan solo y emitirian un codigo que nadie ha pedido en ese momento); se vuelve a pulsar.
+        var intent = requestedIntent; requestedIntent = null;
         await ReadNetworkAsync();
         if (!addressSuggested) await SuggestAddressAsync();
         var pendingRows = await shell.Api.GetAsync<PairingPendingDto[]>("auth/pairings/pending");
         var deviceRows = await shell.Api.GetAsync<DeviceRowDto[]>("auth/devices");
         var organization = await shell.Api.GetAsync<OrganizationDto>("organization");
         Render(organization.Stations, pendingRows, deviceRows);
-        if (requestedIntent is { } role) { requestedIntent = null; await OpenRequested(role); }
+        if (intent is { } role) await OpenRequested(role);
     }
 
     // C2: el asistente que pidio Inicio, con las estaciones recien leidas. Corre dentro de la lectura (shell.Run): no pasa otra vez por

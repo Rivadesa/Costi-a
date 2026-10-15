@@ -87,9 +87,13 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
     [ObservableProperty] private string networkNotice = "";
 
     // Las cifras y el mini plano siguen a las tarjetas del Comedor: se rehacen cada vez que el plano se rehace (cada lectura del
-    // tablero o de la configuracion y cada minuto).
-    internal void Watch(ServiceViewModel service) =>
-        service.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ServiceViewModel.Tiles)) RebuildFloor(); };
+    // tablero o de la configuracion y cada minuto) y cuando el tablero pasa a leido o deja de estarlo. La primera pintura ya dice
+    // "sin leer" (nunca los ceros de los valores iniciales).
+    internal void Watch(ServiceViewModel service)
+    {
+        service.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(ServiceViewModel.Tiles) or nameof(ServiceViewModel.BoardRead)) RebuildFloor(); };
+        RebuildFloor();
+    }
 
     internal void Sync()
     {
@@ -216,8 +220,20 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
     }
 
     // ---- C2: cifras y mini plano, de las tarjetas del Comedor ----
+    // Sin el tablero leido (antes de la primera lectura, al cambiar de nivel o al desconectar) no se presenta un comedor vacio: las cifras
+    // dicen que no hay lectura (nunca "0 de 0" ni "Nada por revisar", que seria un falso negativo sobre alergias).
+    public const string NotRead = "—", NotReadDetail = "Sin leer todavía";
     private void RebuildFloor()
     {
+        UpdateHeader();   // el saludo y el servicio cambian con la hora (el plano se rehace cada minuto)
+        if (!shell.Service.BoardRead)
+        {
+            OccupiedText = NotRead; TablesText = ""; OccupiedShare = new(0, GridUnitType.Star); FreeShare = new(1, GridUnitType.Star);
+            DinersText = NotRead; DinersDetail = ""; KitchenText = NotRead; ReadyText = ""; HasReady = false;
+            ReviewText = NotRead; ReviewAlarm = false; ReviewDetail = NotReadDetail;
+            Tiles = []; ZonesText = ""; Legend = []; FloorEmpty = NotReadDetail + ": pulsa F5 para leer el comedor.";
+            return;
+        }
         var all = shell.Service.Tiles;
         var occupied = all.Where(t => t.Occupied).ToArray();
         var dinings = occupied.Select(t => t.Entry!.Service).ToArray();
@@ -243,10 +259,11 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         ZonesText = string.Join(" · ", all.Select(t => t.ZoneName).Distinct(StringComparer.Ordinal));
         var tones = all.Select(t => t.Tone).ToHashSet(StringComparer.Ordinal);
         var legend = LegendOrder.Where(tones.Contains).Select(s => new LegendItem(s, Labels.TableState(s))).ToList();
-        if (all.Any(t => t.HasAlert)) legend.Add(new("alert", "Con alergia o restricción"));
+        // El borde rojo solo lo llevan las mesas con aviso ALARMANTE (FloorPlan.AlertIsAlarming); una restriccion leve o moderada lleva su
+        // pastilla ambar con su palabra y ningun borde: la leyenda no promete un rojo que no se pinta.
+        if (all.Any(t => t.AlertAlarming)) legend.Add(new("alert", "Alergia, restricción grave o por revisar"));
         if (!legend.SequenceEqual(Legend)) Legend = [..legend];
         FloorEmpty = all.Length == 0 ? "No hay mesas activas. Créalas en Salas, mesas y estaciones." : "";
-        UpdateHeader();   // el saludo y el servicio cambian con la hora (el plano se rehace cada minuto)
     }
 
     // Ofertas con las que estan abiertas las mesas: "2 degustaciones · 2 menús cerrados · 3 a la carta". Una mesa sin oferta (servidor

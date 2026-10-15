@@ -10,7 +10,14 @@ public static class FloorPlan
     // Codigos de estado de la tarjeta (Labels.TableState los rotula). Un estado del servidor que no se conoce viaja crudo.
     public const string Free = "free", Seated = "seated", Kitchen = "kitchen", Ready = "ready", Eating = "eating",
         Paused = "paused", Finished = "finished", Cancelled = "cancelled";
+    public static readonly string[] Codes = [Free, Seated, Kitchen, Ready, Eating, Paused, Finished, Cancelled];
     private static readonly string[] KnownCourseStates = ["Pending", "Fired", "Preparing", "Ready", "Served", "Skipped"];
+
+    // Texto del estado de una tarjeta. Solo se rotulan los codigos de FloorPlan (comparacion EXACTA): un estado del servidor que no se
+    // conoce sale tal cual aunque se parezca a uno de ellos (Labels no distingue mayusculas, y un pase "Cancelled" no es una mesa
+    // cancelada ni un servicio "Ready" una mesa lista para servir).
+    public static bool IsCode(string state) => Codes.Contains(state, StringComparer.Ordinal);
+    public static string Label(string state) => IsCode(state) ? Labels.TableState(state) : state;
 
     // Estado de una mesa: libre sin servicio en el tablero; despues manda el estado del servicio y, en servicio, el de sus pases
     // (listo para servir antes que en cocina; comiendo cuando ya se sirvio algo y no hay nada en cocina; sentados si aun no salio nada).
@@ -47,14 +54,33 @@ public static class FloorPlan
         : Same(course.State, "Pending") ? "pending" : "other";
     public static int Done(DiningDto? service) => service is null ? 0 : service.Courses.Count(c => Step(c) == "done");
 
-    // Aviso de restricciones de una mesa (siempre con texto): "Alergia" si hay alguna alergia, "Restriccion" si hay otras, y
-    // "· por revisar" mientras cocina no haya revisado un cambio. Alarming dice si va en rojo (alergia, grave, desconocido o por revisar).
+    // Aviso de restricciones de una mesa (siempre con texto): la palabra nombra lo mas alarmante y "· por revisar" se anade mientras
+    // cocina no haya revisado un cambio. Alarming dice si va en rojo (alergia, grave, desconocido o por revisar).
+    //  - "Alergia" si hay alguna alergia (con su gravedad tal cual si no se conoce: "Alergia (Critical)");
+    //  - un tipo que no se conoce, TAL CUAL y con su gravedad ("Anaphylaxis (Critical)"), aunque haya tambien una alergia;
+    //  - sin nada de eso, una intolerancia o preferencia grave o de gravedad desconocida con su tipo y su gravedad ("Intolerancia (grave)");
+    //  - "Restriccion" solo para las moderadas o leves (y para un cambio sin revisar sin restricciones a la vista).
+    // Asi el rojo y el ambar nunca llevan la misma palabra y un valor desconocido nunca se rebaja a una palabra generica.
+    public const string PendingReview = "por revisar";
     public static string Alert(DiningDto? service)
     {
         if (service is null) return "";
+        var word = AlertWord(service);
+        return service.RestrictionsPendingAck ? word + " · " + PendingReview : word;
+    }
+    public static string AlertWord(DiningDto? service)
+    {
+        if (service is null) return "";
         var list = service.Restrictions ?? [];
-        var word = list.Any(r => Same(r.Kind, "Allergy")) ? "Alergia" : list.Length > 0 || service.RestrictionsPendingAck ? "Restricción" : "";
-        return service.RestrictionsPendingAck ? word + " · por revisar" : word;
+        var words = new List<string>();
+        var allergies = list.Where(r => Same(r.Kind, "Allergy")).ToArray();
+        if (allergies.Length > 0)
+            words.Add(allergies.FirstOrDefault(r => !KnownSeverity(r.Severity)) is { } odd ? $"Alergia ({Labels.Severity(odd.Severity)})" : "Alergia");
+        words.AddRange(list.Where(r => !KnownKind(r.Kind)).Select(r => $"{Labels.RestrictionKind(r.Kind)} ({Labels.Severity(r.Severity)})"));
+        if (words.Count == 0)
+            words.AddRange(list.Where(Alarming).OrderBy(r => KnownSeverity(r.Severity)).Select(r => $"{Labels.RestrictionKind(r.Kind)} ({Labels.Severity(r.Severity)})"));
+        if (words.Count == 0 && (list.Length > 0 || service.RestrictionsPendingAck)) words.Add("Restricción");
+        return string.Join(", ", words.Distinct(StringComparer.Ordinal));
     }
     public static bool AlertIsAlarming(DiningDto? service) =>
         service is not null && (service.RestrictionsPendingAck || (service.Restrictions ?? []).Any(Alarming));
@@ -88,6 +114,8 @@ public static class FloorPlan
         return Labels.Plural(preparations.Length, "elaboración", "elaboraciones");
     }
 
+    private static bool KnownKind(string kind) => Same(kind, "Allergy") || Same(kind, "Intolerance") || Same(kind, "Preference");
+    private static bool KnownSeverity(string severity) => Same(severity, "Severe") || Same(severity, "Moderate") || Same(severity, "Mild");
     private static bool InKitchen(CourseDto course) => Same(course.State, "Fired") || Same(course.State, "Preparing");
     private static bool Same(string value, string code) => string.Equals(value, code, StringComparison.OrdinalIgnoreCase);
 }

@@ -546,8 +546,14 @@ await Check("floor plan: tile state, time, progress and alert come from the read
     Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Ready",12,3)))=="ready","ready beats the rest");
     Expect(FloorPlan.State(D("InService",C("Served",30,25,20),C("Skipped"),C("Pending")))=="eating","eating between courses");
     Expect(FloorPlan.State(D("Paused",C("Ready",12,3)))=="paused"&&FloorPlan.State(D("Completed",C("Served")))=="finished"&&FloorPlan.State(D("Cancelled",C("Pending")))=="cancelled","paused, finished, cancelled");
-    Expect(FloorPlan.State(D("Closing"))=="Closing"&&Labels.TableState("Closing")=="Closing","an unknown service state is shown raw");
+    Expect(FloorPlan.State(D("Closing"))=="Closing"&&Labels.TableState("Closing")=="Closing"&&FloorPlan.Label("Closing")=="Closing","an unknown service state is shown raw");
     Expect(FloorPlan.State(D("InService",C("Plating",5)))=="Plating","an unknown course state is shown raw, never softened to 'Comiendo'");
+    // Revision C2: solo los codigos de FloorPlan se rotulan (comparacion exacta); un estado del servidor que se parece a uno de ellos
+    // (Labels no distingue mayusculas) sigue saliendo tal cual: un pase "Cancelled" no es una mesa cancelada.
+    Expect(FloorPlan.State(D("InService",C("Cancelled")))=="Cancelled"&&FloorPlan.Label(FloorPlan.State(D("InService",C("Cancelled"))))=="Cancelled"
+        &&FloorPlan.Label(FloorPlan.State(D("Ready")))=="Ready"&&FloorPlan.Label(FloorPlan.State(D("Finished")))=="Finished"&&!FloorPlan.IsCode("Ready"),
+        "a raw state that looks like a tile code stays raw: "+FloorPlan.Label(FloorPlan.State(D("InService",C("Cancelled")))));
+    Expect(FloorPlan.Codes.All(c=>FloorPlan.Label(c)==Labels.TableState(c)&&FloorPlan.Label(c)!=c),"every tile code has its Spanish label");
     Expect(FloorPlan.Since(D("InService",C("Served",30,25,20),C("Fired",12)))==now.AddMinutes(-12)&&FloorPlan.Since(D("InService",C("Ready",12,3)))==now.AddMinutes(-3)
         &&FloorPlan.Since(D("InService",C("Served",40,35,30),C("Served",20,15,8),C("Pending")))==now.AddMinutes(-8)&&FloorPlan.Since(D("Open",C("Pending"))) is null,"time of the state shown (never invented)");
     Expect(Labels.Minutes(TimeSpan.FromMinutes(12.7))=="12 min"&&Labels.Minutes(TimeSpan.FromMinutes(65))=="1 h 05 min"&&Labels.Minutes(TimeSpan.FromMinutes(-2))=="0 min","minutes");
@@ -558,10 +564,18 @@ await Check("floor plan: tile state, time, progress and alert come from the read
     Expect(FloorPlan.Alert(D("InService"))==""&&!FloorPlan.AlertIsAlarming(D("InService")),"no restrictions, no alert");
     Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild,allergy]})=="Alergia"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild,allergy]}),"an allergy is named");
     Expect(FloorPlan.Alert(D("InService") with {Restrictions=[mild]})=="Restricción"&&!FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild]}),"a mild intolerance is a plain restriction");
-    Expect(FloorPlan.Alert(D("InService") with {Restrictions=[odd]})=="Restricción"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[odd]})&&odd.Alarming,"an unknown kind is never softened");
+    // Revision C2: la palabra de la tarjeta nombra lo mas alarmante y un valor desconocido sale tal cual (con su gravedad): el rojo y el
+    // ambar nunca llevan la misma palabra, y un tipo nuevo nunca se rebaja a la palabra generica "Restriccion".
+    string A(params GuestRestrictionDto[] list)=>FloorPlan.Alert(D("InService") with {Restrictions=list});
+    Expect(A(odd)=="Anaphylaxis (Critical)"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[odd]})&&odd.Alarming,"an unknown kind is shown raw with its severity, never softened: "+A(odd));
+    Expect(A(severeIntolerance)=="Intolerancia (grave)"&&A(oddSeverity)=="Preferencia (Extreme)"&&A(mild,severeIntolerance)=="Intolerancia (grave)","a severe or unknown-severity intolerance or preference names kind and severity: "+A(oddSeverity));
+    Expect(A(allergy,odd)=="Alergia, Anaphylaxis (Critical)"&&A(mild,allergy,severeIntolerance)=="Alergia"&&A(new GuestRestrictionDto("r6",1,"Allergy","sésamo","Critical"))=="Alergia (Critical)",
+        "an allergy is named, an unknown kind next to it too, and an unknown allergy severity raw: "+A(allergy,odd));
+    Expect(A(mild,new GuestRestrictionDto("r7",2,"Preference","picante","Moderate"))=="Restricción"&&!FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild]}),"only mild or moderate ones are a plain restriction");
     Expect(severeIntolerance.Alarming&&oddSeverity.Alarming&&!mild.Alarming&&allergy.Alarming,"severe or unknown severity is alarming");
     Expect(FloorPlan.Alert(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia · por revisar"&&FloorPlan.AlertIsAlarming(D("InService") with {Restrictions=[mild],RestrictionsPendingAck=true})
-        &&FloorPlan.Alert(D("InService") with {RestrictionsPendingAck=true})=="Restricción · por revisar","a change kitchen has not reviewed is said");
+        &&FloorPlan.Alert(D("InService") with {RestrictionsPendingAck=true})=="Restricción · por revisar"&&FloorPlan.Alert(D("InService") with {Restrictions=[odd],RestrictionsPendingAck=true})=="Anaphylaxis (Critical) · por revisar"
+        &&FloorPlan.AlertWord(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia","a change kitchen has not reviewed is said, after the word");
     var ready=new PreparationDto("p1","Merluza","hot",1,1,true,"Ready"); var fired=new PreparationDto("p2","Merluza","hot",1,2,true,"Fired");
     Expect(FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2)=="En cocina desde las "+Labels.Clock(now.AddMinutes(-12))+" · 1 de 2 elaboraciones listas","kitchen detail: "+FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2));
     Expect(FloorPlan.CourseDetail(C("Served",30,25,20),2)=="Servido a las "+Labels.Clock(now.AddMinutes(-20))&&FloorPlan.CourseDetail(C("Ready",12,3),2)=="Listo desde las "+Labels.Clock(now.AddMinutes(-3)),"served and ready");

@@ -43,7 +43,7 @@
     <Trigger Property="Tag" Value="free"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/></Trigger>
     <Trigger Property="Tag" Value="seated"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoLine}"/><Setter Property="Foreground" Value="{StaticResource InfoText}"/></Trigger>
     <Trigger Property="Tag" Value="kitchen"><Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource WarnLine}"/><Setter Property="Foreground" Value="{StaticResource WarnText}"/></Trigger>
-    <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource Ok}"/><Setter Property="BorderBrush" Value="{StaticResource Ok}"/><Setter Property="Foreground" Value="#FFFFFF"/></Trigger>
+    <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource OkText}"/><Setter Property="BorderBrush" Value="{StaticResource OkText}"/><Setter Property="Foreground" Value="#FFFFFF"/></Trigger>
     <Trigger Property="Tag" Value="eating"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentLine}"/><Setter Property="Foreground" Value="{StaticResource AccentText}"/></Trigger>
     <Trigger Property="Tag" Value="paused"><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/></Trigger>
     <Trigger Property="Tag" Value="finished"><Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/></Trigger>
@@ -63,20 +63,25 @@
         <Style.Triggers><DataTrigger Binding="{Binding AlertAlarming}" Value="True"><Setter Property="Background" Value="{StaticResource DangerSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource DangerText}"/></DataTrigger></Style.Triggers>
        </Style>
       </Border.Style>
-      <TextBlock Text="{Binding Alert}" FontSize="10.5" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+      <!-- El aviso se parte solo por su sentido: la palabra ("Alergia", "Anaphylaxis (Critical)"...) y, debajo, "por revisar". -->
+      <StackPanel>
+       <TextBlock Text="{Binding AlertWord}" FontSize="10.5" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+       <TextBlock Text="{Binding AlertNote}" FontSize="10" TextAlignment="Center" Visibility="{Binding AlertNote, Converter={StaticResource Text2Vis}}"/>
+      </StackPanel>
      </Border>
     </StackPanel>
    </Button>
   </DataTemplate>
-  <!-- Muestra de la leyenda: el mismo color que las mesas de ese estado; "alert" = borde rojo. -->
+  <!-- Muestra de la leyenda: el mismo color que las mesas de ese estado; "alert" = borde rojo; "free" = borde discontinuo, como las mesas
+       libres (lo dibuja el rectangulo de la plantilla de la leyenda: sin el, Libre y Terminado se veian iguales). -->
   <Style x:Key="LegendSwatch" TargetType="Border">
    <Setter Property="Width" Value="12"/><Setter Property="Height" Value="12"/><Setter Property="CornerRadius" Value="4"/><Setter Property="BorderThickness" Value="1"/>
    <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/>
    <Style.Triggers>
-    <Trigger Property="Tag" Value="free"><Setter Property="Background" Value="Transparent"/></Trigger>
+    <Trigger Property="Tag" Value="free"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/></Trigger>
     <Trigger Property="Tag" Value="seated"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoLine}"/></Trigger>
     <Trigger Property="Tag" Value="kitchen"><Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource WarnLine}"/></Trigger>
-    <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource Ok}"/><Setter Property="BorderBrush" Value="{StaticResource Ok}"/></Trigger>
+    <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource OkText}"/><Setter Property="BorderBrush" Value="{StaticResource OkText}"/></Trigger>
     <Trigger Property="Tag" Value="eating"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentLine}"/></Trigger>
     <Trigger Property="Tag" Value="finished"><Setter Property="Background" Value="{StaticResource Surface}"/></Trigger>
     <Trigger Property="Tag" Value="cancelled"><Setter Property="Background" Value="{StaticResource Surface}"/></Trigger>
@@ -232,7 +237,20 @@
       <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
        <DataTemplate>
-        <StackPanel Orientation="Horizontal" Margin="0,0,14,4"><Border Style="{StaticResource LegendSwatch}" Tag="{Binding Tone}"/><TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource InkSoft}" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,0,14,4">
+         <Grid Width="12" Height="12" VerticalAlignment="Center">
+          <Border Style="{StaticResource LegendSwatch}" Tag="{Binding Tone}"/>
+          <Rectangle RadiusX="4" RadiusY="4" Stroke="{StaticResource StrokeStrong}" StrokeThickness="1.2" StrokeDashArray="2 1.5">
+           <Rectangle.Style>
+            <Style TargetType="Rectangle">
+             <Setter Property="Visibility" Value="Collapsed"/>
+             <Style.Triggers><DataTrigger Binding="{Binding Tone}" Value="free"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+            </Style>
+           </Rectangle.Style>
+          </Rectangle>
+         </Grid>
+         <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource InkSoft}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
        </DataTemplate>
       </ItemsControl.ItemTemplate>
      </ItemsControl>

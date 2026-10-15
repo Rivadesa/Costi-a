@@ -480,7 +480,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.33.0-b1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.37.0-c2",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -567,6 +567,9 @@ internal static class Program
         if(((FrameworkElement)window.FindName("StatusBarInfo")).Visibility!=Visibility.Collapsed||levels.Status.Length==0) throw new Exception("While the login card is up the request is said once, in the card.");
         if(((FrameworkElement)window.FindName("ElevationLayer")).ActualHeight!=((FrameworkElement)window.Content).ActualHeight) throw new Exception("The scrim covers the whole window, top bar and status bar included.");
         RefuseRaw(window,"elevation");
+        // Revision C2: sin el tablero leido Inicio no presenta un comedor vacio: ni "0 de 0" ni "Nada por revisar" (falso negativo de alergias).
+        if(levels.Service.BoardRead||levels.Home.OccupiedText!="—"||levels.Home.TablesText.Length!=0||levels.Home.ReviewText!="—"||levels.Home.ReviewDetail!="Sin leer todavía"||levels.Home.ReviewAlarm
+            ||!levels.Home.FloorEmpty.StartsWith("Sin leer todavía",StringComparison.Ordinal)||Texts(window).Contains("Nada por revisar")) throw new Exception("Before any read Inicio says it has not read the floor: "+levels.Home.ReviewDetail+" / "+levels.Home.FloorEmpty);
         Save(Shot(window),"elevation.png");
         levels.CancelElevationCommand.Execute(null);
         if(levels.ElevationRequested||levels.LoginCardVisible||levels.ConnectEnabled) throw new Exception("'Seguir como puesto' closes the card and keeps the station connected.");
@@ -598,6 +601,7 @@ internal static class Program
         levels.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.33.0-b1",Actor:"user:jefa",Modules:["dining"]));
         levels.OnUnauthorized().GetAwaiter().GetResult();
         if(levels.Connected||!levels.Status.Contains("caducado")) throw new Exception("A 401 of the person session returns to Puesto (or to the login card) and explains it: "+levels.Status);
+        if(levels.Service.BoardRead||levels.Home.ReviewDetail!="Sin leer todavía"||levels.Home.Tiles.Length!=0) throw new Exception("After leaving a level the floor is unread again, never 'Nada por revisar': "+levels.Home.ReviewDetail);
         levels.Clock=()=>DateTimeOffset.UtcNow;
         if(Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().Length<4||!Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().StartsWith("pc-",StringComparison.Ordinal)) throw new Exception("This PC pairs under a stable, readable name.");
         Directory.Delete(settingsFolder,true); DesktopSettings.Folder=checksRoot;
@@ -760,17 +764,20 @@ internal static class Program
         window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         Await(window.Shell.RefreshCommand.ExecuteAsync(null),"refresh reads the configuration and the board");
         if(server.Count("GET","configuration")==0||service.Tiles.Length!=12||service.Tiles.Count(t=>t.Occupied)!=7) throw new Exception("One tile per ACTIVE table of the configuration, crossed with the board: "+service.Tiles.Length);
-        if(!service.ZoneTabs.Select(z=>z.Label).SequenceEqual(["Todas · 12","Sala principal · 8","Terraza · 4"])||!service.Groups.Select(g=>g.Name+": "+g.Summary).SequenceEqual(["Sala principal: 8 mesas · 6 ocupadas","Terraza: 4 mesas · 1 ocupada"]))
+        if(!service.ZoneTabs.Select(z=>z.Label).SequenceEqual(["Todas las salas · 12","Sala principal · 8","Terraza · 4"])||!service.Groups.Select(g=>g.Name+": "+g.Summary).SequenceEqual(["Sala principal: 8 mesas · 6 ocupadas","Terraza: 4 mesas · 1 ocupada"]))
             throw new Exception("Tiles are grouped by zone and the zones are tabs with their counts: "+string.Join(",",service.Groups.Select(g=>g.Name+": "+g.Summary)));
+        // Revision C2: la sala elegida se pinta como elegida (IsCurrent del viewmodel, no la seleccion de la lista, que se perdia).
+        if(!service.ZoneTabs[0].IsCurrent||service.ZoneTabs.Count(z=>z.IsCurrent)!=1) throw new Exception("'Todas las salas' is painted as the chosen tab.");
         if(!service.Filters.Select(f=>f.Label).SequenceEqual(["Todas · 12","Ocupadas · 7","En cocina · 2","Para servir · 1","Libres · 5"])||service.FloorSummary!="7 de 12 mesas ocupadas · 19 personas")
             throw new Exception("Filter chips and the summary carry their counts: "+string.Join(",",service.Filters.Select(f=>f.Label))+" / "+service.FloorSummary);
         string States()=>string.Join(" | ",service.Tiles.Select(t=>t.Name+": "+t.StateLabel+(t.Elapsed.Length>0?" "+t.Elapsed:"")+(t.HasAlert?" ["+t.Alert+"]":"")+(t.HasSteps?" "+t.Progress:"")));
         if(States()!="Mesa 1: En cocina 12 min 3 de 6 | Mesa 2: Libre | Mesa 3: Listo para servir 3 min 0 de 3 | Mesa 4: En cocina 25 min [Alergia · por revisar] 1 de 3 | Mesa 5: Libre | Mesa 6: Sentados 0 de 6"
-            +" | Mesa 7: En pausa [Restricción] 1 de 2 | Mesa 8: Terminado, por liberar 3 de 3 | Terraza 1: Comiendo 8 min 1 de 2 | Terraza 2: Libre | Terraza 3: Libre | Terraza 4: Libre")
+            +" | Mesa 7: En pausa [Anaphylaxis (Critical)] 1 de 2 | Mesa 8: Terminado, por liberar 3 de 3 | Terraza 1: Comiendo 8 min 1 de 2 | Terraza 2: Libre | Terraza 3: Libre | Terraza 4: Libre")
             throw new Exception("Tile states, minutes, alerts and course progress in Spanish, from the read data: "+States());
         if(!service.Tiles.Single(t=>t.Name=="Mesa 4").AlertAlarming||!service.Tiles.Single(t=>t.Name=="Mesa 7").AlertAlarming||service.Tiles.Single(t=>t.Name=="Mesa 2").Detail!="4 plazas"||service.Tiles.Single(t=>t.Name=="Mesa 4").Detail!="4 personas · Menú del día")
             throw new Exception("Alerts of an allergy or an unknown kind are alarming; a free tile shows its seats and an occupied one its people and offer.");
         if(!Texts(TileButton("Mesa 4")).Contains("Alergia · por revisar")||!Texts(TileButton("Mesa 1")).Contains("En cocina")) throw new Exception("The allergy badge and the state are painted with their words: "+string.Join(" | ",Texts(TileButton("Mesa 4"))));
+        if(!Texts(TileButton("Mesa 7")).Contains("Anaphylaxis (Critical)")) throw new Exception("An unknown restriction kind is painted raw on its tile, never as a generic word: "+string.Join(" | ",Texts(TileButton("Mesa 7"))));
         // Elegir una mesa OCUPADA: la tarjeta mueve SelectedEntry y la ficha se compone de la lectura de esa mesa (F01).
         var readsBefore=server.Requests.Length;
         Pick("Mesa 4","s4");
@@ -856,6 +863,18 @@ internal static class Program
         Wait(()=>!window.Shell.Busy&&window.Shell.Checkout.Account?.Data.ServiceId=="s4","Caja opens the account of the table");
         if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||window.Shell.Checkout.SelectedAccount?.ServiceId!="s4"||window.Shell.Checkout.Account?.Data.ServiceId!="s4") throw new Exception("'Ver cuenta' opens Caja on that table's account.");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        // Revision C2: la cuenta de una mesa terminada ya esta cerrada y Caja solo lista las abiertas: "Ver cuenta" NO cae en la cuenta de
+        // otra mesa; Caja no elige ninguna y lo dice.
+        server.Accounts=[..diningBoard.Where(b=>b.Service.Id!="s8").Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        Pick("Mesa 8","s8"); window.Shell.Status="";
+        var accountReads=server.Count("GET","checkout/accounts");
+        Press(Named("ViewAccountButton"),"Ver cuenta (cuenta cerrada)");
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","checkout/accounts")>accountReads,"Caja reads its accounts");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||window.Shell.Checkout.SelectedAccount is not null||window.Shell.Checkout.Account is not null
+            ||window.Shell.Checkout.Totals!="Sin cuenta seleccionada"||!window.Shell.Status.StartsWith("La cuenta de Mesa 8 no está abierta",StringComparison.Ordinal))
+            throw new Exception("'Ver cuenta' on a table whose account is not open never shows another table's account: "+window.Shell.Checkout.SelectedAccount?.ServiceId+" / "+window.Shell.Status);
+        server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         // La configuracion se relee en cada actualizacion: una mesa nueva aparece sin reconectar; una mesa ocupada que la configuracion ya no
         // lista no se esconde nunca.
         server.Configuration=diningConfig with {Tables=[..diningConfig.Tables,new("T5","Terraza 5",2,"terraza","Terraza")]};
@@ -886,6 +905,14 @@ internal static class Program
         if(Actions()!="serve | pause"||!Named("PrimaryActionButton").IsEnabled) throw new Exception("The Puesto serves a ready course: "+Actions());
         window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
         RefuseRaw(window,"service-puesto"); Save(Shot(window),"service-puesto.png");
+        // Revision C2: "Ver cuenta" de la Mesa 8 se pidio arriba en el nivel Puesto y se cancelo la entrada: el responsable que entra despues
+        // (sin desconectar) y abre Caja desde el menu ve la primera cuenta, como siempre, no la de aquella peticion olvidada.
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        var accountsBefore=server.Count("GET","checkout/accounts");
+        tabs.SelectedItem=(TabItem)window.FindName("CheckoutTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","checkout/accounts")>accountsBefore,"the responsible opens Caja from the menu");
+        if(window.Shell.Checkout.SelectedAccount?.ServiceId!="s1") throw new Exception("A cancelled 'Ver cuenta' never chooses the account later: "+window.Shell.Checkout.SelectedAccount?.ServiceId);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         // Captura principal (como el lienzo): responsable, todas las salas, la Mesa 4 con su alergia por revisar elegida.
         window.Shell.OnUnauthorized().GetAwaiter().GetResult();
         window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
@@ -894,6 +921,8 @@ internal static class Program
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan");
         Pick("Mesa 4","s4");
+        // Revision C2: tras salir de un nivel y volver a leer (las pestanas se rehacen) la sala elegida sigue pintada como elegida.
+        if(service.SelectedZone!=""||!service.ZoneTabs[0].IsCurrent||service.ZoneTabs.Count(z=>z.IsCurrent)!=1) throw new Exception("After a level change and a new read 'Todas las salas' is still painted as chosen.");
         // La vista cabe a 1.280 x 860 con la barra lateral desplegada: la ficha mide 400 px y su accion grande queda a la vista; el plano
         // reparte las tarjetas en columnas iguales (tres a ese ancho) y desplaza lo que no cabe.
         var primaryButton=Named("PrimaryActionButton"); var tablePanel=(FrameworkElement)serviceView.FindName("TablePanel");
@@ -924,9 +953,15 @@ internal static class Program
             throw new Exception("Inicio greets the responsible by name, with the date and the service: "+home.Title+" / "+home.DateLine);
         if(!ReferenceEquals(home.Tiles,service.Tiles)||Descendants<Button>((FrameworkElement)homeView.FindName("MiniPlan")).Count(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile)!=12||home.ZonesText!="Sala principal · Terraza")
             throw new Exception("'Sala ahora' paints the Comedor tiles, one per table: "+home.ZonesText);
-        if(!Texts(MiniTile("Mesa 4")).Contains("Alergia · por revisar")||!Texts(MiniTile("Mesa 4")).Contains("En cocina")||!Texts(MiniTile("Mesa 7")).Contains("Restricción")||!Texts(MiniTile("Mesa 2")).Contains("Libre"))
+        // Revision C2: el aviso del mini plano se parte solo por su sentido ("Alergia" / "por revisar"), y un tipo desconocido sale tal cual.
+        if(!Texts(MiniTile("Mesa 4")).Contains("Alergia")||!Texts(MiniTile("Mesa 4")).Contains("por revisar")||!Texts(MiniTile("Mesa 4")).Contains("En cocina")||!Texts(MiniTile("Mesa 7")).Contains("Anaphylaxis (Critical)")||!Texts(MiniTile("Mesa 2")).Contains("Libre"))
             throw new Exception("A mini tile says its state and its allergy in words: "+string.Join(" | ",Texts(MiniTile("Mesa 4"))));
-        if(!home.Legend.Select(l=>l.Label).SequenceEqual(["Libre","Sentados","En cocina","Listo para servir","Comiendo","En pausa","Terminado, por liberar","Con alergia o restricción"])) throw new Exception("The legend names the states on the plan: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        if(!home.Legend.Select(l=>l.Label).SequenceEqual(["Libre","Sentados","En cocina","Listo para servir","Comiendo","En pausa","Terminado, por liberar","Alergia, restricción grave o por revisar"])) throw new Exception("The legend names the states on the plan: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        // Revision C2: con solo una restriccion leve en el plano no hay borde rojo (pastilla ambar con su palabra) y la leyenda no lo promete.
+        var readBoard=service.Board; var terrace=readBoard.Single(b=>b.Service.Id=="st1");
+        service.Board=[terrace with {Service=terrace.Service with {Restrictions=[lactose]}}];
+        if(home.Legend.Any(l=>l.Tone=="alert")||service.Tiles.Single(t=>t.Name=="Terraza 1") is not {Alert:"Restricción",AlertAlarming:false}) throw new Exception("A mild restriction alone paints no red border and the legend promises none: "+string.Join(",",home.Legend.Select(l=>l.Label)));
+        service.Board=readBoard;
         if(home.DevicesSummary!="4 de 5 con conexión"||!home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}").SequenceEqual(["tablet-sala-1: Comandero · Sala 1 · Conectado","tablet-terraza: Comandero · Terraza · Conectado",
             "pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado","pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión","pantalla-pase: Pantalla de cocina · Pase · Conectado"])||!home.DeviceRows.Single(r=>r.Name=="pantalla-fria").Screen)
             throw new Exception("The device list names kind and station, with presence in words: "+string.Join(" | ",home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}")));
@@ -948,6 +983,21 @@ internal static class Program
         if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.AssistantTitle!="Conectar comandero · Sala 1"||center.PairingCode!="Home12_abc-def"||center.ChoosingStation
             ||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("'Conectar comandero' opens its assistant with a one-use code: "+center.AssistantTitle);
         center.CancelCommand.Execute(null); window.Shell.Status="";
+        // Revision C2: el asistente pedido desde Inicio se consume al leer: si la lectura de Dispositivos falla, no se abre solo mas tarde (otra
+        // visita o una actualizacion) ni emite un codigo que nadie ha pedido en ese momento; se vuelve a pulsar.
+        ShowHome(); var postsBefore=server.Count("POST",""); var deviceReads=server.Count("GET","auth/devices");
+        server.Failing["auth/devices"]=true;
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (lectura fallida)");
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"the devices read fails");
+        server.Failing.Clear();
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore||window.Shell.Status.Length==0)
+            throw new Exception("A failed read opens no assistant, issues no code and says so: "+window.Shell.Status);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); window.Shell.Status="";
+        deviceReads=server.Count("GET","auth/devices");
+        tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+        Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"a later visit reads Dispositivos");
+        if(center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore) throw new Exception("A request whose read failed never opens an assistant later nor issues a code.");
+        window.Shell.Status="";
         // "Pantalla de cocina": varias estaciones posibles, asi que el asistente se abre en su primer paso (elegir la estacion) sin emitir nada.
         ShowHome(); pairingsBefore=server.Count("POST","auth/pairings");
         Press(HomeNamed("HomeConnectKitchenButton"),"Pantalla de cocina (Inicio)");
@@ -1030,11 +1080,11 @@ internal static class Program
             window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
             // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista. C2: las estaciones, por su nombre.
             RefuseRaw(window,tab);
-            if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Restricción","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
+            if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Anaphylaxis (Critical)","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
                 throw new Exception("Comedor paints the allergy in words on the panel and on the tile, and the station by its name: missing '"+missing+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
-                "Alergia · por revisar","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
+                "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
                 throw new Exception("Inicio paints its figures, the allergy to review, the plan and the devices in words: missing '"+missingHome+"'.");
             var shot=Shot(window);
             // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
@@ -1224,6 +1274,8 @@ internal static class Program
         public Costina.Client.DeviceRowDto[] Devices { get; set; }=[];
         public Costina.Client.NetworkDto? Network { get; set; }
         public System.Collections.Concurrent.ConcurrentDictionary<string,(string Type,byte[] Content)> Images { get; }=new();
+        // Revision C2: lecturas que fallan (503) mientras la ruta este aqui, para comprobar lo que queda tras una lectura fallida.
+        public System.Collections.Concurrent.ConcurrentDictionary<string,bool> Failing { get; }=new();
         private readonly List<Request> requests=[];
         public Request[] Requests { get { lock(requests) return [..requests]; } }
         public int Count(string method,string path)=>Requests.Count(r=>r.Method==method&&r.Path.StartsWith(path,StringComparison.Ordinal));
@@ -1235,6 +1287,7 @@ internal static class Program
             lock(requests) requests.Add(new(request.Method.Method,path,body,key));
             if(request.Method==System.Net.Http.HttpMethod.Get)
             {
+                if(Failing.ContainsKey(path)) return Json(503,"{\"error\":\"unavailable\"}");
                 if(path.StartsWith("catalog/images/",StringComparison.Ordinal))
                 {
                     if(!Images.TryGetValue(Uri.UnescapeDataString(path["catalog/images/".Length..]),out var image)) return Json(404,"{\"error\":\"not_found\"}");

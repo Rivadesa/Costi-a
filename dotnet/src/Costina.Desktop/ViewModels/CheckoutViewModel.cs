@@ -48,9 +48,12 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         AccountState = $"Estado: {a.StateLabel} · {a.CoverageLabel}. {Labels.Plural(a.Payments.Length, "pago", "pagos")} y {Labels.Plural(a.Refunds?.Length ?? 0, "devolución", "devoluciones")} de prueba. Cerrar la cuenta no termina el servicio."
             + (a.State == "Closed" ? " CUENTA CERRADA: para admitir cambios, reábrela con motivo desde este puesto." : "");
     }
-    // C2: "Ver cuenta" desde la ficha de una mesa del comedor: la proxima lectura de Caja elige la cuenta de ese servicio (si el servidor
-    // la lista; si no, la primera, como siempre). Solo fija el destino: el contexto de las ordenes sigue siendo la cuenta leida.
-    internal void Request(string serviceId) => accountServiceId = serviceId;
+    // C2: "Ver cuenta" desde la ficha de una mesa del comedor: la proxima lectura de Caja elige la cuenta de ese servicio. Es una peticion
+    // de UN uso que se consume al empezar esa lectura (falle o no). Si Caja no lista esa cuenta (solo lista las abiertas: la mesa ya pago
+    // y la cuenta esta cerrada, o no tiene cuenta) NO cae en la de otra mesa: no elige ninguna y lo dice. Solo fija el destino: el contexto
+    // de las ordenes sigue siendo la cuenta leida. Null la olvida (la entrada del responsable cancelada).
+    private (string ServiceId, string Table)? requested;
+    internal void Request(string? serviceId, string table = "") => requested = serviceId is null ? null : (serviceId, table);
     // Para las ordenes pendientes: "cuenta de Mesa 1" (Context garantiza que la cuenta seleccionada es la leida).
     private string Where() => "cuenta de " + shell.Names.Table(SelectedAccount?.TableId);
 
@@ -66,7 +69,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
         try
         {
             Accounts = []; SelectedAccount = null; Products = []; SelectedProduct = null;
-            accountServiceId = null; Amount = ""; Invalidate();
+            accountServiceId = null; requested = null; Amount = ""; Invalidate();
         }
         finally { rendering = false; }
     }
@@ -83,13 +86,15 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     {
         if (shell.Api is null || !shell.IsMain) return;
         var attempt = ++generation;
-        var target = accountServiceId;
+        var request = requested; requested = null;   // un solo uso: una lectura fallida no la deja para una visita posterior
+        var target = request?.ServiceId ?? accountServiceId;
         if (Account is not null && Account.Data.ServiceId != target) Invalidate();
         try
         {
             var choices = await shell.Api.GetAsync<AccountChoice[]>("checkout/accounts");
             var catalog = await shell.Api.GetAsync<ProductChoice[]>("checkout/catalog");
-            if (!choices.Any(a => a.ServiceId == target)) target = choices.FirstOrDefault()?.ServiceId;
+            // Sin destino pedido, la primera cuenta, como siempre; la cuenta pedida desde una mesa que Caja no lista, ninguna.
+            if (!choices.Any(a => a.ServiceId == target)) target = request is null ? choices.FirstOrDefault()?.ServiceId : null;
             var current = target is null ? null
                 : await shell.Api.GetAsync<Versioned<AccountDto>>("checkout/services/" + ApiClient.Segment(target));
             if (attempt != generation) return;
@@ -97,6 +102,8 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
                 throw new InvalidOperationException("El servidor devolvió una cuenta distinta de la solicitada; lectura descartada.");
             accountServiceId = target;
             Render(choices, catalog, current);
+            if (request is { } asked && target is null)
+                shell.Status = $"La cuenta de {(asked.Table.Length > 0 ? asked.Table : "esa mesa")} no está abierta (ya se cerró o la mesa no tiene cuenta): Caja solo lista las cuentas abiertas. No se ha elegido ninguna.";
         }
         catch
         {

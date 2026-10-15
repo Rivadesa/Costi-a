@@ -147,7 +147,8 @@
    <Trigger Property="Tag" Value="seated"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource InfoText}"/></Trigger>
    <Trigger Property="Tag" Value="choose"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource InfoText}"/></Trigger>
    <Trigger Property="Tag" Value="kitchen"><Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource WarnSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource WarnText}"/></Trigger>
-   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource Ok}"/><Setter Property="BorderBrush" Value="{StaticResource Ok}"/><Setter Property="TextElement.Foreground" Value="#FFFFFF"/></Trigger>
+   <!-- Listo para servir: relleno OkText (#17744A) y no Ok, para que el texto blanco pequeno se lea (5,8:1 frente a 4,1:1). -->
+   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource OkText}"/><Setter Property="BorderBrush" Value="{StaticResource OkText}"/><Setter Property="TextElement.Foreground" Value="#FFFFFF"/></Trigger>
    <Trigger Property="Tag" Value="eating"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource AccentText}"/></Trigger>
    <Trigger Property="Tag" Value="done"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="BorderBrush" Value="{StaticResource AccentSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource AccentText}"/></Trigger>
    <Trigger Property="Tag" Value="paused"><Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
@@ -162,21 +163,24 @@
   <Setter Property="TextElement.Foreground" Value="{StaticResource InkSoft}"/><Setter Property="TextElement.FontSize" Value="12"/><Setter Property="TextElement.FontWeight" Value="Bold"/>
   <Style.Triggers>
    <Trigger Property="Tag" Value="done"><Setter Property="Background" Value="{StaticResource Accent}"/><Setter Property="BorderBrush" Value="{StaticResource Accent}"/><Setter Property="TextElement.Foreground" Value="#FFFFFF"/></Trigger>
-   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource Ok}"/><Setter Property="BorderBrush" Value="{StaticResource Ok}"/><Setter Property="TextElement.Foreground" Value="#FFFFFF"/></Trigger>
+   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource OkText}"/><Setter Property="BorderBrush" Value="{StaticResource OkText}"/><Setter Property="TextElement.Foreground" Value="#FFFFFF"/></Trigger>
    <Trigger Property="Tag" Value="kitchen"><Setter Property="Background" Value="{StaticResource WarnSoft}"/><Setter Property="BorderBrush" Value="{StaticResource WarnLine}"/><Setter Property="TextElement.Foreground" Value="{StaticResource WarnText}"/></Trigger>
    <Trigger Property="Tag" Value="choose"><Setter Property="Background" Value="{StaticResource InfoSoft}"/><Setter Property="BorderBrush" Value="{StaticResource InfoLine}"/><Setter Property="TextElement.Foreground" Value="{StaticResource InfoText}"/></Trigger>
   </Style.Triggers>
  </Style>
  <Style x:Key="StepBar" TargetType="Border">
   <Setter Property="Height" Value="5"/><Setter Property="CornerRadius" Value="2.5"/><Setter Property="Margin" Value="0,0,3,0"/><Setter Property="Background" Value="{StaticResource Stroke}"/>
+  <!-- Solo lo hecho (servido u omitido) va en verde intenso: un pase listo para servir aun no esta hecho y va en verde claro (con el
+       verde intenso la barra contradecia su cifra "0 de 3"). -->
   <Style.Triggers>
    <Trigger Property="Tag" Value="done"><Setter Property="Background" Value="{StaticResource Accent}"/></Trigger>
-   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource Ok}"/></Trigger>
+   <Trigger Property="Tag" Value="ready"><Setter Property="Background" Value="{StaticResource AccentLine}"/></Trigger>
    <Trigger Property="Tag" Value="kitchen"><Setter Property="Background" Value="{StaticResource Warn}"/></Trigger>
   </Style.Triggers>
  </Style>
 
- <!-- C2: pestanas segmentadas (salas del comedor): una lista horizontal con la elegida en blanco y en negrita sobre un fondo gris. -->
+ <!-- C2: pestanas segmentadas (salas del comedor): una lista horizontal con la elegida en blanco y en negrita sobre un fondo gris. La
+      elegida la marca el elemento (IsCurrent del viewmodel), no la seleccion de la lista: esta se pierde al rehacer las pestanas. -->
  <Style x:Key="Segmented" TargetType="ListBox">
   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="Focusable" Value="False"/>
   <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></Setter.Value></Setter>
@@ -198,10 +202,10 @@
         <Border x:Name="Bd" CornerRadius="8" Padding="12,5" Background="Transparent" SnapsToDevicePixels="True"><ContentPresenter RecognizesAccessKey="False"/></Border>
         <ControlTemplate.Triggers>
          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-         <Trigger Property="IsSelected" Value="True">
+         <DataTrigger Binding="{Binding IsCurrent}" Value="True">
           <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface}"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontWeight" Value="SemiBold"/>
           <Setter TargetName="Bd" Property="Effect"><Setter.Value><DropShadowEffect ShadowDepth="1" Direction="270" Opacity="0.14" BlurRadius="3"/></Setter.Value></Setter>
-         </Trigger>
+         </DataTrigger>
         </ControlTemplate.Triggers>
        </ControlTemplate>
       </Setter.Value>

@@ -23,13 +23,16 @@ public sealed partial class TableTile : ObservableObject
         Table = table; Entry = entry; ZoneId = zoneId; ZoneName = zoneName; Name = name;
         var service = entry?.Service;
         State = FloorPlan.State(service);
-        StateLabel = Labels.TableState(State);
+        StateLabel = FloorPlan.Label(State);   // un estado del servidor que no se conoce, tal cual (nunca rotulado como uno parecido)
         Tone = ServiceViewModel.ToneOf(State);
         PeopleText = service is null ? Labels.Plural(table.Capacity, "plaza", "plazas") : Labels.Plural(service.Pax, "persona", "personas");
         // Libre: sus plazas; ocupada: sus personas y la oferta con la que se abrio.
         Detail = service is null || offerName.Length == 0 ? PeopleText : PeopleText + " · " + offerName;
         Elapsed = FloorPlan.Since(service) is { } since ? Labels.Minutes(now - since) : "";
         Alert = FloorPlan.Alert(service);
+        // El mini plano de Inicio parte el aviso solo por su sentido: la palabra en una linea y "por revisar" en la siguiente.
+        AlertWord = FloorPlan.AlertWord(service);
+        AlertNote = service?.RestrictionsPendingAck == true ? FloorPlan.PendingReview : "";
         AlertAlarming = FloorPlan.AlertIsAlarming(service);
         Steps = FloorPlan.Steps(service);
         Progress = Steps.Length == 0 ? "" : $"{FloorPlan.Done(service)} de {Steps.Length}";
@@ -48,6 +51,8 @@ public sealed partial class TableTile : ObservableObject
     public string Detail { get; }
     public string Elapsed { get; }
     public string Alert { get; }
+    public string AlertWord { get; }
+    public string AlertNote { get; }
     public bool HasAlert => Alert.Length > 0;
     public bool AlertAlarming { get; }
     public string[] Steps { get; }
@@ -58,7 +63,10 @@ public sealed partial class TableTile : ObservableObject
 }
 // Pestana de sala (Id "" = todas) y filtro del plano: objetos ESTABLES cuyo texto (con su cifra) cambia en el sitio. Si la lista se
 // sustituyera en cada lectura, la seleccion de la lista (SelectedValue, en los dos sentidos) se perderia y volveria vacia.
-public sealed partial class ZoneTab(string id) : ObservableObject { public string Id { get; } = id; [ObservableProperty] private string label = ""; }
+// La pestana pintada como elegida sale de IsCurrent (= SelectedZone), no de la seleccion de la lista: al rehacer las pestanas (salir del
+// modo responsable vacia el plano) la lista pierde su seleccion y no la recupera, y ninguna sala se veia elegida.
+public sealed partial class ZoneTab(string id) : ObservableObject
+{ public string Id { get; } = id; [ObservableProperty] private string label = ""; [ObservableProperty] private bool isCurrent; }
 public sealed partial class FilterChip(string id, string name) : ObservableObject
 { public string Id { get; } = id; public string Name { get; } = name; [ObservableProperty] private string label = name; }
 // Grupo de tarjetas por sala, fila de pase y de elaboracion, y boton de accion.
@@ -109,6 +117,9 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string serviceTitle = "Selecciona una mesa";
 
     // ---- C2: plano de mesas ----
+    // Si el tablero se ha leido con esta sesion: distingue "sin leer todavia" de "leido y vacio" (Inicio no presenta un comedor sin leer
+    // como un comedor vacio ni dice "nada por revisar" sin haberlo leido). Una lectura fallida despues conserva la ultima buena.
+    [ObservableProperty] private bool boardRead;
     [ObservableProperty] private TableTile[] tiles = [];
     [ObservableProperty] private TileGroup[] groups = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasZoneTabs))] private ZoneTab[] zoneTabs = [];
@@ -230,6 +241,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
+            BoardRead = false;
             Board = []; SelectedEntry = null; Tables = []; Offers = []; serviceId = null; Reason = ""; stations = null;
             OpenForm = false; SelectedZone = ""; Filter = "all";
             Invalidate(); ServiceTitle = "Selecciona una mesa";
@@ -284,6 +296,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
+            BoardRead = true;
             Board = fresh; SelectedEntry = fresh.FirstOrDefault(b => b.Service.Id == serviceId);
             Dining = current;
             ServiceTitle = current is null ? "Sin mesas ocupadas. Puedes abrir una mesa." : Title(current.Data);
@@ -480,13 +493,14 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     }
     [RelayCommand] private void CancelOpen() => OpenForm = false;
 
-    // "Ver cuenta": la cuenta de ESTA mesa en Caja (apartado del responsable: en el nivel Puesto pide la contrasena, como el menu).
+    // "Ver cuenta": la cuenta de ESTA mesa en Caja (apartado del responsable: en el nivel Puesto pide la contrasena, como el menu). Si
+    // Caja no la lista (cerrada y cobrada, o sin cuenta), Caja lo dice y no elige otra.
     private bool CanViewAccount() => Context is not null && shell.TabsEnabled;
     [RelayCommand(CanExecute = nameof(CanViewAccount))]
     private void ViewAccount()
     {
         if (Context is not { } context) return;
-        shell.Checkout.Request(context.Data.Id);
+        shell.Checkout.Request(context.Data.Id, TableOf(context));
         shell.RequestElevation("CheckoutTab");
     }
 
@@ -516,8 +530,12 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         if (SelectedZone.Length > 0 && zones.All(z => z.Id != SelectedZone)) { SelectedZone = ""; return; }   // OnSelectedZoneChanged rehace
         var tabIds = zones.Length < 2 ? [] : new[] { "" }.Concat(zones.Select(z => z.Id)).ToArray();
         if (!tabIds.SequenceEqual(ZoneTabs.Select(t => t.Id))) ZoneTabs = tabIds.Select(id => new ZoneTab(id)).ToArray();
+        // "Todas las salas" (no "Todas"): justo debajo esta el filtro "Todas" de los estados y no deben parecer el mismo control.
         foreach (var tab in ZoneTabs)
-            tab.Label = tab.Id.Length == 0 ? $"Todas · {Tiles.Length}" : zones.First(z => z.Id == tab.Id) is var zone ? $"{zone.Name} · {zone.Count}" : "";
+        {
+            tab.Label = tab.Id.Length == 0 ? $"Todas las salas · {Tiles.Length}" : zones.First(z => z.Id == tab.Id) is var zone ? $"{zone.Name} · {zone.Count}" : "";
+            tab.IsCurrent = tab.Id == SelectedZone;
+        }
         var inZone = Tiles.Where(t => SelectedZone.Length == 0 || t.ZoneId == SelectedZone).ToArray();
         bool Matches(TableTile t, string f) => f switch
         {
@@ -556,7 +574,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             return string.Join(" · ", new[] { zone, offer }.Where(p => p.Length > 0));
         }
     }
-    public string DetailState => Context?.Data is { } d ? Labels.TableState(FloorPlan.State(d)) : "";
+    public string DetailState => Context?.Data is { } d ? FloorPlan.Label(FloorPlan.State(d)) : "";
     public string DetailTone => Context?.Data is { } d ? ToneOf(FloorPlan.State(d)) : "other";
     public string DetailInfo
     {
@@ -591,8 +609,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     // Salir del formulario vuelve a la ficha de la mesa ocupada que estaba elegida (la lectura de siempre sigue ahi).
     public string BackText => SelectedEntry is { } entry ? "Volver a " + Names.Table(entry.Service.TableId) : "";
     // Tono de color de un estado de mesa (Tag de los chips); un estado que no se conoce queda neutro, con su texto tal cual.
-    internal static string ToneOf(string state) => state is FloorPlan.Free or FloorPlan.Seated or FloorPlan.Kitchen or FloorPlan.Ready or FloorPlan.Eating
-        or FloorPlan.Paused or FloorPlan.Finished or FloorPlan.Cancelled ? state : "other";
+    internal static string ToneOf(string state) => FloorPlan.IsCode(state) ? state : "other";
 
     private void UpdatePanel()
     {

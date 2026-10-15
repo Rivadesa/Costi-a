@@ -103,6 +103,12 @@
     </Setter.Value>
    </Setter>
   </Style>
+  <!-- Accion grande de la ficha. Sin accion anunciada queda deshabilitada (relleno gris, como cualquier boton deshabilitado) y su texto
+       dice que espera la mesa ("Esperando la revision de cocina"): ese texto va en gris oscuro (InkSoft) y no en el gris claro de los
+       deshabilitados (3:1), porque es la linea mas util de la ficha. -->
+  <Style x:Key="BigAction" TargetType="Button" BasedOn="{StaticResource Primary}">
+   <Style.Resources><SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#5A616B"/></Style.Resources>
+  </Style>
   <!-- Texto de un boton que puede partirse. Va en ContentTemplate (no como TextBlock hijo): asi hereda el color que la plantilla Fluent
        pone segun el estado y un boton deshabilitado se ve gris (un hijo logico heredaria el blanco del boton de acento). -->
   <DataTemplate x:Key="ButtonText"><TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/></DataTemplate>
@@ -120,7 +126,7 @@
       </StackPanel>
       <TextBlock Text="{Binding Name}" FontFamily="{StaticResource DisplayFont}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
      </DockPanel>
-     <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource InkSoft}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+     <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource InkSoft}" TextWrapping="Wrap" Margin="0,1,0,0"/>
      <Border Style="{StaticResource ToneChip}" Tag="{Binding Tone}" HorizontalAlignment="Left" Margin="0,10,0,0"><TextBlock Text="{Binding StateLabel}" TextTrimming="CharacterEllipsis"/></Border>
      <DockPanel Margin="0,10,0,0" Visibility="{Binding HasSteps, Converter={StaticResource Bool2Vis}}">
       <TextBlock DockPanel.Dock="Right" Text="{Binding Progress}" FontSize="11" Foreground="{StaticResource InkSoft}" Margin="6,0,0,0" VerticalAlignment="Center"/>
@@ -253,7 +259,7 @@
        <TextBlock Text="Motivo" Style="{StaticResource FieldLabel}" Margin="0,0,10,0" VerticalAlignment="Center"/>
        <TextBox x:Name="ReasonBox" Text="{Binding Service.Reason, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Motivo (pausa, omisión, cancelación, retirada o liberación)"/>
       </DockPanel>
-      <Button x:Name="PrimaryActionButton" Style="{StaticResource Primary}" Command="{Binding Service.ActCommand}" CommandParameter="{Binding Service.PrimaryAction}"
+      <Button x:Name="PrimaryActionButton" Style="{StaticResource BigAction}" Command="{Binding Service.ActCommand}" CommandParameter="{Binding Service.PrimaryAction}"
               MinHeight="46" FontSize="15" Margin="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Content="{Binding Service.PrimaryText}" ContentTemplate="{StaticResource ButtonText}"/>
       <ItemsControl x:Name="SecondaryActionList" ItemsSource="{Binding Service.SecondaryActions}" Margin="0,8,-8,-8" Focusable="False">
        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -291,8 +297,22 @@
          </Style>
         </Border.Style>
         <StackPanel>
+         <!-- Triangulo de aviso salvo una mesa sin restricciones y sin nada por revisar: alli una marca de correcto (el icono no contradice
+              el texto «Sin restricciones declaradas»). -->
          <StackPanel Orientation="Horizontal">
-          <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconAlert}"/>
+          <Path>
+           <Path.Style>
+            <Style TargetType="Path" BasedOn="{StaticResource IconSmall}">
+             <Setter Property="Data" Value="{StaticResource IconAlert}"/>
+             <Style.Triggers>
+              <MultiDataTrigger>
+               <MultiDataTrigger.Conditions><Condition Binding="{Binding Service.HasRestrictions}" Value="False"/><Condition Binding="{Binding Service.RestrictionsAlarming}" Value="False"/></MultiDataTrigger.Conditions>
+               <Setter Property="Data" Value="{StaticResource IconCheck}"/>
+              </MultiDataTrigger>
+             </Style.Triggers>
+            </Style>
+           </Path.Style>
+          </Path>
           <TextBlock Text="{Binding Service.RestrictionsTitle}" FontWeight="SemiBold" FontSize="13" Margin="6,0,0,0" VerticalAlignment="Center"/>
          </StackPanel>
          <ListBox x:Name="RestrictionList" Style="{StaticResource RestrictionChips}" ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" Margin="0,10,0,0"

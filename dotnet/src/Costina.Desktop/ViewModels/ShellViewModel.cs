@@ -357,6 +357,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         RequestedView = null;
         Devices.Request(null);   // C2: un asistente pedido desde Inicio no se abre solo mas tarde, cuando nadie lo espera
+        Checkout.Request(null);  // C2: ni la cuenta pedida con "Ver cuenta" elige cuenta la proxima vez que se abra Caja desde el menu
         Status = "Sigues en el nivel Puesto."; Sync();
     }
 
