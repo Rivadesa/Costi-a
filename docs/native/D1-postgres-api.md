@@ -36,7 +36,7 @@ Comandos operativos: expectedVersion, courseId/itemId/reason cuando corresponda.
 
 Dependencias de ingeniería: SDK fijado por dotnet/global.json y PostgreSQL. El binario autocontenido no necesita SDK/.NET instalado manualmente, pero necesita PostgreSQL configurado. No tiene interfaz, asistente ni instalador de servicios.
 
-Variables obligatorias: COSTINA_LAB_MODE=true; COSTINA_DB (cadena Npgsql); COSTINA_TENANT; COSTINA_COMPANY; COSTINA_LOCATION. Para atender HTTP: COSTINA_KEY_MAIN, COSTINA_KEY_SERVICE y COSTINA_KEY_KITCHEN, distintas, aleatorias y de al menos 32 caracteres. No se guardan secretos en GitHub. Puerto opcional COSTINA_PORT (5088).
+Variables obligatorias: COSTINA_LAB_MODE=true; COSTINA_DATA (desde C2.1: carpeta propia del laboratorio, nunca la de una instalación); COSTINA_DB (cadena Npgsql); COSTINA_TENANT; COSTINA_COMPANY; COSTINA_LOCATION. Para atender HTTP: COSTINA_KEY_MAIN, COSTINA_KEY_SERVICE y COSTINA_KEY_KITCHEN, distintas, aleatorias y de al menos 32 caracteres. No se guardan secretos en GitHub. Puerto opcional COSTINA_PORT (5088).
 
 Desde dotnet/: `dotnet run --project src/Costina.Server -- init-lab` inicializa explícitamente fixtures ficticios (o ejecutar el binario con init-lab). Arranque normal sin argumentos: comprueba esquema y nunca migra/resemilla. Repetir init-lab no repone datos existentes. No existe operación reset ni se borran históricos.
 

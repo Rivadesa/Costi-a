@@ -1,13 +1,16 @@
 """D1 engineering acceptance: real HTTP, separate processes and PostgreSQL. No mock DB.
 Only runs against the explicitly created *_d1_test CI database. Never deletes business data.
 """
+import atexit
 import concurrent.futures
 import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -21,6 +24,11 @@ BASE = 'http://127.0.0.1:' + PORT
 ENV = os.environ.copy()
 ENV.update(COSTINA_LAB_MODE='true', COSTINA_PORT=PORT, COSTINA_TENANT='d1-tenant',
            COSTINA_COMPANY='d1-company', COSTINA_LOCATION='d1-location')
+# C2.1: carpeta de datos PROPIA en cada ejecucion (nunca la heredada). Sin ella la raiz seria la de la instalacion real del PC
+# (C:\ProgramData\Costina) y el motor, desde C2.1, se niega a arrancar el laboratorio asi. Todas las suites que importan este modulo
+# la heredan; packaging_http tiene la suya (clean_env).
+ENV['COSTINA_DATA'] = tempfile.mkdtemp(prefix='costina-lab-data-')
+atexit.register(shutil.rmtree, ENV['COSTINA_DATA'], ignore_errors=True)
 # D4.3: las claves de rol quedan retiradas. Cada rol autentica como usuario lab-<rol> con
 # sesion real; KEYS pasa a contener tokens de sesion y todas las suites siguen funcionando.
 KEYS = {r: '' for r in ('main', 'service', 'kitchen')}
@@ -78,9 +86,10 @@ def start_server(extra=None):
     global PROCESS, LOG
     env = ENV | (extra or {})
     LOG = open('d1-http-server.log', 'a', encoding='utf8')
+    since = os.path.getsize('d1-http-server.log')
     PROCESS = subprocess.Popen(['dotnet', str(SERVER)], env=env, stdout=LOG, stderr=subprocess.STDOUT)
     for _ in range(100):
-        if PROCESS.poll() is not None: raise RuntimeError('Server exited; inspect d1-http-server.log')
+        if PROCESS.poll() is not None: raise RuntimeError('Server exited: ' + server_failure(since) + ' (see d1-http-server.log)')
         try:
             with urllib.request.urlopen(BASE + '/health', timeout=1) as r:
                 if r.status == 200:
@@ -90,6 +99,14 @@ def start_server(extra=None):
         except (OSError, urllib.error.URLError): pass
         time.sleep(.1)
     raise TimeoutError('Server did not become ready')
+
+def server_failure(since):
+    """Motivo de un arranque fallido, leido de lo que ESTE proceso escribio en el registro: la linea de la excepcion (p. ej. la guarda
+    de C2.1, que pide COSTINA_DATA propio) o, si no la hay, la ultima linea."""
+    with open('d1-http-server.log', 'rb') as log:
+        log.seek(since)
+        lines = [l.strip() for l in log.read().decode('utf8', 'replace').splitlines() if l.strip()]
+    return next((l for l in lines if 'Exception:' in l), lines[-1] if lines else '(nothing logged)')
 
 def stop_server():
     global PROCESS, LOG

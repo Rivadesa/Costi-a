@@ -122,12 +122,15 @@ var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
 var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
 var endpoint = new Uri($"http://127.0.0.1:{port}");
 var serverLog = new StringBuilder();
+// C2.1: carpeta de datos PROPIA. Sin COSTINA_DATA la raiz seria la de la instalacion real del PC y el motor se niega a arrancar el
+// laboratorio asi (nunca lee la configuracion de una instalacion). Se borra al terminar.
+var dataRoot = Directory.CreateTempSubdirectory("costina-rt-data-").FullName;
 
 Process Spawn(string? argument)
 {
     var info = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
     info.ArgumentList.Add(serverDll); if (argument is not null) info.ArgumentList.Add(argument);
-    info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString;
+    info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString; info.Environment["COSTINA_DATA"] = dataRoot;
     info.Environment["COSTINA_TENANT"] = "rt-tenant"; info.Environment["COSTINA_COMPANY"] = "rt-company";
     info.Environment["COSTINA_LOCATION"] = "rt-location"; info.Environment["COSTINA_PORT"] = port.ToString();
     var process = Process.Start(info) ?? throw new Exception("Could not start the server process.");
@@ -160,7 +163,7 @@ async Task<int> RunCli(string input, params string[] arguments)
     var info = new ProcessStartInfo("dotnet") { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
     info.ArgumentList.Add(serverDll);
     foreach (var argument in arguments) info.ArgumentList.Add(argument);
-    info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString;
+    info.Environment["COSTINA_LAB_MODE"] = "true"; info.Environment["COSTINA_DB"] = connectionString; info.Environment["COSTINA_DATA"] = dataRoot;
     info.Environment["COSTINA_TENANT"] = "rt-tenant"; info.Environment["COSTINA_COMPANY"] = "rt-company";
     info.Environment["COSTINA_LOCATION"] = "rt-location";
     using var process = Process.Start(info) ?? throw new Exception("Could not start the CLI process.");
@@ -344,6 +347,7 @@ try
 finally
 {
     try { server?.Kill(entireProcessTree: true); } catch { }
+    try { Directory.Delete(dataRoot, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     Directory.CreateDirectory("artifacts/realtime");
     lock (serverLog) File.WriteAllText("artifacts/realtime/realtime-server.log", serverLog.ToString());
     File.WriteAllText("artifacts/realtime/realtime-checks.json",

@@ -15,13 +15,15 @@ public sealed class ServerSettings
 {
     private readonly Dictionary<string,string> file=new(StringComparer.Ordinal);
 
+    // Raiz de una instalacion: la que se usa sin COSTINA_DATA.
+    public static string InstallationRoot => OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"Costina") : "/var/lib/costina";
+
     public static string DataRoot
     {
         get
         {
-            var root=Environment.GetEnvironmentVariable("COSTINA_DATA") is {Length:>0} custom ? Path.GetFullPath(custom)
-                : OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"Costina")
-                : "/var/lib/costina";
+            var root=Environment.GetEnvironmentVariable("COSTINA_DATA") is {Length:>0} custom ? Path.GetFullPath(custom) : InstallationRoot;
             var program=Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
             if((root+Path.DirectorySeparatorChar).StartsWith(program+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The data root must live outside the program directory.");
@@ -34,15 +36,43 @@ public sealed class ServerSettings
 
     // C2: una configuracion que existe pero este usuario no puede leer (consola sin administrador en una instalacion: config\ es
     // solo de SYSTEM y Administradores) detiene cualquier orden con un mensaje claro. 'status' la tolera: resume lo que puede leer.
-    // Si el ENTORNO define el modo (laboratorio, CI, pruebas en un PC con una instalacion real) la ejecucion no depende del fichero
-    // y uno ilegible se ignora, como hasta ahora: las variables de entorno mandan.
+    // Si el ENTORNO define el modo (laboratorio, CI) la ejecucion no depende del fichero y uno ilegible se ignora, como hasta ahora:
+    // las variables de entorno mandan. Desde C2.1 el laboratorio solo puede tratarse de su propia carpeta (ver abajo).
     public ServerSettings(bool administrative,bool tolerateUnreadable=false)
     {
+        // C2.1: el laboratorio (y con el todas las pruebas) nunca lee la configuracion de una instalacion. Sin carpeta propia su raiz
+        // seria la de la instalacion real del PC: desde una consola de administrador mezclaria su server.json (COSTINA_MODE=installation
+        // gana a COSTINA_LAB_MODE: registros, copias, certificado y puertos reales) y, en init-lab, las credenciales de owner.json.
+        // Se comprueba ANTES de abrir ningun fichero; la mezcla, antes de leer owner.json.
+        var laboratory=LaboratoryFromEnvironment;
+        if(laboratory) RequireOwnDataRoot();
         Load(ServerFile);
+        if(laboratory && file.TryGetValue("COSTINA_MODE",out var fileMode) && fileMode!="laboratory")
+            throw new InvalidOperationException(MixedMessage(fileMode));
         if(administrative) Load(OwnerFile);
         var environmentDefinesMode=Environment.GetEnvironmentVariable("COSTINA_MODE") is {Length:>0} || Environment.GetEnvironmentVariable("COSTINA_LAB_MODE") is {Length:>0};
         if(Unreadable is not null && !tolerateUnreadable && !environmentDefinesMode) throw new InvalidOperationException(UnreadableMessage(Unreadable));
     }
+
+    // El ENTORNO pide el laboratorio, con la misma precedencia que Program.cs: COSTINA_MODE manda y, sin el, COSTINA_LAB_MODE=true.
+    public static bool LaboratoryFromEnvironment => Environment.GetEnvironmentVariable("COSTINA_MODE") is {Length:>0} mode
+        ? mode=="laboratory" : Environment.GetEnvironmentVariable("COSTINA_LAB_MODE")=="true";
+
+    // Una carpeta propia: COSTINA_DATA definida y fuera de la raiz de una instalacion (ni ella ni nada dentro).
+    private static void RequireOwnDataRoot()
+    {
+        var installation=Path.TrimEndingDirectorySeparator(Path.GetFullPath(InstallationRoot));
+        var comparison=OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var own=Environment.GetEnvironmentVariable("COSTINA_DATA") is {Length:>0} custom
+            && !(Path.TrimEndingDirectorySeparator(Path.GetFullPath(custom))+Path.DirectorySeparatorChar).StartsWith(installation+Path.DirectorySeparatorChar,comparison);
+        if(!own) throw new InvalidOperationException(
+            $"El laboratorio y las pruebas necesitan su propia carpeta de datos: define COSTINA_DATA con una carpeta que no sea la de una instalacion ({installation}). Nunca leen la configuracion de Costina instalado."
+            + Environment.NewLine + $"The laboratory and the tests need their own data folder: set COSTINA_DATA to a folder outside an installation's ({installation}). They never read an installed Costina's configuration.");
+    }
+
+    private static string MixedMessage(string fileMode) =>
+        $"COSTINA_DATA ({DataRoot}) tiene la configuracion de una instalacion (server.json dice COSTINA_MODE={fileMode}): el laboratorio y las pruebas nunca la usan. Define COSTINA_DATA con una carpeta propia."
+        + Environment.NewLine + $"COSTINA_DATA ({DataRoot}) holds an installation's configuration (server.json says COSTINA_MODE={fileMode}): the laboratory and the tests never use it. Set COSTINA_DATA to a folder of their own.";
 
     // Primer fichero de configuracion que existe y no se pudo leer por permisos (null si todo se leyo o no hay configuracion).
     public string? Unreadable { get; private set; }
