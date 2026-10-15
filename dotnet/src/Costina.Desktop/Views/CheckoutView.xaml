@@ -146,16 +146,44 @@
       <ScrollViewer x:Name="AccountScroll" Style="{StaticResource FichaScroll}">
        <StackPanel>
         <TextBlock Text="{Binding Checkout.LinesTitle}" Style="{StaticResource Section}"/>
+        <!-- E3.3: anadir un consumo con un BUSCADOR: los resultados agrupados por vino o producto, con un boton por presentacion (Copa,
+             Botella...); el boton solo elige (SelectedProduct); "Anadir" sigue mandando la orden de siempre con la cantidad. -->
         <Grid x:Name="AddChargeRow" Margin="0,0,0,12">
          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="64"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
          <TextBlock Text="Añadir un consumo" Style="{StaticResource FieldLabel}"/>
          <TextBlock Grid.Column="2" Text="Cantidad" Style="{StaticResource FieldLabel}"/>
-         <ComboBox x:Name="ProductBox" Grid.Row="1" ItemsSource="{Binding Checkout.Products}" SelectedItem="{Binding Checkout.SelectedProduct}" HorizontalAlignment="Stretch" AutomationProperties.Name="Producto del catálogo"/>
+         <TextBox x:Name="ProductSearch" Grid.Row="1" Style="{StaticResource SearchField}" local:Ui.Hint="Buscar vino, bebida o plato" Text="{Binding Checkout.ProductSearch, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar un producto por nombre, referencia o familia"/>
          <TextBox x:Name="QuantityBox" Grid.Row="1" Grid.Column="2" Text="{Binding Checkout.Quantity, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Right" AutomationProperties.Name="Cantidad"/>
          <Button x:Name="AddChargeButton" Grid.Row="1" Grid.Column="4" Content="Añadir" Command="{Binding Checkout.AddCommand}" Margin="0" Padding="10,0,14,0" ToolTip="Añade el producto elegido a la cuenta, al precio de la tarifa de su sala">
           <Button.ContentTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}" Margin="0,0,6,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate></Button.ContentTemplate>
          </Button>
+         <ItemsControl x:Name="ProductGroups" Grid.Row="2" Grid.ColumnSpan="5" ItemsSource="{Binding Checkout.ProductGroups}" Focusable="False" Margin="0,6,0,0">
+          <ItemsControl.ItemTemplate>
+           <DataTemplate>
+            <DockPanel Margin="0,0,0,6" AutomationProperties.Name="{Binding Name}">
+             <StackPanel Width="230" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}"/></StackPanel>
+             <ItemsControl ItemsSource="{Binding Presentations}" Focusable="False">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+               <DataTemplate>
+                <Button Content="{Binding Label}" Command="{Binding DataContext.Checkout.PickProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding Choice}"
+                        Margin="0,0,6,4" Padding="10,0" MinHeight="30" FontSize="13" FontWeight="Normal" AutomationProperties.Name="{Binding Label}">
+                 <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                   <Style.Triggers><DataTrigger Binding="{Binding IsChosen}" Value="True"><Setter Property="Background" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="White"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
+                  </Style>
+                 </Button.Style>
+                </Button>
+               </DataTemplate>
+              </ItemsControl.ItemTemplate>
+             </ItemsControl>
+            </DockPanel>
+           </DataTemplate>
+          </ItemsControl.ItemTemplate>
+         </ItemsControl>
+         <TextBlock x:Name="ProductGroupsNote" Grid.Row="3" Grid.ColumnSpan="5" Text="{Binding Checkout.ProductGroupsNote}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Visibility="{Binding Checkout.ProductGroupsNote, Converter={StaticResource Text2Vis}}"/>
+         <TextBlock x:Name="ChosenProductText" Grid.Row="3" Grid.ColumnSpan="5" Text="{Binding Checkout.ChosenProductText}" Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding Checkout.ProductGroupsNote, Converter={StaticResource Text2Vis}, ConverterParameter=invert}"/>
         </Grid>
         <Border Style="{StaticResource TableHead}">
          <Grid>

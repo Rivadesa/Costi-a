@@ -53,6 +53,9 @@
     <!-- Lista: buscador, categoria, recuento con "Ver todos" y los productos (miniatura, nombre y precio General; categoria y presentaciones). -->
     <Border x:Name="ProductsPane" Style="{StaticResource ListPane}">
      <DockPanel>
+      <!-- E3.3: la lista por seccion: Cocina, Bodega y bebidas o Menus (los productos-menu, que se editan en Menus y cartas); Todos conserva la lista entera. -->
+      <ListBox x:Name="SectionChips" DockPanel.Dock="Top" Style="{StaticResource FilterChips}" Margin="0,0,0,6" AutomationProperties.Name="Secciones del catálogo" Visibility="{Binding Catalog.ShowProductTools, Converter={StaticResource Bool2Vis}}"
+               ItemsSource="{Binding Catalog.SectionFilters}" DisplayMemberPath="Label" SelectedValuePath="Id" SelectedValue="{Binding Catalog.SectionFilter}"/>
       <TextBox x:Name="ProductSearch" DockPanel.Dock="Top" Style="{StaticResource SearchField}" Visibility="{Binding Catalog.ShowProductTools, Converter={StaticResource Bool2Vis}}" local:Ui.Hint="Buscar por nombre, código o referencia"
                Text="{Binding Catalog.Search, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar un producto por nombre, código o referencia"/>
       <ComboBox x:Name="CategoryFilterBox" DockPanel.Dock="Top" Margin="0,0,0,8" Visibility="{Binding Catalog.ShowProductTools, Converter={StaticResource Bool2Vis}}" HorizontalAlignment="Stretch" AutomationProperties.Name="Filtrar por categoría"
@@ -165,19 +168,15 @@
            <Button x:Name="RemoveImageButton" Content="Quitar imagen" Command="{Binding Catalog.RemoveImageCommand}" Style="{StaticResource Ghost}" HorizontalAlignment="Stretch" Margin="0,4,0,0" FontWeight="Normal"
                    ToolTip="La imagen deja de mostrarse; no se borra y se puede volver a poner"/>
           </StackPanel>
-          <!-- Datos: el codigo fijo (solo se teclea en un alta), nombre, categoria (por su ruta), impuesto, estacion de cocina por su
-               nombre, referencia externa y orden. -->
+          <!-- Datos: nombre, categoria (por su ruta), impuesto, estacion de cocina por su nombre y referencia externa; el codigo fijo (solo
+               se teclea en un alta) y el orden van en "Mas opciones" (E3.3). -->
           <Grid x:Name="ProductFields" Grid.Column="2">
            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
            <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
            </Grid.RowDefinitions>
-           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
-           <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-           <TextBox Grid.Row="1" Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}" AutomationProperties.Name="Código del producto" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
-           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.ProductSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" AutomationProperties.Name="Orden del producto"/>
-           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
+           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource FieldLabel}"/>
            <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.ProductName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" AutomationProperties.Name="Nombre del producto"/>
            <TextBlock Grid.Row="4" Text="Categoría" Style="{StaticResource NextLabel}"/>
            <TextBlock Grid.Row="4" Grid.Column="2" Text="Impuesto" Style="{StaticResource NextLabel}"/>
@@ -197,6 +196,16 @@
           </Grid>
          </Grid>
 
+         <Expander x:Name="ProductMoreOptions" Header="Más opciones" IsExpanded="False" Margin="0,12,0,0">
+            <Grid Margin="0,6,0,0">
+             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+             <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+             <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
+             <TextBox Grid.Row="1" Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}" AutomationProperties.Name="Código del producto" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+             <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.ProductSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" AutomationProperties.Name="Orden del producto"/>
+            </Grid>
+         </Expander>
          <!-- Presentaciones (lo que se vende: botella, copa...) con su precio vigente en cada tarifa activa; elegir una abre sus datos y
               "Fijar precio" debajo. -->
          <StackPanel x:Name="PresentationsArea" Visibility="{Binding Catalog.ShowPresentations, Converter={StaticResource Bool2Vis}}">
@@ -358,21 +367,32 @@
            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
-          <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
-          <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}" AutomationProperties.Name="Código de la categoría" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
-          <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.CategorySort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" AutomationProperties.Name="Orden de la categoría"/>
-          <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
+          <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource FieldLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.CategoryName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" AutomationProperties.Name="Nombre de la categoría"/>
           <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Text="Dentro de" Style="{StaticResource NextLabel}"/>
           <ComboBox x:Name="CategoryParentBox" Grid.Row="5" Grid.ColumnSpan="3" ItemsSource="{Binding Catalog.ParentChoices}" DisplayMemberPath="BoxText" SelectedValuePath="Id" SelectedValue="{Binding Catalog.CategoryParentId}"
                     ItemContainerStyle="{StaticResource TreeChoiceItem}" IsEnabled="{Binding Catalog.CategoryEditable}" HorizontalAlignment="Stretch" AutomationProperties.Name="Dentro de qué categoría va"/>
-          <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Text="Color (#RRGGBB, opcional)" Style="{StaticResource NextLabel}"/>
-          <StackPanel Grid.Row="7" Grid.ColumnSpan="3" Orientation="Horizontal">
-           <TextBox Text="{Binding Catalog.CategoryColor, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" Width="130" AutomationProperties.Name="Color de la categoría"/>
-           <Border x:Name="CategoryColorPreview" Background="{Binding Catalog.CategorySwatch}" Width="32" Height="32" CornerRadius="8" BorderBrush="#1F000000" BorderThickness="1" Margin="10,0,0,0" VerticalAlignment="Center"
-                   Visibility="{Binding Catalog.CategorySwatch, Converter={StaticResource NotNull2Vis}}"/>
+          <!-- E3.3: una familia raiz que no es una seccion se coloca con un boton; el codigo, el orden y el color van en "Mas opciones". -->
+          <StackPanel Grid.Row="6" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,10,0,0" Visibility="{Binding Catalog.CanPlaceCategory, Converter={StaticResource Bool2Vis}}">
+           <Button x:Name="PlaceInKitchenButton" Content="Mover a Cocina" Command="{Binding Catalog.PlaceCategoryCommand}" CommandParameter="_cocina" Margin="0,0,8,0" ToolTip="Esta familia pasa a la sección Cocina"/>
+           <Button x:Name="PlaceInCellarButton" Content="Mover a Bodega y bebidas" Command="{Binding Catalog.PlaceCategoryCommand}" CommandParameter="_bodega" Margin="0" ToolTip="Esta familia pasa a la sección Bodega y bebidas"/>
           </StackPanel>
+          <Expander x:Name="CategoryMoreOptions" Grid.Row="7" Grid.ColumnSpan="3" Header="Más opciones" IsExpanded="False" Margin="0,10,0,0">
+           <Grid Margin="0,6,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
+            <TextBox Grid.Row="1" Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}" AutomationProperties.Name="Código de la categoría" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
+            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.CategorySort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" AutomationProperties.Name="Orden de la categoría"/>
+            <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Color (#RRGGBB, opcional)" Style="{StaticResource NextLabel}"/>
+            <StackPanel Grid.Row="3" Grid.ColumnSpan="3" Orientation="Horizontal">
+             <TextBox Text="{Binding Catalog.CategoryColor, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" Width="130" AutomationProperties.Name="Color de la categoría"/>
+             <Border x:Name="CategoryColorPreview" Background="{Binding Catalog.CategorySwatch}" Width="32" Height="32" CornerRadius="8" BorderBrush="#1F000000" BorderThickness="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                     Visibility="{Binding Catalog.CategorySwatch, Converter={StaticResource NotNull2Vis}}"/>
+            </StackPanel>
+           </Grid>
+          </Expander>
          </Grid>
          <StackPanel Visibility="{Binding Catalog.NewCategory, Converter={StaticResource NotBool2Vis}}">
           <TextBlock Text="Contenido" Style="{StaticResource SectionGap}"/>
@@ -393,6 +413,71 @@
        </ScrollViewer>
       </DockPanel>
      </Grid>
+    </Border>
+   </Grid>
+
+   <!-- ======================= E3.3: Vinos por copa (la bodega en bloque) ======================= -->
+   <!-- Una tabla de la Bodega: buscador, familia (con sus subfamilias), el precio de la botella a la vista y, por fila, marcar, "Por copa" y
+        el precio de la copa. Lo tecleado es un borrador por producto (una relectura no lo pisa); "Guardar copas" es UNA orden glass-sale-set
+        con los marcados y los quitados. Sobre los marcados: mismo precio, cambiar IVA y mover a una familia. -->
+   <Grid x:Name="GlassSection" Visibility="{Binding Catalog.ShowGlass, Converter={StaticResource Bool2Vis}}">
+    <Border x:Name="GlassPane" Style="{StaticResource Ficha}">
+     <DockPanel>
+      <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+       <TextBlock Text="Bodega y bebidas" Style="{StaticResource FichaContext}"/>
+       <WrapPanel Margin="0,2,0,0">
+        <TextBlock Text="Vinos por copa" Style="{StaticResource FichaTitle}"/>
+        <TextBlock x:Name="GlassCountText" Text="{Binding Catalog.GlassCount}" Style="{StaticResource Subtle}" VerticalAlignment="Bottom" Margin="12,0,0,6"/>
+       </WrapPanel>
+       <Grid Margin="0,10,0,0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="260"/></Grid.ColumnDefinitions>
+        <TextBox x:Name="GlassSearch" Style="{StaticResource SearchField}" local:Ui.Hint="Buscar por nombre, referencia o familia" Text="{Binding Catalog.GlassSearch, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Buscar un vino por nombre, referencia o familia"/>
+        <ComboBox x:Name="GlassFamilyBox" Grid.Column="2" ItemsSource="{Binding Catalog.GlassFamilies}" DisplayMemberPath="BoxText" SelectedValuePath="Id" SelectedValue="{Binding Catalog.GlassFamily}" HorizontalAlignment="Stretch" VerticalAlignment="Center" AutomationProperties.Name="Filtrar por familia"/>
+       </Grid>
+      </StackPanel>
+      <Border DockPanel.Dock="Bottom" Style="{StaticResource FichaActions}">
+       <StackPanel>
+        <TextBlock x:Name="GlassSummaryText" Text="{Binding Catalog.GlassSummary}" Style="{StaticResource Subtle}" Margin="0,0,0,8"/>
+        <WrapPanel Margin="0,0,0,10">
+         <Button x:Name="CheckAllButton" Content="Marcar todos" Command="{Binding Catalog.CheckAllCommand}" Margin="0,0,8,6" FontWeight="Normal"/>
+         <Button x:Name="UncheckAllButton" Content="Desmarcar" Command="{Binding Catalog.UncheckAllCommand}" Margin="0,0,16,6" FontWeight="Normal"/>
+         <TextBox x:Name="SamePriceBox" Text="{Binding Catalog.SamePriceText, UpdateSourceTrigger=PropertyChanged}" Width="90" TextAlignment="Right" Margin="0,0,6,6" AutomationProperties.Name="Precio de la copa para los marcados, en euros"/>
+         <Button x:Name="SamePriceButton" Content="Mismo precio para los marcados" Command="{Binding Catalog.SamePriceCommand}" Margin="0,0,16,6" FontWeight="Normal" ToolTip="Escribe ese precio de copa en los marcados; no envía nada hasta «Guardar copas»"/>
+         <ComboBox x:Name="BulkTaxBox" ItemsSource="{Binding Catalog.BulkTaxes}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Catalog.GlassTaxId}" Width="130" Margin="0,0,6,6" AutomationProperties.Name="Impuesto para los marcados"/>
+         <Button x:Name="SetTaxButton" Content="Cambiar IVA de los marcados" Command="{Binding Catalog.SetTaxCommand}" Margin="0,0,16,6" FontWeight="Normal" ToolTip="Una sola orden para todos los marcados"/>
+         <ComboBox x:Name="MoveTargetBox" ItemsSource="{Binding Catalog.MoveTargets}" DisplayMemberPath="BoxText" SelectedValuePath="Id" SelectedValue="{Binding Catalog.MoveTargetId}" ItemContainerStyle="{StaticResource TreeChoiceItem}" Width="220" Margin="0,0,6,6" AutomationProperties.Name="Familia de destino de los marcados"/>
+         <Button x:Name="MoveCheckedButton" Content="Mover los marcados a esa familia" Command="{Binding Catalog.MoveCheckedCommand}" Margin="0,0,0,6" FontWeight="Normal"/>
+        </WrapPanel>
+        <Button x:Name="SaveGlassButton" Style="{StaticResource BigAction}" Content="Guardar copas" ContentTemplate="{StaticResource ButtonText}" Command="{Binding Catalog.SaveGlassCommand}" ToolTip="Una sola orden con los vinos por copa y sus precios (y los que dejan de venderse por copa)"/>
+       </StackPanel>
+      </Border>
+      <Grid>
+       <ContentControl x:Name="GlassEmpty" Style="{StaticResource EmptyState}" VerticalAlignment="Center" local:Ui.Icon="{StaticResource IconCatalog}" local:Ui.Heading="Nada en Bodega y bebidas"
+                       Content="Los vinos y las bebidas (sin estación de cocina, o en la sección Bodega y bebidas) aparecen aquí." Visibility="{Binding Catalog.ShowGlassEmpty, Converter={StaticResource Bool2Vis}}"/>
+       <DockPanel Visibility="{Binding Catalog.ShowGlassEmpty, Converter={StaticResource NotBool2Vis}}">
+        <Border DockPanel.Dock="Top" Style="{StaticResource TableHead}">
+         <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="90"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+          <TextBlock Text="Marcar"/><TextBlock Grid.Column="1" Text="Vino o bebida"/><TextBlock Grid.Column="2" Text="Botella" HorizontalAlignment="Right"/><TextBlock Grid.Column="3" Text="Por copa" HorizontalAlignment="Center"/><TextBlock Grid.Column="4" Text="Precio copa (€)" HorizontalAlignment="Right"/>
+         </Grid>
+        </Border>
+        <ListBox x:Name="GlassList" Style="{StaticResource TableList}" ItemsSource="{Binding Catalog.GlassRows}" AutomationProperties.Name="Vinos de la bodega" KeyboardNavigation.TabNavigation="Continue">
+         <ListBox.ItemTemplate>
+          <DataTemplate>
+           <Grid AutomationProperties.Name="{Binding Name}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/><ColumnDefinition Width="90"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+            <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" Margin="8,0,0,0" AutomationProperties.Name="Marcar"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}"/></StackPanel>
+            <TextBlock Grid.Column="2" Text="{Binding BottleText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource InkSoft}"/>
+            <CheckBox Grid.Column="3" IsChecked="{Binding ByGlass}" HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.Name="Por copa"/>
+            <TextBox Grid.Column="4" Text="{Binding GlassPrice, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding ByGlass}" TextAlignment="Right" Width="100" HorizontalAlignment="Right" AutomationProperties.Name="Precio de la copa en euros"/>
+           </Grid>
+          </DataTemplate>
+         </ListBox.ItemTemplate>
+        </ListBox>
+       </DockPanel>
+      </Grid>
+     </DockPanel>
     </Border>
    </Grid>
 

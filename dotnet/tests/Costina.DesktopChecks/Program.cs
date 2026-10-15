@@ -500,7 +500,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.39.0-e4d",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.40.0-e3.3",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -1182,6 +1182,16 @@ internal static class Program
                 "Vino de la casa · Botella |  | 1 | 12,00 €","Agua mineral · Botella | 2,50 € la unidad | 2 | 5,00 €","Café solo · Unidad | Anulado: Pedido por error | 1 | 1,50 € | anulado"])
             ||checkout.LinesTitle!="Consumos · 3 líneas · 1 anulada"||!checkout.PaymentRows.Select(p=>p.What+" "+p.Amount).SequenceEqual(["Pago · Tarjeta 40,00 €"]))
             throw new Exception("Consumption lines (concept, unit price, quantity, amount, voided) and payments come from the read: "+string.Join(" / ",checkout.LineRows.Select(l=>l.Description+" "+l.Note)));
+        // E3.3: anadir un consumo con el buscador: grupos por producto con un boton por presentacion; el boton solo elige.
+        checkout.ProductSearch="agua"; window.UpdateLayout();
+        if(checkout.ProductGroups.Length!=1||checkout.ProductGroups[0].Name!="Agua mineral"||!checkout.ProductGroups[0].Presentations.Select(p=>p.Label).SequenceEqual(["Botella · 2,50 €"])) throw new Exception("The Caja search groups the sellables by product: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        var postsBeforePick=server.Count("POST","");
+        checkout.PickProductCommand.Execute(checkout.ProductGroups[0].Presentations[0].Choice); window.UpdateLayout();
+        if(checkout.SelectedProduct?.Id!="agua"||!checkout.ChosenProductText.StartsWith("Elegido: Agua mineral · Botella",StringComparison.Ordinal)||!checkout.ProductGroups[0].Presentations[0].IsChosen||server.Count("POST","")!=postsBeforePick)
+            throw new Exception("Picking a presentation only chooses it (nothing is sent): "+checkout.ChosenProductText);
+        checkout.ProductSearch="zzz"; window.UpdateLayout();
+        if(checkout.ProductGroups.Length!=0||checkout.ProductGroupsNote!="Ningún producto coincide con «zzz».") throw new Exception("A search without results says so: "+checkout.ProductGroupsNote);
+        checkout.ProductSearch=""; window.UpdateLayout();
         var cajaTexts=Texts(checkoutView).ToArray();
         foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",
             "Anulado: Pedido por error","Anulado","Pago · Tarjeta","Añadir un consumo","Concepto","Cantidad","Importe","Otras operaciones","Pago parcial","Pendiente 51,00 €",
@@ -1352,8 +1362,8 @@ internal static class Program
             var button=InCatalog<Button>(bottom);
             if(button.TranslatePoint(new Point(0,button.ActualHeight),catalogPanel).Y>catalogPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
             // Repaso de coherencia de C2b: la lista de la pestana abierta mide ListWidth, como en Caja, Oferta y Estaciones.
-            var pane=new[]{"ProductsPane","CategoriesPane","TariffsPane","TaxesPane"}.Select(InCatalog<FrameworkElement>).Single(p=>p.IsVisible);
-            if(Math.Abs(pane.ActualWidth-ListWidth)>0.5) throw new Exception(what+": the catalog list keeps 360 px (ListWidth): "+pane.Name+" "+pane.ActualWidth);
+            var pane=new[]{"ProductsPane","CategoriesPane","TariffsPane","TaxesPane"}.Select(InCatalog<FrameworkElement>).SingleOrDefault(p=>p.IsVisible);   // E3.3: Vinos por copa es una tabla a todo lo ancho
+            if(pane is not null&&Math.Abs(pane.ActualWidth-ListWidth)>0.5) throw new Exception(what+": the catalog list keeps 360 px (ListWidth): "+pane.Name+" "+pane.ActualWidth);
             if(Clipped(catalogPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
             if(NestedScrolls(catalogPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
             RefuseRaw(window,what);
@@ -1365,7 +1375,7 @@ internal static class Program
         server.Catalog=new([..wineCatalog.Taxes.Select(t=>t with {Active=true})],[],[],[new("general","General",0,true)],"2026-10-15");
         window.Shell.Status="";
         OpenCatalog("the catalog reads an empty catalogue");
-        if(catalogView.Section!="products"||!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 0","Categorías · 0","Tarifas · 1","Impuestos · 4"])||!catalogView.Sections[0].IsCurrent)
+        if(catalogView.Section!="products"||!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 0","Categorías · 0","Tarifas · 1","Impuestos · 4","Vinos por copa · 0"])||!catalogView.Sections[0].IsCurrent)
             throw new Exception("The catalog opens on Productos, with a tab per kind and its count: "+string.Join(",",catalogView.Sections.Select(s=>s.Label)));
         if(!catalogView.ShowProductListEmpty||catalogView.ProductListHeading!="Aún no hay productos"||!Ready("EmptyNewProductButton")||Shows("EmptyShowAllButton")||Shows("ProductList")||Shows("ShowAllButton")
             ||!Shows("ProductEmpty")||Shows("ProductDetail")||catalogView.ProductEmptyHeading!="Sin productos todavía"||!Texts(catalogPanel).Contains("Crea el primero o importa el catálogo desde un fichero en el equipo servidor."))
@@ -1397,7 +1407,7 @@ internal static class Program
         var doble=catalogView.Products.Single(p=>p.Product.Id=="doble");
         if(doble.MainPrice!="24,00 €"||doble.PriceMissing||!catalogView.Summary.Contains("(17 vendibles")) throw new Exception("A product whose first presentation has no General price shows the next one's price and no warning: "+doble.MainPrice+" / "+catalogView.Summary);
         OpenCatalog("the catalog reads the wine list");
-        if(!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 18","Categorías · 16","Tarifas · 3","Impuestos · 4"])
+        if(!catalogView.Sections.Select(s=>s.Label).SequenceEqual(["Productos · 18","Categorías · 16","Tarifas · 3","Impuestos · 4","Vinos por copa · 9"])
             ||catalogView.Summary!="17 productos activos (16 vendibles hoy) · precios con IVA incluido"||catalogView.ProductCount!="18 productos · precio General"||Shows("ShowAllButton"))
             throw new Exception("Tabs and summary carry the counts of the read catalogue: "+string.Join(",",catalogView.Sections.Select(s=>s.Label))+" / "+catalogView.Summary);
         if(!Shows("ProductSearch")||!Texts(filterBox).Contains("Todas las categorías")) throw new Exception("With products the list offers the search and the category filter, on every category.");
@@ -1529,7 +1539,14 @@ internal static class Program
             throw new Exception("The category ficha shows its parent, data, counts and subcategories: "+catalogView.CategoryContext+" / "+catalogView.CategoryChildrenText);
         if(catalogView.Products.Length!=18||catalogView.CategoryFilter!=""||catalogView.SelectedProduct?.Product.Id!="albarino") throw new Exception("Choosing a category in its tab leaves the product list as it was.");
         Fits("catalog-categories","SaveCategoryButton"); Save(Shot(window),"catalog-categories.png");
+        // E3.3: una familia raiz que no es una seccion ofrece "Mover a Cocina" y "Mover a Bodega y bebidas" (category-update con la seccion); una subfamilia, no.
+        categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="vinos"); window.UpdateLayout();
+        if(!catalogView.CanPlaceCategory||!Ready("PlaceInKitchenButton")||!Ready("PlaceInCellarButton")) throw new Exception("A root family that is not a section can be placed in a section.");
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("PlaceInCellarButton"),"Mover a Bodega y bebidas"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the family is placed");
+        if(CatalogPost()!="erp/catalog/commands/category-update {\"id\":\"vinos\",\"parentId\":\"_bodega\"}") throw new Exception("Placing a family sends category-update with the section as parent: "+CatalogPost());
         categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="blancos-rioja"); window.UpdateLayout();
+        if(catalogView.CanPlaceCategory||Shows("PlaceInKitchenButton")) throw new Exception("A subfamily is not offered the section buttons.");
         if(catalogView.CategoryContext!="Dentro de Vinos › Blancos"||catalogView.CategoryChildrenText!="Sin subcategorías.") throw new Exception("The white Rioja says where it hangs: "+catalogView.CategoryContext);
         categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="tintos"); window.UpdateLayout();
         Press(InCatalog<Button>("ShowCategoryProductsButton"),"Ver sus productos");
@@ -1568,6 +1585,58 @@ internal static class Program
         Press(InCatalog<Button>("SaveTariffButton"),"Crear tarifa"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tariff is created");
         if(CatalogPost()!="erp/catalog/commands/tariff-create {\"id\":\"barra\",\"name\":\"Barra\",\"sort\":3}"||catalogView.NewTariff||catalogView.SelectedTariff?.Id!="barra"||catalogView.TariffTitle!="Barra"
             ||!catalogView.Sections[2].Label.EndsWith("· 4",StringComparison.Ordinal)) throw new Exception("A created tariff is chosen once the server confirms it: "+CatalogPost());
+        // ===== E3.3: secciones de la lista y Vinos por copa (la bodega en bloque) =====
+        Section(0,"products");
+        if(!catalogView.SectionFilters.Select(s=>s.Label).SequenceEqual(["Todos · 18","Cocina · 6","Bodega y bebidas · 10","Menús · 2"])||!Shows("SectionChips")) throw new Exception("The product list carries a chip per section with its count: "+string.Join(",",catalogView.SectionFilters.Select(s=>s.Label)));
+        catalogView.SectionFilter="bodega"; window.UpdateLayout();
+        if(catalogView.Products.Length!=10||catalogView.Products.Any(p=>p.Product.StationId is not null)||catalogView.Products.Any(p=>p.Product.CategoryId=="menus")) throw new Exception("'Bodega y bebidas' lists the products without a kitchen station (and the ones under _bodega): "+catalogView.Products.Length);
+        catalogView.SectionFilter="menus"; window.UpdateLayout();
+        if(catalogView.Products.Length!=2||catalogView.Products.Any(p=>p.Product.CategoryId!="menus")) throw new Exception("'Menús' lists the menu products, which are edited in Menús y cartas.");
+        catalogView.SectionFilter="all"; window.UpdateLayout();
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="albarino"); window.UpdateLayout();   // el chip de Menus lo deselecciono (lo esconde)
+        Section(4,"glass");
+        string GlassText()=>string.Join(" | ",catalogView.GlassRows.Select(r=>r.ToString()));
+        if(catalogView.GlassRows.Length!=9||!GlassText().StartsWith("Albariño Pazo de Señoráns · Vinos · botella 26,00 € · copa 4,50 | Do Ferreiro 2023 · Vinos · botella 29,00 € · copa 5,50 | Viña Gravonia 2015 · Vinos · botella 38,00 € · copa no",StringComparison.Ordinal)
+            ||catalogView.GlassCount!="9 vinos y bebidas en Bodega"||catalogView.SaveGlassCommand.CanExecute(null)||InCatalog<Button>("SamePriceButton").IsEnabled)
+            throw new Exception("'Vinos por copa' lists the cellar with the bottle price and the glass read from the catalogue: "+GlassText()+" / "+catalogView.GlassCount);
+        catalogView.GlassFamily="Vinos"; window.UpdateLayout();
+        if(catalogView.GlassRows.Length!=6||catalogView.GlassRows.Any(r=>r.Family!="Vinos")) throw new Exception("The family filter keeps the family and its subfamilies: "+catalogView.GlassRows.Length);
+        catalogView.GlassSearch="gravonia"; window.UpdateLayout();
+        if(catalogView.GlassRows.Length!=1||catalogView.GlassRows[0].Product.Id!="gravonia") throw new Exception("The glass search finds by name without accents.");
+        // Marcar y "Mismo precio para los marcados": escribe el precio y pone por copa sin enviar nada; "Guardar copas" es UNA orden.
+        var gravonia=catalogView.GlassRows[0]; gravonia.IsChecked=true; catalogView.SamePriceText="6"; window.UpdateLayout();
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SamePriceButton"),"Mismo precio para los marcados");
+        if(!gravonia.ByGlass||gravonia.GlassPrice!="6,00"||!gravonia.Dirty||server.Count("POST","")!=catalogPosts||!catalogView.SaveGlassCommand.CanExecute(null)||catalogView.GlassSummary!="1 marcado · 1 cambio por guardar")
+            throw new Exception("'Mismo precio' writes the glass price on the checked rows and sends nothing: "+gravonia+" / "+catalogView.GlassSummary);
+        // F01: lo tecleado es un borrador que una relectura no pisa.
+        gravonia.GlassPrice="7"; catalogView.Render(server.Catalog); window.UpdateLayout();
+        var gravoniaAgain=catalogView.GlassRows.Single(r=>r.Product.Id=="gravonia");
+        if(!gravoniaAgain.ByGlass||gravoniaAgain.GlassPrice!="7"||!gravoniaAgain.IsChecked) throw new Exception("A re-read keeps the typed draft and the checks: "+gravoniaAgain);
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the glass sale is sent");
+        if(CatalogPost()!="erp/catalog/commands/glass-sale-set {\"items\":[{\"productId\":\"gravonia\",\"priceCents\":700}],\"stop\":[]}"||!window.Shell.Status.StartsWith("Vinos por copa guardados: 1 copa, 0 quitados",StringComparison.Ordinal))
+            throw new Exception("'Guardar copas' sends one glass-sale-set with the marked wines and their prices: "+CatalogPost()+" / "+window.Shell.Status);
+        catalogView.GlassSearch=""; catalogView.GlassFamily=""; window.UpdateLayout();
+        var albarinoRow=catalogView.GlassRows.Single(r=>r.Product.Id=="albarino"); albarinoRow.ByGlass=false; window.UpdateLayout();
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (quitar)"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the stop is sent");
+        if(CatalogPost()!="erp/catalog/commands/glass-sale-set {\"items\":[],\"stop\":[\"albarino\"]}") throw new Exception("Unticking 'Por copa' on a wine sold by the glass sends it in stop: "+CatalogPost());
+        // Cambiar IVA y mover los marcados: una orden para todos.
+        foreach(var r in catalogView.GlassRows) r.IsChecked=r.Product.Id is "agua" or "cafe";
+        catalogView.GlassTaxId="iva-21"; window.UpdateLayout();
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("SetTaxButton"),"Cambiar IVA de los marcados"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tax change is sent");
+        if(CatalogPost()!="erp/catalog/commands/products-tax-set {\"productIds\":[\"agua\",\"cafe\"],\"taxId\":\"iva-21\"}") throw new Exception("'Cambiar IVA de los marcados' sends one products-tax-set: "+CatalogPost());
+        foreach(var r in catalogView.GlassRows) r.IsChecked=r.Product.Id is "agua" or "cafe";
+        catalogView.MoveTargetId="bebidas"; window.UpdateLayout();
+        catalogPosts=server.Count("POST","");
+        Press(InCatalog<Button>("MoveCheckedButton"),"Mover los marcados"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the move is sent");
+        if(CatalogPost()!="erp/catalog/commands/products-move {\"productIds\":[\"agua\",\"cafe\"],\"categoryId\":\"bebidas\"}") throw new Exception("'Mover los marcados' sends one products-move: "+CatalogPost());
+        foreach(var r in catalogView.GlassRows) r.IsChecked=false;
+        catalogView.GlassRows.Single(r=>r.Product.Id=="muga").IsChecked=true; window.UpdateLayout();
+        Fits("catalog-glass","SaveGlassButton"); Save(Shot(window),"catalog-glass.png");
+        catalogView.GlassRows.Single(r=>r.Product.Id=="muga").IsChecked=false;
+        Section(2,"tariffs");
         // Impuestos: tipo y productos que lo llevan.
         Section(3,"taxes");
         if(!catalogView.TaxItems.Select(t=>t.Tax.Name+": "+t.Detail).SequenceEqual(["IVA 10 %: 10 % · 12 productos","IVA 21 %: 21 % · 6 productos","IVA 4 %: 4 % · 0 productos","Exento: 0 % · 0 productos"])
