@@ -460,7 +460,7 @@ await Check("vocabulary: the exact words of the plan table",()=>{
     Expect(string.Join("|",Enum.GetNames<AccountState>().Select(Labels.Account))=="Abierta|Cerrada","cuenta");
     Expect(string.Join("|",Enum.GetNames<PaymentCoverage>().Select(Labels.Coverage))=="Sin pagar|Pago parcial|Pagada|Pagado de más","cobertura");
     Expect(string.Join("|",new[]{"card","cash","other"}.Select(Labels.PaymentMethod))=="Tarjeta|Efectivo|Otro","pago");
-    Expect(string.Join("|",new[]{"tasting","set-menu","a-la-carte"}.Select(Labels.OfferKind))=="Degustación|Menú cerrado|Carta","oferta");
+    Expect(string.Join("|",new[]{"tasting","set-menu","a-la-carte"}.Select(Labels.OfferKind))=="Menú degustación|Menú con elección|Carta","oferta");
     Expect(string.Join("|",new[]{"any","lunch","dinner"}.Select(Labels.OfferService))=="Comida y cena|Comida|Cena","servicio de la oferta");
     Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Pantalla de cocina","rol");
     Expect(string.Join("|",new[]{"connected","reconnecting","closed"}.Select(Labels.Realtime))=="Tiempo real activo|Reconectando…|Sin tiempo real, reintentando","tiempo real");

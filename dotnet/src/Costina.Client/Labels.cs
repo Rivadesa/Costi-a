@@ -33,7 +33,8 @@ public static class Labels
     private static readonly Vocabulary Coverages = new(("Unpaid", "Sin pagar"), ("PartiallyPaid", "Pago parcial"), ("Paid", "Pagada"),
         ("Credit", "Pagado de más"));
     private static readonly Vocabulary PaymentMethods = new(("card", "Tarjeta"), ("cash", "Efectivo"), ("other", "Otro"));
-    private static readonly Vocabulary OfferKinds = new(("tasting", "Degustación"), ("set-menu", "Menú cerrado"), ("a-la-carte", "Carta"));
+    // E4d: el tipo tasting se llama "Menu degustacion" (el nombre del menu del promotor); set-menu, "Menu con eleccion" (cada persona elige).
+    private static readonly Vocabulary OfferKinds = new(("tasting", "Menú degustación"), ("set-menu", "Menú con elección"), ("a-la-carte", "Carta"));
     private static readonly Vocabulary OfferServices = new(("any", "Comida y cena"), ("lunch", "Comida"), ("dinner", "Cena"));
     private static readonly Vocabulary StationKinds = new(("Kitchen", "Cocina"), ("Pass", "Pase"), ("Bar", "Barra"), ("Room", "Sala"));
     private static readonly Vocabulary DeviceRoles = new(("service", "Comandero"), ("kitchen", "Pantalla de cocina"), ("main", "Principal (antiguo)"));
@@ -60,7 +61,7 @@ public static class Labels
         ("refund", "Devolver lo pagado de más"), ("close", "Cerrar cuenta"), ("reopen", "Reabrir cuenta"));
     // Vistas del area de trabajo (nombre del TabItem): mismo nombre en la barra lateral, los accesos de Inicio y la entrada.
     private static readonly Vocabulary Views = new(("HomeTab", "Inicio"), ("ServiceTab", "Comedor y cocina"), ("CheckoutTab", "Cuenta / Caja"),
-        ("CatalogTab", "Catálogo y tarifas"), ("OffersTab", "Oferta: cartas y menús"), ("OrganizationTab", "Salas, mesas y estaciones"),
+        ("CatalogTab", "Catálogo y tarifas"), ("OffersTab", "Menús y cartas"), ("OrganizationTab", "Salas, mesas y estaciones"),
         ("DevicesTab", "Dispositivos"));
     // Rechazos del servidor (codigo de ApiError) en frases claras. El resto sale con su codigo para poder consultarlo.
     private static readonly Vocabulary Rejections = new(
@@ -103,13 +104,13 @@ public static class Labels
         ("image_invalid", "La imagen no es válida: solo se admiten JPEG, PNG o WebP (nunca SVG)."),
         ("image_too_large", "La imagen ocupa más de 2 MB: redúcela y vuelve a intentarlo."),
         ("presentation_required", "Falta la presentación del producto (botella, copa, por persona…)."),
-        ("product_required", "Una degustación o un menú cerrado necesita su producto-menú."),
+        ("product_required", "Un menú necesita su precio por persona."),
         ("product_not_allowed", "Una carta no tiene producto-menú: cada plato se cobra al pedirlo."),
         ("station_required", "El producto necesita una estación de cocina para pedirse en la carta."),
         ("not_a_la_carte", "Solo una carta lleva platos del catálogo por grupos."),
-        ("offer_unavailable", "Esa oferta no está disponible ahora."),
-        ("offer_incomplete", "Esa oferta no tiene pases con platos activos."),
-        ("offer_unpriced", "Esa oferta no tiene precio vigente."),
+        ("offer_unavailable", "Ese menú o carta no se ofrece ahora."),
+        ("offer_incomplete", "Ese menú o carta no tiene pases con platos activos."),
+        ("offer_unpriced", "Ese menú no tiene precio por persona vigente."),
         ("invalid_validity", "La fecha de fin no puede ser anterior a la de inicio."),
         ("invalid_weekdays", "Elige al menos un día de la semana."),
         ("invalid_pax", "Número de personas no válido."),

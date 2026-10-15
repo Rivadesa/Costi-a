@@ -248,5 +248,62 @@ class Offers(unittest.TestCase):
         self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='offer.course_created' AND aggregate_id='LAB-DAILY'"), '1')
         self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='course.chosen'"), '3')
 
+    def test_06_e4d_codes_are_optional_prices_update_and_offers_reorder(self):
+        # E4d: alta sin codigo -> codigo del nombre, a 27 (su producto-menu es "menu-" + codigo); repetir con la misma clave devuelve lo mismo.
+        key = 'e4d-' + datetime.datetime.now().strftime('%H%M%S%f')
+        name = 'Menú degustación de otoño con maridaje y café'
+        status, body = request('/erp/offers/commands/offer-create', dict(name=name, kind='tasting', priceCents=12000), key=key)
+        self.assertEqual(status, 200, body)
+        created = json.loads(body)
+        self.assertEqual(created['id'], 'menu-degustacion-de-otono-c')
+        self.assertEqual(created['productId'], 'menu-menu-degustacion-de-otono-c')
+        self.assertEqual(request('/erp/offers/commands/offer-create', dict(name=name, kind='tasting', priceCents=12000), key=key), (200, body))
+        product = next(p for p in ok('/erp/catalog')['products'] if p['id'] == created['productId'])
+        self.assertEqual((product['categoryId'], product['presentations'][0]['id'], product['presentations'][0]['prices'][0]['priceCents']), ('menus', 'person', 12000))
+        # Choque de codigo: sufijo que cabe; sin orden, detras del anterior.
+        second = json.loads(command('offer-create', name=name, kind='tasting')[1])
+        self.assertEqual(second['id'], 'menu-degustacion-de-oton-2')
+        self.assertLessEqual(len(second['productId']), 32)
+        self.assertGreater(second['sort'], created['sort'])
+        # Un nombre de 60 caracteres se crea y su producto-menu tiene un codigo valido.
+        long_name = 'Menú ' + 'x' * 55
+        status, body = command('offer-create', name=long_name, kind='tasting')
+        self.assertEqual(status, 200, body)
+        self.assertIn(json.loads(body)['productId'], [p['id'] for p in ok('/erp/catalog')['products']])
+        # offer-create deja la auditoria del catalogo: producto y precio.
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.product_created' AND aggregate_id='" + created['productId'] + "'"), '1')
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.price_set' AND aggregate_id='" + created['productId'] + "'"), '1')
+        # offer-update con precio: precio vigente hoy y evento; sin precio no toca el precio; una carta lo rechaza.
+        oid = created['id']
+        self.assertEqual(command('offer-update', id=oid, priceCents=13000)[0], 200)
+        prices = next(p for p in ok('/erp/catalog')['products'] if p['id'] == created['productId'])['presentations'][0]['prices']
+        self.assertIn((datetime.date.today().isoformat(), 13000), [(p['validFrom'], p['priceCents']) for p in prices])
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.price_set' AND aggregate_id='" + created['productId'] + "'"), '2')
+        self.assertEqual(command('offer-update', id=oid, name='Renombrado sin tocar el precio')[0], 200)
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.price_set' AND aggregate_id='" + created['productId'] + "'"), '2')
+        carta = json.loads(command('offer-create', name='Carta de prueba E4d', kind='a-la-carte')[1])
+        self.assertEqual(carta['id'], 'carta-de-prueba-e4d')
+        self.assertEqual(json.loads(command('offer-update', id=carta['id'], priceCents=100)[1])['error'], 'product_not_allowed')
+        # Pases y platos sin codigo: del nombre, unicos dentro de su padre, al final.
+        course = json.loads(command('course-create', offerId=oid, name='Primer pase')[1])
+        self.assertEqual(course['id'], 'primer-pase')
+        again = json.loads(command('course-create', offerId=oid, name='Primer pase')[1])
+        self.assertEqual((again['id'], again['sort']), ('primer-pase-2', course['sort'] + 10))
+        dish = json.loads(command('dish-create', offerId=oid, courseId='primer-pase', name='Ostra gallega', stationId='cold')[1])
+        self.assertEqual((dish['id'], dish['sort']), ('ostra-gallega', 0))
+        self.assertIn(command('offer-create', name='   ', kind='tasting')[0], (409, 422))   # sin nombre no hay codigo
+        # offers-reorder: las indicadas delante, en ese orden; las demas detras como estaban; idempotente; solo el responsable.
+        before = [o['id'] for o in offers()]
+        key2 = key + '-r'
+        status, body = request('/erp/offers/commands/offers-reorder', dict(offerIds=[carta['id'], oid]), key=key2)
+        self.assertEqual(status, 200, body)
+        self.assertEqual([o['id'] for o in offers()], [carta['id'], oid] + [i for i in before if i not in (carta['id'], oid)])
+        self.assertEqual(request('/erp/offers/commands/offers-reorder', dict(offerIds=[carta['id'], oid]), key=key2), (200, body))
+        self.assertEqual(command('offers-reorder', offerIds=['no-existe'])[0], 404)
+        self.assertEqual(json.loads(command('offers-reorder', offerIds=[oid, oid])[1])['error'], 'duplicate_offer')
+        for role in ('service', 'kitchen'):
+            self.assertEqual(command('offers-reorder', role=role, offerIds=[oid])[0], 403)
+        self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='offer.offer_updated' AND aggregate_id='" + carta['id'] + "'"), '1')
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

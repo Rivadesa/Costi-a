@@ -22,6 +22,8 @@ public sealed record OfferRow(OfferDto Offer)
     // partia tras un "·" colgado y las filas con fechas median mas que las demas).
     public string Detail { get; init; } = "";
     public string Validity { get; init; } = "";
+    // E4d: la primera oferta vigente ahora es el menu del dia (la que se propone al abrir mesa).
+    public bool IsDaily { get; init; }
     public bool Inactive => !Offer.Active;
     public override string ToString() => $"{Offer.Name} · {KindLabel} · {StateLabel}";
 }
@@ -83,11 +85,58 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     [ObservableProperty] private bool newCourse; [ObservableProperty] private string courseId = ""; [ObservableProperty] private string courseName = ""; [ObservableProperty] private string courseSort = "0";
     [ObservableProperty] private bool newDish; [ObservableProperty] private string dishId = ""; [ObservableProperty] private string dishName = ""; [ObservableProperty] private string dishStationId = "";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(DishProductText))] private string dishProductId = ""; [ObservableProperty] private string dishSort = "0";
-    [ObservableProperty] private string summary = "Sin datos de oferta todavía.";
+    [ObservableProperty] private string summary = "Sin datos de menús ni cartas todavía.";
+    // E4d: el tipo en el camino principal son dos botones (Menu degustacion o Carta); "Menu con eleccion" es una casilla de "Mas opciones".
+    // El codigo que viaja sigue siendo OfferKind; estas dos propiedades solo lo traducen.
+    public SegmentChoice[] KindChoices { get; } = KindSegments();
+    private static SegmentChoice[] KindSegments()
+    {
+        var choices = new[] { new SegmentChoice("tasting", "Menú degustación"), new SegmentChoice("a-la-carte", "Carta") };
+        SegmentChoice.Mark(choices, "tasting");
+        return choices;
+    }
+    public string? KindSegment
+    {
+        get => OfferKind == "a-la-carte" ? "a-la-carte" : "tasting";
+        set { if (value is null || rendering || value == KindSegment) return; OfferKind = value == "a-la-carte" ? "a-la-carte" : WithChoice ? "set-menu" : "tasting"; }
+    }
+    public bool WithChoice
+    {
+        get => OfferKind == "set-menu";
+        set { if (OfferKind == "a-la-carte" || value == WithChoice) return; OfferKind = value ? "set-menu" : "tasting"; }
+    }
+    partial void OnOfferKindChanged(string value)
+    {
+        SegmentChoice.Mark(KindChoices, KindSegment);
+        foreach (var name in new[] { nameof(KindSegment), nameof(WithChoice), nameof(ShowPrice), nameof(ChoiceEnabled), nameof(PriceLabel), nameof(OfferPriceText) }) OnPropertyChanged(name);
+    }
+    public bool ShowPrice => OfferKind != "a-la-carte";
+    public bool ChoiceEnabled => OfferEditable && OfferKind != "a-la-carte";
+    public string PriceLabel => NewOffer ? "Precio por persona (€, IVA incl.)" : "Precio por persona (€, IVA incl.; vacío = sin cambio)";
+    // El precio vigente hoy del producto-menu, si el catalogo esta leido.
+    public string OfferPriceText => NewOffer || SelectedOffer?.Offer.ProductId is not { Length: > 0 } p ? "" : shell.Catalog.GeneralPriceText(p) is { } price ? "Hoy: " + price + " por persona" : "";
+    // "Cuando se ofrece", en una linea: Siempre, o el servicio, los dias y las fechas que no sean los de siempre.
+    public string WhenText
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (OfferService != "any") parts.Add(Labels.OfferService(OfferService));
+            if (Weekdays != 127) parts.Add(DaysText(Weekdays));
+            var from = OfferValidFrom.Trim(); var to = OfferValidTo.Trim();
+            if (from.Length > 0 || to.Length > 0) parts.Add(Validity(IsoOrText(from), IsoOrText(to)));
+            return parts.Count == 0 ? "Siempre" : Capital(string.Join(" · ", parts));
+        }
+    }
+    private static string IsoOrText(string text) { try { return CatalogViewModel.ParseDay(text, ""); } catch (ArgumentException) { return text; } }
+    // E4d: el menu del dia es la primera oferta vigente ahora (lo que el Comedor propone al abrir mesa).
+    private string? DailyId => shell.Service.Offers.FirstOrDefault()?.Id;
+    [ObservableProperty] private bool isDailyOffer;
+    [ObservableProperty] private bool showMakeDaily;
 
     // ---- C2b: lista (buscador, chips de tipo con su recuento y vacio explicado) ----
     // Chips ESTABLES (su texto cambia en el sitio, como los filtros del Comedor): "Todas" y un tipo de oferta cada uno.
-    public FilterChip[] KindFilters { get; } = [new("all", "Todas"), new("tasting", "Degustación"), new("set-menu", "Menú cerrado"), new("a-la-carte", "Carta")];
+    public FilterChip[] KindFilters { get; } = [new("all", "Todos"), new("tasting", "Menú degustación"), new("set-menu", "Menú con elección"), new("a-la-carte", "Carta")];
     private string kindFilter = "all";
     // Codigo del tipo que filtra la lista ("all" = todas). Null o un codigo desconocido (la lista de chips perdiendo su eleccion) no cambian el filtro.
     public string? KindFilter
@@ -156,13 +205,13 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         : !NewOffer && SelectedOffer?.Offer.ProductId is { Length: > 0 } p ? ((shell.Catalog.NameOfProduct(p) ?? ItemChoices.FirstOrDefault(c => c.Id == p)?.Name) is { } product
             ? $"Se vende por persona como el producto «{product}»: su precio se fija en ERP › Catálogo y tarifas."
             : $"Se vende por persona con su producto-menú del catálogo (código «{p}»): su precio se fija en ERP › Catálogo y tarifas.")
-        : "Al crearla se crea también su producto-menú en el catálogo (categoría Menús).";
+        : "Al crearlo se crea también su producto-menú en el catálogo (categoría Menús).";
     // C2b: lo que significa el tipo elegido en la ficha (antes, un parrafo fijo en la cabecera de la vista).
     public string KindHelp => OfferKind switch
     {
-        "tasting" => "Degustación: se sirven todos sus platos, pase a pase.",
-        "set-menu" => "Menú cerrado: cada comensal elige un plato por pase antes de enviarlo a cocina.",
-        "a-la-carte" => "Carta: cada pase agrupa platos del catálogo que se cobran al pedirlos.",
+        "tasting" => "Menú degustación: todos comen lo mismo; se sirven todos sus platos, pase a pase.",
+        "set-menu" => "Menú con elección: cada persona elige un plato en cada pase, entre los que pongas.",
+        "a-la-carte" => "Carta: platos sueltos que se cobran al pedirlos.",
         _ => ""
     };
     // C2b: el producto del plato (codigo tecleado) por su nombre cuando es un vendible leido.
@@ -209,10 +258,11 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
 
     internal void Sync()
     {
-        foreach (var name in new[] { nameof(OfferEditable), nameof(CourseEditable), nameof(DishEditable), nameof(OfferFormTitle), nameof(CourseFormTitle), nameof(DishFormTitle), nameof(HasOffers), nameof(HasCourses), nameof(OfferProductText), nameof(IsCarte), nameof(IsNotCarte), nameof(ItemEditable), nameof(DishProductText) })
+        foreach (var name in new[] { nameof(OfferEditable), nameof(CourseEditable), nameof(DishEditable), nameof(OfferFormTitle), nameof(CourseFormTitle), nameof(DishFormTitle), nameof(HasOffers), nameof(HasCourses), nameof(OfferProductText), nameof(IsCarte), nameof(IsNotCarte), nameof(ItemEditable), nameof(DishProductText),
+            nameof(ChoiceEnabled), nameof(PriceLabel), nameof(OfferPriceText), nameof(WhenText), nameof(ShowPrice) })
             OnPropertyChanged(name);
         foreach (var command in new IRelayCommand[] { StartOfferCommand, SaveOfferCommand, ToggleOfferCommand, StartCourseCommand, SaveCourseCommand, ToggleCourseCommand, StartDishCommand, SaveDishCommand, ToggleDishCommand, AddItemCommand, ToggleItemCommand,
-            CancelOfferCommand, CancelCourseCommand, CancelDishCommand })
+            CancelOfferCommand, CancelCourseCommand, CancelDishCommand, MakeDailyCommand, MoveCourseCommand, MoveDishCommand })
             command.NotifyCanExecuteChanged();
         Compose();
     }
@@ -223,7 +273,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         try
         {
             read = null; Offers = []; Courses = []; Dishes = []; Items = []; ItemChoices = []; Stations = []; SelectedOffer = null; SelectedCourse = null; SelectedDish = null; SelectedItem = null; SelectedItemChoice = null;
-            NewOffer = NewCourse = NewDish = false; Summary = "Sin datos de oferta todavía."; Search = ""; kindFilter = "all"; OnPropertyChanged(nameof(KindFilter));
+            NewOffer = NewCourse = NewDish = false; Summary = "Sin datos de menús ni cartas todavía."; Search = ""; kindFilter = "all"; OnPropertyChanged(nameof(KindFilter));
             createdOffer = createdCourse = createdDish = createdItem = offerBeforeNew = courseBeforeNew = dishBeforeNew = null;
             LabelFilters();
         }
@@ -265,8 +315,8 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
             SelectedDish = null; SelectedDish = NewDish || !sameCourse ? null : Dishes.FirstOrDefault(d => d.Dish.Id == dish);
             SelectedItem = null; SelectedItem = sameCourse ? Items.FirstOrDefault(i => i.Key == item) : null;
             var active = value.Count(o => o.Active); var inactive = value.Length - active;
-            Summary = value.Length == 0 ? "Aún no hay ofertas: crea la primera con «Nueva oferta»."
-                : $"{Labels.Plural(active, "oferta activa", "ofertas activas")}{(inactive > 0 ? " · " + Labels.Plural(inactive, "desactivada", "desactivadas") : "")} · los menús se cobran por persona y la carta, plato a plato";
+            Summary = value.Length == 0 ? "Aún no hay menús ni cartas: crea el primero con «Nuevo menú o carta»."
+                : $"{Labels.Plural(active, "activo", "activos")}{(inactive > 0 ? " · " + Labels.Plural(inactive, "desactivado", "desactivados") : "")} · los menús se cobran por persona y la carta, plato a plato";
         }
         finally { rendering = false; }
         if (!NewOffer) FillOfferForm(); if (!NewCourse) FillCourseForm(); if (!NewDish) FillDishForm(); else RefreshStations();
@@ -290,7 +340,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     // Busca por nombre (sin distinguir mayusculas ni tildes: "costina" encuentra la Degustacion Costina) o por codigo.
     private bool Shown(OfferDto offer, bool byKind = true) => (!byKind || kindFilter == "all" || offer.Kind == kindFilter) && Matches(offer, Search.Trim());
     private static bool Matches(OfferDto offer, string text) => TextSearch.Contains(offer.Name, text) || offer.Id.Contains(text, StringComparison.OrdinalIgnoreCase);
-    private OfferRow[] Rows() => read is null ? [] : read.Where(o => Shown(o)).Select(o => new OfferRow(o) { Detail = OfferDetail(o), Validity = Capital(Validity(o.ValidFrom, o.ValidTo)) }).ToArray();
+    private OfferRow[] Rows() => read is null ? [] : read.Where(o => Shown(o)).Select(o => new OfferRow(o) { Detail = OfferDetail(o), Validity = Capital(Validity(o.ValidFrom, o.ValidTo)), IsDaily = o.Id == DailyId }).ToArray();
     private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
     // Recuento de cada chip dentro de lo que deja ver la busqueda.
     private void LabelFilters()
@@ -413,23 +463,26 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         var filtered = text.Length > 0 || kindFilter != "all";
         ShowListTools = total > 0;
         ShowListEmpty = Offers.Length == 0;
-        (ListEmptyHeading, ListEmptyText) = read is null ? ("Sin leer todavía", "Las ofertas aparecerán aquí al leerlas del servidor.")
-            : total == 0 ? ("Aún no hay ofertas", "Crea la primera: una degustación, un menú cerrado o una carta.")
-            : text.Length > 0 ? ("Ninguna oferta coincide", $"Ninguna oferta{(kindFilter == "all" ? "" : " de tipo " + kind?.Name)} coincide con «{text}».")
-            : ("Ninguna oferta coincide", $"No hay ofertas de tipo {kind?.Name}.");
+        (ListEmptyHeading, ListEmptyText) = read is null ? ("Sin leer todavía", "Los menús y las cartas aparecerán aquí al leerlos del servidor.")
+            : total == 0 ? ("Aún no hay menús ni cartas", "Crea el primero: un menú degustación, un menú con elección o una carta.")
+            : text.Length > 0 ? ("Ninguno coincide", $"Ningún menú ni carta{(kindFilter == "all" ? "" : " de tipo " + kind?.Name)} coincide con «{text}».")
+            : ("Ninguno coincide", $"No hay ninguno de tipo {kind?.Name}.");
         ShowCreateOffer = read is not null && total == 0;
         ShowShowAll = ShowListEmpty && total > 0 && filtered;
 
         var o = NewOffer ? null : SelectedOffer?.Offer;
         HasOfferContext = NewOffer || o is not null;
-        (EmptyHeading, EmptyText) = read is null ? ("Sin leer todavía", "La oferta aparecerá aquí al leerla del servidor.")
-            : total == 0 ? ("Sin ofertas todavía", "Cuando crees una oferta, elígela en la lista para ver sus datos, sus pases y sus platos.")
-            : ("Elige una oferta", "Pulsa una oferta de la lista para ver sus datos, sus pases y sus platos.");
-        OfferContext = NewOffer ? "Alta de oferta" : o is null ? "" : $"{Labels.OfferKind(o.Kind)} · {Labels.OfferService(o.Service)} · {DaysText(o.Weekdays)}";
-        OfferTitle = NewOffer ? "Nueva oferta" : o?.Name ?? "";
-        OfferStateText = o is null ? "" : Cap(Labels.Active(o.Active, feminine: true));
+        (EmptyHeading, EmptyText) = read is null ? ("Sin leer todavía", "El menú o la carta aparecerá aquí al leerlo del servidor.")
+            : total == 0 ? ("Sin menús ni cartas todavía", "Cuando crees un menú o una carta, elígelo en la lista para ver sus datos, sus pases y sus platos.")
+            : ("Elige un menú o una carta", "Pulsa uno de la lista para ver sus datos, sus pases y sus platos.");
+        OfferContext = NewOffer ? "Alta de menú o carta" : o is null ? "" : $"{Labels.OfferKind(o.Kind)} · {Labels.OfferService(o.Service)} · {DaysText(o.Weekdays)}";
+        OfferTitle = NewOffer ? "Nuevo menú o carta" : o?.Name ?? "";
+        OfferStateText = o is null ? "" : Cap(Labels.Active(o.Active, o.Kind == "a-la-carte"));
         OfferStateTone = o?.Active == true ? "ok" : "other";
-        OfferSaveText = NewOffer ? "Crear oferta" : "Guardar oferta";
+        OfferSaveText = NewOffer ? "Crear" : "Guardar";
+        IsDailyOffer = o is not null && o.Id == DailyId;
+        ShowMakeDaily = o is not null && !IsDailyOffer;
+        MakeDailyCommand.NotifyCanExecuteChanged();   // depende de IsDailyOffer, que se acaba de componer
         OfferDeactivates = o?.Active == true;
         OfferReactivates = o?.Active == false;
 
@@ -543,25 +596,79 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         if (weekdays == 0) throw new ArgumentException("Elige al menos un día de la semana.");
         if (NewOffer)
         {
-            // Una carta no tiene producto-menu (el servidor lo rechazaria): precio y producto solo viajan con un menu.
+            // Una carta no tiene producto-menu (el servidor lo rechazaria): precio y producto solo viajan con un menu. E4d: un menu nuevo
+            // necesita su precio por persona (sin el no se puede abrir mesa), salvo que use un producto existente.
             long? priceCents = !NewMenuOffer || OfferPrice.Trim().Length == 0 ? null : CatalogViewModel.Cents(OfferPrice);
             var productId = NewMenuOffer ? OfferProductId.Trim() : "";
+            if (NewMenuOffer && priceCents is null && productId.Length == 0) throw new ArgumentException("Un menú necesita su precio por persona (por ejemplo 65,00).");
             // La oferta creada queda elegida y a la vista (sin busqueda ni tipo que la escondan).
-            return Command("offer-create", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort, priceCents, productId }, "Crear oferta " + name,
+            return Command("offer-create", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort, priceCents, productId }, "Crear " + name,
                 () => { createdOffer = id; rendering = true; try { Search = ""; kindFilter = "all"; OnPropertyChanged(nameof(KindFilter)); } finally { rendering = false; } });
         }
-        return Command("offer-update", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort }, "Guardar oferta " + name);
+        // E4d: un precio tecleado viaja en la misma orden (offer-update lo fija en la General desde hoy); vacio, el cuerpo de siempre.
+        if (OfferKind != "a-la-carte" && OfferPrice.Trim().Length > 0)
+            return Command("offer-update", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort, priceCents = CatalogViewModel.Cents(OfferPrice) }, "Guardar " + name);
+        return Command("offer-update", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort }, "Guardar " + name);
+    });
+    // E4d: "Hacerlo menu del dia": offers-reorder con esta oferta delante; el Comedor relee la configuracion y la propone al abrir mesa.
+    private bool CanMakeDaily() => Main && SelectedOffer is { Offer.Active: true } && !NewOffer && !IsDailyOffer;
+    [RelayCommand(CanExecute = nameof(CanMakeDaily))]
+    private Task MakeDaily() => shell.Run(async () =>
+    {
+        var offer = SelectedOffer!.Offer;
+        await shell.Api!.SendAsync("erp/offers/commands/offers-reorder", new { offerIds = new[] { offer.Id } }, "Hacer menú del día " + offer.Name);
+        shell.Status = $"{offer.Name} es ahora el menú del día: confirmado por el servidor.";
+        await shell.RefreshAll();
+    });
+    // E4d: "Subir" y "Bajar" en pases y platos, en lugar del numero de orden. Si los ordenes son distintos y crecientes se intercambian
+    // los dos (dos ordenes); si la lista nunca se ordeno (empates), se renumera de 10 en 10 (una orden por hermano).
+    public static int[] MovedForChecks(int[] sorts, int at, int to) => Moved(sorts, at, to);
+    private static int[] Moved(int[] sorts, int at, int to)
+    {
+        var result = (int[])sorts.Clone();
+        var increasing = sorts.Zip(sorts.Skip(1), (a, b) => a < b).All(x => x);
+        if (increasing) (result[at], result[to]) = (sorts[to], sorts[at]);
+        else { var order = Enumerable.Range(0, sorts.Length).ToList(); (order[at], order[to]) = (order[to], order[at]); for (var n = 0; n < order.Count; n++) result[order[n]] = n * 10; }
+        return result;
+    }
+    private bool CanMoveCourse(string? direction) => Main && SelectedOffer is not null && !NewOffer && SelectedCourse is not null && !NewCourse
+        && Array.IndexOf(Courses, SelectedCourse) is var at && (direction == "up" ? at > 0 : at >= 0 && at < Courses.Length - 1);
+    [RelayCommand(CanExecute = nameof(CanMoveCourse))]
+    private Task MoveCourse(string? direction) => shell.Run(async () =>
+    {
+        var offerId = SelectedOffer!.Offer.Id; var courses = Courses.Select(c => c.Course).ToArray(); var at = Array.IndexOf(Courses, SelectedCourse!); var to = direction == "up" ? at - 1 : at + 1;
+        var sorts = Moved(courses.Select(c => c.Sort).ToArray(), at, to);
+        for (var n = 0; n < courses.Length; n++)
+            if (courses[n].Sort != sorts[n]) await shell.Api!.SendAsync("erp/offers/commands/course-update", new { offerId, id = courses[n].Id, sort = sorts[n] }, $"Mover pase {courses[n].Name}");
+        createdCourse = courses[at].Id;
+        shell.Status = $"Pase {courses[at].Name} movido: confirmado por el servidor.";
+        await LoadAsync();
+    });
+    private bool CanMoveDish(string? direction) => Main && SelectedCourse is not null && !NewCourse && SelectedDish is not null && !NewDish && !IsCarte
+        && Array.IndexOf(Dishes, SelectedDish) is var at && (direction == "up" ? at > 0 : at >= 0 && at < Dishes.Length - 1);
+    [RelayCommand(CanExecute = nameof(CanMoveDish))]
+    private Task MoveDish(string? direction) => shell.Run(async () =>
+    {
+        var offerId = SelectedOffer!.Offer.Id; var courseId = SelectedCourse!.Course.Id; var dishes = Dishes.Select(d => d.Dish).ToArray(); var at = Array.IndexOf(Dishes, SelectedDish!); var to = direction == "up" ? at - 1 : at + 1;
+        var sorts = Moved(dishes.Select(d => d.Sort).ToArray(), at, to);
+        for (var n = 0; n < dishes.Length; n++)
+            if (dishes[n].Sort != sorts[n]) await shell.Api!.SendAsync("erp/offers/commands/dish-update", new { offerId, courseId, id = dishes[n].Id, sort = sorts[n] }, $"Mover plato {dishes[n].Name}");
+        createdCourse = courseId; createdDish = dishes[at].Id;
+        shell.Status = $"Plato {dishes[at].Name} movido: confirmado por el servidor.";
+        await LoadAsync();
     });
     private bool CanToggleOffer() => Main && SelectedOffer is not null && !NewOffer;
     [RelayCommand(CanExecute = nameof(CanToggleOffer))]
-    private Task ToggleOffer() => Command(SelectedOffer!.Offer.Active ? "offer-deactivate" : "offer-reactivate", new { id = SelectedOffer.Offer.Id }, (SelectedOffer.Offer.Active ? "Desactivar oferta " : "Reactivar oferta ") + SelectedOffer.Offer.Name);
+    private Task ToggleOffer() => Command(SelectedOffer!.Offer.Active ? "offer-deactivate" : "offer-reactivate", new { id = SelectedOffer.Offer.Id }, (SelectedOffer.Offer.Active ? "Desactivar " : "Reactivar ") + SelectedOffer.Offer.Name);
 
     private bool CanSaveCourse() => CourseEditable;
     [RelayCommand(CanExecute = nameof(CanSaveCourse))]
     private Task SaveCourse() => shell.Attempt(() =>
     {
-        var offerId = SelectedOffer!.Offer.Id; var name = Name(CourseName); var id = NewCourse ? Codes.Of(CourseId, name, SelectedOffer.Offer.Courses.Select(c => c.Id)) : SelectedCourse!.Course.Id; var sort = Number(CourseSort, "Orden", 0, 9999);
-        return Command(NewCourse ? "course-create" : "course-update", new { offerId, id, name, sort }, (NewCourse ? "Crear pase " : "Guardar pase ") + name, NewCourse ? () => { createdCourse = id; } : null);
+        var offerId = SelectedOffer!.Offer.Id; var name = Name(CourseName); var id = NewCourse ? Codes.Of(CourseId, name, SelectedOffer.Offer.Courses.Select(c => c.Id)) : SelectedCourse!.Course.Id;
+        // E4d: sin numero de orden en el formulario: un pase nuevo va al final (lo pone el servidor) y uno existente conserva el suyo.
+        if (NewCourse) return Command("course-create", new { offerId, id, name }, "Crear pase " + name, () => { createdCourse = id; });
+        return Command("course-update", new { offerId, id, name, sort = SelectedCourse!.Course.Sort }, "Guardar pase " + name);
     });
     private bool CanToggleCourse() => Main && SelectedCourse is not null && !NewCourse;
     [RelayCommand(CanExecute = nameof(CanToggleCourse))]
@@ -589,8 +696,9 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
     {
         var offerId = SelectedOffer!.Offer.Id; var courseId = SelectedCourse!.Course.Id; var name = Name(DishName);
         var id = NewDish ? Codes.Of(DishId, name, SelectedCourse.Course.Dishes.Select(d => d.Id)) : SelectedDish!.Dish.Id;
-        var stationId = Code(Chosen(DishStationId, "la estación de cocina")); var sort = Number(DishSort, "Orden", 0, 9999); var productId = DishProductId.Trim();
-        return Command(NewDish ? "dish-create" : "dish-update", new { offerId, courseId, id, name, stationId, productId, sort }, (NewDish ? "Crear plato " : "Guardar plato ") + name, NewDish ? () => { createdDish = id; } : null);
+        var stationId = Code(Chosen(DishStationId, "la estación de cocina")); var productId = DishProductId.Trim();
+        if (NewDish) return Command("dish-create", new { offerId, courseId, id, name, stationId, productId }, "Crear plato " + name, () => { createdDish = id; });
+        return Command("dish-update", new { offerId, courseId, id, name, stationId, productId, sort = SelectedDish!.Dish.Sort }, "Guardar plato " + name);
     });
     private bool CanToggleDish() => Main && SelectedDish is not null && !NewDish;
     [RelayCommand(CanExecute = nameof(CanToggleDish))]

@@ -218,14 +218,18 @@ Solo cambian las etiquetas. Los códigos internos (`tasting`, `set-menu`, `a-la-
 
 | Código | Hoy | Propuesta | Ayuda que se muestra |
 |---|---|---|---|
-| `tasting` | Degustación | **Menú cerrado** | «Todos comen lo mismo; se sirven todos sus platos, pase a pase.» |
+| `tasting` | Degustación | **Menú degustación** (decisión 15-10: es el nombre del menú de Costiña, con estrella; no se renombra) | «Todos comen lo mismo; se sirven todos sus platos, pase a pase.» |
 | `set-menu` | Menú cerrado | **Menú con elección** (en «Más opciones») | «Cada persona elige un plato en cada pase, entre los que pongas.» |
 | `a-la-carte` | Carta | **Carta** | «Platos sueltos que se cobran al pedirlos.» |
 
-- **«Degustación»** pasa a ser un **nombre** posible de un menú («Menú degustación»), no un tipo.
-- **El menú del día es un «Menú cerrado»** cuando todos comen lo mismo, que es como lo plantea el promotor («cerrado, como uno de degustación, o un menú del día»). Por eso la ayuda de «Menú con elección» no lo pone de ejemplo: así el promotor no lo crea con el tipo equivocado.
+- **Decisiones del 15-10 (tarde), al aprobar E4d:**
+  - el tipo `tasting` se llama **«Menú degustación»** (no «Menú cerrado»): es el nombre del menú de Costiña y así lo conoce el promotor;
+  - la sección **«Oferta: cartas y menús» pasa a llamarse «Menús y cartas»** («oferta» suena a rebaja); en los textos, «menú» o «carta» según el tipo, y «menú o carta» cuando vale cualquiera; los códigos de la API (`offers`) no cambian;
+  - el menú que se propone al abrir mesa se llama **«Menú del día»** (marca «Menú del día: se propone al abrir mesa» y botón «Hacerlo menú del día»), en lugar de «menú de la casa»;
+  - «Más opciones» para lo técnico y «Subir/Bajar» para pases y platos: sí.
+- **El menú del día** es la primera oferta vigente ahora, del tipo que sea (lo normal, un «Menú degustación» o un «Menú con elección»).
 - **El texto de error** «Una degustación o un menú cerrado necesita su producto-menú» (`Labels.cs:106`) pasa a «Un menú, cerrado o con elección, necesita su precio por persona».
-- **En la tabla del plan del nuevo aspecto**, la familia «Oferta» queda «Menú cerrado · Menú con elección · Carta». El estado de pase «Falta elegir plato» solo aparece en un menú con elección.
+- **En la tabla del plan del nuevo aspecto**, la familia «Oferta» queda «Menú degustación · Menú con elección · Carta». El estado de pase «Falta elegir plato» solo aparece en un menú con elección.
 - **Mesa:** «Toda la mesa» o «Comensal n», también en la carta; nada de «Para compartir», que es otra palabra para lo mismo. El botón que manda un pase es «Enviar siguiente pase» (`Labels.cs:54`), no «Marchar».
 - **Bebidas:**
   - «Bodega y bebidas», para la entrada de la mesa y para la sección del catálogo;
@@ -272,6 +276,8 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
   - permiso de subida y mezcla **pedido al promotor en cada corte**, como hasta ahora.
 
 ### 4.1. E4d — Menú de la casa y palabras claras (`0.39.0-e4d`, sin cambio de esquema)
+
+**Entregado el 15-10** con las palabras del promotor («Menú degustación», «Menús y cartas», «Menú del día»): `docs/native/E4d-menu-del-dia-y-palabras-claras.md`. Quedan para después el selector de calendario en las fechas y el IVA del producto-menú en la ficha.
 
 **Lo que ya arregla C2b (en curso).** El promotor encontró que el programa se cerraba al guardar.
 - En Catálogo, Oferta y Salas, cada «Guardar» validaba los campos **antes** del manejador de errores del shell: `Code`, `Name` y las lecturas de números, fechas y precios lanzan `ArgumentException` fuera de `shell.Run` (`Desktop/ViewModels/CatalogViewModel.cs:336-353,357`; `OffersViewModel.cs:169-173,185`; `OrganizationViewModel.cs:140-144,148`). Un código fijo vacío (o un nombre, un orden, una fecha o un precio vacíos o mal escritos) cerraba el programa.
@@ -869,6 +875,7 @@ Decisión del promotor: cada combinado tiene un precio fijo («Gin tonic Premium
   - La elección por comensal se conserva para otros restaurantes, fuera del camino principal.
   - **«Tenemos que hacer el sistema más intuitivo.»**
 - **15-10:** en el puesto principal, **añadir una consumición desde la mesa abierta** del Comedor, sin salir a Caja y sin contraseña en el nivel Puesto, con el mismo selector que el comandero; Caja queda para cobrar, anular y cerrar (C3b). Se le contestó así al promotor.
+- **15-10 (tarde, al aprobar E4d):** `tasting` sigue siendo **«Menú degustación»** (nombre del menú de Costiña); la sección se llama **«Menús y cartas»** («oferta» suena a rebaja); el menú propuesto al abrir mesa es el **«Menú del día»**; «Más opciones» y «Subir/Bajar»: sí. Permiso de subida y merge de E4d dado («Sube y mergea y adelante»).
 - **15-10 (respuestas a las siete preguntas):**
   - cocina decide cada plato de un comensal con alergia o intolerancia **antes de que salga el pase**, y el pase espera (E4e);
   - lo mismo para las **preferencias e intolerancias leves**: cocina las despacha con un toque;

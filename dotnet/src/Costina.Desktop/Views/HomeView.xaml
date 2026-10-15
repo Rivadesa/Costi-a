@@ -341,7 +341,7 @@
            Command="NavigationCommands.GoToPage" CommandParameter="CheckoutTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Catálogo y tarifas" local:Ui.Icon="{StaticResource IconCatalog}" local:Ui.Hint="Productos, presentaciones, impuestos y precios."
            Command="NavigationCommands.GoToPage" CommandParameter="CatalogTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
-   <Button Content="Oferta: cartas y menús" local:Ui.Icon="{StaticResource IconOffers}" local:Ui.Hint="Degustaciones, menús cerrados y carta."
+   <Button Content="Menús y cartas" local:Ui.Icon="{StaticResource IconOffers}" local:Ui.Hint="Menú degustación, menú con elección y carta."
            Command="NavigationCommands.GoToPage" CommandParameter="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Salas, mesas y estaciones" local:Ui.Icon="{StaticResource IconOrganization}" local:Ui.Hint="La organización del local."
            Command="NavigationCommands.GoToPage" CommandParameter="OrganizationTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>

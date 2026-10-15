@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { call, getCatalog, type CatalogItem, type Session } from '../api'
 import { boardSummary, courseLabel, diningLabel, pendingReviews, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
+import { offerKindSuffix, proposedOffer } from '../offers'
 import { useOperations } from '../operations'
 import ServiceActions from './ServiceActions.vue'
 import StatusPanel from './StatusPanel.vue'
@@ -37,7 +38,7 @@ onMounted(async () => {
     const configuration = await call<{ tables: TableChoice[]; menus: MenuChoice[]; offers?: OfferChoice[] }>(fetch, '/configuration', { token: props.token })
     tables.value = configuration.tables
     menus.value = configuration.offers ?? configuration.menus.map(menu => ({ ...menu, kind: 'tasting', courses: [] }))   // servidor anterior a E4a: solo menus
-    if (menus.value.length === 1) openMenu.value = menus.value[0].id
+    openMenu.value = proposedOffer(menus.value)?.id ?? ''   // E4d: siempre el menu del dia (la primera vigente), aunque haya varias
     if (can('add-consumption')) catalog.value = await getCatalog(fetch, props.token)
   } catch { /* sin configuracion no hay formularios; la lectura del tablero ya informa del problema */ }
 })
@@ -67,7 +68,7 @@ onMounted(async () => {
         </label>
         <label>Comensales <input v-model.number="openPax" name="pax" type="number" min="1" max="40" inputmode="numeric" :disabled="locked" /></label>
         <label>Menu
-          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ menu.kind === 'set-menu' ? ' (menu cerrado)' : menu.kind === 'a-la-carte' ? ' (carta)' : '' }}</option></select>
+          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ offerKindSuffix(menu.kind) }}</option></select>
         </label>
         <button type="button" :disabled="locked" data-testid="do-open" @click="open">Abrir mesa</button>
       </details>

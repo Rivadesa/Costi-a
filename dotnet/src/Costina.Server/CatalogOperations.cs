@@ -37,9 +37,12 @@ public static class CatalogOperations
         var active=action.EndsWith("-reactivate",StringComparison.Ordinal);
         switch(action)
         {
+            // E4d: en las altas el codigo es opcional (generado del nombre, unico en su lista) y el orden tambien (al final).
             case "tax-create":
             {
-                var tax=Catalog.Tax(Required(request.Id),request.Name,request.Rate);
+                var name=Organization.Name(request.Name);
+                var taxes=await unit.Taxes();
+                var tax=Catalog.Tax(string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>taxes.Any(t=>string.Equals(t.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id,name,request.Rate);
                 await unit.InsertTax(tax); await unit.Events([Event("tax_created",tax.Id,("name",tax.Name))]); return tax;
             }
             case "tax-update":
@@ -57,7 +60,10 @@ public static class CatalogOperations
             }
             case "category-create":
             {
-                var category=Catalog.Category(Required(request.Id),request.Name,request.ParentId,request.Color,request.Sort);
+                var name=Organization.Name(request.Name);
+                var categories=await unit.Categories();
+                var id=string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>categories.Any(x=>string.Equals(x.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id;
+                var category=Catalog.Category(id,name,request.ParentId,request.Color,request.Sort??Catalog.NextSort(categories.Where(c=>c.ParentId==(string.IsNullOrWhiteSpace(request.ParentId) ? null : request.ParentId)).Select(c=>c.Sort)));
                 await CheckParent(unit,category);
                 await unit.InsertCategory(category); await unit.Events([Event("category_created",category.Id,("name",category.Name))]); return category;
             }
@@ -84,7 +90,10 @@ public static class CatalogOperations
             }
             case "product-create":
             {
-                var product=Catalog.Product(Required(request.Id),request.Name,request.CategoryId,request.TaxId??"iva-10",request.Reference,request.Sort,stationId:request.StationId);
+                var name=Organization.Name(request.Name);
+                var products=await unit.Products();
+                var id=string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>products.Any(p=>string.Equals(p.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id;
+                var product=Catalog.Product(id,name,request.CategoryId,request.TaxId??"iva-10",request.Reference,request.Sort??Catalog.NextSort(products.Select(p=>p.Sort)),stationId:request.StationId);
                 await CheckProductLinks(unit,product);
                 await unit.InsertProduct(product);
                 // Un producto nace vendible por UNA presentacion ('unit' o la indicada); el precio se fija aparte (price-set).
@@ -112,8 +121,11 @@ public static class CatalogOperations
             }
             case "presentation-create":
             {
-                var presentation=Catalog.Presentation(Required(request.ProductId),Required(request.Id),request.Name,request.Sort);
-                _=await unit.Product(presentation.ProductId);
+                _=await unit.Product(Required(request.ProductId));
+                var name=Organization.Name(request.Name);
+                var presentations=await unit.Presentations(request.ProductId!);
+                var id=string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>presentations.Any(p=>string.Equals(p.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id;
+                var presentation=Catalog.Presentation(request.ProductId,id,name,request.Sort??Catalog.NextSort(presentations.Select(p=>p.Sort)));
                 await unit.InsertPresentation(presentation); await unit.Events([Event("presentation_created",presentation.ProductId,("presentation",presentation.Id),("name",presentation.Name))]); return presentation;
             }
             case "presentation-update":
@@ -130,7 +142,9 @@ public static class CatalogOperations
             }
             case "tariff-create":
             {
-                var tariff=Catalog.Tariff(Required(request.Id),request.Name,request.Sort);
+                var name=Organization.Name(request.Name);
+                var tariffs=await unit.Tariffs();
+                var tariff=Catalog.Tariff(string.IsNullOrWhiteSpace(request.Id) ? Catalog.FreeCode(name,c=>tariffs.Any(t=>string.Equals(t.Id,c,StringComparison.OrdinalIgnoreCase))) : request.Id,name,request.Sort??Catalog.NextSort(tariffs.Select(t=>t.Sort)));
                 await unit.InsertTariff(tariff); await unit.Events([Event("tariff_created",tariff.Id,("name",tariff.Name))]); return tariff;
             }
             case "tariff-update":
