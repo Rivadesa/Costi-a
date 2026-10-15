@@ -49,7 +49,7 @@
   <Grid>
    <!-- ======================= Productos ======================= -->
    <Grid x:Name="ProductsSection" Visibility="{Binding Catalog.ShowProducts, Converter={StaticResource Bool2Vis}}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
     <!-- Lista: buscador, categoria, recuento con "Ver todos" y los productos (miniatura, nombre y precio General; categoria y presentaciones). -->
     <Border x:Name="ProductsPane" Style="{StaticResource ListPane}">
      <DockPanel>
@@ -289,7 +289,7 @@
 
    <!-- ======================= Categorias ======================= -->
    <Grid x:Name="CategoriesSection" Visibility="{Binding Catalog.ShowCategories, Converter={StaticResource Bool2Vis}}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
     <!-- Arbol: sangria por nivel con su ramita, muestra de color, nombre y, debajo, productos y subcategorias. -->
     <Border x:Name="CategoriesPane" Style="{StaticResource ListPane}">
      <DockPanel>
@@ -310,7 +310,12 @@
                 Visibility="{Binding HasParent, Converter={StaticResource Bool2Vis}}"/>
           <Border DockPanel.Dock="Left" Style="{StaticResource Swatch}" Background="{Binding Swatch, TargetNullValue={StaticResource StrokeStrong}}" Margin="0,5,10,0"/>
           <StackPanel>
-           <TextBlock Text="{Binding Category.Name}" Style="{StaticResource RowTitle}"/>
+           <DockPanel>
+            <!-- Repaso de coherencia de C2b: "Desactivada" a la derecha, donde un producto desactivado lo dice en lugar de su precio. -->
+            <TextBlock DockPanel.Dock="Right" Text="Desactivada" Margin="8,0,0,0" FontSize="13" FontWeight="Normal" Foreground="{StaticResource InkSoft}"
+                       Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}"/>
+            <TextBlock Text="{Binding Category.Name}" Style="{StaticResource RowTitle}"/>
+           </DockPanel>
            <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}"/>
           </StackPanel>
          </DockPanel>
@@ -393,7 +398,7 @@
 
    <!-- ======================= Tarifas ======================= -->
    <Grid x:Name="TariffsSection" Visibility="{Binding Catalog.ShowTariffs, Converter={StaticResource Bool2Vis}}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
     <Border x:Name="TariffsPane" Style="{StaticResource ListPane}">
      <DockPanel>
       <TextBlock DockPanel.Dock="Top" Text="La General existe siempre. Cada sala cobra con su tarifa y, sin precio en ella, con la General." Style="{StaticResource Subtle}" Margin="2,2,10,10"/>
@@ -403,8 +408,14 @@
          <StackPanel.Style>
           <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
          </StackPanel.Style>
-         <TextBlock Text="{Binding Tariff.Name}" Style="{StaticResource RowTitle}"/>
-         <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}"/>
+         <!-- Repaso de coherencia de C2b: la tarjeta de Oferta y Salas (nombre como titulo, el estado en su chip, el detalle que se parte). -->
+         <DockPanel>
+          <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
+           <TextBlock Text="Desactivada"/>
+          </Border>
+          <TextBlock Text="{Binding Tariff.Name}" Style="{StaticResource CardRowTitle}"/>
+         </DockPanel>
+         <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
         </StackPanel>
        </DataTemplate></ListBox.ItemTemplate>
       </ListBox>
@@ -480,7 +491,7 @@
 
    <!-- ======================= Impuestos ======================= -->
    <Grid x:Name="TaxesSection" Visibility="{Binding Catalog.ShowTaxes, Converter={StaticResource Bool2Vis}}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
     <Border x:Name="TaxesPane" Style="{StaticResource ListPane}">
      <Grid>
       <StackPanel x:Name="TaxesEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Catalog.ShowTaxListEmpty, Converter={StaticResource Bool2Vis}}">
@@ -495,8 +506,13 @@
          <StackPanel.Style>
           <Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers></Style>
          </StackPanel.Style>
-         <TextBlock Text="{Binding Tax.Name}" Style="{StaticResource RowTitle}"/>
-         <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}"/>
+         <DockPanel>
+          <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
+           <TextBlock Text="Desactivado"/>
+          </Border>
+          <TextBlock Text="{Binding Tax.Name}" Style="{StaticResource CardRowTitle}"/>
+         </DockPanel>
+         <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
         </StackPanel>
        </DataTemplate></ListBox.ItemTemplate>
       </ListBox>

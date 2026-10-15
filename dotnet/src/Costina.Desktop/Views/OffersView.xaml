@@ -74,7 +74,7 @@
   </DockPanel>
 
   <Grid>
-   <Grid.ColumnDefinitions><ColumnDefinition Width="330"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="520"/></Grid.ColumnDefinitions>
+   <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="520"/></Grid.ColumnDefinitions>
 
    <!-- ===== Ofertas: buscador, chips de tipo y las ofertas en tarjetas ===== -->
    <Border x:Name="OffersPane" Style="{StaticResource ListPane}">
@@ -107,7 +107,7 @@
            <Border DockPanel.Dock="Right" Style="{StaticResource ToneChip}" Margin="8,1,0,0" VerticalAlignment="Top" Visibility="{Binding Inactive, Converter={StaticResource Bool2Vis}}">
             <TextBlock Text="Desactivada"/>
            </Border>
-           <TextBlock Text="{Binding Offer.Name}" FontFamily="{StaticResource DisplayFont}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+           <TextBlock Text="{Binding Offer.Name}" Style="{StaticResource CardRowTitle}"/>
           </DockPanel>
           <TextBlock Text="{Binding Detail}" Style="{StaticResource RowDetail}" TextTrimming="None" TextWrapping="Wrap" Margin="0,2,0,0"/>
          </StackPanel>

@@ -26,7 +26,7 @@
   </DockPanel>
 
   <Grid>
-   <Grid.ColumnDefinitions><ColumnDefinition Width="320"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+   <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
 
    <!-- ===== Cuentas abiertas: buscador y tarjetas (mesa y total; sala y personas; cobertura y pendiente) ===== -->
    <Border x:Name="AccountsPane" Style="{StaticResource ListPane}">
@@ -37,10 +37,8 @@
       <!-- Lista vacia: dice que falta y ofrece abrir una mesa (cada mesa abierta tiene su cuenta) o borrar la busqueda. -->
       <StackPanel x:Name="AccountsEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Checkout.ShowListEmpty, Converter={StaticResource Bool2Vis}}">
        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconCheckout}" local:Ui.Heading="{Binding Checkout.ListEmptyHeading}" Content="{Binding Checkout.ListEmptyText}"/>
-       <Button x:Name="EmptyOpenTableButton" Style="{StaticResource Primary}" HorizontalAlignment="Center" Margin="0,14,0,0" Padding="12,0,16,0" MinHeight="36"
-               Content="Abrir una mesa" Command="{Binding Home.OpenTableCommand}" Visibility="{Binding Checkout.ShowOpenTable, Converter={StaticResource Bool2Vis}}">
-        <Button.ContentTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource Icon}" Data="{StaticResource IconPlus}" Margin="0,0,6,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate></Button.ContentTemplate>
-       </Button>
+       <Button x:Name="EmptyOpenTableButton" Style="{StaticResource PageAction}" HorizontalAlignment="Center" Margin="0,14,0,0"
+               Content="Abrir una mesa" Command="{Binding Home.OpenTableCommand}" Visibility="{Binding Checkout.ShowOpenTable, Converter={StaticResource Bool2Vis}}"/>
        <Button x:Name="ClearSearchButton" HorizontalAlignment="Center" Margin="0,14,0,0" Content="Borrar la búsqueda" Command="{Binding Checkout.ClearSearchCommand}"
                Visibility="{Binding Checkout.ShowClearSearch, Converter={StaticResource Bool2Vis}}"/>
       </StackPanel>

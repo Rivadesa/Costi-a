@@ -28,8 +28,8 @@ public sealed record CategoryRow(CategoryDto Category, int Depth)
     // queda de respaldo (y para los checks).
     public string Label => Category.Name + " · " + StateLabel;
     public Thickness Indent => new(Depth * 18, 0, 0, 0);
-    // C2b: fila del arbol: ruta completa (para la ficha y los desplegables), detalle (productos, subcategorias y, si lo esta,
-    // desactivada) y muestra de su color (#RRGGBB; null sin color o con uno que no se entiende).
+    // C2b: fila del arbol: ruta completa (para la ficha y los desplegables), detalle (productos y subcategorias; "Desactivada", a la
+    // derecha) y muestra de su color (#RRGGBB; null sin color o con uno que no se entiende).
     public string Path { get; init; } = Category.Name;
     public string Detail { get; init; } = "";
     public Brush? Swatch { get; init; }
@@ -424,7 +424,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             TaxItems = value.Taxes.Select(t => new TaxRow(t, TaxDetail(t))).ToArray();
             SelectedTax = null; SelectedTax = Taxes.FirstOrDefault(t => t.Id == tax);
             var sellable = value.Products.Count(p => Sellable(p, value.Today));
-            Summary = $"{Labels.Plural(value.Products.Count(p => p.Active), "producto activo", "productos activos")} ({Labels.Plural(sellable, "vendible", "vendibles")} hoy) · precios con IVA incluido";
+            // C2b (repaso de coherencia): sin productos, la cabecera dice que falta y como empezar, como Oferta y Salas (antes "0 productos activos").
+            Summary = value.Products.Length == 0 ? "Aún no hay productos: crea el primero con «Nuevo producto» o importa el catálogo."
+                : $"{Labels.Plural(value.Products.Count(p => p.Active), "producto activo", "productos activos")} ({Labels.Plural(sellable, "vendible", "vendibles")} hoy) · precios con IVA incluido";
             LabelSections();
         }
         finally { rendering = false; }
@@ -484,7 +486,8 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         CategoryRow Row(CategoryDto c, int depth)
         {
             var children = categories.Count(k => k.ParentId == c.Id);
-            string?[] detail = [c.Active ? null : "Desactivada", Labels.Plural(ProductsWithin(c.Id), "producto", "productos"), children == 0 ? null : Labels.Plural(children, "subcategoría", "subcategorías")];
+            // Repaso de coherencia de C2b: "Desactivada" va a la derecha de la fila (como el "Desactivado" de un producto), no en el detalle.
+            string?[] detail = [Labels.Plural(ProductsWithin(c.Id), "producto", "productos"), children == 0 ? null : Labels.Plural(children, "subcategoría", "subcategorías")];
             return new(c, depth) { Path = PathOf(c.Id), Detail = string.Join(" · ", detail.Where(d => d is not null)), Swatch = Swatch(c.Color) };
         }
     }
@@ -656,11 +659,12 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private string TariffDetail(TariffDto t)
     {
         var using_ = ZonesUsing(t.Id);
-        string?[] parts = [t.Active ? null : "Desactivada", zones is null ? null : using_.Length == 0 ? "ninguna sala" : string.Join(", ", using_),
+        // Repaso de coherencia de C2b: "Desactivada" va en el chip de la tarjeta, como en Oferta y Salas, no en el detalle.
+        string?[] parts = [zones is null ? null : using_.Length == 0 ? "ninguna sala" : string.Join(", ", using_),
             Labels.Plural(PricedIn(t.Id), "precio vigente", "precios vigentes")];
         return Cap(string.Join(" · ", parts.Where(p => p is not null)));
     }
-    private string TaxDetail(TaxDto t) => (t.Active ? "" : "Desactivado · ") + Rate(t.Rate) + " · " + Labels.Plural(catalog?.Products.Count(p => p.TaxId == t.Id) ?? 0, "producto", "productos");
+    private string TaxDetail(TaxDto t) => Rate(t.Rate) + " · " + Labels.Plural(catalog?.Products.Count(p => p.TaxId == t.Id) ?? 0, "producto", "productos");
 
     private void Compose()
     {

@@ -498,7 +498,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.37.0-c2",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.38.0-c2b",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -516,10 +516,13 @@ internal static class Program
         var devicesView=(FrameworkElement)window.FindName("DevicesView");
         if(devicesView.FindName("ApproveStationBox") is not null||devicesView.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
         if(!center.StartWaiterCommand.CanExecute(null)||!center.StartKitchenCommand.CanExecute(center.KitchenStations[1])||center.CreateRoomStationCommand.CanExecute(null)) throw new Exception("With a room station the waiter assistant starts and 'create Sala' is not offered.");
-        if(center.Rows.Length!=2||center.Rows[0].Group!="Comanderos"||center.Rows[1].Group!="Pantalla de cocina · Cocina fría"||!center.ListSummary.Contains("1 quitado (oculto).")) throw new Exception("The list groups active devices and hides the removed ones: "+center.ListSummary);
+        // C2b: sin grupos, como en Inicio: cada fila dice su tipo y su estacion por su nombre; los quitados se cuentan en la cabecera y en la casilla.
+        if(center.Rows.Length!=2||center.Rows[0].Kind!="Comandero · Sala 1"||center.Rows[1].Kind!="Pantalla de cocina · Cocina fría"
+            ||center.Summary!="2 dispositivos activos: 1 comandero y 1 pantalla de cocina · 1 quitado"||center.RevokedToggleText!="Mostrar también los quitados (1)"||!center.HasRemoved)
+            throw new Exception("The list names kind and station of the active devices and hides the removed ones: "+center.Summary);
         center.ShowRevoked=true;
-        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)||center.Rows[2].Group!="Pantalla de cocina · Cocina caliente") throw new Exception("Removed devices appear on demand, stated in text.");
-        if(!center.Rows[0].Text.Contains("· Conectado · aprobado por jefa el ")) throw new Exception("Device rows state presence in words and the approver without 'user:': "+center.Rows[0].Text);
+        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)||center.Rows[2].Kind!="Pantalla de cocina · Cocina caliente"||!center.Rows[2].Removed) throw new Exception("Removed devices appear on demand, stated in text.");
+        if(!center.Rows[0].Text.Contains("· Conectado · aprobado por jefa el ")||!center.Rows[0].Approved.StartsWith("Aprobado por jefa el ",StringComparison.Ordinal)) throw new Exception("Device rows state presence in words and the approver without 'user:': "+center.Rows[0].Text);
         center.ShowRevoked=false;
         center.BeginAssistant("kitchen",center.KitchenStations[1]);
         if(!center.HasAssistant||center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.StartWaiterCommand.CanExecute(null)) throw new Exception("One assistant at a time, with its intent in the title.");
@@ -1246,13 +1249,14 @@ internal static class Program
         Wait(()=>!window.Shell.Busy&&checkout.Account?.Data.ServiceId=="s4"&&checkout.HasContext,"'Ver cuenta' opens Mesa 4 in Caja"); window.UpdateLayout();
         if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||checkout.Search.Length!=0||checkout.AccountItems.Length!=7||checkout.SelectedAccount?.ServiceId!="s4"
             ||accountList.SelectedItem is not Costina.Desktop.ViewModels.AccountRow{Choice.ServiceId:"s4"}||checkout.DetailTitle!="Mesa 4") throw new Exception("'Ver cuenta' clears a search that would hide the requested account and marks its card.");
-        // Encaje a 1.280 x 860: la lista mide 320 px, la ficha deja el cobro a la vista, ningun texto se corta y hay una sola barra de
-        // desplazamiento por columna (ninguna anidada: los consumos no desplazan por su cuenta).
+        // Encaje a 1.280 x 860: la lista mide 360 px (ListWidth, la de todas las vistas de lista y ficha desde el repaso de coherencia; antes
+        // 320), la ficha deja el cobro a la vista, ningun texto se corta y hay una sola barra de desplazamiento por columna (ninguna anidada:
+        // los consumos no desplazan por su cuenta).
         window.Shell.Status=""; window.UpdateLayout();
         var payButton=InCheckout<Button>("PayButton");
-        if(Math.Abs(InCheckout<FrameworkElement>("AccountsPane").ActualWidth-320)>0.5||InCheckout<FrameworkElement>("AccountPanel").ActualWidth<460
+        if(Math.Abs(InCheckout<FrameworkElement>("AccountsPane").ActualWidth-ListWidth)>0.5||InCheckout<FrameworkElement>("AccountPanel").ActualWidth<460
             ||payButton.TranslatePoint(new Point(0,payButton.ActualHeight),checkoutView).Y>checkoutView.ActualHeight+0.5)
-            throw new Exception("Caja fits: the list keeps 320 px and the payment stays in view: "+InCheckout<FrameworkElement>("AccountPanel").ActualWidth);
+            throw new Exception("Caja fits: the list keeps 360 px and the payment stays in view: "+InCheckout<FrameworkElement>("AccountPanel").ActualWidth);
         if(Clipped(checkoutView) is {Length:>0} clippedCaja) throw new Exception("Caja clips text: "+string.Join(" | ",clippedCaja));
         if(NestedScrolls(checkoutView) is {Length:>0} nestedCaja) throw new Exception("Caja nests scroll viewers: "+string.Join(", ",nestedCaja));
         // ===== C2b (plan 2026-10-14): Catalogo y tarifas con pestanas, lista y ficha =====
@@ -1323,9 +1327,13 @@ internal static class Program
         string PriceRows()=>string.Join(" | ",catalogView.Presentations.Select(p=>p.Presentation.Name+": "+string.Join(" / ",p.Cells.Select(c=>c.Text))));
         void Fits(string what,string bottom)
         {
-            window.Shell.Status=""; window.UpdateLayout();   // como en el resto de capturas: sin aviso abierto window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            window.Shell.Status=""; window.UpdateLayout();   // como en el resto de capturas: sin aviso abierto
+            window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
             var button=InCatalog<Button>(bottom);
             if(button.TranslatePoint(new Point(0,button.ActualHeight),catalogPanel).Y>catalogPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
+            // Repaso de coherencia de C2b: la lista de la pestana abierta mide ListWidth, como en Caja, Oferta y Estaciones.
+            var pane=new[]{"ProductsPane","CategoriesPane","TariffsPane","TaxesPane"}.Select(InCatalog<FrameworkElement>).Single(p=>p.IsVisible);
+            if(Math.Abs(pane.ActualWidth-ListWidth)>0.5) throw new Exception(what+": the catalog list keeps 360 px (ListWidth): "+pane.Name+" "+pane.ActualWidth);
             if(Clipped(catalogPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
             if(NestedScrolls(catalogPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
             RefuseRaw(window,what);
@@ -1343,6 +1351,8 @@ internal static class Program
             ||!Shows("ProductEmpty")||Shows("ProductDetail")||catalogView.ProductEmptyHeading!="Sin productos todavía"||!Texts(catalogPanel).Contains("Crea el primero o importa el catálogo desde un fichero en el equipo servidor."))
             throw new Exception("An empty catalogue says what is missing and offers 'Nuevo producto'; the ficha shows no fields: "+catalogView.ProductListHeading+" / "+catalogView.ProductEmptyHeading);
         if(Shows("ProductSearch")||Shows("CategoryFilterBox")||Shows("ProductCountText")) throw new Exception("Without products there is nothing to search or filter: the list is just the explained empty state.");
+        // Repaso de coherencia de C2b: sin productos la cabecera dice que falta y como empezar, como Oferta y Salas (no "0 productos activos").
+        if(catalogView.Summary!="Aún no hay productos: crea el primero con «Nuevo producto» o importa el catálogo.") throw new Exception("An empty catalogue's header says what is missing: "+catalogView.Summary);
         Fits("catalog-empty","NewProductButton"); Save(Shot(window),"catalog-empty.png");
         Section(1,"categories");
         if(!Shows("CategoriesEmpty")||!Ready("EmptyNewCategoryButton")||catalogView.CategoryListHeading!="Aún no hay categorías"||!Shows("NewCategoryButton")||Shows("NewProductButton")||catalogView.CategoryEmptyHeading!="Sin categorías todavía")
@@ -1478,9 +1488,14 @@ internal static class Program
             throw new Exception("The tree heads with its count and, with nothing chosen, the ficha says what to pick: "+catalogView.CategoryCount);
         if(!catalogView.Categories.Take(8).Select(c=>$"{new string('-',c.Depth)}{c.Category.Name}: {c.Detail}").SequenceEqual(["Vinos: 6 productos · 2 subcategorías","-Tintos: 3 productos · 2 subcategorías","--Rioja: 1 producto",
             "--Ribeira Sacra: 1 producto","-Blancos: 3 productos · 2 subcategorías","--Rías Baixas: 2 productos","--Rioja: 1 producto","Bebidas: 4 productos · 3 subcategorías"])
-            ||catalogView.Categories.Single(c=>c.Category.Id=="vermus").Detail!="Desactivada · 1 producto"||catalogView.Categories[0].Swatch is not SolidColorBrush{Color:{R:0x8C,G:0x1D,B:0x1D}}||catalogView.Categories[1].Swatch is not null)
+            ||catalogView.Categories.Single(c=>c.Category.Id=="vermus") is not {Detail:"1 producto",Inactive:true}||catalogView.Categories[0].Swatch is not SolidColorBrush{Color:{R:0x8C,G:0x1D,B:0x1D}}||catalogView.Categories[1].Swatch is not null)
             throw new Exception("The tree rows carry their counts, their state in words and their colour: "+string.Join(" | ",catalogView.Categories.Select(c=>c.Category.Name+": "+c.Detail)));
         var categoryList=InCatalog<ListBox>("CategoryList");
+        // Repaso de coherencia de C2b: "Desactivada" se pinta a la derecha de la fila (como el "Desactivado" de un producto), no en el detalle.
+        var vermus=catalogView.Categories.Single(c=>c.Category.Id=="vermus"); categoryList.ScrollIntoView(vermus); window.UpdateLayout();
+        if(!new HashSet<string>(RowPainted(categoryList,o=>ReferenceEquals(o,vermus))).SetEquals(["Desactivada","Vermús","1 producto"]))
+            throw new Exception("A deactivated category says so in words on its row: "+string.Join(" | ",RowPainted(categoryList,o=>ReferenceEquals(o,vermus))));
+        if(RowPainted(categoryList,o=>o is Costina.Desktop.ViewModels.CategoryRow{Category.Id:"vinos"}).Contains("Desactivada")) throw new Exception("An active category paints no state word.");
         categoryList.SelectedItem=catalogView.Categories.Single(c=>c.Category.Id=="tintos"); window.UpdateLayout();
         if(catalogView.CategoryContext!="Dentro de Vinos"||catalogView.CategoryTitle!="Tintos"||catalogView.CategoryStateText!="Activa"||catalogView.CategoryId!="tintos"||catalogView.CategoryParentId!="vinos"
             ||catalogView.CategoryProductsFigure!="3"||catalogView.CategoryChildrenFigure!="2"||catalogView.CategoryChildrenText!="Subcategorías: Rioja · Ribeira Sacra"
@@ -1497,10 +1512,13 @@ internal static class Program
         Press(InCatalog<Button>("ShowAllButton"),"Ver todos"); PickProduct("albarino");
         // Tarifas: la General siempre (sin desactivar), las salas que usan cada una (de las salas leidas) y cuantos precios tiene.
         Section(2,"tariffs");
-        if(!catalogView.TariffItems.Select(t=>t.Tariff.Name+": "+t.Detail).SequenceEqual(["General: Sala principal · 20 precios vigentes","Terraza: Terraza · 7 precios vigentes","Eventos: Desactivada · ninguna sala · 0 precios vigentes"])
+        if(!catalogView.TariffItems.Select(t=>t.Tariff.Name+": "+t.Detail).SequenceEqual(["General: Sala principal · 20 precios vigentes","Terraza: Terraza · 7 precios vigentes","Eventos: Ninguna sala · 0 precios vigentes"])
             ||catalogView.HasTariffContext||!Shows("TariffEmpty")||catalogView.TariffEmptyHeading!="Elige una tarifa"||!Shows("NewTariffButton"))
             throw new Exception("Each tariff names the rooms that use it and its prices: "+string.Join(" | ",catalogView.TariffItems.Select(t=>t.Tariff.Name+": "+t.Detail)));
         var tariffList=InCatalog<ListBox>("TariffList");
+        // Repaso de coherencia de C2b: la tarjeta de una tarifa es la de Oferta y Salas: el estado en su chip, con su palabra, no en el detalle.
+        if(!new HashSet<string>(RowPainted(tariffList,o=>o is Costina.Desktop.ViewModels.TariffRow{Tariff.Id:"eventos"})).SetEquals(["Eventos","Desactivada","Ninguna sala · 0 precios vigentes"])
+            ||RowPainted(tariffList,o=>o is Costina.Desktop.ViewModels.TariffRow{Tariff.Id:"terraza"}).Contains("Desactivada")) throw new Exception("A deactivated tariff says so in its chip: "+string.Join(" | ",RowPainted(tariffList,o=>o is Costina.Desktop.ViewModels.TariffRow{Tariff.Id:"eventos"})));
         tariffList.SelectedIndex=0; window.UpdateLayout();
         if(catalogView.SelectedTariff?.Id!="general"||!catalogView.IsGeneralTariff||!catalogView.TariffZones.SequenceEqual(["Sala principal"])||catalogView.TariffPricedFigure!="20"||catalogView.TariffUnpricedFigure!="1"
             ||catalogView.TariffUnpricedLabel!="Sin precio: no se venden"||Shows("DeactivateTariffButton")||catalogView.ToggleTariffCommand.CanExecute(null)||!Texts(catalogPanel).Contains("Siempre presente")
@@ -1523,9 +1541,10 @@ internal static class Program
             ||!catalogView.Sections[2].Label.EndsWith("· 4",StringComparison.Ordinal)) throw new Exception("A created tariff is chosen once the server confirms it: "+CatalogPost());
         // Impuestos: tipo y productos que lo llevan.
         Section(3,"taxes");
-        if(!catalogView.TaxItems.Select(t=>t.Tax.Name+": "+t.Detail).SequenceEqual(["IVA 10 %: 10 % · 12 productos","IVA 21 %: 21 % · 6 productos","IVA 4 %: 4 % · 0 productos","Exento: Desactivado · 0 % · 0 productos"])
+        if(!catalogView.TaxItems.Select(t=>t.Tax.Name+": "+t.Detail).SequenceEqual(["IVA 10 %: 10 % · 12 productos","IVA 21 %: 21 % · 6 productos","IVA 4 %: 4 % · 0 productos","Exento: 0 % · 0 productos"])
             ||catalogView.HasTaxContext||!Shows("TaxEmpty")||!Shows("NewTaxButton")) throw new Exception("Each tax shows its rate and how many products use it: "+string.Join(" | ",catalogView.TaxItems.Select(t=>t.Detail)));
         var taxList=InCatalog<ListBox>("TaxList");
+        if(!new HashSet<string>(RowPainted(taxList,o=>o is Costina.Desktop.ViewModels.TaxRow{Tax.Name:"Exento"})).SetEquals(["Exento","Desactivado","0 % · 0 productos"])) throw new Exception("A deactivated tax says so in its chip: "+string.Join(" | ",RowPainted(taxList,o=>o is Costina.Desktop.ViewModels.TaxRow{Tax.Name:"Exento"})));
         taxList.SelectedIndex=1; window.UpdateLayout();
         if(catalogView.TaxTitle!="IVA 21 %"||catalogView.TaxRate!="21"||catalogView.TaxProductsFigure!="6"
             ||catalogView.TaxProductsText!="Albariño Pazo de Señoráns · Do Ferreiro 2023 · Viña Gravonia 2015 · Vino de la casa · Guímaro Ribeira Sacra 2022 · Muga Reserva 2019."||!Ready("DeactivateTaxButton"))
@@ -1609,7 +1628,7 @@ internal static class Program
             window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
             var button=InOffers<Button>(bottom);
             if(button.TranslatePoint(new Point(0,button.ActualHeight),offersPanel).Y>offersPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
-            if(Math.Abs(InOffers<FrameworkElement>("OffersPane").ActualWidth-330)>0.5||InOffers<FrameworkElement>("OfferPanel").ActualWidth<520) throw new Exception(what+": the offer list keeps 330 px and the ficha the rest.");
+            if(Math.Abs(InOffers<FrameworkElement>("OffersPane").ActualWidth-ListWidth)>0.5||InOffers<FrameworkElement>("OfferPanel").ActualWidth<520) throw new Exception(what+": the offer list keeps 360 px (ListWidth) and the ficha the rest.");
             if(Clipped(offersPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
             if(NestedScrolls(offersPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
             RefuseRaw(window,what);
@@ -1884,7 +1903,7 @@ internal static class Program
             if(button.TranslatePoint(new Point(0,button.ActualHeight),organizationPanel).Y>organizationPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
             if(organization.ShowZones&&(Math.Abs(InRooms<FrameworkElement>("ZonesPane").ActualWidth-250)>0.5||Math.Abs(InRooms<FrameworkElement>("ZonePanel").ActualWidth-360)>0.5||InRooms<FrameworkElement>("TablesArea").ActualWidth<300))
                 throw new Exception(what+": the rooms keep 250 px, the ficha 360 px and the tables the rest.");
-            if(organization.ShowStations&&(Math.Abs(InRooms<FrameworkElement>("StationsPane").ActualWidth-360)>0.5||InRooms<FrameworkElement>("StationPanel").ActualWidth<460))
+            if(organization.ShowStations&&(Math.Abs(InRooms<FrameworkElement>("StationsPane").ActualWidth-ListWidth)>0.5||InRooms<FrameworkElement>("StationPanel").ActualWidth<460))
                 throw new Exception(what+": the stations keep 360 px and the ficha the rest.");
             if(Clipped(organizationPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
             if(NestedScrolls(organizationPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
@@ -2097,11 +2116,129 @@ internal static class Program
         if(organization.SelectedTable is not null) Press(InRooms<Button>("ShowZoneButton"),"Ver la sala");
         if(!RoomShows("ZoneDetail")||organization.SelectedZone?.Id!="sala"||organization.TableItems.Length!=9) throw new Exception("The capture shows the Sala principal with its ficha and its tables.");
         RoomsFit("configuration","SaveZoneButton");
+        // ===== C2b (plan 2026-10-14): Dispositivos, retoques =====
+        // La cabecera de las vistas de gestion (titulo y resumen de una linea), los dispositivos en tarjetas como en Inicio (tipo y estacion
+        // por su nombre, el punto y la palabra de la conexion, quien lo aprobo y cuando), el vacio explicado con su boton de conectar y quitar
+        // en dos pasos abajo, con el nombre de lo que se quita. Datos coherentes con Inicio: sus cinco dispositivos (y el quitado) en las
+        // estaciones de la organizacion de C2. Elegir una tarjeta no lee ni envia nada; quitar envia la orden de siempre del elegido (F01).
+        T InDevices<T>(string name) where T:FrameworkElement=>(T)devicesPanel.FindName(name);
+        bool DeviceShows(string name)=>InDevices<FrameworkElement>(name).IsVisible;
+        bool DeviceReady(string name)=>InDevices<Button>(name) is {IsVisible:true,IsEnabled:true};
+        var deviceList=InDevices<ListBox>("DeviceList");
+        void OpenDevices(string what)
+        {
+            var before=server.Count("GET","auth/devices");
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); tabs.SelectedItem=(TabItem)window.FindName("DevicesTab"); window.UpdateLayout();
+            Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>before,what); window.UpdateLayout();
+        }
+        string DeviceRowsText()=>string.Join(" | ",center.Rows.Select(r=>$"{r.Name}: {r.Kind} · {r.State} ({r.PresenceDot})"));
+        ListBoxItem DeviceCard(string id){ var row=center.Rows.Single(r=>r.Device.Id==id); deviceList.ScrollIntoView(row); window.UpdateLayout(); return (ListBoxItem)deviceList.ItemContainerGenerator.ContainerFromItem(row); }   // la lista virtualiza
+        void PickDevice(string id){ deviceList.SelectedItem=center.Rows.Single(r=>r.Device.Id==id); window.UpdateLayout(); }   // como pulsar la tarjeta
+        void DevicesFit(string what)
+        {
+            window.Shell.Status=""; window.UpdateLayout();
+            window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var pane=InDevices<FrameworkElement>("DevicesPane");
+            if(pane.TranslatePoint(new Point(0,pane.ActualHeight),devicesPanel).Y>devicesPanel.ActualHeight+0.5) throw new Exception(what+": the device list ends inside the view.");
+            if(DeviceShows("RemoveButton")&&InDevices<Button>("RemoveButton") is var remove&&remove.TranslatePoint(new Point(0,remove.ActualHeight),devicesPanel).Y>devicesPanel.ActualHeight+0.5)
+                throw new Exception(what+": the remove button stays in view.");
+            if(Math.Abs(pane.ActualWidth-InDevices<FrameworkElement>("ConnectPane").ActualWidth)>0.5) throw new Exception(what+": connecting and the list share the width.");
+            if(Clipped(devicesPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
+            if(NestedScrolls(devicesPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
+            RefuseRaw(window,what);
+        }
+        // Sin dispositivos (una instalacion recien hecha): la lista explica que falta y ofrece conectar un comandero en la estacion de sala
+        // elegida a la izquierda (lo dice el boton); ni casilla de quitados ni boton de quitar.
+        server.Organization=wineOrganization; server.Devices=[]; server.Network=SimpleOn; window.Shell.Status="";
+        OpenDevices("Dispositivos reads an installation without devices");
+        if(center.Summary!="Aún no hay dispositivos: conecta el primero con el asistente de «Conectar un dispositivo»."||!center.ShowListEmpty||center.ListEmptyHeading!="Aún no hay dispositivos"
+            ||!DeviceShows("DevicesEmpty")||DeviceShows("DeviceList")||DeviceShows("RemoveBar")||DeviceShows("ShowRevokedBox")||DeviceShows("LegacyBar")||center.OnlineText.Length!=0
+            ||!DeviceReady("EmptyConnectButton")||center.EmptyConnectText!="Conectar comandero · Sala 1"||!Painted(devicesPanel).Contains("Aún no hay dispositivos")
+            ||!Painted(devicesPanel).Contains(center.Summary))
+            throw new Exception("Without devices the list says what is missing and offers to connect a waiter in the chosen room station: "+center.Summary+" / "+center.ListEmptyHeading);
+        DevicesFit("devices-empty"); Save(Shot(window),"devices-empty.png");
+        // El boton del vacio es el de siempre: el asistente del comandero en la estacion elegida, con su codigo de un uso (una sola vez).
+        var pairingsBeforeEmpty=server.Count("POST","auth/pairings");
+        Press(InDevices<Button>("EmptyConnectButton"),"Conectar comandero (lista vacía)");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the empty list opens the waiter assistant");
+        if(center.AssistantTitle!="Conectar comandero · Sala 1"||center.IntentStationId!="sala-1"||server.Count("POST","auth/pairings")!=pairingsBeforeEmpty+1||DeviceReady("EmptyConnectButton"))
+            throw new Exception("The empty list's button opens the usual waiter assistant for the chosen station, once: "+center.AssistantTitle);
+        DevicesFit("devices-assistant"); Save(Shot(window),"devices-assistant.png");
+        center.CancelCommand.Execute(null); window.Shell.Status="";
+        // Los dispositivos de Inicio: el resumen por tipo con el quitado, la conexion "4 de 5" como en Inicio y una tarjeta por dispositivo
+        // activo en el orden de Inicio, con su tipo y su estacion por su nombre, el punto y la palabra, y quien lo aprobo y cuando.
+        server.Devices=panelDevices;
+        OpenDevices("Dispositivos reads the C2 devices");
+        home.ApplyDevices(panelDevices);   // la lista de Inicio con los mismos dispositivos (pura), para comparar orden, tipos y estaciones
+        if(center.Summary!="5 dispositivos activos: 2 comanderos y 3 pantallas de cocina · 1 quitado"||center.OnlineText!="4 de 5 con conexión"||center.SelectedRow is not null
+            ||DeviceRowsText()!="tablet-sala-1: Comandero · Sala 1 · Conectado (ok) | tablet-terraza: Comandero · Terraza · Conectado (ok) | pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado (ok)"
+                +" | pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión (off) | pantalla-pase: Pantalla de cocina · Pase · Conectado (ok)"
+            ||!center.Rows.Select(r=>r.Name).SequenceEqual(home.DeviceRows.Select(r=>r.Name))||!center.Rows.Select(r=>r.Kind).SequenceEqual(home.DeviceRows.Select(r=>r.Kind)))
+            throw new Exception("Dispositivos lists the devices of Inicio, in its order, with kind, station and presence in words: "+center.Summary+" / "+DeviceRowsText());
+        var approvedSalaOne="Aprobado por jefa el "+panelDevices[0].CreatedAt.ToLocalTime().ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture);
+        if(!new HashSet<string>(Painted(DeviceCard("h1"))).SetEquals(["tablet-sala-1","Comandero · Sala 1",approvedSalaOne,"Conectado"]))
+            throw new Exception("A device card paints its name, kind and station, approver and date, and its connection in words: "+string.Join(" | ",Painted(DeviceCard("h1"))));
+        if(!new HashSet<string>(Painted(DeviceCard("h4"))).SetEquals(["pantalla-fria","Pantalla de cocina · Cocina fría","Aprobado por jefa el "+panelDevices[3].CreatedAt.ToLocalTime().ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture),"Sin conexión"])
+            ||Descendants<System.Windows.Shapes.Ellipse>(DeviceCard("h4")).Single().Tag as string!="off"||Descendants<System.Windows.Shapes.Ellipse>(DeviceCard("h1")).Single().Tag as string!="ok")
+            throw new Exception("The connection is a dot AND a word: "+string.Join(" | ",Painted(DeviceCard("h4"))));
+        if(!DeviceShows("ShowRevokedBox")||InDevices<CheckBox>("ShowRevokedBox").Content as string!="Mostrar también los quitados (1)"||DeviceShows("LegacyBar")||DeviceShows("DevicesEmpty")
+            ||!Painted(devicesPanel).Contains(center.Summary)||!Painted(devicesPanel).Contains("4 de 5 con conexión"))
+            throw new Exception("The header says the summary, the list its connection count and the removed one is offered on demand.");
+        // Sin nada elegido, el boton de quitar dice que elegir; elegir una tarjeta no lee ni envia nada y el boton nombra lo que quitaria.
+        if(!DeviceShows("RemoveButton")||InDevices<Button>("RemoveButton").IsEnabled||center.RemoveText!="Elige un dispositivo para quitarlo") throw new Exception("With nothing chosen the remove button says what to pick: "+center.RemoveText);
+        DevicesFit("devices-unselected");
+        var requestsBeforeDevicePick=server.Requests.Length;
+        PickDevice("h2");
+        if(server.Requests.Length!=requestsBeforeDevicePick||center.SelectedRow?.Device.Id!="h2"||!DeviceReady("RemoveButton")||center.RemoveText!="Quitar «tablet-terraza»"
+            ||deviceList.SelectedItem is not Costina.Desktop.ViewModels.DevicesViewModel.DeviceRow{Device.Id:"h2"}) throw new Exception("Choosing a card reads nothing and the remove button names it: "+center.RemoveText);
+        DevicesFit("devices-chosen");
+        // Quitar en dos pasos (F9): la confirmacion nombra el dispositivo; "No" no envia nada; "Si, quitar" envia la orden del ELEGIDO y, releido,
+        // deja de verse (queda quitado, no borrado) y la eleccion se vacia.
+        Press(InDevices<Button>("RemoveButton"),"Quitar «tablet-terraza»");
+        if(!center.ConfirmingRemoval||!DeviceShows("ConfirmRemoveBar")||DeviceShows("RemoveButton")||!center.RemovalText.StartsWith("¿Quitar \"tablet-terraza\"?",StringComparison.Ordinal)||server.Requests.Length!=requestsBeforeDevicePick)
+            throw new Exception("Removing asks first, naming the device: "+center.RemovalText);
+        DevicesFit("devices-confirm"); Save(Shot(window),"devices-confirm.png");
+        center.CancelRemoveCommand.Execute(null); window.UpdateLayout();
+        if(center.ConfirmingRemoval||!DeviceReady("RemoveButton")||server.Requests.Length!=requestsBeforeDevicePick) throw new Exception("'No' leaves the device alone and sends nothing.");
+        Press(InDevices<Button>("RemoveButton"),"Quitar «tablet-terraza»");
+        var revokesBefore=server.Count("POST","auth/devices/");
+        Press(InDevices<Button>("ConfirmRemoveButton"),"Sí, quitar");
+        Wait(()=>!window.Shell.Busy&&server.Count("POST","auth/devices/")>revokesBefore,"the removal is sent"); window.UpdateLayout();
+        if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"auth/devices/h2/revoke",Body:"{}"}||server.Count("POST","auth/devices/")!=revokesBefore+1||center.Rows.Any(r=>r.Device.Id=="h2")
+            ||center.SelectedRow is not null||center.Summary!="4 dispositivos activos: 1 comandero y 3 pantallas de cocina · 2 quitados"||center.RevokedToggleText!="Mostrar también los quitados (2)")
+            throw new Exception("'Sí, quitar' sends the usual revoke of the chosen device and the re-read hides it: "+server.Requests.Last(r=>r.Method=="POST").Path+" / "+center.Summary);
+        // Los quitados, a peticion: atenuados, con "Quitado el ..." en palabras y el punto gris; uno elegido no se puede quitar otra vez.
+        InDevices<CheckBox>("ShowRevokedBox").IsChecked=true; window.UpdateLayout();
+        if(center.Rows.Length!=6||center.Rows.Where(r=>r.Removed).Select(r=>r.Name).Order(StringComparer.Ordinal).ToArray() is not ["tablet-terraza","vieja"]
+            ||center.Rows.Where(r=>r.Removed).Any(r=>r.PresenceDot!="off"||!r.State.StartsWith("Quitado el ",StringComparison.Ordinal))) throw new Exception("Removed devices appear on demand, in words: "+DeviceRowsText());
+        PickDevice("h6");
+        if(InDevices<Button>("RemoveButton").IsEnabled||center.RemoveText!="«vieja» ya está quitado"||!Painted(DeviceCard("h6")).Any(t=>t.StartsWith("Quitado el ",StringComparison.Ordinal)))
+            throw new Exception("A removed device cannot be removed again and says so: "+center.RemoveText);
+        DevicesFit("devices-removed"); Save(Shot(window),"devices-removed.png");
+        InDevices<CheckBox>("ShowRevokedBox").IsChecked=false; window.UpdateLayout();
+        if(center.SelectedRow is not null||center.Rows.Length!=4) throw new Exception("Hiding the removed ones drops a removed choice.");
+        // Todos quitados: la lista vacia lo explica y ofrece mostrarlos (la casilla sigue ahi).
+        center.Render(wineOrganization.Stations,[],[..panelDevices.Select(d=>d with {RevokedAt=d.RevokedAt??DateTimeOffset.Now})]); window.UpdateLayout();
+        if(!center.ShowListEmpty||center.ListEmptyHeading!="Ningún dispositivo activo"||!center.ListEmptyText.Contains("«Mostrar también los quitados»",StringComparison.Ordinal)||!DeviceShows("ShowRevokedBox")
+            ||center.Summary!="Ningún dispositivo activo · 6 quitados") throw new Exception("With every device removed the list explains how to see them: "+center.ListEmptyText+" / "+center.Summary);
+        // Un dispositivo antiguo con rol principal: su tipo en palabras ("Principal (antiguo)", nunca "Responsable") y un aviso para cambiarlo.
+        center.Render(wineOrganization.Stations,[],[..panelDevices,new("h7","pc-viejo","main","","user:jefa",DateTimeOffset.Now.AddDays(-30),null)]); window.UpdateLayout();
+        if(center.Rows.Last().Kind!="Principal (antiguo)"||!DeviceShows("LegacyBar")||!center.LegacyWarning.StartsWith("1 dispositivo antiguo con rol principal: conviene quitarlo",StringComparison.Ordinal)
+            ||center.Summary!="6 dispositivos activos: 2 comanderos, 3 pantallas de cocina y 1 principal (antiguo) · 1 quitado") throw new Exception("A legacy main device is named and warned about: "+center.Summary);
+        DevicesFit("devices-legacy"); Save(Shot(window),"devices-legacy.png");
+        // Sin leer (al salir de un nivel): nada se supone; ni resumen ni boton de conectar.
+        center.Clear(); window.UpdateLayout();
+        if(center.Summary.Length!=0||!center.ShowListEmpty||center.ListEmptyHeading!="Sin leer todavía"||DeviceShows("EmptyConnectButton")||DeviceShows("RemoveBar")) throw new Exception("Unread, the device list says so and offers nothing.");
+        // La lectura de la captura: los dispositivos de Inicio con el comandero de la sala elegido (su boton de quitar lo nombra).
+        server.Devices=panelDevices;
+        OpenDevices("Dispositivos reads the C2 devices for the capture");
+        PickDevice("h1");
+        DevicesFit("devices");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
         // C2b: la captura de Caja es la del estado que deja la seccion de arriba (la Mesa 4 leida, con todas las tarjetas): sin datos a mano.
-        center.Render(stationsForDevices,[pendingOther],activeDevices);
+        // C2b: la de Dispositivos, tambien (los dispositivos de Inicio leidos, con tablet-sala-1 elegido).
         center.ApplyNetwork(SimpleOn);   // B.2: la captura de Dispositivos muestra la conexion sencilla activa
         home.ApplyDiagnostics(soon); home.ApplyDevices(panelDevices); home.ApplyNetwork(SimpleOn);   // C2: Inicio con sus dispositivos y la conexion sencilla
         window.Shell.Status="";   // C1 (revision): el programa real no pinta aviso al abrir una vista; las capturas tampoco
@@ -2127,6 +2264,11 @@ internal static class Program
             if(tab=="OrganizationTab"&&new[]{"Salas y mesas","Estaciones","Sala principal","8 mesas activas · 26 plazas","Terraza","Tarifa Terraza","Mesas de Sala principal","Mesa 1","Mesa 9","Desactivada",
                 "Activa","Sala · tarifa General","Mesas activas","26","1 mesa desactivada: Mesa 9.","Guardar cambios","Desactivar sala"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingRooms)
                 throw new Exception("Salas paints both rooms, the chosen room's tables and its ficha in words: missing '"+missingRooms+"'.");
+            // C2b: Dispositivos pinta el resumen, los dispositivos de Inicio con su tipo y estacion por su nombre y su conexion en palabras, y el
+            // boton de quitar con el nombre del elegido.
+            if(tab=="DevicesTab"&&new[]{"Dispositivos","5 dispositivos activos: 2 comanderos y 3 pantallas de cocina · 1 quitado","Dispositivos conectados","4 de 5 con conexión","tablet-sala-1","Comandero · Sala 1",
+                "Comandero · Terraza","Pantalla de cocina · Cocina fría","Sin conexión","Conectado","Mostrar también los quitados (1)","Quitar «tablet-sala-1»","Conectar un dispositivo"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingDevices)
+                throw new Exception("Dispositivos paints the summary, the devices of Inicio in words and the remove button of the chosen one: missing '"+missingDevices+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
                 "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
@@ -2159,6 +2301,46 @@ internal static class Program
         if(((FrameworkElement)((FrameworkElement)window.FindName("DevicesView")).FindName("SimpleOnBar")).Visibility==Visibility.Visible||((FrameworkElement)((FrameworkElement)window.FindName("DevicesView")).FindName("SimpleOffBar")).Visibility==Visibility.Visible) throw new Exception("While confirming, only the confirmation bar is painted (it is off).");
         Save(Shot(window),"devices-simple-off.png");
         center.CancelEnableSimpleCommand.Execute(null); center.ApplyNetwork(SimpleOn);
+        // ===== C2b: repaso de coherencia de las cinco vistas de gestion, y con el Comedor =====
+        // La misma cabecera (el titulo y su resumen en el mismo sitio en todas), la columna de lista del mismo ancho (ListWidth) y la ficha
+        // empezando en el mismo sitio en las vistas de lista y ficha; con la barra lateral desplegada y plegada (abajo), sin texto cortado,
+        // sin desplazamientos anidados y sin valores en crudo. Inicio queda fuera a proposito: su cabecera es el saludo con la fecha (C2).
+        if(window.FindResource("ListWidth") is not GridLength{Value:ListWidth}) throw new Exception("The list column width is ListWidth (360 px).");
+        (string Tab,string View,string? List,string? Ficha)[] managed=[("CheckoutTab","CheckoutView","AccountsPane","AccountPanel"),("CatalogTab","CatalogView","ProductsPane","ProductPanel"),
+            ("OffersTab","OffersView","OffersPane","OfferPanel"),("OrganizationTab","OrganizationView",null,null),("DevicesTab","DevicesView",null,null)];
+        var pageTitle=(Style)window.FindResource("PageTitle"); var pageSummary=(Style)window.FindResource("PageSummary");
+        string HeaderAt(FrameworkElement view)
+        {
+            var title=Descendants<TextBlock>(view).Single(t=>t.IsVisible&&ReferenceEquals(t.Style,pageTitle));
+            var line=Descendants<TextBlock>(view).Where(t=>t.IsVisible&&ReferenceEquals(t.Style,pageSummary)).ToArray();
+            var at=title.TranslatePoint(new Point(0,0),view); var below=line.Length==1?line[0].TranslatePoint(new Point(0,0),view):new Point(-1,-1);
+            return $"{at.X:0},{at.Y:0} / {below.X:0},{below.Y:0} ({title.FontSize:0}/{(line.Length==1?line[0].FontSize:0):0})";
+        }
+        void SameLayout(string mode)
+        {
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var serviceTitle=Descendants<TextBlock>(serviceView).Single(t=>t.IsVisible&&ReferenceEquals(t.Style,pageTitle)).TranslatePoint(new Point(0,0),serviceView);
+            var comedorHeader=$"{serviceTitle.X:0},{serviceTitle.Y:0}";
+            var headers=new List<string>(); var fichaLefts=new List<double>();
+            foreach(var (tab,viewName,list,ficha) in managed)
+            {
+                tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+                var view=(FrameworkElement)window.FindName(viewName);
+                headers.Add(HeaderAt(view));
+                if(!HeaderAt(view).StartsWith(comedorHeader+" ",StringComparison.Ordinal)) throw new Exception(mode+": "+viewName+" puts its title where Comedor does: "+HeaderAt(view)+" vs "+comedorHeader);
+                if(list is not null&&Math.Abs(((FrameworkElement)view.FindName(list)).ActualWidth-ListWidth)>0.5) throw new Exception(mode+": "+viewName+" keeps its list at ListWidth.");
+                if(ficha is not null) fichaLefts.Add(((FrameworkElement)view.FindName(ficha)).TranslatePoint(new Point(0,0),view).X);
+                foreach(var card in Descendants<Border>(view).Where(b=>b.IsVisible&&b.Style is {} s&&(ReferenceEquals(s,window.FindResource("Card"))||ReferenceEquals(s,window.FindResource("ListPane"))||ReferenceEquals(s,window.FindResource("Ficha")))))
+                    if(card.CornerRadius!=new CornerRadius(12)) throw new Exception(mode+": "+viewName+" draws its cards with radius 12.");
+                if(Clipped(view) is {Length:>0} clipped) throw new Exception(mode+": "+viewName+" clips text: "+string.Join(" | ",clipped));
+                if(NestedScrolls(view) is {Length:>0} nested) throw new Exception(mode+": "+viewName+" nests scroll viewers: "+string.Join(", ",nested));
+                RefuseRaw(window,mode+" "+viewName);
+            }
+            if(headers.Distinct().Count()!=1) throw new Exception(mode+": every management view has the same header (title and summary line): "+string.Join(" | ",headers));
+            if(fichaLefts.Distinct().Count()!=1||Math.Abs(fichaLefts[0]-ListWidth-16)>0.5) throw new Exception(mode+": the ficha starts at the same place in Caja, Catálogo and Oferta: "+string.Join(", ",fichaLefts));
+        }
+        window.Shell.SideNavCompact=false; window.UpdateLayout();
+        SameLayout("sidebar unfolded");
         // C1: la barra lateral se pliega a iconos (boton de abajo) y se despliega de nuevo; plegada, sus elementos siguen ahi con su ayuda.
         // (Se parte de la barra desplegada: en una pantalla estrecha, como la del CI, la ventana la pliega sola por debajo de 1270 px.)
         tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.Shell.SideNavCompact=false; window.UpdateLayout();
@@ -2167,6 +2349,11 @@ internal static class Program
         if(!window.Shell.SideNavCompact||sideNavBar.ActualWidth>64||((Button)window.FindName("NavCatalog")).ToolTip as string!="Catálogo y tarifas") throw new Exception("The sidebar folds to icons, each with its name as a tooltip: "+sideNavBar.ActualWidth);
         window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
         Save(Shot(window),"sidebar-compact.png");
+        // C2b: plegada la barra, las vistas de gestion ganan ancho: la lista sigue en ListWidth, la ficha empieza donde siempre y nada se corta.
+        SameLayout("sidebar folded");
+        foreach(var (tab,file) in new[]{("CheckoutTab","sidebar-compact-checkout.png"),("OrganizationTab","sidebar-compact-configuration.png"),("DevicesTab","sidebar-compact-devices.png")})
+        { tabs.SelectedItem=(TabItem)window.FindName(tab); window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout(); Save(Shot(window),file); }
+        tabs.SelectedItem=(TabItem)window.FindName("HomeTab"); window.UpdateLayout();
         navToggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); window.UpdateLayout();
         if(window.Shell.SideNavCompact||sideNavBar.ActualWidth<200) throw new Exception("The sidebar unfolds again.");
         // C1: startup.png es Primeros pasos tal como lo ve un PC recien arrancado: sin aviso pendiente y con el servidor ya comprobado
@@ -2198,6 +2385,8 @@ internal static class Program
         Console.WriteLine("WPF startup and viewmodel checks passed");return 0;
     }
 
+    // C2b (repaso de coherencia): ancho de la columna de lista de las vistas de lista y ficha (Components.xaml, ListWidth).
+    private const double ListWidth=360;
     // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra
     // suelta: dentro de un codigo con guiones (el producto «menu-lab-tasting») no es un estado.
     // Revision C1: tambien tipos de estacion, servicios de oferta y codigos de accion (una orden pendiente se describe en castellano).
@@ -2404,6 +2593,13 @@ internal static class Program
                 return Json(404,"{\"error\":\"not_found\"}");
             }
             if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",code="Home12_abc-def",expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
+            // C2b: quitar un dispositivo se aplica en memoria, como el motor: queda con su fecha de quitado y sin conexion (nada se borra).
+            if(path.StartsWith("auth/devices/",StringComparison.Ordinal)&&path.EndsWith("/revoke",StringComparison.Ordinal))
+            {
+                var id=Uri.UnescapeDataString(path["auth/devices/".Length..^"/revoke".Length]);
+                Devices=[..Devices.Select(d=>d.Id==id&&d.RevokedAt is null?d with {RevokedAt=DateTimeOffset.Now,Online=false}:d)];
+                return Json(200,"{\"revoked\":true}");
+            }
             var command=JsonSerializer.Deserialize<JsonElement>(body);
             if(path=="erp/catalog/commands/product-image-set")
             {

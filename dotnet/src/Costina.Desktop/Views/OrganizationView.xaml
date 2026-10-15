@@ -59,11 +59,7 @@
   <Style x:Key="RowPanel" TargetType="StackPanel">
    <Style.Triggers><DataTrigger Binding="{Binding Inactive}" Value="True"><Setter Property="Opacity" Value="0.7"/></DataTrigger></Style.Triggers>
   </Style>
-  <!-- Nombre de una fila en tarjeta (sala, estacion): como el de las ofertas. -->
-  <Style x:Key="CardRowTitle" TargetType="TextBlock">
-   <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/><Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="SemiBold"/>
-   <Setter Property="TextWrapping" Value="Wrap"/>
-  </Style>
+  <!-- El nombre de una fila en tarjeta (sala, estacion) es CardRowTitle, de Components.xaml (repaso de coherencia de C2b). -->
  </UserControl.Resources>
 
  <DockPanel>
@@ -279,7 +275,7 @@
 
    <!-- ======================= Estaciones ======================= -->
    <Grid x:Name="StationsSection" Visibility="{Binding Organization.ShowStations, Converter={StaticResource Bool2Vis}}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource ListWidth}"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*" MinWidth="460"/></Grid.ColumnDefinitions>
     <Border x:Name="StationsPane" Style="{StaticResource ListPane}">
      <DockPanel>
       <TextBlock DockPanel.Dock="Top" Text="Cada plato sale en la pantalla de su estación. Los puestos emparejados se asignan a una estación activa." Style="{StaticResource Subtle}" Margin="2,2,10,10"/>

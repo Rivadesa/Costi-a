@@ -385,7 +385,7 @@
       Una vista de gestion se compone asi (CheckoutView es la primera que lo usa):
       - Cabecera de pagina sobre el fondo gris: PageBar (DockPanel) con, a la derecha, PageAction (la accion principal, icono en Ui.Icon)
         o PageNote (una nota neutra cuando la vista no crea nada), y el titulo (PageTitle) con su resumen de una linea (PageSummary).
-      - Lista a la izquierda: ListPane (tarjeta blanca) con SearchField (lupa y texto de ayuda en Ui.Hint), FilterChips si ayudan y la lista:
+      - Lista a la izquierda: ListPane (tarjeta blanca, en una columna de ancho ListWidth) con SearchField (lupa y texto de ayuda en Ui.Hint), FilterChips si ayudan y la lista:
         PaneList (filas de dos lineas, RowTitle y RowDetail, seleccion con fondo de acento y barra) o CardRows (filas en tarjeta gris; la
         elegida, blanca con borde de acento, como los pases de la ficha del Comedor). Las dos virtualizan y son el UNICO desplazamiento de
         su columna. Una lista vacia es un EmptyState (icono, titulo en Ui.Heading y la explicacion en Content) con su boton de crear debajo.
@@ -397,6 +397,9 @@
         propio con TableHead y TableRow, o TableList si la fila se elige (la ficha ya desplaza). Ningun desplazamiento anidado.
       - LinkButton para un enlace de texto junto a un recuento ("Ver todos" del Catalogo). -->
 
+ <!-- Ancho de la columna de lista en las vistas de lista y ficha (Caja, Catalogo, Oferta, Estaciones): el mismo en todas, para que la
+      ficha empiece siempre en el mismo sitio al pasar de una vista a otra (repaso de coherencia de C2b; antes 320, 330 y 360). -->
+ <GridLength x:Key="ListWidth">360</GridLength>
  <Style x:Key="PageBar" TargetType="DockPanel"><Setter Property="Margin" Value="0,0,0,14"/><Setter Property="LastChildFill" Value="True"/></Style>
  <Style x:Key="PageSummary" TargetType="TextBlock" BasedOn="{StaticResource Body}"><Setter Property="Margin" Value="0,2,0,0"/></Style>
  <!-- Accion principal de la cabecera ("Abrir mesa", "Producto"...): verde, con su icono (Ui.Icon; por defecto, el mas). -->
@@ -466,6 +469,12 @@
  <Style x:Key="RowDetail" TargetType="TextBlock">
   <Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="Foreground" Value="{StaticResource InkSoft}"/>
   <Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="Margin" Value="0,1,0,0"/>
+ </Style>
+ <!-- Titulo de una fila en tarjeta (CardRows): el de las cuentas, ofertas, salas, estaciones, tarifas, impuestos y dispositivos (antes en
+      OrganizationView; el repaso de coherencia de C2b lo lleva a todas las listas en tarjeta). Su estado, en un ToneChip a la derecha. -->
+ <Style x:Key="CardRowTitle" TargetType="TextBlock">
+  <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/><Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="TextWrapping" Value="Wrap"/>
  </Style>
  <!-- Lista de pocas filas ricas (cuentas abiertas, salas...): cada fila es una tarjeta gris; al pasar el raton, borde; la elegida, blanca con
       borde de acento (como los pases de la ficha del Comedor). Margen derecho para la barra de desplazamiento de Fluent, que se superpone. -->
