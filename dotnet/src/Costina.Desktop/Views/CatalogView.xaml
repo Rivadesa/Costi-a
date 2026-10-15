@@ -12,17 +12,8 @@
    <Setter Property="Padding" Value="{Binding Padding}"/>
    <Setter Property="ContentTemplate"><Setter.Value><DataTemplate><TextBlock Text="{Binding ListText}"/></DataTemplate></Setter.Value></Setter>
   </Style>
-  <!-- Botones secundarios de la barra de abajo de una ficha, a la altura del grande. -->
-  <Style x:Key="FichaSecondary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-   <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
-  </Style>
-  <Style x:Key="FichaDanger" TargetType="Button" BasedOn="{StaticResource DangerButton}">
-   <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
-  </Style>
-  <!-- Nota al pie de una ficha (nada se borra...). -->
-  <Style x:Key="FichaNote" TargetType="TextBlock" BasedOn="{StaticResource Subtle}"><Setter Property="Margin" Value="0,18,0,4"/></Style>
-  <!-- Etiqueta de campo que sigue a otra fila de campos. -->
-  <Style x:Key="NextLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}"><Setter Property="Margin" Value="0,10,0,4"/></Style>
+  <!-- Los botones secundarios de la ficha (FichaSecondary, FichaDanger), su nota al pie (FichaNote), la etiqueta que sigue a otra fila
+       (NextLabel) y el contenido con el mas (PlusText) viven en Components.xaml desde la Oferta (C2b). -->
   <!-- Punto del color de una categoria en el arbol; sin color, un punto gris (un cuadrado vacio parecia una casilla). -->
   <Style x:Key="Swatch" TargetType="Border">
    <Setter Property="Width" Value="10"/><Setter Property="Height" Value="10"/><Setter Property="CornerRadius" Value="5"/><Setter Property="VerticalAlignment" Value="Top"/>
@@ -36,8 +27,7 @@
     <DataTrigger Binding="{Binding Tone}" Value="fallback"><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="FontWeight" Value="Normal"/></DataTrigger>
    </Style.Triggers>
   </Style>
-  <!-- Contenido de un boton con su icono: el mas delante (alta de una presentacion) o la flecha detras (ir a sus productos). -->
-  <DataTemplate x:Key="PlusText"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}" Margin="0,0,5,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate>
+  <!-- Contenido de un boton con la flecha detras (ir a sus productos). -->
   <DataTemplate x:Key="GoText"><StackPanel Orientation="Horizontal"><TextBlock Text="{Binding}" VerticalAlignment="Center"/><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconChevronRight}" Margin="4,0,0,0"/></StackPanel></DataTemplate>
  </UserControl.Resources>
 

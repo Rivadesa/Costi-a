@@ -626,4 +626,18 @@
  <!-- Texto de un boton que puede partirse (C2, antes en ServiceView). Va en ContentTemplate (no como TextBlock hijo): asi hereda el color
       que la plantilla Fluent pone segun el estado y un boton deshabilitado se ve gris (un hijo logico heredaria el blanco del boton de acento). -->
  <DataTemplate x:Key="ButtonText"><TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/></DataTemplate>
+ <!-- C2b (antes en CatalogView): botones secundarios de la barra de abajo de una ficha, a la altura del grande (desactivar en rojo de
+      contorno; reactivar o cancelar, normales). -->
+ <Style x:Key="FichaSecondary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
+ </Style>
+ <Style x:Key="FichaDanger" TargetType="Button" BasedOn="{StaticResource DangerButton}">
+  <Setter Property="MinHeight" Value="46"/><Setter Property="Margin" Value="10,0,0,0"/><Setter Property="Padding" Value="16,0"/>
+ </Style>
+ <!-- Nota al pie de una ficha (nada se borra...). -->
+ <Style x:Key="FichaNote" TargetType="TextBlock" BasedOn="{StaticResource Subtle}"><Setter Property="Margin" Value="0,18,0,4"/></Style>
+ <!-- Etiqueta de campo que sigue a otra fila de campos. -->
+ <Style x:Key="NextLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}"><Setter Property="Margin" Value="0,10,0,4"/></Style>
+ <!-- Contenido de un boton de alta pequeno (AddButton) con el mas delante: "+ Presentacion", "+ Pase", "+ Plato". -->
+ <DataTemplate x:Key="PlusText"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}" Margin="0,0,5,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate>
 </ResourceDictionary>

@@ -258,8 +258,7 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     private bool Matches(AccountChoice choice, string text)
     {
         if (text.Length == 0) return true;
-        var compare = CultureInfo.CurrentCulture.CompareInfo;
-        bool Has(string value) => compare.IndexOf(value, text, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0;
+        bool Has(string value) => TextSearch.Contains(value, text);
         return Has(shell.Names.Table(choice.TableId)) || Has(ZoneOf(choice));
     }
     private TableTile? TileOf(AccountChoice choice) => shell.Service.Tiles.FirstOrDefault(t => t.Entry?.Service.Id == choice.ServiceId);

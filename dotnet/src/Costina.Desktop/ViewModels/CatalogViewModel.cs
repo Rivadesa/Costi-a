@@ -512,7 +512,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     private static bool Matches(ProductDto product, string text)
     {
         if (text.Length == 0) return true;
-        return CultureInfo.CurrentCulture.CompareInfo.IndexOf(product.Name, text, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0
+        return TextSearch.Contains(product.Name, text)
             || product.Id.Contains(text, StringComparison.OrdinalIgnoreCase) || (product.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false);
     }
     private ProductRow ProductRowOf(ProductDto p)

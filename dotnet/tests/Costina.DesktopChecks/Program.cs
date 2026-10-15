@@ -1403,6 +1403,9 @@ internal static class Program
         catalogSearch.Text="albarino"; window.UpdateLayout();
         if(!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["albarino"])||catalogView.SelectedProduct is not null||catalogView.HasProductContext)
             throw new Exception("The search ignores accents ('albarino' finds Albariño) and a search that hides the chosen product deselects it.");
+        // C2b (Oferta): tambien en un PC en castellano, donde la ene es otra letra: el nombre se encuentra sin su virgulilla ni sus tildes.
+        catalogSearch.Text="senorans"; window.UpdateLayout();
+        if(!catalogView.Products.Select(p=>p.Product.Id).SequenceEqual(["albarino"])) throw new Exception("The search finds a name without its accents or its eñe ('senorans' finds Señoráns): "+RowsText());
         catalogSearch.Text=""; window.UpdateLayout();
         // Ficha del Albarino: ruta, nombre y estado; foto; datos (la categoria por su ruta, el impuesto y la estacion por su nombre);
         // presentaciones con su precio vigente en la General y en la Terraza; el precio programado, aparte.
@@ -1540,6 +1543,305 @@ internal static class Program
         if(catalogView.SelectedProduct?.Product.Id!="albarino"||catalogView.PriceColumns.Length!=2) throw new Exception("The capture shows the Albariño with General and Terraza.");
         Wait(()=>catalogView.ProductPhoto is not null&&catalogView.Images.Waiting==0&&catalogView.Products.Take(8).Where(p=>p.Product.ImageSha is not null).All(p=>p.Thumbnail is not null),"the capture shows the bottles");
         Fits("catalog","SaveProductButton");
+        // ===== C2b (plan 2026-10-14): Oferta: cartas y menus con lista, pases numerados y platos =====
+        // Ofertas de ejemplo COHERENTES con el comedor de C2, sus cuentas y el catalogo de vinos: la Degustacion Costina de la Mesa 1 (seis
+        // pases con los platos que sirve; la salsa de vieiras, en el Pase), el Menu del dia de la Mesa 4 (platos a elegir; la sopa,
+        // desactivada, ya no la ofrece la configuracion) y la Carta de las Mesas 3 y 7 (platos del catalogo con la estacion de su producto;
+        // la tarta, retirada), mas una degustacion de verano desactivada. Sus productos-menu son los del catalogo (categoria Menus, que la
+        // caja no vende sueltos) y los vendibles de caja salen del catalogo de vinos como los calcula el motor. Elegir, buscar y filtrar no
+        // envian nada; cada orden lleva la oferta, el pase y el plato elegidos (F01).
+        Costina.Client.OfferDishDto MenuDish(string offer,string course,string id,string name,string station,int sort,bool active=true,string? product=null)=>new(offer,course,id,name,station,product,sort,active);
+        Costina.Client.OfferCourseDto MenuPass(string offer,string id,string name,int sort,params (string Id,string Name,string Station)[] dishes)=>new(id,name,sort,true,[..dishes.Select((d,i)=>MenuDish(offer,id,d.Id,d.Name,d.Station,i))]);
+        Costina.Client.OfferItemDto CarteItem(string product,string name,string station,int sort,bool active=true)=>new(product,"racion",name,"Ración",station,sort,active);
+        Costina.Client.OfferDto[] sampleOffersC2b=[
+            new("DEGUSTACION","Degustación Costiña","tasting","menu-degustacion","any",null,null,126,0,true,[
+                MenuPass("DEGUSTACION","aperitivos","Aperitivos",0,("aperitivos","Aperitivos de la casa","cold")),MenuPass("DEGUSTACION","mar","Mar",1,("zamburinas","Zamburiñas a la plancha","hot")),
+                MenuPass("DEGUSTACION","arroz","Arroz",2,("arroz","Arroz de bogavante","hot")),MenuPass("DEGUSTACION","pescado","Pescado",3,("rodaballo","Rodaballo al horno","hot"),("salsa","Salsa de vieiras","pase")),
+                MenuPass("DEGUSTACION","carne","Carne",4,("lomo","Lomo de vaca gallega","hot")),new("postre","Postre",5,true,[MenuDish("DEGUSTACION","postre","filloas","Filloas","cold",0,product:"filloas")])]),
+            new("DIA","Menú del día","set-menu","menu-dia","lunch","2026-09-01","2026-12-31",31,1,true,[
+                new("entrantes","Entrantes",0,true,[MenuDish("DIA","entrantes","ensalada","Ensalada de la huerta","cold",0),MenuDish("DIA","entrantes","sopa","Sopa del día","hot",1,active:false)]),
+                MenuPass("DIA","principales","Principales",1,("merluza","Merluza a la gallega","hot"),("carrillera","Carrillera al vino","hot")),
+                new("postres","Postres",2,true,[MenuDish("DIA","postres","tarta","Tarta de queso","cold",0,product:"tarta"),MenuDish("DIA","postres","flan","Flan de huevo","cold",1)])]),
+            new("CARTA","Carta","a-la-carte",null,"any",null,null,127,2,true,[
+                new("entrantes","Entrantes",0,true,[],[CarteItem("pulpo","Pulpo á feira","cold",0),CarteItem("croquetas","Croquetas de la casa","hot",1)]),
+                new("principales","Principales",1,true,[],[CarteItem("lubina","Lubina a la plancha","hot",0)]),
+                new("postres","Postres",2,true,[],[CarteItem("filloas","Filloas","cold",0),CarteItem("tarta","Tarta de queso","cold",1,active:false)])]),
+            new("VERANO","Degustación de verano","tasting","menu-verano","dinner","2026-06-15","2026-09-15",56,3,false,[
+                MenuPass("VERANO","aperitivos","Aperitivos",0,("gazpacho","Gazpacho de tomate","cold")),MenuPass("VERANO","pescado","Pescado",1,("sardinas","Sardinas asadas","hot")),
+                MenuPass("VERANO","postre","Postre",2,("melon","Melón con hierbabuena","cold"))])];
+        server.CheckoutCatalog=[..wineCatalog.Products.Where(p=>p.Active&&p.CategoryId!="menus").SelectMany(p=>p.Presentations.Where(s=>s.Active).Select(s=>(Product:p,Presentation:s,
+                Price:s.Prices.Where(x=>x.TariffId=="general"&&string.CompareOrdinal(x.ValidFrom,wineCatalog.Today)<=0).OrderByDescending(x=>x.ValidFrom,StringComparer.Ordinal).FirstOrDefault())))
+            .Where(t=>t.Price is not null).Select(t=>new Costina.Client.ProductChoice(t.Product.Id,t.Product.Name,t.Presentation.Name,t.Price!.PriceCents,t.Presentation.Id,wineCatalog.Categories.Single(c=>c.Id==t.Product.CategoryId).Name,"general"))];
+        var offersPanel=(FrameworkElement)window.FindName("OffersView");
+        T InOffers<T>(string name) where T:FrameworkElement=>(T)offersPanel.FindName(name);
+        bool OfferShows(string name)=>InOffers<FrameworkElement>(name).IsVisible;
+        bool OfferReady(string name)=>InOffers<Button>(name) is {IsVisible:true,IsEnabled:true};
+        var offerList=InOffers<ListBox>("OfferList"); var kindChips=InOffers<ListBox>("KindChips"); var offerSearch=InOffers<TextBox>("OfferSearch");
+        var dishList=InOffers<ListBox>("DishList"); var itemList=InOffers<ListBox>("ItemList"); var offerScroll=InOffers<ScrollViewer>("OfferScroll");
+        void OpenOffers(string what)
+        {
+            var before=server.Count("GET","erp/offers");
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); tabs.SelectedItem=(TabItem)window.FindName("OffersTab"); window.UpdateLayout();
+            Wait(()=>!window.Shell.Busy&&server.Count("GET","erp/offers")>before,what); window.UpdateLayout();
+        }
+        void PickOffer(string id){ offerList.SelectedItem=offersView.Offers.Single(o=>o.Offer.Id==id); window.UpdateLayout(); }   // como pulsar la tarjeta
+        // Pulsa la fila de un pase (de las de antes o despues del desplegado), como una persona.
+        void PickCourseRow(string id)
+        {
+            window.UpdateLayout();
+            var row=Descendants<Button>(offersPanel).FirstOrDefault(b=>b.IsVisible&&b.DataContext is Costina.Desktop.ViewModels.OfferCourseRow r&&r.Course.Id==id)??throw new Exception("No row painted for the course "+id);
+            Press(row,"pase "+id); window.UpdateLayout();
+        }
+        void SendOffer(string button,string what)
+        {
+            var before=server.Count("POST","");
+            Press(InOffers<Button>(button),what);
+            Wait(()=>!window.Shell.Busy&&server.Count("POST","")>before,what+" is sent"); window.UpdateLayout();
+        }
+        string OfferRowsText()=>string.Join(" | ",offersView.Offers.Select(o=>o.Offer.Name+": "+o.Detail)).Replace(' ',' ');
+        string CourseRowsText()=>string.Join(" | ",offersView.Courses.Select(c=>$"{c.Number} {c.Course.Name}: {c.Detail} ({c.Count})"));
+        string DishRowsText()=>string.Join(" | ",offersView.Dishes.Select(d=>d.ToString()));
+        string ItemRowsText()=>string.Join(" | ",offersView.Items.Select(i=>i.ToString()));
+        string Days()=>string.Concat(InOffers<StackPanel>("OfferDaysPanel").Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Select(t=>t.IsChecked==true?t.Content as string:"·"));
+        void OffersFit(string what,string bottom)
+        {
+            window.Shell.Status=""; window.UpdateLayout();
+            window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            var button=InOffers<Button>(bottom);
+            if(button.TranslatePoint(new Point(0,button.ActualHeight),offersPanel).Y>offersPanel.ActualHeight+0.5) throw new Exception(what+": the ficha keeps its buttons in view.");
+            if(Math.Abs(InOffers<FrameworkElement>("OffersPane").ActualWidth-330)>0.5||InOffers<FrameworkElement>("OfferPanel").ActualWidth<520) throw new Exception(what+": the offer list keeps 330 px and the ficha the rest.");
+            if(Clipped(offersPanel) is {Length:>0} clipped) throw new Exception(what+" clips text: "+string.Join(" | ",clipped));
+            if(NestedScrolls(offersPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
+            RefuseRaw(window,what);
+        }
+        // Sin ofertas (una instalacion recien hecha): la lista explica que falta y ofrece crear la primera; la ficha no muestra campos.
+        server.Offers=[]; window.Shell.Status="";
+        OpenOffers("the offers view reads an empty list");
+        if(offersView.Offers.Length!=0||!offersView.ShowListEmpty||offersView.ListEmptyHeading!="Aún no hay ofertas"||offersView.ListEmptyText!="Crea la primera: una degustación, un menú cerrado o una carta."
+            ||!OfferReady("EmptyNewOfferButton")||OfferShows("EmptyShowAllButton")||OfferShows("OfferList")||OfferShows("OfferSearch")||OfferShows("KindChips")||!OfferReady("NewOfferButton")
+            ||!OfferShows("OfferEmpty")||OfferShows("OfferDetail")||offersView.EmptyHeading!="Sin ofertas todavía"||offersView.Summary!="Aún no hay ofertas: crea la primera con «Nueva oferta»."
+            ||!Painted(offersPanel).Contains("Aún no hay ofertas"))
+            throw new Exception("Without offers the list says what is missing and offers 'Nueva oferta'; the ficha shows no fields: "+offersView.ListEmptyHeading+" / "+offersView.EmptyHeading);
+        OffersFit("offers-empty","NewOfferButton"); Save(Shot(window),"offers-empty.png");
+        // El alta: la ficha de la oferta nueva (codigo editable, precio o producto de un menu, sin pases todavia); "Cancelar" no envia nada.
+        var postsBeforeNewOffer=server.Count("POST","");
+        Press(InOffers<Button>("EmptyNewOfferButton"),"Nueva oferta (sin ofertas)");
+        if(!offersView.NewOffer||!OfferShows("OfferDetail")||offersView.OfferTitle!="Nueva oferta"||offersView.OfferContext!="Alta de oferta"||offersView.OfferSaveText!="Crear oferta"
+            ||!OfferReady("CancelOfferButton")||OfferShows("DeactivateOfferButton")||OfferShows("ReactivateOfferButton")||OfferShows("CoursesArea")||!OfferShows("NewOfferCoursesText")||!OfferShows("NewMenuFields")
+            ||offersView.KindHelp!="Degustación: se sirven todos sus platos, pase a pase."||offersView.OfferProductText!="Al crearla se crea también su producto-menú en el catálogo (categoría Menús)."
+            ||!Descendants<TextBox>(offersPanel).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Código de la oferta").IsEnabled)
+            throw new Exception("'Nueva oferta' opens the new-offer ficha: "+offersView.OfferTitle);
+        Press(InOffers<Button>("CancelOfferButton"),"Cancelar el alta de oferta");
+        if(offersView.NewOffer||OfferShows("OfferDetail")||!OfferShows("OfferEmpty")||server.Count("POST","")!=postsBeforeNewOffer) throw new Exception("Cancelling the new offer returns to the empty ficha and sends nothing.");
+        // Las ofertas de ejemplo: chips de tipo con su recuento, resumen y una fila por oferta con su tipo, servicio, pases y vigencia.
+        server.Offers=sampleOffersC2b;
+        OpenOffers("the offers view reads the sample offers");
+        if(!offersView.KindFilters.Select(k=>k.Label).SequenceEqual(["Todas · 4","Degustación · 2","Menú cerrado · 1","Carta · 1"])||offersView.KindFilter!="all"||kindChips.SelectedValue as string!="all"
+            ||offersView.Summary!="3 ofertas activas · 1 desactivada · los menús se cobran por persona y la carta, plato a plato"||!OfferShows("OfferSearch")||!OfferShows("KindChips"))
+            throw new Exception("Type chips and the summary carry their counts: "+string.Join(",",offersView.KindFilters.Select(k=>k.Label))+" / "+offersView.Summary);
+        if(OfferRowsText()!="Degustación Costiña: Degustación · Comida y cena · 6 pases · sin fechas | Menú del día: Menú cerrado · Comida · 3 pases · del 01/09/2026 al 31/12/2026"
+            +" | Carta: Carta · Comida y cena · 3 pases · sin fechas | Degustación de verano: Degustación · Cena · 3 pases · del 15/06/2026 al 15/09/2026")
+            throw new Exception("Each row carries its kind, service, active courses and validity: "+OfferRowsText());
+        if(!offersView.Offers[1].Detail.EndsWith(" · del 01/09/2026 al 31/12/2026",StringComparison.Ordinal)) throw new Exception("The validity of a row never breaks in two lines: "+offersView.Offers[1].Detail);
+        if(offerList.ItemContainerGenerator.ContainerFromItem(offersView.Offers[3]) is not ListBoxItem summerRow||!Painted(summerRow).Contains("Desactivada")
+            ||offersView.Offers.Take(3).Any(o=>offerList.ItemContainerGenerator.ContainerFromItem(o) is ListBoxItem row&&Painted(row).Contains("Desactivada")))
+            throw new Exception("Only the deactivated offer is marked 'Desactivada', in words.");
+        // Sin eleccion previa se elige la primera oferta, como siempre: datos, nota de su producto-menu (por su codigo: la caja no vende los
+        // menus sueltos) y los pases numerados; el primero, desplegado con sus platos.
+        if(offersView.SelectedOffer?.Offer.Id!="DEGUSTACION"||offerList.SelectedItem is not Costina.Desktop.ViewModels.OfferRow{Offer.Id:"DEGUSTACION"}
+            ||offerList.ItemContainerGenerator.ContainerFromItem(offerList.SelectedItem) is not ListBoxItem{IsSelected:true}
+            ||offersView.OfferContext!="Degustación · Comida y cena · de martes a domingo"||offersView.OfferTitle!="Degustación Costiña"||offersView.OfferStateText!="Activa"||offersView.OfferStateTone!="ok"
+            ||offersView.OfferId!="DEGUSTACION"||offersView.OfferKind!="tasting"||offersView.OfferService!="any"||offersView.Weekdays!=126||offersView.OfferValidFrom.Length!=0||offersView.OfferSort!="0"
+            ||offersView.OfferProductText!="Se vende por persona con su producto-menú del catálogo (código «menu-degustacion»): su precio se fija en ERP › Catálogo y tarifas."||Days()!="·MXJVSD"
+            ||!OfferReady("DeactivateOfferButton")||OfferShows("ReactivateOfferButton")||OfferShows("CancelOfferButton")||OfferShows("NewMenuFields")||OfferShows("NewOfferCoursesText"))
+            throw new Exception("The first offer is chosen and its ficha shows its data, its menu product and its days as pressed toggles: "+offersView.OfferContext+" / "+Days());
+        if(CourseRowsText()!="1 Aperitivos: Aperitivos de la casa (1 plato) | 2 Mar: Zamburiñas a la plancha (1 plato) | 3 Arroz: Arroz de bogavante (1 plato)"
+            +" | 4 Pescado: Rodaballo al horno, Salsa de vieiras (2 platos) | 5 Carne: Lomo de vaca gallega (1 plato) | 6 Postre: Filloas (1 plato)"||offersView.CoursesTitle!="Pases · 6")
+            throw new Exception("The courses are numbered, each with its active dishes by name and how many: "+CourseRowsText());
+        if(offersView.SelectedCourse?.Course.Id!="aperitivos"||offersView.CoursesBefore.Length!=0||offersView.CoursesAfter.Length!=5||!OfferShows("SelectedCourseCard")||DishRowsText()!="Aperitivos de la casa · Cocina fría · activo"
+            ||OfferShows("CarteArea")||!OfferShows("DishesArea")||OfferShows("DishEditor")||!OfferReady("AddDishButton")||!OfferReady("AddCourseButton")||!OfferReady("SaveCourseButton")||!OfferReady("DeactivateCourseButton"))
+            throw new Exception("The first course is unfolded in place with its dishes, their station by name and its own buttons: "+DishRowsText());
+        if(!Descendants<Border>(InOffers<FrameworkElement>("SelectedCourseLine")).Any(b=>b.Tag as string=="done"&&Painted(b).Contains("1"))) throw new Exception("The unfolded course carries its number in the accent dot.");
+        var tastingTexts=Painted(offersPanel).ToArray();
+        foreach(var text in new[]{"Oferta: cartas y menús","Nueva oferta","Degustación Costiña","Activa","Degustación · Comida y cena · de martes a domingo","Datos de la oferta","Código (fijo)","Tipo","Servicio","Nombre",
+            "Orden","Desde (AAAA-MM-DD)","Hasta (AAAA-MM-DD)","Días","Degustación","Comida y cena","Degustación: se sirven todos sus platos, pase a pase.","Pases · 6","Pase","Aperitivos","Aperitivos de la casa",
+            "Platos del pase · 1","Plato","Estación","Cocina fría","Datos del pase","Guardar pase","Desactivar pase","Guardar oferta","Desactivar oferta","Pescado","Rodaballo al horno, Salsa de vieiras","2 platos",
+            "Todas · 4","Menú cerrado · 1","Una oferta se puede abrir cuando tiene al menos un pase activo con un plato activo.","Degustación de verano","Desactivada"})
+            if(!tastingTexts.Contains(text)) throw new Exception("The offers view paints '"+text+"'.");
+        // "Nueva oferta" deja la lista sin eleccion y la ficha es la del alta; "Cancelar" vuelve a la oferta elegida antes, sin enviar nada.
+        var postsBeforeCancel=server.Count("POST","");
+        Press(InOffers<Button>("NewOfferButton"),"Nueva oferta");
+        if(!offersView.NewOffer||offerList.SelectedItem is not null||offersView.SelectedOffer is not null||OfferShows("CoursesArea")||!OfferShows("NewOfferCoursesText")||offersView.OfferId.Length!=0
+            ||offersView.OfferName.Length!=0||offersView.OfferSort!="4"||Days()!="LMXJVSD"||!OfferReady("SaveOfferButton")||!OfferReady("CancelOfferButton"))
+            throw new Exception("'Nueva oferta' leaves the list with nothing chosen and opens an empty new-offer ficha.");
+        OffersFit("offers-new","SaveOfferButton"); Save(Shot(window),"offers-new.png");
+        Press(InOffers<Button>("CancelOfferButton"),"Cancelar el alta de oferta");
+        if(offersView.NewOffer||offersView.SelectedOffer?.Offer.Id!="DEGUSTACION"||offerList.SelectedItem is not Costina.Desktop.ViewModels.OfferRow{Offer.Id:"DEGUSTACION"}||offersView.SelectedCourse?.Course.Id!="aperitivos"
+            ||offersView.OfferId!="DEGUSTACION"||server.Count("POST","")!=postsBeforeCancel) throw new Exception("Cancelling the new offer returns to the offer chosen before and sends nothing.");
+        // Pulsar la fila de un pase lo despliega en su sitio (los de antes arriba, los de despues abajo), sin leer ni enviar nada.
+        var requestsBeforePick=server.Requests.Length;
+        PickCourseRow("pescado");
+        if(offersView.SelectedCourse?.Course.Id!="pescado"||!offersView.CoursesBefore.Select(c=>c.Course.Id).SequenceEqual(["aperitivos","mar","arroz"])||!offersView.CoursesAfter.Select(c=>c.Course.Id).SequenceEqual(["carne","postre"])
+            ||DishRowsText()!="Rodaballo al horno · Cocina caliente · activo | Salsa de vieiras · Pase · activo"||offersView.DishesTitle!="Platos del pase · 2"||server.Requests.Length!=requestsBeforePick
+            ||!Painted(InOffers<FrameworkElement>("SelectedCourseCard")).Contains("Salsa de vieiras")||!Painted(InOffers<FrameworkElement>("SelectedCourseCard")).Contains("Pase"))
+            throw new Exception("Clicking a course row unfolds it in place with its dishes and stations by name, and reads or sends nothing: "+DishRowsText());
+        // Elegir un plato abre su ficha debajo de la tabla (y la trae a la vista); "Guardar plato" envia el cuerpo de siempre del plato elegido.
+        dishList.SelectedItem=offersView.Dishes[1]; window.UpdateLayout();
+        if(!OfferShows("DishEditor")||offersView.DishFormTitle!="Plato: Salsa de vieiras"||offersView.DishId!="salsa"||offersView.DishName!="Salsa de vieiras"||offersView.DishStationId!="pase"||offersView.DishSort!="1"
+            ||!Painted(InOffers<ComboBox>("DishStationBox")).Contains("Pase")||!OfferReady("DeactivateDishButton")||OfferShows("ReactivateDishButton")||OfferShows("CancelDishButton")||offersView.DishSaveText!="Guardar plato"
+            ||dishList.ItemContainerGenerator.ContainerFromItem(offersView.SelectedDish) is not ListBoxItem{IsSelected:true})
+            throw new Exception("Choosing a dish opens its ficha with its station by name: "+offersView.DishStationId);
+        var saveDishButton=InOffers<Button>("SaveDishButton");
+        bool DishEditorInView()=>saveDishButton.TranslatePoint(new Point(0,0),offerScroll).Y>=-0.5&&saveDishButton.TranslatePoint(new Point(0,saveDishButton.ActualHeight),offerScroll).Y<=offerScroll.ViewportHeight+0.5;
+        if(!DishEditorInView())
+        {
+            dishList.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,0,System.Windows.Input.MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonUpEvent});
+            Wait(()=>{ window.UpdateLayout(); return DishEditorInView(); },"clicking a dish brings its ficha into view");
+        }
+        window.Shell.Status="";
+        SendOffer("SaveDishButton","Guardar plato");
+        if(CatalogPost()!="erp/offers/commands/dish-update {\"offerId\":\"DEGUSTACION\",\"courseId\":\"pescado\",\"id\":\"salsa\",\"name\":\"Salsa de vieiras\",\"stationId\":\"pase\",\"productId\":\"\",\"sort\":1}"
+            ||window.Shell.Status!="Guardar plato Salsa de vieiras: confirmado por el servidor.") throw new Exception("'Guardar plato' sends the usual body of the chosen offer, course and dish: "+CatalogPost()+" / "+window.Shell.Status);
+        if(offersView.SelectedOffer?.Offer.Id!="DEGUSTACION"||offersView.SelectedCourse?.Course.Id!="pescado"||offersView.SelectedDish?.Dish.Id!="salsa"||!OfferShows("DishEditor")||offersView.DishStationId!="pase")
+            throw new Exception("After the command the offers are read again and the same offer, course and dish stay chosen.");
+        // Un plato con su producto del catalogo lo nombra; otro pase empieza sin plato elegido.
+        PickCourseRow("postre");
+        if(offersView.SelectedDish is not null||OfferShows("DishEditor")) throw new Exception("Another course starts with no dish chosen.");
+        dishList.SelectedItem=offersView.Dishes[0]; window.UpdateLayout();
+        if(offersView.DishProductId!="filloas"||offersView.DishProductText!="Producto del catálogo: Filloas"||!Painted(offersPanel).Contains("Producto del catálogo: Filloas"))
+            throw new Exception("A dish names its catalogue product: "+offersView.DishProductText);
+        // F01: elegir otra oferta muestra SU primer pase, sin plato elegido, desde arriba (nada de la oferta anterior queda elegido).
+        PickOffer("DIA");
+        if(offersView.SelectedDish is not null||offersView.SelectedItem is not null||offersView.SelectedCourse?.Course.Id!="entrantes"||offersView.Dishes.Any(d=>d.Dish.OfferId!="DIA")||offerScroll.VerticalOffset!=0
+            ||offersView.ToggleDishCommand.CanExecute(null)) throw new Exception("Choosing another offer shows its own first course, with no dish chosen, from the top.");
+        if(offersView.OfferContext!="Menú cerrado · Comida · de lunes a viernes"||offersView.OfferValidFrom!="2026-09-01"||offersView.OfferValidTo!="2026-12-31"||Days()!="LMXJV··"
+            ||offersView.KindHelp!="Menú cerrado: cada comensal elige un plato por pase antes de enviarlo a cocina."||!offersView.OfferProductText.Contains("«menu-dia»",StringComparison.Ordinal))
+            throw new Exception("The set menu ficha: lunch from Monday to Friday, its dates and its menu product: "+offersView.OfferContext+" / "+Days());
+        if(CourseRowsText()!="1 Entrantes: Ensalada de la huerta (1 plato · 1 desactivado) | 2 Principales: A elegir: Merluza a la gallega o Carrillera al vino (2 platos) | 3 Postres: A elegir: Tarta de queso o Flan de huevo (2 platos)")
+            throw new Exception("A set menu course says which dishes are to choose from: "+CourseRowsText());
+        // Un plato desactivado lo dice con su palabra y ofrece reactivarlo.
+        if(DishRowsText()!="Ensalada de la huerta · Cocina fría · activo | Sopa del día · Cocina caliente · desactivado") throw new Exception("Deactivated dishes stay listed: "+DishRowsText());
+        dishList.SelectedItem=offersView.Dishes[1]; window.UpdateLayout();
+        if(!OfferReady("ReactivateDishButton")||OfferShows("DeactivateDishButton")||!Painted(dishList).Contains("Desactivado")) throw new Exception("A deactivated dish says so and offers reactivating.");
+        SendOffer("ReactivateDishButton","Reactivar plato");
+        if(CatalogPost()!="erp/offers/commands/dish-reactivate {\"offerId\":\"DIA\",\"courseId\":\"entrantes\",\"id\":\"sopa\"}") throw new Exception("Reactivating sends the usual body: "+CatalogPost());
+        // "Plato": un alta sin plato elegido en la tabla, en la primera estacion de cocina; "Cancelar" vuelve al plato de antes sin enviar nada.
+        PickCourseRow("principales");
+        dishList.SelectedItem=offersView.Dishes[0]; window.UpdateLayout();
+        var postsBeforeNewDish=server.Count("POST","");
+        Press(InOffers<Button>("AddDishButton"),"Plato");
+        if(!offersView.NewDish||offersView.SelectedDish is not null||dishList.SelectedItem is not null||offersView.DishFormTitle!="Nuevo plato"||offersView.DishSaveText!="Crear plato"||offersView.DishId.Length!=0
+            ||offersView.DishStationId!="cold"||!Painted(InOffers<ComboBox>("DishStationBox")).Contains("Cocina fría")||!OfferReady("CancelDishButton")||OfferShows("DeactivateDishButton")||offersView.DishSort!="2"
+            ||!Descendants<TextBox>(offersPanel).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Código del plato").IsEnabled)
+            throw new Exception("'Plato' opens a new dish in the first kitchen station, with nothing chosen in the table: "+offersView.DishStationId);
+        offersView.DishProductId="pulpo";
+        if(offersView.DishProductText!="Producto del catálogo: Pulpo á feira") throw new Exception("A typed product code is named when it is a sellable: "+offersView.DishProductText);
+        Press(InOffers<Button>("CancelDishButton"),"Cancelar el plato nuevo");
+        if(offersView.NewDish||offersView.SelectedDish?.Dish.Id!="merluza"||offersView.DishFormTitle!="Plato: Merluza a la gallega"||offersView.DishProductId.Length!=0||server.Count("POST","")!=postsBeforeNewDish)
+            throw new Exception("Cancelling the new dish returns to the dish chosen before and sends nothing.");
+        // "Pase": el alta va al final de la lista, ningun pase queda desplegado; al confirmarlo el servidor, el nuevo queda elegido y vacio.
+        Press(InOffers<Button>("AddCourseButton"),"Pase");
+        if(!offersView.NewCourse||offersView.SelectedCourse is not null||OfferShows("SelectedCourseCard")||!OfferShows("NewCoursePanel")||offersView.CoursesBefore.Length!=3||offersView.CoursesAfter.Length!=0
+            ||offersView.CourseSort!="3"||!OfferReady("CancelCourseButton")||!OfferReady("CreateCourseButton")||offersView.StartDishCommand.CanExecute(null))
+            throw new Exception("'Pase' opens the new course at the end of the list with no course unfolded.");
+        Press(InOffers<Button>("CancelCourseButton"),"Cancelar el pase nuevo");
+        if(offersView.NewCourse||offersView.SelectedCourse?.Course.Id!="principales"||!OfferShows("SelectedCourseCard")) throw new Exception("Cancelling the new course unfolds the course chosen before.");
+        Press(InOffers<Button>("AddCourseButton"),"Pase");
+        offersView.CourseId="cafe"; offersView.CourseName="Café y dulces"; window.UpdateLayout();
+        SendOffer("CreateCourseButton","Crear pase");
+        if(CatalogPost()!="erp/offers/commands/course-create {\"offerId\":\"DIA\",\"id\":\"cafe\",\"name\":\"Café y dulces\",\"sort\":3}"||offersView.NewCourse||offersView.SelectedCourse?.Course.Id!="cafe"
+            ||!OfferShows("SelectedCourseCard")||!offersView.DishesEmpty||!OfferShows("NoDishesText")||offersView.DishesEmptyText!="Este pase aún no tiene platos: añade el primero con «Plato»."
+            ||offersView.Courses.Last().Detail!="Sin platos activos"||offersView.CoursesTitle!="Pases · 4"||OfferShows("NewCoursePanel"))
+            throw new Exception("A created course is chosen once the server confirms it, unfolded and explained while empty: "+CatalogPost());
+        // Un chip de tipo que esconde la oferta elegida la deselecciona del todo: la ficha dice que elegir y nada queda accionable.
+        kindChips.SelectedValue="a-la-carte"; window.UpdateLayout();
+        if(offersView.KindFilter!="a-la-carte"||!offersView.Offers.Select(o=>o.Offer.Id).SequenceEqual(["CARTA"])||offersView.SelectedOffer is not null||offersView.HasOfferContext||offerList.SelectedItem is not null
+            ||!OfferShows("OfferEmpty")||OfferShows("OfferDetail")||offersView.EmptyHeading!="Elige una oferta"||offersView.ToggleOfferCommand.CanExecute(null)||offersView.SaveOfferCommand.CanExecute(null)
+            ||offersView.StartCourseCommand.CanExecute(null)||offersView.SaveDishCommand.CanExecute(null)||offersView.Courses.Length!=0||offersView.Dishes.Length!=0
+            ||kindChips.ItemContainerGenerator.ContainerFromIndex(3) is not ListBoxItem{IsSelected:true})
+            throw new Exception("A type chip that hides the chosen offer deselects it completely: the ficha says what to pick and nothing is actionable.");
+        OffersFit("offers-unselected","NewOfferButton"); Save(Shot(window),"offers-unselected.png");
+        // La carta: sin producto-menu; cada pase lleva platos del catalogo (producto y presentacion, con la estacion de su producto) y la fila
+        // de anadir del catalogo (sin los menus, que no se venden sueltos).
+        PickOffer("CARTA");
+        if(offersView.OfferContext!="Carta · Comida y cena · todos los días"||!offersView.OfferProductText.StartsWith("Carta: sin producto-menú",StringComparison.Ordinal)||OfferShows("NewMenuFields")
+            ||!OfferShows("CarteArea")||OfferShows("DishesArea")||OfferShows("AddDishButton")||offersView.SelectedCourse?.Course.Id!="entrantes"||offersView.DishesTitle!="Platos de la carta · 2"
+            ||CourseRowsText()!="1 Entrantes: Pulpo á feira, Croquetas de la casa (2 platos) | 2 Principales: Lubina a la plancha (1 plato) | 3 Postres: Filloas (1 plato · 1 desactivado)"
+            ||ItemRowsText()!="Pulpo á feira · Ración · Cocina fría · activo | Croquetas de la casa · Ración · Cocina caliente · activo"||!Painted(itemList).Contains("Pulpo á feira · Ración"))
+            throw new Exception("A carta lists its courses with catalogue dishes, each with its presentation and station: "+CourseRowsText()+" / "+ItemRowsText());
+        var itemChoiceBox=InOffers<ComboBox>("ItemChoiceBox");
+        if(offersView.SelectedItemChoice is null||!Equals(itemChoiceBox.SelectedItem,offersView.SelectedItemChoice)||!Painted(itemChoiceBox).Contains(offersView.SelectedItemChoice.ToString())
+            ||offersView.ItemChoices.Any(c=>c.CategoryName=="Menús")||!offersView.AddItemCommand.CanExecute(null)) throw new Exception("The carta adder shows the chosen sellable: "+offersView.SelectedItemChoice);
+        itemChoiceBox.SelectedItem=offersView.ItemChoices.Single(c=>c.Id=="pulpo"&&c.PresentationId=="media"); window.UpdateLayout();
+        SendOffer("AddItemButton","Añadir a la carta");
+        if(CatalogPost()!="erp/offers/commands/item-create {\"offerId\":\"CARTA\",\"courseId\":\"entrantes\",\"productId\":\"pulpo\",\"presentationId\":\"media\",\"sort\":2}"
+            ||offersView.SelectedItem?.Key!="pulpo/media"||!OfferReady("RemoveItemButton")||OfferShows("RestoreItemButton")||offersView.SelectedCourse?.Course.Id!="entrantes"
+            ||!ItemRowsText().EndsWith("Pulpo á feira · Media ración · Cocina fría · activo",StringComparison.Ordinal)||offersView.SelectedItemChoice?.PresentationId!="media")
+            throw new Exception("'Añadir' sends the chosen sellable to the chosen course and the added dish is chosen after the re-read: "+CatalogPost());
+        PickCourseRow("postres");
+        if(ItemRowsText()!="Filloas · Ración · Cocina fría · activo | Tarta de queso · Ración · Cocina fría · desactivado"||offersView.SelectedItem is not null||OfferShows("RemoveItemButton")||OfferShows("RestoreItemButton"))
+            throw new Exception("Another course lists its own carta dishes with none chosen: "+ItemRowsText());
+        itemList.SelectedItem=offersView.Items[1]; window.UpdateLayout();
+        if(!OfferReady("RestoreItemButton")||OfferShows("RemoveItemButton")||!Painted(itemList).Contains("Retirado")) throw new Exception("A withdrawn carta dish says so and offers putting it back.");
+        OffersFit("offers-carta","SaveOfferButton"); Save(Shot(window),"offers-carta.png");
+        SendOffer("RestoreItemButton","Volver a la carta");
+        if(CatalogPost()!="erp/offers/commands/item-reactivate {\"offerId\":\"CARTA\",\"courseId\":\"postres\",\"productId\":\"tarta\",\"presentationId\":\"racion\"}"||offersView.SelectedItem?.Key!="tarta/racion")
+            throw new Exception("'Volver a la carta' sends the usual body of the chosen carta dish: "+CatalogPost());
+        // Buscar: sin distinguir tildes; los chips cuentan dentro de la busqueda; la elegida sigue elegida mientras se vea y, si no, se deselecciona.
+        kindChips.SelectedValue="all"; window.UpdateLayout();
+        if(offersView.Offers.Length!=4||offersView.SelectedOffer?.Offer.Id!="CARTA"||offersView.SelectedCourse?.Course.Id!="postres"||offerList.SelectedItem is not Costina.Desktop.ViewModels.OfferRow{Offer.Id:"CARTA"})
+            throw new Exception("A chip that still shows the chosen offer keeps it chosen, with its course.");
+        offerSearch.Text="costina"; window.UpdateLayout();
+        if(!offersView.Offers.Select(o=>o.Offer.Id).SequenceEqual(["DEGUSTACION"])||offersView.SelectedOffer is not null||offersView.HasOfferContext
+            ||!offersView.KindFilters.Select(k=>k.Label).SequenceEqual(["Todas · 1","Degustación · 1","Menú cerrado · 0","Carta · 0"]))
+            throw new Exception("The search ignores accents ('costina' finds Costiña), counts within it and deselects what it hides: "+string.Join(",",offersView.KindFilters.Select(k=>k.Label)));
+        offerSearch.Text="verano"; window.UpdateLayout(); PickOffer("VERANO");
+        if(offersView.OfferStateText!="Desactivada"||offersView.OfferStateTone!="other"||!OfferReady("ReactivateOfferButton")||OfferShows("DeactivateOfferButton")||offersView.OfferContext!="Degustación · Cena · de jueves a sábado"
+            ||!offersView.OfferProductText.Contains("«menu-verano»",StringComparison.Ordinal)) throw new Exception("A deactivated offer says so and offers reactivating: "+offersView.OfferContext);
+        offerSearch.Text="zzz"; window.UpdateLayout();
+        if(!offersView.ShowListEmpty||offersView.ListEmptyHeading!="Ninguna oferta coincide"||offersView.ListEmptyText!="Ninguna oferta coincide con «zzz»."||!OfferReady("EmptyShowAllButton")||OfferShows("EmptyNewOfferButton")
+            ||offersView.SelectedOffer is not null||!OfferShows("OfferSearch")||!OfferShows("KindChips")) throw new Exception("A search without results says so and offers to see them all: "+offersView.ListEmptyText);
+        kindChips.SelectedValue="set-menu"; window.UpdateLayout();
+        if(offersView.ListEmptyText!="Ninguna oferta de tipo Menú cerrado coincide con «zzz».") throw new Exception("The empty list names the chosen type: "+offersView.ListEmptyText);
+        Press(InOffers<Button>("EmptyShowAllButton"),"Ver todas las ofertas");
+        if(offersView.Search.Length!=0||offerSearch.Text.Length!=0||offersView.KindFilter!="all"||offersView.Offers.Length!=4||offersView.SelectedOffer is not null||!OfferShows("OfferEmpty")
+            ||kindChips.ItemContainerGenerator.ContainerFromIndex(0) is not ListBoxItem{IsSelected:true}) throw new Exception("'Ver todas las ofertas' clears the search and the type.");
+        // Guardar y desactivar la oferta elegida: los cuerpos de siempre.
+        PickOffer("DIA");
+        SendOffer("SaveOfferButton","Guardar oferta");
+        if(CatalogPost()!="erp/offers/commands/offer-update {\"id\":\"DIA\",\"name\":\"Menú del día\",\"kind\":\"set-menu\",\"service\":\"lunch\",\"validFrom\":\"2026-09-01\",\"validTo\":\"2026-12-31\",\"weekdays\":31,\"sort\":1}"
+            ||window.Shell.Status!="Guardar oferta Menú del día: confirmado por el servidor."||offersView.SelectedOffer?.Offer.Id!="DIA") throw new Exception("'Guardar oferta' sends the usual body of the chosen offer: "+CatalogPost());
+        SendOffer("DeactivateOfferButton","Desactivar oferta");
+        if(CatalogPost()!="erp/offers/commands/offer-deactivate {\"id\":\"DIA\"}") throw new Exception("'Desactivar oferta' sends the usual body: "+CatalogPost());
+        // Alta con una busqueda escrita: la lista queda sin eleccion; los dias son botones que escriben en la oferta; al confirmarla el
+        // servidor, la busqueda se borra y la nueva queda elegida, sin pases todavia (lo dice).
+        offerSearch.Text="carta"; window.UpdateLayout();
+        Press(InOffers<Button>("NewOfferButton"),"Nueva oferta");
+        if(!offersView.NewOffer||offerList.SelectedItem is not null||offersView.SelectedOffer is not null||OfferShows("CoursesArea")) throw new Exception("'Nueva oferta' leaves the list with nothing chosen.");
+        InOffers<ComboBox>("OfferKindBox").SelectedValue="a-la-carte"; window.UpdateLayout();
+        if(OfferShows("NewMenuFields")||offersView.KindHelp!="Carta: cada pase agrupa platos del catálogo que se cobran al pedirlos.") throw new Exception("A new carta asks for no menu product and explains the kind.");
+        InOffers<StackPanel>("OfferDaysPanel").Children.OfType<System.Windows.Controls.Primitives.ToggleButton>().Last().IsChecked=false; window.UpdateLayout();
+        if(offersView.Weekdays!=63||Days()!="LMXJVS·") throw new Exception("A day toggle writes into the offer's weekdays: "+offersView.Weekdays);
+        offersView.OfferId="TERRAZA"; offersView.OfferName="Carta de terraza"; window.UpdateLayout();
+        SendOffer("SaveOfferButton","Crear oferta");
+        if(CatalogPost()!="erp/offers/commands/offer-create {\"id\":\"TERRAZA\",\"name\":\"Carta de terraza\",\"kind\":\"a-la-carte\",\"service\":\"any\",\"validFrom\":\"\",\"validTo\":\"\",\"weekdays\":63,\"sort\":4,\"priceCents\":null,\"productId\":\"\"}"
+            ||offersView.NewOffer||offersView.Search.Length!=0||offerSearch.Text.Length!=0||offersView.SelectedOffer?.Offer.Id!="TERRAZA"||offersView.Offers.Length!=5||!offersView.CoursesEmpty||!OfferShows("NoCoursesText")
+            ||offersView.OfferContext!="Carta · Comida y cena · de lunes a sábado"||offerList.SelectedItem is not Costina.Desktop.ViewModels.OfferRow{Offer.Id:"TERRAZA"})
+            throw new Exception("A created offer is chosen once the server confirms it, visible (the search is cleared) and explained while it has no courses: "+CatalogPost());
+        // Las capturas: el Menu del dia con sus principales a elegir y la merluza elegida (offers-menu.png); la Degustacion Costina con sus seis
+        // pases y el Pescado desplegado es la de offers.png del bucle de capturas. Las ofertas vuelven a ser las de ejemplo.
+        server.Offers=sampleOffersC2b;
+        OpenOffers("the offers are read again for the captures");
+        PickOffer("DIA"); PickCourseRow("principales"); dishList.SelectedItem=offersView.Dishes[0]; window.UpdateLayout();
+        if(offersView.SelectedDish?.Dish.Id!="merluza"||!OfferShows("DishEditor")) throw new Exception("The capture shows the Menú del día with the hake chosen.");
+        offerScroll.ScrollToHome(); window.UpdateLayout();
+        OffersFit("offers-menu","SaveOfferButton"); Save(Shot(window),"offers-menu.png");
+        dishList.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,0,System.Windows.Input.MouseButton.Left){RoutedEvent=UIElement.PreviewMouseLeftButtonUpEvent});
+        Wait(()=>{ window.UpdateLayout(); return DishEditorInView(); },"clicking the hake brings its ficha into view");
+        OffersFit("offers-dish","SaveOfferButton"); Save(Shot(window),"offers-dish.png");
+        PickOffer("DEGUSTACION"); PickCourseRow("pescado");
+        if(offersView.SelectedCourse?.Course.Id!="pescado"||offersView.SelectedDish is not null) throw new Exception("The capture shows the Degustación Costiña with Pescado unfolded.");
+        OffersFit("offers","SaveOfferButton");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
@@ -1561,6 +1863,10 @@ internal static class Program
             // C2b: Caja pinta la Mesa 4 leida (la de "Ver cuenta"), sus cifras y las demas tarjetas con su cobertura en palabras.
             if(tab=="CheckoutTab"&&new[]{"Mesa 4","Pago parcial","51,00 €","Pendiente 161,00 €","Pagado de más","Pagada","Registrar pago de prueba"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingCaja)
                 throw new Exception("Caja paints the read account, its figures and the coverage of every card in words: missing '"+missingCaja+"'.");
+            // C2b: Oferta pinta la Degustacion Costina con sus seis pases numerados y el Pescado desplegado (la salsa, en el Pase).
+            if(tab=="OffersTab"&&new[]{"Degustación Costiña","Degustación · Comida y cena · de martes a domingo","Pases · 6","Pescado","Platos del pase · 2","Rodaballo al horno","Salsa de vieiras","Pase",
+                "Menú del día","Carta","Degustación de verano","Desactivada","Todas · 4"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingOffers)
+                throw new Exception("Oferta paints the chosen offer, its numbered courses and the unfolded one with its dishes: missing '"+missingOffers+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
                 "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
@@ -1679,6 +1985,8 @@ internal static class Program
             for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) pending.Push(VisualTreeHelper.GetChild(node,i));
         }
     }
+    // C2b: el texto que de verdad se ve (TextBlock visible) bajo un elemento: una palabra de un chip oculto no cuenta.
+    private static IEnumerable<string> Painted(DependencyObject root) => Descendants<TextBlock>(root).Where(t=>t.IsVisible&&t.Text.Length>0).Select(t=>t.Text);
     // C2b: textos de una linea (sin partir) que no se ven enteros: no caben en su sitio (cortados o con puntos suspensivos) o un contenedor
     // los recorta (su recorte de diseno, LayoutInformation, no deja ver el texto a lo ancho: una nota con ancho maximo, una columna
     // estrecha). Se mide el texto con su letra y se situa segun su alineacion; un texto que se parte nunca se corta.
@@ -1785,6 +2093,8 @@ internal static class Program
         // C2b: la cuenta completa de cada servicio listado (sin ella, una cuenta abierta vacia) y el catalogo de caja (vendibles con precio).
         public System.Collections.Concurrent.ConcurrentDictionary<string,Costina.Client.AccountDto> AccountDetails { get; }=new();
         public Costina.Client.ProductChoice[] CheckoutCatalog { get; set; }=[];
+        // C2b: las ofertas completas (GET erp/offers, solo del responsable).
+        public Costina.Client.OfferDto[] Offers { get; set; }=[];
         // C2: lo que lee Inicio del responsable (diagnostico, dispositivos, red) y lo que necesita un asistente de Dispositivos (solicitudes y
         // el codigo de un uso que emite POST auth/pairings).
         public Costina.Client.DiagnosticsDto? Diagnostics { get; set; }
@@ -1821,6 +2131,7 @@ internal static class Program
                     return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.DiningDto>(entry.Version,entry.Service),Costina.Client.ApiClient.Json));
                 if(path=="checkout/accounts") return Json(200,JsonSerializer.Serialize(Accounts,Costina.Client.ApiClient.Json));
                 if(path=="checkout/catalog") return Json(200,JsonSerializer.Serialize(CheckoutCatalog,Costina.Client.ApiClient.Json));
+                if(path=="erp/offers") return Json(200,JsonSerializer.Serialize(Offers,Costina.Client.ApiClient.Json));
                 if(path=="diagnostics"&&Diagnostics is not null) return Json(200,JsonSerializer.Serialize(Diagnostics,Costina.Client.ApiClient.Json));
                 if(path=="auth/devices") return Json(200,JsonSerializer.Serialize(Devices,Costina.Client.ApiClient.Json));
                 if(path=="auth/pairings/pending") return Json(200,"[]");
@@ -1846,6 +2157,32 @@ internal static class Program
             // C2b: un alta de tarifa se aplica en memoria, como el motor, para comprobar que lo recien creado queda elegido al releer.
             if(path=="erp/catalog/commands/tariff-create")
                 Catalog=Catalog with {Tariffs=[..Catalog.Tariffs,new(command.GetProperty("id").GetString()!,command.GetProperty("name").GetString()!,command.GetProperty("sort").GetInt32(),true)]};
+            // C2b: las altas de la Oferta (oferta, pase, plato y plato de la carta) tambien, con lo que el motor guardaria: un menu nuevo con
+            // su producto-menu "menu-<codigo>", una carta sin el; el plato de la carta con el nombre, la presentacion y la estacion de su producto.
+            if(path.StartsWith("erp/offers/commands/",StringComparison.Ordinal))
+            {
+                string Text(string name)=>command.GetProperty(name).GetString()!;
+                string? Date(string name)=>Text(name) is {Length:>0} date?date:null;
+                Costina.Client.OfferDto[] With(string offerId,Func<Costina.Client.OfferDto,Costina.Client.OfferDto> change)=>[..Offers.Select(o=>o.Id==offerId?change(o):o)];
+                Costina.Client.OfferCourseDto[] InCourse(Costina.Client.OfferDto o,Func<Costina.Client.OfferCourseDto,Costina.Client.OfferCourseDto> change)=>[..o.Courses.Select(c=>c.Id==Text("courseId")?change(c):c)];
+                switch(path["erp/offers/commands/".Length..])
+                {
+                    case "offer-create":
+                        Offers=[..Offers,new(Text("id"),Text("name"),Text("kind"),Text("kind")=="a-la-carte"?null:"menu-"+Text("id").ToLowerInvariant(),Text("service"),Date("validFrom"),Date("validTo"),
+                            command.GetProperty("weekdays").GetInt32(),command.GetProperty("sort").GetInt32(),true,[])];
+                        break;
+                    case "course-create":
+                        Offers=With(Text("offerId"),o=>o with {Courses=[..o.Courses,new(Text("id"),Text("name"),command.GetProperty("sort").GetInt32(),true,[],o.Kind=="a-la-carte"?[]:null)]});
+                        break;
+                    case "dish-create":
+                        Offers=With(Text("offerId"),o=>o with {Courses=InCourse(o,c=>c with {Dishes=[..c.Dishes,new(o.Id,c.Id,Text("id"),Text("name"),Text("stationId"),Text("productId") is {Length:>0} p?p:null,command.GetProperty("sort").GetInt32(),true)]})});
+                        break;
+                    case "item-create":
+                        var product=Catalog.Products.Single(p=>p.Id==Text("productId")); var presentation=product.Presentations.Single(s=>s.Id==Text("presentationId"));
+                        Offers=With(Text("offerId"),o=>o with {Courses=InCourse(o,c=>c with {Items=[..c.Items??[],new(product.Id,presentation.Id,product.Name,presentation.Name,product.StationId,command.GetProperty("sort").GetInt32(),true)]})});
+                        break;
+                }
+            }
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
         private static System.Net.Http.HttpResponseMessage Json(int status,string json)=>new((System.Net.HttpStatusCode)status){Content=new System.Net.Http.StringContent(json,System.Text.Encoding.UTF8,"application/json")};
