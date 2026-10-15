@@ -190,6 +190,16 @@ public sealed partial class ShellViewModel : ObservableObject
         Home.Sync(); Service.Sync(); Checkout.Sync(); Devices.Sync(); Organization.Sync(); Catalog.Sync(); Offers.Sync();
     }
 
+    // C2b: las comprobaciones de un formulario (codigo, nombre, orden, fecha, precio, dias) se hacen ANTES de Run, en el hilo de la
+    // ventana: una excepcion ahi salia del comando sin capturar y Windows cerraba el programa (el promotor lo vio al guardar una oferta
+    // sin codigo). Ahora se cuentan en la barra de estado y no se envia nada. No cabe dentro de Run: Run no hace nada si Busy y la
+    // orden que devuelve work lo usa.
+    internal Task Attempt(Func<Task> work)
+    {
+        try { return work(); }
+        catch (ArgumentException e) { Status = e.Message; return Task.CompletedTask; }
+    }
+
     // Coalescencia: los avisos que llegan durante una operacion no la interrumpen; se relee al terminar.
     internal async Task Run(Func<Task> work)
     {

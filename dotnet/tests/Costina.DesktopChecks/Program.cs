@@ -293,8 +293,10 @@ internal static class Program
         // revienta y muestra el precio general; fijar un precio sin tarifa se rechaza antes de enviar nada.
         catalogView.PriceTariffId=null!; catalogView.SelectedPresentation=catalogView.Presentations[1];
         if(catalogView.PriceText!="42,00") throw new Exception("Without a tariff chosen the price form shows the general price: "+catalogView.PriceText);
-        try { catalogView.SetPriceCommand.ExecuteAsync(null).GetAwaiter().GetResult(); throw new Exception("Pricing without a tariff must be refused."); }
-        catch(ArgumentException) { }
+        // C2b: el rechazo ya no sale del comando como excepcion (cerraba el programa): va a la barra de estado y no se envia nada.
+        window.Shell.Status="";
+        catalogView.SetPriceCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        if(!window.Shell.Status.StartsWith("Vuelve a elegir la tarifa",StringComparison.Ordinal)) throw new Exception("Pricing without a tariff is refused in the status bar: "+window.Shell.Status);
         catalogView.PriceTariffId="general"; catalogView.SelectedPresentation=catalogView.Presentations[0];
         catalogView.AllCategories=true; catalogView.Search="rapolao";
         if(catalogView.Products.Length!=1||catalogView.Products[0].Product.Id!="3760") throw new Exception("Search filters by name or reference.");
@@ -1535,7 +1537,10 @@ internal static class Program
         Press(InCatalog<Button>("NewTariffButton"),"Nueva tarifa");
         if(!catalogView.NewTariff||tariffList.SelectedItem is not null||catalogView.TariffTitle!="Nueva tarifa"||catalogView.TariffSaveText!="Crear tarifa"||!Ready("CancelTariffButton")||catalogView.HasZoneInfo)
             throw new Exception("'Nueva tarifa' opens an empty ficha with nothing chosen in the list.");
-        catalogView.TariffId="barra"; catalogView.TariffName="Barra"; catalogView.TariffSort="3"; catalogPosts=server.Count("POST","");
+        catalogView.TariffId=""; catalogView.TariffName=""; catalogView.TariffSort="3"; catalogPosts=server.Count("POST",""); window.Shell.Status="";
+        Press(InCatalog<Button>("SaveTariffButton"),"Crear tarifa sin nombre");
+        if(window.Shell.Status!="El nombre es obligatorio."||server.Count("POST","")!=catalogPosts||!catalogView.NewTariff) throw new Exception("Saving a tariff without a name is refused in the status bar and sends nothing: "+window.Shell.Status);
+        catalogView.TariffName="Barra";   // C2b: sin codigo tecleado, se genera del nombre
         Press(InCatalog<Button>("SaveTariffButton"),"Crear tarifa"); Wait(()=>!window.Shell.Busy&&server.Count("POST","")>catalogPosts,"the tariff is created");
         if(CatalogPost()!="erp/catalog/commands/tariff-create {\"id\":\"barra\",\"name\":\"Barra\",\"sort\":3}"||catalogView.NewTariff||catalogView.SelectedTariff?.Id!="barra"||catalogView.TariffTitle!="Barra"
             ||!catalogView.Sections[2].Label.EndsWith("· 4",StringComparison.Ordinal)) throw new Exception("A created tariff is chosen once the server confirms it: "+CatalogPost());
@@ -1847,6 +1852,23 @@ internal static class Program
             ||offersView.NewOffer||offersView.Search.Length!=0||offerSearch.Text.Length!=0||offersView.SelectedOffer?.Offer.Id!="TERRAZA"||offersView.Offers.Length!=5||!offersView.CoursesEmpty||!OfferShows("NoCoursesText")
             ||offersView.OfferContext!="Carta · Comida y cena · de lunes a sábado"||offerList.SelectedItem is not Costina.Desktop.ViewModels.OfferRow{Offer.Id:"TERRAZA"})
             throw new Exception("A created offer is chosen once the server confirms it, visible (the search is cleared) and explained while it has no courses: "+CatalogPost());
+        // C2b: guardar con datos vacios o mal escritos NO cierra el programa (el promotor lo vio al dar de alta sin codigo): se cuenta en la
+        // barra de estado y no se envia nada. Un codigo vacio se genera del nombre (sin tildes, con guiones, unico); el de una oferta, a 27.
+        Press(InOffers<Button>("NewOfferButton"),"Nueva oferta");
+        var offerPosts=server.Count("POST",""); window.Shell.Status="";
+        offersView.OfferId=""; offersView.OfferName=""; window.UpdateLayout();
+        Press(InOffers<Button>("SaveOfferButton"),"Crear oferta sin nombre");
+        if(window.Shell.Status!="El nombre es obligatorio."||server.Count("POST","")!=offerPosts||!offersView.NewOffer||window.Shell.Busy) throw new Exception("Saving without a name is refused in the status bar and sends nothing: "+window.Shell.Status);
+        offersView.OfferName="Menú de la noche de verano 2026"; offersView.OfferSort="x"; window.UpdateLayout();
+        Press(InOffers<Button>("SaveOfferButton"),"Crear oferta con orden mal escrito");
+        if(window.Shell.Status!="Orden: introduce un número entre 0 y 9999."||server.Count("POST","")!=offerPosts||!offersView.NewOffer) throw new Exception("A misspelt order is refused in the status bar and sends nothing: "+window.Shell.Status);
+        offersView.OfferSort="5"; window.UpdateLayout();
+        SendOffer("SaveOfferButton","Crear oferta sin código");
+        if(!CatalogPost().StartsWith("erp/offers/commands/offer-create {\"id\":\"menu-de-la-noche-de-verano\",\"name\":\"Menú de la noche de verano 2026\",",StringComparison.Ordinal)||offersView.SelectedOffer?.Offer.Id!="menu-de-la-noche-de-verano")
+            throw new Exception("An empty offer code is generated from the name and cut to 27 characters: "+CatalogPost());
+        if(Costina.Desktop.Codes.Of("","Sala",["sala","SALA-2"])!="sala-3"||Costina.Desktop.Codes.Of(" Mesa_1 ","x",[])!="Mesa_1"||Costina.Desktop.Codes.Generated("Añada ¡2026!",[])!="anada-2026"
+            ||Costina.Desktop.Codes.Generated("Degustación de otoño con maridaje",["degustacion-de-otono-con-ma"],27)!="degustacion-de-otono-con-2")
+            throw new Exception("Generated codes are ASCII, unique with a suffix that fits the maximum, and a typed code stays as typed.");
         // Las capturas: el Menu del dia con sus principales a elegir y la merluza elegida (offers-menu.png); la Degustacion Costina con sus seis
         // pases y el Pescado desplegado es la de offers.png del bucle de capturas. Las ofertas vuelven a ser las de ejemplo.
         server.Offers=sampleOffersC2b;
@@ -2034,7 +2056,10 @@ internal static class Program
         if(!organization.NewTable||!RoomShows("TableDetail")||organization.TableTitle!="Nueva mesa"||organization.TableContext!="Alta de mesa en Comedor privado"||organization.TableZoneId!="privado"
             ||organization.TableSaveText!="Crear mesa"||!RoomReady("CancelTableButton")||RoomShows("DeactivateTableButton")||tableZoneBox.SelectedItem is not Costina.Desktop.ViewModels.ZoneChoice{Name:"Comedor privado"})
             throw new Exception("'Nueva mesa' opens the new-table ficha inside the chosen room: "+organization.TableContext);
-        organization.TableId="P1"; organization.TableName="Mesa del reservado"; organization.TableCapacity="10"; window.UpdateLayout();
+        organization.TableId=""; organization.TableName="Mesa del reservado"; organization.TableCapacity="muchas"; window.Shell.Status=""; var roomPosts=server.Count("POST",""); window.UpdateLayout();
+        Press(InRooms<Button>("SaveTableButton"),"Crear mesa con plazas mal escritas");
+        if(window.Shell.Status!="Plazas: introduce un número entre 1 y 60."||server.Count("POST","")!=roomPosts||!organization.NewTable) throw new Exception("Misspelt seats are refused in the status bar and send nothing: "+window.Shell.Status);
+        organization.TableId="P1"; organization.TableCapacity="10"; window.UpdateLayout();
         SendRooms("SaveTableButton","Crear mesa");
         if(CatalogPost()!="organization/commands/table-create {\"id\":\"P1\",\"name\":\"Mesa del reservado\",\"capacity\":10,\"zoneId\":\"privado\",\"sort\":0}"||organization.SelectedZone?.Id!="privado"
             ||organization.SelectedTable?.Id!="P1"||tableList.SelectedItem is not Costina.Desktop.ViewModels.TableCard{Table.Id:"P1"}||organization.TableTitle!="Mesa del reservado"||organization.NewTable)

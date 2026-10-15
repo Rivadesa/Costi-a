@@ -175,7 +175,7 @@
            </Grid.RowDefinitions>
            <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
            <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-           <TextBox Grid.Row="1" Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}" AutomationProperties.Name="Código del producto"/>
+           <TextBox Grid.Row="1" Text="{Binding Catalog.ProductId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewProduct}" AutomationProperties.Name="Código del producto" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
            <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.ProductSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" AutomationProperties.Name="Orden del producto"/>
            <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
            <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.ProductName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.ProductEditable}" AutomationProperties.Name="Nombre del producto"/>
@@ -243,7 +243,7 @@
              <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
              <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
              <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
-             <TextBox Grid.Row="1" Text="{Binding Catalog.PresentationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewPresentation}" AutomationProperties.Name="Código de la presentación"/>
+             <TextBox Grid.Row="1" Text="{Binding Catalog.PresentationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewPresentation}" AutomationProperties.Name="Código de la presentación" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
              <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.PresentationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PresentationEditable}" AutomationProperties.Name="Nombre de la presentación"/>
              <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Catalog.PresentationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.PresentationEditable}" AutomationProperties.Name="Orden de la presentación"/>
             </Grid>
@@ -360,7 +360,7 @@
           </Grid.RowDefinitions>
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}" AutomationProperties.Name="Código de la categoría"/>
+          <TextBox Grid.Row="1" Text="{Binding Catalog.CategoryId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewCategory}" AutomationProperties.Name="Código de la categoría" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.CategorySort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" AutomationProperties.Name="Orden de la categoría"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.CategoryName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.CategoryEditable}" AutomationProperties.Name="Nombre de la categoría"/>
@@ -455,7 +455,7 @@
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Catalog.TariffId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTariff}" AutomationProperties.Name="Código de la tarifa"/>
+          <TextBox Grid.Row="1" Text="{Binding Catalog.TariffId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTariff}" AutomationProperties.Name="Código de la tarifa" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.TariffSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TariffEditable}" AutomationProperties.Name="Orden de la tarifa"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.TariffName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TariffEditable}" AutomationProperties.Name="Nombre de la tarifa"/>
@@ -551,7 +551,7 @@
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Tipo (%)" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Catalog.TaxId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTax}" AutomationProperties.Name="Código del impuesto"/>
+          <TextBox Grid.Row="1" Text="{Binding Catalog.TaxId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.NewTax}" AutomationProperties.Name="Código del impuesto" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Catalog.TaxRate, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TaxEditable}" TextAlignment="Right" AutomationProperties.Name="Tipo del impuesto en porcentaje"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Catalog.TaxName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Catalog.TaxEditable}" AutomationProperties.Name="Nombre del impuesto"/>

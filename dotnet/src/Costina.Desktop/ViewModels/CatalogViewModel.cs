@@ -789,13 +789,7 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         if (!int.TryParse(text.Trim(), out var value) || value < min || value > max) throw new ArgumentException($"{what}: introduce un número entre {min} y {max}.");
         return value;
     }
-    private static string Code(string text)
-    {
-        var code = text.Trim();
-        if (code.Length is 0 or > 32 || code.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_'))
-            throw new ArgumentException("El código es obligatorio: letras, números, '-' o '_', sin espacios ni acentos (máximo 32).");
-        return code;
-    }
+    private static string Code(string text) => Codes.Typed(text);
     private static string Name(string text) => text.Trim().Length == 0 ? throw new ArgumentException("El nombre es obligatorio.") : text.Trim();
     // C2b: lo elegido en un desplegable. Null = el desplegable perdio su eleccion (su lista cambio): no se envia nada en lugar de
     // cambiar sin querer la categoria, el impuesto o la estacion.
@@ -888,13 +882,15 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanSaveCategory() => CategoryEditable;
     [RelayCommand(CanExecute = nameof(CanSaveCategory))]
-    private Task SaveCategory()
+    // C2b: los Guardar van en shell.Attempt (una comprobacion fallida se cuenta en la barra, no cierra el programa) y un codigo vacio se
+    // genera del nombre (Codes), unico en su lista (las presentaciones, dentro de su producto).
+    private Task SaveCategory() => shell.Attempt(() =>
     {
-        var id = Code(NewCategory ? CategoryId : SelectedCategory!.Category.Id); var name = Name(CategoryName); var sort = Number(CategorySort, "Orden", 0, 9999);
+        var name = Name(CategoryName); var id = NewCategory ? Codes.Of(CategoryId, name, catalog?.Categories.Select(c => c.Id) ?? []) : SelectedCategory!.Category.Id; var sort = Number(CategorySort, "Orden", 0, 9999);
         var parentId = Chosen(CategoryParentId, "dentro de qué categoría va"); var color = CategoryColor.Trim();
         return Command(NewCategory ? "category-create" : "category-update", new { id, name, parentId, color, sort }, (NewCategory ? "Crear categoría " : "Guardar categoría ") + name,
             NewCategory ? () => { createdCategory = id; } : null);
-    }
+    });
     private bool CanToggleCategory() => Main && SelectedCategory is not null && !NewCategory;
     [RelayCommand(CanExecute = nameof(CanToggleCategory))]
     private Task ToggleCategory() => Command(SelectedCategory!.Category.Active ? "category-deactivate" : "category-reactivate", new { id = SelectedCategory.Category.Id },
@@ -902,15 +898,15 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanSaveProduct() => ProductEditable;
     [RelayCommand(CanExecute = nameof(CanSaveProduct))]
-    private Task SaveProduct()
+    private Task SaveProduct() => shell.Attempt(() =>
     {
-        var id = Code(NewProduct ? ProductId : SelectedProduct!.Product.Id); var name = Name(ProductName); var sort = Number(ProductSort, "Orden", 0, 9999);
+        var name = Name(ProductName); var id = NewProduct ? Codes.Of(ProductId, name, catalog?.Products.Select(p => p.Id) ?? []) : SelectedProduct!.Product.Id; var sort = Number(ProductSort, "Orden", 0, 9999);
         var categoryId = Chosen(ProductCategoryId, "la categoría"); var taxId = Code(Chosen(ProductTaxId, "el impuesto")); var reference = ProductReference.Trim();
         var stationId = Chosen(ProductStationId, "la estación de cocina");
         return NewProduct
             ? Command("product-create", new { id, name, categoryId, taxId, reference, sort, stationId, presentation = Name(ProductPresentationName) }, "Crear producto " + name, () => { createdProduct = id; })
             : Command("product-update", new { id, name, categoryId, taxId, reference, sort, stationId }, "Guardar producto " + name);
-    }
+    });
     private bool CanToggleProduct() => Main && SelectedProduct is not null && !NewProduct;
     [RelayCommand(CanExecute = nameof(CanToggleProduct))]
     private Task ToggleProduct() => Command(SelectedProduct!.Product.Active ? "product-deactivate" : "product-reactivate", new { id = SelectedProduct.Product.Id },
@@ -957,13 +953,13 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanSavePresentation() => PresentationEditable && SelectedProduct is not null;
     [RelayCommand(CanExecute = nameof(CanSavePresentation))]
-    private Task SavePresentation()
+    private Task SavePresentation() => shell.Attempt(() =>
     {
-        var productId = SelectedProduct!.Product.Id; var id = Code(NewPresentation ? PresentationId : SelectedPresentation!.Presentation.Id);
-        var name = Name(PresentationName); var sort = Number(PresentationSort, "Orden", 0, 9999);
+        var productId = SelectedProduct!.Product.Id; var name = Name(PresentationName);
+        var id = NewPresentation ? Codes.Of(PresentationId, name, SelectedProduct.Product.Presentations.Select(p => p.Id)) : SelectedPresentation!.Presentation.Id; var sort = Number(PresentationSort, "Orden", 0, 9999);
         return Command(NewPresentation ? "presentation-create" : "presentation-update", new { productId, id, name, sort }, (NewPresentation ? "Crear presentación " : "Guardar presentación ") + name + " de " + SelectedProduct.Product.Name,
             NewPresentation ? () => { createdPresentation = id; } : null);
-    }
+    });
     private bool CanTogglePresentation() => Main && SelectedProduct is not null && SelectedPresentation is not null && !NewPresentation;
     [RelayCommand(CanExecute = nameof(CanTogglePresentation))]
     private Task TogglePresentation() => Command(SelectedPresentation!.Presentation.Active ? "presentation-deactivate" : "presentation-reactivate",
@@ -972,21 +968,21 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanSetPrice() => PriceEditable;
     [RelayCommand(CanExecute = nameof(CanSetPrice))]
-    private Task SetPrice()
+    private Task SetPrice() => shell.Attempt(() =>
     {
-        var tariffId = Code(PriceTariffId ?? ""); var priceCents = Cents(PriceText); var validFrom = PriceValidFrom.Trim();
+        var tariffId = Code(Chosen(PriceTariffId, "la tarifa")); var priceCents = Cents(PriceText); var validFrom = PriceValidFrom.Trim();
         if (validFrom.Length > 0 && !DateOnly.TryParseExact(validFrom, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) throw new ArgumentException("Vigencia: fecha AAAA-MM-DD (vacía = hoy).");
         return Command("price-set", new { tariffId, productId = SelectedProduct!.Product.Id, presentationId = SelectedPresentation!.Presentation.Id, validFrom, priceCents },
             $"Fijar precio {Money(priceCents)} de {SelectedProduct.Product.Name} · {SelectedPresentation.Presentation.Name} en {Tariffs.FirstOrDefault(t => t.Id == tariffId)?.Name ?? tariffId}");
-    }
+    });
 
     private bool CanSaveTariff() => TariffEditable;
     [RelayCommand(CanExecute = nameof(CanSaveTariff))]
-    private Task SaveTariff()
+    private Task SaveTariff() => shell.Attempt(() =>
     {
-        var id = Code(NewTariff ? TariffId : SelectedTariff!.Id); var name = Name(TariffName); var sort = Number(TariffSort, "Orden", 0, 9999);
+        var name = Name(TariffName); var id = NewTariff ? Codes.Of(TariffId, name, Tariffs.Select(t => t.Id)) : SelectedTariff!.Id; var sort = Number(TariffSort, "Orden", 0, 9999);
         return Command(NewTariff ? "tariff-create" : "tariff-update", new { id, name, sort }, (NewTariff ? "Crear tarifa " : "Guardar tarifa ") + name, NewTariff ? () => { createdTariff = id; } : null);
-    }
+    });
     private bool CanToggleTariff() => Main && SelectedTariff is not null && !NewTariff && SelectedTariff.Id != "general";
     [RelayCommand(CanExecute = nameof(CanToggleTariff))]
     private Task ToggleTariff() => Command(SelectedTariff!.Active ? "tariff-deactivate" : "tariff-reactivate", new { id = SelectedTariff.Id },
@@ -994,12 +990,12 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
 
     private bool CanSaveTax() => TaxEditable;
     [RelayCommand(CanExecute = nameof(CanSaveTax))]
-    private Task SaveTax()
+    private Task SaveTax() => shell.Attempt(() =>
     {
-        var id = Code(NewTax ? TaxId : SelectedTax!.Id); var name = Name(TaxName);
+        var name = Name(TaxName); var id = NewTax ? Codes.Of(TaxId, name, Taxes.Select(t => t.Id)) : SelectedTax!.Id;
         if (!decimal.TryParse(TaxRate.Trim().Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rate) || rate < 0 || rate > 100) throw new ArgumentException("Tipo: porcentaje entre 0 y 100 (por ejemplo 10 o 10,5).");
         return Command(NewTax ? "tax-create" : "tax-update", new { id, name, rate }, (NewTax ? "Crear impuesto " : "Guardar impuesto ") + name, NewTax ? () => { createdTax = id; } : null);
-    }
+    });
     private bool CanToggleTax() => Main && SelectedTax is not null && !NewTax;
     [RelayCommand(CanExecute = nameof(CanToggleTax))]
     private Task ToggleTax() => Command(SelectedTax!.Active ? "tax-deactivate" : "tax-reactivate", new { id = SelectedTax.Id },

@@ -398,13 +398,7 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
         if (!int.TryParse(text.Trim(), out var value) || value < min || value > max) throw new ArgumentException($"{what}: introduce un número entre {min} y {max}.");
         return value;
     }
-    private static string Code(string text)
-    {
-        var code = text.Trim();
-        if (code.Length is 0 or > 32 || code.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_'))
-            throw new ArgumentException("El código es obligatorio: letras, números, '-' o '_', sin espacios ni acentos (máximo 32).");
-        return code;
-    }
+    private static string Code(string text) => Codes.Typed(text);
     // C2b: lo elegido en un desplegable. Null = el desplegable perdio su eleccion (su lista cambio): no se envia nada en lugar de mover
     // la mesa sin querer.
     private static string Chosen(string? value, string what) => value ?? throw new ArgumentException($"Vuelve a elegir {what}: el desplegable se quedó sin elección.");
@@ -489,15 +483,18 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
 
     private bool CanSaveZone() => ZoneEditable;
     [RelayCommand(CanExecute = nameof(CanSaveZone))]
-    private Task SaveZone()
+    // C2b: los Guardar van en shell.Attempt (una comprobacion fallida se cuenta en la barra, no cierra el programa) y un codigo vacio se
+    // genera del nombre (Codes): las salas y las estaciones entre todas, las mesas entre todas las mesas (su codigo es unico en el local).
+    private Task SaveZone() => shell.Attempt(() =>
     {
-        var id = Code(NewZone ? ZoneId : SelectedZone!.Id); var name = ZoneName.Trim(); var sort = Number(ZoneSort, "Orden", 0, 9999);
+        var name = ZoneName.Trim();
         if (name.Length == 0) throw new ArgumentException("El nombre de la sala es obligatorio.");
+        var id = NewZone ? Codes.Of(ZoneId, name, Zones.Select(z => z.Id)) : SelectedZone!.Id; var sort = Number(ZoneSort, "Orden", 0, 9999);
         // E3.2: tariffId "" = la General, un codigo = esa tarifa, null = sin cambio (zone-update y zone-create ya lo admitian).
         var tariffId = ZoneTariffId;
         return Command(NewZone ? "zone-create" : "zone-update", new { id, name, sort, tariffId }, (NewZone ? "Crear sala " : "Guardar sala ") + name,
             NewZone ? () => { createdZone = id; } : null);
-    }
+    });
     private bool CanToggleZone() => shell.Writable && shell.IsMain && SelectedZone is not null && !NewZone;
     [RelayCommand(CanExecute = nameof(CanToggleZone))]
     private Task ToggleZone() => Command(SelectedZone!.Active ? "zone-deactivate" : "zone-reactivate", new { id = SelectedZone.Id },
@@ -505,14 +502,15 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
 
     private bool CanSaveTable() => TableEditable;
     [RelayCommand(CanExecute = nameof(CanSaveTable))]
-    private Task SaveTable()
+    private Task SaveTable() => shell.Attempt(() =>
     {
-        var id = Code(NewTable ? TableId : SelectedTable!.Id); var name = TableName.Trim();
-        var capacity = Number(TableCapacity, "Plazas", 1, 60); var sort = Number(TableSort, "Orden", 0, 9999); var zoneId = Code(Chosen(TableZoneId, "la sala"));
+        var name = TableName.Trim();
         if (name.Length == 0) throw new ArgumentException("El nombre de la mesa es obligatorio.");
+        var id = NewTable ? Codes.Of(TableId, name, Zones.SelectMany(z => z.Tables).Select(t => t.Id)) : SelectedTable!.Id;
+        var capacity = Number(TableCapacity, "Plazas", 1, 60); var sort = Number(TableSort, "Orden", 0, 9999); var zoneId = Code(Chosen(TableZoneId, "la sala"));
         return Command(NewTable ? "table-create" : "table-update", new { id, name, capacity, zoneId, sort }, (NewTable ? "Crear mesa " : "Guardar mesa ") + name,
             NewTable ? () => { createdTable = id; } : null);
-    }
+    });
     private bool CanToggleTable() => shell.Writable && shell.IsMain && SelectedTable is not null && !NewTable;
     [RelayCommand(CanExecute = nameof(CanToggleTable))]
     private Task ToggleTable() => Command(SelectedTable!.Active ? "table-deactivate" : "table-reactivate", new { id = SelectedTable.Id },
@@ -520,13 +518,14 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
 
     private bool CanSaveStation() => StationEditable;
     [RelayCommand(CanExecute = nameof(CanSaveStation))]
-    private Task SaveStation()
+    private Task SaveStation() => shell.Attempt(() =>
     {
-        var id = Code(NewStation ? StationId : SelectedStation!.Id); var name = StationName.Trim(); var sort = Number(StationSort, "Orden", 0, 9999);
+        var name = StationName.Trim();
         if (name.Length == 0) throw new ArgumentException("El nombre de la estación es obligatorio.");
+        var id = NewStation ? Codes.Of(StationId, name, Stations.Select(s => s.Id)) : SelectedStation!.Id; var sort = Number(StationSort, "Orden", 0, 9999);
         return Command(NewStation ? "station-create" : "station-update", new { id, name, kind = StationKind, sort }, (NewStation ? "Crear estación " : "Guardar estación ") + name,
             NewStation ? () => { createdStation = id; } : null);
-    }
+    });
     private bool CanToggleStation() => shell.Writable && shell.IsMain && SelectedStation is not null && !NewStation && SelectedStation.Id != "pase";
     [RelayCommand(CanExecute = nameof(CanToggleStation))]
     private Task ToggleStation() => Command(SelectedStation!.Active ? "station-deactivate" : "station-reactivate", new { id = SelectedStation.Id },

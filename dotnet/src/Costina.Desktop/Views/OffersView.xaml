@@ -161,7 +161,7 @@
          <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
          <TextBlock Grid.Column="2" Text="Tipo" Style="{StaticResource FieldLabel}"/>
          <TextBlock Grid.Column="4" Text="Servicio" Style="{StaticResource FieldLabel}"/>
-         <TextBox Grid.Row="1" Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" AutomationProperties.Name="Código de la oferta"/>
+         <TextBox Grid.Row="1" Text="{Binding Offers.OfferId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewOffer}" AutomationProperties.Name="Código de la oferta" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
          <ComboBox x:Name="OfferKindBox" Grid.Row="1" Grid.Column="2" SelectedValuePath="Tag" SelectedValue="{Binding Offers.OfferKind}" IsEnabled="{Binding Offers.OfferEditable}" HorizontalAlignment="Stretch"
                    AutomationProperties.Name="Tipo de oferta">
           <ComboBoxItem Tag="tasting">Degustación</ComboBoxItem><ComboBoxItem Tag="set-menu">Menú cerrado</ComboBoxItem><ComboBoxItem Tag="a-la-carte">Carta</ComboBoxItem>
@@ -272,7 +272,7 @@
                 <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
                 <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
                 <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
-                <TextBox Grid.Row="1" Text="{Binding Offers.DishId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewDish}" AutomationProperties.Name="Código del plato"/>
+                <TextBox Grid.Row="1" Text="{Binding Offers.DishId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewDish}" AutomationProperties.Name="Código del plato" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
                 <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.DishName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}" AutomationProperties.Name="Nombre del plato"/>
                 <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.DishSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.DishEditable}" AutomationProperties.Name="Orden del plato"/>
                </Grid>
@@ -376,7 +376,7 @@
             <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
             <TextBlock Grid.Column="2" Text="Nombre" Style="{StaticResource FieldLabel}"/>
             <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
-            <TextBox Grid.Row="1" Text="{Binding Offers.CourseId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewCourse}" AutomationProperties.Name="Código del pase nuevo"/>
+            <TextBox Grid.Row="1" Text="{Binding Offers.CourseId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.NewCourse}" AutomationProperties.Name="Código del pase nuevo" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
             <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Offers.CourseName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Nombre del pase nuevo"/>
             <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Offers.CourseSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Offers.CourseEditable}" AutomationProperties.Name="Orden del pase nuevo"/>
            </Grid>

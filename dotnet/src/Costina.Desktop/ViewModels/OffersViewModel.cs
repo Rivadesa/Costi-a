@@ -458,13 +458,7 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
         if (!int.TryParse(text.Trim(), out var value) || value < min || value > max) throw new ArgumentException($"{what}: introduce un número entre {min} y {max}.");
         return value;
     }
-    private static string Code(string text)
-    {
-        var code = text.Trim();
-        if (code.Length is 0 or > 32 || code.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_'))
-            throw new ArgumentException("El código es obligatorio: letras, números, '-' o '_', sin espacios ni acentos (máximo 32).");
-        return code;
-    }
+    private static string Code(string text) => Codes.Typed(text);
     private static string Name(string text) => text.Trim().Length == 0 ? throw new ArgumentException("El nombre es obligatorio.") : text.Trim();
     // C2b: lo elegido en un desplegable. Null = el desplegable perdio su eleccion: no se envia nada en lugar de cambiar sin querer la estacion.
     private static string Chosen(string? value, string what) => value ?? throw new ArgumentException($"Vuelve a elegir {what}: el desplegable se quedó sin elección.");
@@ -540,9 +534,11 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
 
     private bool CanSaveOffer() => OfferEditable;
     [RelayCommand(CanExecute = nameof(CanSaveOffer))]
-    private Task SaveOffer()
+    // C2b: los Guardar van en shell.Attempt (una comprobacion fallida se cuenta en la barra, no cierra el programa) y un codigo vacio se
+    // genera del nombre (Codes): el de la oferta a 27 caracteres, el del pase y el del plato a 32, unicos entre sus hermanos.
+    private Task SaveOffer() => shell.Attempt(() =>
     {
-        var id = Code(NewOffer ? OfferId : SelectedOffer!.Offer.Id); var name = Name(OfferName); var sort = Number(OfferSort, "Orden", 0, 9999);
+        var name = Name(OfferName); var id = NewOffer ? Codes.Of(OfferId, name, read?.Select(o => o.Id) ?? [], Codes.OfferMax) : SelectedOffer!.Offer.Id; var sort = Number(OfferSort, "Orden", 0, 9999);
         var validFrom = DateText(OfferValidFrom); var validTo = DateText(OfferValidTo); var weekdays = Weekdays;
         if (weekdays == 0) throw new ArgumentException("Elige al menos un día de la semana.");
         if (NewOffer)
@@ -555,18 +551,18 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
                 () => { createdOffer = id; rendering = true; try { Search = ""; kindFilter = "all"; OnPropertyChanged(nameof(KindFilter)); } finally { rendering = false; } });
         }
         return Command("offer-update", new { id, name, kind = OfferKind, service = OfferService, validFrom, validTo, weekdays, sort }, "Guardar oferta " + name);
-    }
+    });
     private bool CanToggleOffer() => Main && SelectedOffer is not null && !NewOffer;
     [RelayCommand(CanExecute = nameof(CanToggleOffer))]
     private Task ToggleOffer() => Command(SelectedOffer!.Offer.Active ? "offer-deactivate" : "offer-reactivate", new { id = SelectedOffer.Offer.Id }, (SelectedOffer.Offer.Active ? "Desactivar oferta " : "Reactivar oferta ") + SelectedOffer.Offer.Name);
 
     private bool CanSaveCourse() => CourseEditable;
     [RelayCommand(CanExecute = nameof(CanSaveCourse))]
-    private Task SaveCourse()
+    private Task SaveCourse() => shell.Attempt(() =>
     {
-        var offerId = SelectedOffer!.Offer.Id; var id = Code(NewCourse ? CourseId : SelectedCourse!.Course.Id); var name = Name(CourseName); var sort = Number(CourseSort, "Orden", 0, 9999);
+        var offerId = SelectedOffer!.Offer.Id; var name = Name(CourseName); var id = NewCourse ? Codes.Of(CourseId, name, SelectedOffer.Offer.Courses.Select(c => c.Id)) : SelectedCourse!.Course.Id; var sort = Number(CourseSort, "Orden", 0, 9999);
         return Command(NewCourse ? "course-create" : "course-update", new { offerId, id, name, sort }, (NewCourse ? "Crear pase " : "Guardar pase ") + name, NewCourse ? () => { createdCourse = id; } : null);
-    }
+    });
     private bool CanToggleCourse() => Main && SelectedCourse is not null && !NewCourse;
     [RelayCommand(CanExecute = nameof(CanToggleCourse))]
     private Task ToggleCourse() => Command(SelectedCourse!.Course.Active ? "course-deactivate" : "course-reactivate", new { offerId = SelectedOffer!.Offer.Id, id = SelectedCourse.Course.Id },
@@ -589,12 +585,13 @@ public sealed partial class OffersViewModel(ShellViewModel shell) : ObservableOb
 
     private bool CanSaveDish() => DishEditable;
     [RelayCommand(CanExecute = nameof(CanSaveDish))]
-    private Task SaveDish()
+    private Task SaveDish() => shell.Attempt(() =>
     {
-        var offerId = SelectedOffer!.Offer.Id; var courseId = SelectedCourse!.Course.Id; var id = Code(NewDish ? DishId : SelectedDish!.Dish.Id);
-        var name = Name(DishName); var stationId = Code(Chosen(DishStationId, "la estación de cocina")); var sort = Number(DishSort, "Orden", 0, 9999); var productId = DishProductId.Trim();
+        var offerId = SelectedOffer!.Offer.Id; var courseId = SelectedCourse!.Course.Id; var name = Name(DishName);
+        var id = NewDish ? Codes.Of(DishId, name, SelectedCourse.Course.Dishes.Select(d => d.Id)) : SelectedDish!.Dish.Id;
+        var stationId = Code(Chosen(DishStationId, "la estación de cocina")); var sort = Number(DishSort, "Orden", 0, 9999); var productId = DishProductId.Trim();
         return Command(NewDish ? "dish-create" : "dish-update", new { offerId, courseId, id, name, stationId, productId, sort }, (NewDish ? "Crear plato " : "Guardar plato ") + name, NewDish ? () => { createdDish = id; } : null);
-    }
+    });
     private bool CanToggleDish() => Main && SelectedDish is not null && !NewDish;
     [RelayCommand(CanExecute = nameof(CanToggleDish))]
     private Task ToggleDish() => Command(SelectedDish!.Dish.Active ? "dish-deactivate" : "dish-reactivate", new { offerId = SelectedOffer!.Offer.Id, courseId = SelectedCourse!.Course.Id, id = SelectedDish.Dish.Id },

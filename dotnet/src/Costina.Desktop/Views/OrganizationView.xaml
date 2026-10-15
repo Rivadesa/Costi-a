@@ -189,7 +189,7 @@
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}" AutomationProperties.Name="Código de la sala"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.ZoneId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewZone}" AutomationProperties.Name="Código de la sala" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.ZoneSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" AutomationProperties.Name="Orden de la sala"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Organization.ZoneName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.ZoneEditable}" AutomationProperties.Name="Nombre de la sala"/>
@@ -254,7 +254,7 @@
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Plazas" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="4" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}" AutomationProperties.Name="Código de la mesa"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.TableId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewTable}" AutomationProperties.Name="Código de la mesa" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.TableCapacity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" AutomationProperties.Name="Plazas de la mesa"/>
           <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding Organization.TableSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.TableEditable}" AutomationProperties.Name="Orden de la mesa"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="5" Text="Nombre" Style="{StaticResource NextLabel}"/>
@@ -342,7 +342,7 @@
           </Grid.RowDefinitions>
           <TextBlock Text="Código (fijo)" Style="{StaticResource FieldLabel}"/>
           <TextBlock Grid.Column="2" Text="Orden" Style="{StaticResource FieldLabel}"/>
-          <TextBox Grid.Row="1" Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}" AutomationProperties.Name="Código de la estación"/>
+          <TextBox Grid.Row="1" Text="{Binding Organization.StationId, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.NewStation}" AutomationProperties.Name="Código de la estación" ToolTip="Opcional: si lo dejas vacío se genera del nombre. Una vez creado no se puede cambiar."/>
           <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding Organization.StationSort, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" AutomationProperties.Name="Orden de la estación"/>
           <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="Nombre" Style="{StaticResource NextLabel}"/>
           <TextBox Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Organization.StationName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Organization.StationEditable}" AutomationProperties.Name="Nombre de la estación"/>
