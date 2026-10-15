@@ -21,6 +21,12 @@ public static class Ui
     public static string? GetHint(DependencyObject element) => (string?)element.GetValue(HintProperty);
     public static void SetHint(DependencyObject element, string? value) => element.SetValue(HintProperty, value);
 
+    // C2b: titulo de un vacio explicado (EmptyState: "No hay cuentas abiertas"); el texto que explica va en Content.
+    public static readonly DependencyProperty HeadingProperty = DependencyProperty.RegisterAttached(
+        "Heading", typeof(string), typeof(Ui), new FrameworkPropertyMetadata(null));
+    public static string? GetHeading(DependencyObject element) => (string?)element.GetValue(HeadingProperty);
+    public static void SetHeading(DependencyObject element, string? value) => element.SetValue(HeadingProperty, value);
+
     // Elemento de la barra lateral que corresponde a la vista abierta (lo fija el estilo comparando Tag con CurrentView).
     public static readonly DependencyProperty CurrentProperty = DependencyProperty.RegisterAttached(
         "Current", typeof(bool), typeof(Ui), new FrameworkPropertyMetadata(false));

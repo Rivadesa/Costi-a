@@ -107,8 +107,18 @@ internal static class Program
         shell.Checkout.SelectedAccount=shell.Checkout.Accounts[0];
         shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",0,0,0,0,"none",[],[],["add-product","payment"],[]));
         if(!shell.Checkout.AddCommand.CanExecute(null)||!shell.Checkout.PayCommand.CanExecute(null)) throw new Exception("Matching account must enable its advertised actions.");
+        if(!shell.Checkout.HasContext||shell.Checkout.DetailTitle!="M1"||shell.Checkout.TotalText!="0,00 €") throw new Exception("The matching account fills the ficha (C2b): "+shell.Checkout.DetailTitle);
         shell.Checkout.SelectedAccount=shell.Checkout.Accounts[1];
         if(shell.Checkout.AddCommand.CanExecute(null)||shell.Checkout.PayCommand.CanExecute(null)) throw new Exception("Account actions must never target a different account than the loaded one.");
+        // C2b: la ficha tampoco ensena nada de la cuenta leida mientras la elegida es otra: dice que la esta leyendo, sin cifras ni lineas.
+        if(shell.Checkout.HasContext||shell.Checkout.TotalText.Length!=0||shell.Checkout.LineRows.Length!=0||shell.Checkout.CloseAnnounced||shell.Checkout.FillPendingCommand.CanExecute(null)
+            ||shell.Checkout.EmptyHeading!="Cuenta de M2") throw new Exception("A chosen account that is not the read one shows no figures and offers nothing: "+shell.Checkout.EmptyHeading);
+        // C2b: una cuenta cerrada solo ofrece reabrir (lo unico que anuncia) y lo explica; cobrar, anadir y cerrar quedan apagados.
+        shell.Checkout.SelectedAccount=shell.Checkout.Accounts[0];
+        shell.Checkout.Account=new(2,new Costina.Client.AccountDto("a1","s1","Closed",400,400,0,0,"Paid",[],[],["reopen"],[]));
+        if(!shell.Checkout.ReopenCommand.CanExecute(null)||shell.Checkout.PayCommand.CanExecute(null)||shell.Checkout.AddCommand.CanExecute(null)||shell.Checkout.CloseAccountCommand.CanExecute(null)
+            ||shell.Checkout.CloseAnnounced||shell.Checkout.DetailState!="Cerrada"||!shell.Checkout.ClosedText.StartsWith("Cuenta cerrada: no admite cambios.",StringComparison.Ordinal))
+            throw new Exception("A closed account offers only reopening, and says why: "+shell.Checkout.ClosedText);
         // D3.4 (F02/F03): almacen durable aislado por instalacion, ambito, rol y ventana; la evidencia se conserva.
         var folder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
         var session=new Costina.Client.SessionInfo("checks","t","c","l",null,"inst-checks","0.7.0-d3.4");
@@ -755,6 +765,32 @@ internal static class Program
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
         server.Configuration=diningConfig; server.Board=diningBoard;
         server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        // C2b: la cuenta de cada una de esas mesas, como la calcula el motor (SettlementAccount): lo anulado no suma, lo pagado es neto, la
+        // cobertura y lo que se anuncia salen de los importes. Consumos de su oferta y de la carta; coberturas distintas: sin pagar, pago
+        // parcial (Mesa 4), saldada (Mesa 8, terminada: se anuncia cerrar) y pagado de mas (Terraza 1: se anuncia devolver).
+        Costina.Client.ChargeDto Charge(string id,string what,int quantity,long unit,string? voided=null)=>new(id,what,quantity,unit,voided is not null,voided,quantity*unit);
+        Costina.Client.AccountDto Bill(string serviceId,Costina.Client.ChargeDto[] charges,params (string Method,long Cents,int Ago)[] payments)
+        {
+            var total=charges.Where(c=>!c.Voided).Sum(c=>c.TotalCents); var paid=payments.Sum(p=>p.Cents);
+            var balance=Math.Max(0,total-paid); var credit=Math.Max(0,paid-total);
+            var coverage=paid>total?"Credit":paid==total?"Paid":paid==0?"Unpaid":"PartiallyPaid";
+            string[] actions=["add-product","payment",..(charges.Any(c=>!c.Voided)?new[]{"void-charge"}:[]),..(credit>0?new[]{"refund"}:[]),..(balance==0&&credit==0?new[]{"close"}:[])];
+            return new("cuenta-"+serviceId,serviceId,"Open",total,paid,balance,credit,coverage,charges,
+                [..payments.Select((p,i)=>new Costina.Client.PaymentDto("pago-"+serviceId+"-"+i,p.Method,p.Cents,c2Now.AddMinutes(-p.Ago)))],actions,[..charges.Where(c=>!c.Voided).Select(c=>c.Id)]);
+        }
+        foreach(var bill in new[]{
+            Bill("s1",[Charge("s1-menu","Degustación Costiña · Por persona",2,6500),Charge("s1-vino","Albariño Pazo de Señoráns · Botella",1,2600),Charge("s1-agua","Agua mineral · Botella",2,250)]),
+            Bill("s3",[Charge("s3-pulpo","Pulpo á feira · Ración",1,1650),Charge("s3-croquetas","Croquetas de la casa · Ración",1,900),Charge("s3-cerveza","Estrella Galicia · Botellín",2,280)]),
+            Bill("s4",[Charge("s4-menu","Menú del día · Por persona",4,1850),Charge("s4-vino","Vino de la casa · Botella",1,1200),Charge("s4-agua","Agua mineral · Botella",2,250),
+                Charge("s4-cafe","Café solo · Unidad",1,150,"Pedido por error")],("card",4000,6)),
+            Bill("s6",[Charge("s6-menu","Degustación Costiña · Por persona",2,6500)]),
+            Bill("s7",[Charge("s7-pulpo","Pulpo á feira · Ración",1,1650),Charge("s7-lubina","Lubina a la plancha · Ración",1,2200),Charge("s7-copas","Albariño Pazo de Señoráns · Copa",2,450)]),
+            Bill("s8",[Charge("s8-menu","Menú del día · Por persona",3,1850),Charge("s8-agua","Agua mineral · Botella",1,250),Charge("s8-cafe","Café solo · Unidad",3,150)],("cash",6250,4)),
+            Bill("st1",[Charge("st1-pulpo","Pulpo á feira · Ración",2,1650),Charge("st1-cerveza","Estrella Galicia · Botellín",4,280)],("cash",5000,9))})
+            server.AccountDetails[bill.ServiceId]=bill;
+        server.CheckoutCatalog=[new("agua","Agua mineral","Botella",250,"botella","Bebidas","general"),new("albarino","Albariño Pazo de Señoráns","Botella",2600,"botella","Vinos","general"),
+            new("albarino","Albariño Pazo de Señoráns","Copa",450,"copa","Vinos","general"),new("cafe","Café solo","Unidad",150,"unidad","Cafés","general"),
+            new("estrella","Estrella Galicia","Botellín",280,"botellin","Cervezas","general"),new("vino-casa","Vino de la casa","Botella",1200,"botella","Vinos","general")];
         window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
         var service=window.Shell.Service; var serviceView=(FrameworkElement)window.FindName("ServiceView");
         Button TileButton(string name){ window.UpdateLayout(); return Descendants<Button>(serviceView).FirstOrDefault(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile t&&t.Name==name)??throw new Exception("No tile painted for "+name); }
@@ -1062,12 +1098,159 @@ internal static class Program
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan again");
         Pick("Mesa 4","s4");
+        // ===== C2b (plan 2026-10-14): Cuenta / Caja con lista y ficha =====
+        // Las cuentas de las MISMAS mesas del plano, servidas por el servidor simulado con sus consumos y su cobertura. Abrir Caja lee el
+        // listado, el catalogo de caja y cada cuenta (los importes de las tarjetas); elegir una tarjeta relee SOLO la elegida y la ficha se
+        // compone de esa lectura (F01); los botones siguen a lo que anuncia la cuenta y envian los cuerpos de siempre.
+        var checkout=window.Shell.Checkout; var checkoutView=(FrameworkElement)window.FindName("CheckoutView");
+        T InCheckout<T>(string name) where T:FrameworkElement=>(T)checkoutView.FindName(name);
+        var accountList=InCheckout<ListBox>("AccountList"); var accountSearch=InCheckout<TextBox>("AccountSearch");
+        bool Paints(string name)=>InCheckout<FrameworkElement>(name).IsVisible;
+        bool Usable(string name)=>InCheckout<Button>(name) is {IsVisible:true,IsEnabled:true};
+        string LastPost()=>server.Requests.Last(r=>r.Method=="POST") is var post?post.Path+" "+post.Body:"";
+        void OpenCheckout(string what)
+        {
+            var before=server.Count("GET","checkout/accounts");
+            tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout(); tabs.SelectedItem=(TabItem)window.FindName("CheckoutTab"); window.UpdateLayout();
+            Wait(()=>!window.Shell.Busy&&server.Count("GET","checkout/accounts")>before,what); window.UpdateLayout();
+        }
+        void Choose(string serviceId)
+        {
+            var before=server.Requests.Length;
+            accountList.SelectedItem=checkout.AccountItems.Single(r=>r.Choice.ServiceId==serviceId);   // como pulsar la tarjeta
+            Wait(()=>!window.Shell.Busy&&checkout.Account?.Data.ServiceId==serviceId&&checkout.HasContext,"choosing the card of "+serviceId+" reads that account"); window.UpdateLayout();
+            var reads=server.Requests.Skip(before).Where(r=>r.Path.StartsWith("checkout/services/",StringComparison.Ordinal)).Select(r=>r.Path).ToArray();
+            if(!reads.SequenceEqual(["checkout/services/"+serviceId])) throw new Exception("Choosing a card reads only that account; the other cards keep their read: "+string.Join(", ",reads));
+        }
+        void Send(string button,string what)
+        {
+            var before=server.Count("POST","");
+            Press(InCheckout<Button>(button),what);
+            Wait(()=>!window.Shell.Busy&&server.Count("POST","")>before,what+" is sent"); window.UpdateLayout();
+        }
+        // Sin cuentas abiertas: la lista explica que falta y ofrece abrir una mesa (cada mesa abierta tiene su cuenta); la ficha no muestra campos.
+        server.Accounts=[]; window.Shell.Status="";
+        OpenCheckout("Caja reads an empty list");
+        if(checkout.AccountItems.Length!=0||!checkout.ShowListEmpty||checkout.ListEmptyHeading!="No hay cuentas abiertas"||!checkout.ListEmptyText.StartsWith("Cada mesa que se abre en Comedor y cocina tiene su cuenta",StringComparison.Ordinal)
+            ||checkout.Summary!="Ninguna cuenta abierta ahora."||checkout.HasContext||checkout.EmptyHeading!="Nada que cobrar ahora")
+            throw new Exception("Without open accounts the list says what is missing and the ficha shows no fields: "+checkout.ListEmptyHeading+" / "+checkout.EmptyHeading);
+        if(!Paints("AccountsEmpty")||Paints("AccountList")||Paints("AccountDetail")||!Paints("AccountEmpty")||!Usable("EmptyOpenTableButton")||Paints("ClearSearchButton")||!Texts(checkoutView).Contains("No hay cuentas abiertas"))
+            throw new Exception("The empty list is painted with its explanation and the 'Abrir una mesa' button.");
+        RefuseRaw(window,"checkout-empty"); Save(Shot(window),"checkout-empty.png");
+        Press(InCheckout<Button>("EmptyOpenTableButton"),"Abrir una mesa (Caja)");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!service.OpenForm) throw new Exception("'Abrir una mesa' takes Caja's empty list to the open form of Comedor.");
+        service.CancelOpenCommand.Execute(null);
+        // Las cuentas de las siete mesas ocupadas: una tarjeta por cuenta con su mesa, su sala y sus personas (del plano) y su total, su
+        // cobertura y su pendiente (de SU lectura); el resumen suma lo pendiente.
+        server.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))];
+        var readsBeforeCaja=server.Requests.Length;
+        OpenCheckout("Caja reads its accounts");
+        var cardReads=server.Requests.Skip(readsBeforeCaja).Where(r=>r.Path.StartsWith("checkout/services/",StringComparison.Ordinal)).Select(r=>r.Path).ToArray();
+        if(cardReads.Length!=7||cardReads.Distinct().Count()!=7) throw new Exception("Opening Caja reads each open account once, for its card: "+string.Join(", ",cardReads));
+        string Cards()=>string.Join(" | ",checkout.AccountItems.Select(r=>$"{r.Table}: {r.TotalText} · {r.Detail} · {r.Coverage} · {r.PendingText}"));
+        if(Cards()!="Mesa 1: 161,00 € · Sala principal · 2 personas · Sin pagar · Pendiente 161,00 € | Mesa 3: 31,10 € · Sala principal · 2 personas · Sin pagar · Pendiente 31,10 €"
+            +" | Mesa 4: 91,00 € · Sala principal · 4 personas · Pago parcial · Pendiente 51,00 € | Mesa 6: 130,00 € · Sala principal · 2 personas · Sin pagar · Pendiente 130,00 €"
+            +" | Mesa 7: 47,50 € · Sala principal · 2 personas · Sin pagar · Pendiente 47,50 € | Mesa 8: 62,50 € · Sala principal · 3 personas · Pagada · Pendiente 0,00 €"
+            +" | Terraza 1: 44,20 € · Terraza · 4 personas · Pagado de más · Pendiente 0,00 €"||checkout.Summary!="7 cuentas abiertas · Pendiente 420,60 €")
+            throw new Exception("Each card names its table, zone and people from the plan and its amounts and coverage from its own read: "+Cards()+" / "+checkout.Summary);
+        if(checkout.SelectedAccount?.ServiceId!="s1"||checkout.DetailTitle!="Mesa 1"||accountList.SelectedItem is not Costina.Desktop.ViewModels.AccountRow{Choice.ServiceId:"s1"})
+            throw new Exception("Without a request Caja chooses the first account, as always, and marks its card.");
+        // Elegir la tarjeta de la Mesa 4: se lee esa cuenta (y solo esa) y la ficha se compone de la lectura: cabecera, cifras, consumos y pagos.
+        Choose("s4");
+        if(checkout.DetailTitle!="Mesa 4"||checkout.DetailState!="Abierta"||checkout.CoverageText!="Pago parcial"||checkout.DetailContext!="Sala principal · 4 personas · Menú del día"
+            ||checkout.TotalText!="91,00 €"||checkout.PaidText!="40,00 €"||checkout.PendingText!="51,00 €"||checkout.CreditText.Length!=0||checkout.ClosedText.Length!=0)
+            throw new Exception("The ficha heads with the table, the account state and its coverage in words, and three figures: "+checkout.DetailContext+" / "+checkout.TotalText+" "+checkout.PaidText+" "+checkout.PendingText);
+        if(!checkout.LineRows.Select(l=>$"{l.Description} | {l.Note} | {l.Quantity} | {l.Amount}{(l.Voided?" | anulado":"")}").SequenceEqual(["Menú del día · Por persona | 18,50 € la unidad | 4 | 74,00 €",
+                "Vino de la casa · Botella |  | 1 | 12,00 €","Agua mineral · Botella | 2,50 € la unidad | 2 | 5,00 €","Café solo · Unidad | Anulado: Pedido por error | 1 | 1,50 € | anulado"])
+            ||checkout.LinesTitle!="Consumos · 3 líneas"||!checkout.PaymentRows.Select(p=>p.What+" "+p.Amount).SequenceEqual(["Pago · Tarjeta 40,00 €"]))
+            throw new Exception("Consumption lines (concept, unit price, quantity, amount, voided) and payments come from the read: "+string.Join(" / ",checkout.LineRows.Select(l=>l.Description+" "+l.Note)));
+        var cajaTexts=Texts(checkoutView).ToArray();
+        foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",
+            "Anulado: Pedido por error","Anulado","Pago · Tarjeta","Añadir un consumo","Concepto","Cantidad","Importe","Otras operaciones","Pago parcial","Pendiente 51,00 €",
+            "Registro operativo de ensayo: no emite facturas ni realiza cargos bancarios. Solo el puesto principal.","7 cuentas abiertas · Pendiente 420,60 €"})
+            if(!cajaTexts.Contains(text)) throw new Exception("Caja paints '"+text+"'.");
+        if(accountList.ItemContainerGenerator.ContainerFromItem(checkout.AccountItems.Single(r=>r.Choice.ServiceId=="s4")) is not ListBoxItem{IsSelected:true}
+            ||checkout.AccountItems.Count(r=>accountList.ItemContainerGenerator.ContainerFromItem(r) is ListBoxItem{IsSelected:true})!=1) throw new Exception("The chosen card is marked, and only that one.");
+        // Botones segun lo que anuncia una cuenta con pago parcial: cobrar y anadir; ni cerrar, ni devolver, ni reabrir.
+        if(!Usable("PayButton")||Paints("CloseAccountButton")||Paints("PayAgainButton")||!Usable("AddChargeButton")||!Usable("FillPendingButton")||InCheckout<Button>("RefundButton").IsEnabled
+            ||InCheckout<Button>("ReopenButton").IsEnabled||Paints("CreditBar")||Paints("ClosedBar")) throw new Exception("A partly paid account offers paying and adding; closing, refunding and reopening are not announced.");
+        // Formas de pago en botones con su palabra; la elegida es el codigo que viaja (Method) y se pinta como elegida.
+        var methodList=InCheckout<ListBox>("MethodList");
+        if(checkout.Method!="card"||!checkout.Methods.Select(m=>m.Label+(m.IsCurrent?" (elegida)":"")).SequenceEqual(["Tarjeta (elegida)","Efectivo","Otro"])) throw new Exception("Payment methods are buttons with their words, Tarjeta first.");
+        methodList.SelectedIndex=1; window.UpdateLayout();
+        if(checkout.Method!="cash"||!checkout.Methods[1].IsCurrent||checkout.Methods.Count(m=>m.IsCurrent)!=1) throw new Exception("Choosing 'Efectivo' sets the method code and paints only it as chosen.");
+        var postsBeforeFill=server.Count("POST","");
+        Press(InCheckout<Button>("FillPendingButton"),"Todo lo pendiente");
+        if(checkout.Amount!="51,00"||server.Count("POST","")!=postsBeforeFill) throw new Exception("'Todo lo pendiente' only writes the pending amount; it sends nothing: "+checkout.Amount);
+        window.Shell.Status="";
+        Send("PayButton","Registrar pago de prueba");
+        var payment=server.Requests.Last(r=>r.Method=="POST"); var paymentBody=JsonSerializer.Deserialize<JsonElement>(payment.Body);
+        if(payment.Path!="checkout/services/s4/commands/payment"||paymentBody.GetProperty("expectedVersion").GetInt64()!=1||paymentBody.GetProperty("method").GetString()!="cash"
+            ||paymentBody.GetProperty("amountCents").GetInt64()!=5100||paymentBody.GetProperty("paymentId").GetString() is not {Length:32}||window.Shell.Status!="Operación confirmada por el servidor: pago de prueba registrado.")
+            throw new Exception("'Registrar pago de prueba' sends the usual payment of the READ account with the chosen method: "+payment.Path+" "+payment.Body+" / "+window.Shell.Status);
+        if(checkout.Amount.Length!=0||checkout.SelectedAccount?.ServiceId!="s4"||!checkout.HasContext) throw new Exception("After paying the amount is cleared and the same account stays chosen.");
+        // Cuenta saldada (Mesa 8): el servidor anuncia cerrar; "Cerrar cuenta saldada" pasa a ser el boton grande y registrar otro pago queda al lado.
+        window.Shell.Status="";
+        Choose("s8");
+        if(checkout.CoverageText!="Pagada"||checkout.PendingText!="0,00 €"||!checkout.CloseAnnounced||!Usable("CloseAccountButton")||Paints("PayButton")||!Usable("PayAgainButton")||InCheckout<Button>("FillPendingButton").IsEnabled)
+            throw new Exception("A settled account offers 'Cerrar cuenta saldada' as the big action (announced by the server); paying again stays beside it.");
+        RefuseRaw(window,"checkout-settled"); Save(Shot(window),"checkout-settled.png");
+        Send("CloseAccountButton","Cerrar cuenta saldada");
+        if(LastPost()!="checkout/services/s8/commands/close {\"expectedVersion\":1}"||window.Shell.Status!="Operación confirmada por el servidor: cuenta cerrada.") throw new Exception("Closing sends the usual body for the read account: "+LastPost());
+        // Pagado de mas (Terraza 1): se dice con su importe y se ofrece devolver (anunciado), con el importe, la forma de pago y el motivo.
+        window.Shell.Status="";
+        Choose("st1");
+        if(checkout.CoverageText!="Pagado de más"||!checkout.CreditText.StartsWith("Pagado de más: 5,80 €.",StringComparison.Ordinal)||!Paints("CreditBar")||!Usable("RefundButton")||InCheckout<Button>("ReopenButton").IsEnabled||checkout.CloseAnnounced)
+            throw new Exception("An overpaid account says so and offers refunding (announced): "+checkout.CreditText);
+        InCheckout<ScrollViewer>("AccountScroll").ScrollToEnd(); window.UpdateLayout();
+        RefuseRaw(window,"checkout-credit"); Save(Shot(window),"checkout-credit.png");
+        InCheckout<ScrollViewer>("AccountScroll").ScrollToHome(); window.UpdateLayout();
+        checkout.Amount="5,80"; checkout.Note="Sobraba el cambio";
+        Send("RefundButton","Devolver lo pagado de más");
+        var refund=server.Requests.Last(r=>r.Method=="POST"); var refundBody=JsonSerializer.Deserialize<JsonElement>(refund.Body);
+        if(refund.Path!="checkout/services/st1/commands/refund"||refundBody.GetProperty("expectedVersion").GetInt64()!=1||refundBody.GetProperty("amountCents").GetInt64()!=580
+            ||refundBody.GetProperty("reason").GetString()!="Sobraba el cambio"||refundBody.GetProperty("method").GetString()!="cash"||checkout.Note.Length!=0||checkout.Amount.Length!=0)
+            throw new Exception("Refunding sends the usual body (amount, method and reason) for the read account: "+refund.Path+" "+refund.Body);
+        // Buscar por mesa o sala, sin distinguir mayusculas: la elegida sigue elegida mientras se vea; si la busqueda la deja fuera se
+        // deselecciona del todo (la ficha dice que elegir y nada queda activo); sin resultados, se dice y se ofrece borrar la busqueda.
+        window.Shell.Status=""; methodList.SelectedIndex=0;
+        Choose("s4");
+        accountSearch.Text="4"; window.UpdateLayout();
+        if(!checkout.AccountItems.Select(r=>r.Table).SequenceEqual(["Mesa 4"])||checkout.SelectedAccount?.ServiceId!="s4"||!checkout.HasContext
+            ||accountList.SelectedItem is not Costina.Desktop.ViewModels.AccountRow{Choice.ServiceId:"s4"}||!checkout.PayCommand.CanExecute(null)) throw new Exception("A search that still shows the chosen account keeps it chosen.");
+        accountSearch.Text="SALA PRINCIPAL"; window.UpdateLayout();
+        if(checkout.AccountItems.Length!=6||checkout.SelectedAccount?.ServiceId!="s4") throw new Exception("The search finds zones too, whatever the case: "+checkout.AccountItems.Length);
+        accountSearch.Text="terraza"; window.UpdateLayout();
+        if(!checkout.AccountItems.Select(r=>r.Table).SequenceEqual(["Terraza 1"])||checkout.SelectedAccount is not null||checkout.HasContext||accountList.SelectedItem is not null
+            ||checkout.PayCommand.CanExecute(null)||checkout.AddCommand.CanExecute(null)||checkout.EmptyHeading!="Elige una cuenta"||!Paints("AccountEmpty")||Paints("AccountDetail"))
+            throw new Exception("A search that hides the chosen account deselects it completely: the ficha says what to pick and nothing is actionable.");
+        RefuseRaw(window,"checkout-unselected"); Save(Shot(window),"checkout-unselected.png");
+        accountSearch.Text="jardín"; window.UpdateLayout();
+        if(checkout.AccountItems.Length!=0||checkout.ListEmptyHeading!="Ninguna cuenta coincide"||!Usable("ClearSearchButton")||Paints("EmptyOpenTableButton")) throw new Exception("A search without results says so and offers to clear it.");
+        Press(InCheckout<Button>("ClearSearchButton"),"Borrar la búsqueda"); window.UpdateLayout();
+        if(checkout.Search.Length!=0||accountSearch.Text.Length!=0||checkout.AccountItems.Length!=7||checkout.SelectedAccount is not null) throw new Exception("Clearing the search lists every account again, with none chosen.");
+        // "Ver cuenta" desde el Comedor con una busqueda escrita en Caja: la cuenta pedida no queda escondida (la busqueda se borra) y su
+        // tarjeta queda marcada. Es tambien el estado de la captura (Mesa 4, como el Comedor).
+        accountSearch.Text="terraza"; window.UpdateLayout();
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Pick("Mesa 4","s4");
+        Press(Named("ViewAccountButton"),"Ver cuenta (Caja con una búsqueda)");
+        Wait(()=>!window.Shell.Busy&&checkout.Account?.Data.ServiceId=="s4"&&checkout.HasContext,"'Ver cuenta' opens Mesa 4 in Caja"); window.UpdateLayout();
+        if(tabs.SelectedItem!=(TabItem)window.FindName("CheckoutTab")||checkout.Search.Length!=0||checkout.AccountItems.Length!=7||checkout.SelectedAccount?.ServiceId!="s4"
+            ||accountList.SelectedItem is not Costina.Desktop.ViewModels.AccountRow{Choice.ServiceId:"s4"}||checkout.DetailTitle!="Mesa 4") throw new Exception("'Ver cuenta' clears a search that would hide the requested account and marks its card.");
+        // Encaje a 1.280 x 860: la lista mide 320 px, la ficha deja el cobro a la vista, ningun texto se corta y hay una sola barra de
+        // desplazamiento por columna (ninguna anidada: los consumos no desplazan por su cuenta).
+        window.Shell.Status=""; window.UpdateLayout();
+        var payButton=InCheckout<Button>("PayButton");
+        if(Math.Abs(InCheckout<FrameworkElement>("AccountsPane").ActualWidth-320)>0.5||InCheckout<FrameworkElement>("AccountPanel").ActualWidth<460
+            ||payButton.TranslatePoint(new Point(0,payButton.ActualHeight),checkoutView).Y>checkoutView.ActualHeight+0.5)
+            throw new Exception("Caja fits: the list keeps 320 px and the payment stays in view: "+InCheckout<FrameworkElement>("AccountPanel").ActualWidth);
+        if(Clipped(checkoutView) is {Length:>0} clippedCaja) throw new Exception("Caja clips text: "+string.Join(" | ",clippedCaja));
+        if(NestedScrolls(checkoutView) is {Length:>0} nestedCaja) throw new Exception("Caja nests scroll viewers: "+string.Join(", ",nestedCaja));
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
         SynchronizationContext.SetSynchronizationContext(previousContext);
-        window.Shell.Checkout.Products=[new Costina.Client.ProductChoice("water","Agua mineral","Botella",400,"bottle","Bebidas","general"),new Costina.Client.ProductChoice("wine","Vino de ensayo","Copa",950,"glass","Vinos","general")]; window.Shell.Checkout.SelectedProduct=window.Shell.Checkout.Products[0];
-        window.Shell.Checkout.Accounts=[..diningBoard.Select(b=>new Costina.Client.AccountChoice(b.Service.Id,b.Service.TableId,"Open"))]; window.Shell.Checkout.SelectedAccount=window.Shell.Checkout.Accounts[0];
-        window.Shell.Checkout.Charges=[new("ch1","Degustación Costiña · Por persona",2,15000,false,null,30000),new("ch2","Agua mineral · Botella",1,400,false,null,400)];
-        window.Shell.Checkout.Account=new(1,new Costina.Client.AccountDto("a1","s1","Open",30400,0,30400,0,"Unpaid",window.Shell.Checkout.Charges,[],["add-product","payment"],[]));
+        // C2b: la captura de Caja es la del estado que deja la seccion de arriba (la Mesa 4 leida, con todas las tarjetas): sin datos a mano.
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         center.ApplyNetwork(SimpleOn);   // B.2: la captura de Dispositivos muestra la conexion sencilla activa
         home.ApplyDiagnostics(soon); home.ApplyDevices(panelDevices); home.ApplyNetwork(SimpleOn);   // C2: Inicio con sus dispositivos y la conexion sencilla
@@ -1082,6 +1265,9 @@ internal static class Program
             RefuseRaw(window,tab);
             if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Anaphylaxis (Critical)","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
                 throw new Exception("Comedor paints the allergy in words on the panel and on the tile, and the station by its name: missing '"+missing+"'.");
+            // C2b: Caja pinta la Mesa 4 leida (la de "Ver cuenta"), sus cifras y las demas tarjetas con su cobertura en palabras.
+            if(tab=="CheckoutTab"&&new[]{"Mesa 4","Pago parcial","51,00 €","Pendiente 161,00 €","Pagado de más","Pagada","Registrar pago de prueba"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingCaja)
+                throw new Exception("Caja paints the read account, its figures and the coverage of every card in words: missing '"+missingCaja+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
                 "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
@@ -1200,6 +1386,41 @@ internal static class Program
             for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++) pending.Push(VisualTreeHelper.GetChild(node,i));
         }
     }
+    // C2b: textos de una linea (sin partir) que no se ven enteros: no caben en su sitio (cortados o con puntos suspensivos) o un contenedor
+    // los recorta (su recorte de diseno, LayoutInformation, no deja ver el texto a lo ancho: una nota con ancho maximo, una columna
+    // estrecha). Se mide el texto con su letra y se situa segun su alineacion; un texto que se parte nunca se corta.
+    private static string[] Clipped(FrameworkElement root) => Descendants<TextBlock>(root)
+        .Where(t=>t.IsVisible&&t.TextWrapping==TextWrapping.NoWrap&&t.Text.Length>0&&IsClipped(t,root)).Select(t=>t.Text).ToArray();
+    private static bool IsClipped(TextBlock text,FrameworkElement root)
+    {
+        var width=new FormattedText(text.Text,System.Globalization.CultureInfo.CurrentCulture,text.FlowDirection,new Typeface(text.FontFamily,text.FontStyle,text.FontWeight,text.FontStretch),
+            text.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(text).PixelsPerDip).WidthIncludingTrailingWhitespace;
+        if(width>text.ActualWidth+1) return true;
+        var left=text.TextAlignment switch{TextAlignment.Right=>text.ActualWidth-width,TextAlignment.Center=>(text.ActualWidth-width)/2,_=>0};
+        var span=new Rect(left,0,width,Math.Max(text.ActualHeight,1));
+        for(DependencyObject? node=text;node is not null;node=VisualTreeHelper.GetParent(node))
+        {
+            if(node is FrameworkElement element&&System.Windows.Controls.Primitives.LayoutInformation.GetLayoutClip(element) is {} clip)
+            {
+                var box=ReferenceEquals(element,text)?span:text.TransformToAncestor(element).TransformBounds(span);
+                if(box.Left<clip.Bounds.Left-1||box.Right>clip.Bounds.Right+1) return true;
+            }
+            if(ReferenceEquals(node,root)) break;
+        }
+        return false;
+    }
+    // C2b: desplazamientos anidados bajo una vista (sin contar el de dentro de cada campo de texto): cada columna desplaza una sola vez.
+    private static string[] NestedScrolls(FrameworkElement root)
+    {
+        static bool Counts(ScrollViewer s)=>s.IsVisible&&s.TemplatedParent is not System.Windows.Controls.Primitives.TextBoxBase;
+        bool Nested(DependencyObject node)
+        {
+            for(var parent=VisualTreeHelper.GetParent(node);parent is not null&&!ReferenceEquals(parent,root);parent=VisualTreeHelper.GetParent(parent))
+                if(parent is ScrollViewer outer&&Counts(outer)) return true;
+            return false;
+        }
+        return Descendants<ScrollViewer>(root).Where(Counts).Where(s=>Nested(s)).Select(s=>(s.TemplatedParent as FrameworkElement)?.Name is {Length:>0} owner?owner:s.Name).ToArray();
+    }
     // E3.2: elementos de un tipo bajo un elemento del arbol visual.
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject
     {
@@ -1268,6 +1489,9 @@ internal static class Program
         public Costina.Client.Configuration? Configuration { get; set; }
         public Costina.Client.BoardEntry[] Board { get; set; }=[];
         public Costina.Client.AccountChoice[] Accounts { get; set; }=[];
+        // C2b: la cuenta completa de cada servicio listado (sin ella, una cuenta abierta vacia) y el catalogo de caja (vendibles con precio).
+        public System.Collections.Concurrent.ConcurrentDictionary<string,Costina.Client.AccountDto> AccountDetails { get; }=new();
+        public Costina.Client.ProductChoice[] CheckoutCatalog { get; set; }=[];
         // C2: lo que lee Inicio del responsable (diagnostico, dispositivos, red) y lo que necesita un asistente de Dispositivos (solicitudes y
         // el codigo de un uso que emite POST auth/pairings).
         public Costina.Client.DiagnosticsDto? Diagnostics { get; set; }
@@ -1303,13 +1527,14 @@ internal static class Program
                 if(path.StartsWith("dining/services/",StringComparison.Ordinal)&&Board.FirstOrDefault(b=>b.Service.Id==Uri.UnescapeDataString(path["dining/services/".Length..])) is {} entry)
                     return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.DiningDto>(entry.Version,entry.Service),Costina.Client.ApiClient.Json));
                 if(path=="checkout/accounts") return Json(200,JsonSerializer.Serialize(Accounts,Costina.Client.ApiClient.Json));
-                if(path=="checkout/catalog") return Json(200,"[]");
+                if(path=="checkout/catalog") return Json(200,JsonSerializer.Serialize(CheckoutCatalog,Costina.Client.ApiClient.Json));
                 if(path=="diagnostics"&&Diagnostics is not null) return Json(200,JsonSerializer.Serialize(Diagnostics,Costina.Client.ApiClient.Json));
                 if(path=="auth/devices") return Json(200,JsonSerializer.Serialize(Devices,Costina.Client.ApiClient.Json));
                 if(path=="auth/pairings/pending") return Json(200,"[]");
                 if(path=="installation/network"&&Network is not null) return Json(200,JsonSerializer.Serialize(Network,Costina.Client.ApiClient.Json));
                 if(path.StartsWith("checkout/services/",StringComparison.Ordinal)&&Accounts.FirstOrDefault(a=>a.ServiceId==Uri.UnescapeDataString(path["checkout/services/".Length..])) is {} account)
-                    return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.AccountDto>(1,new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
+                    return Json(200,JsonSerializer.Serialize(new Costina.Client.Versioned<Costina.Client.AccountDto>(1,AccountDetails.TryGetValue(account.ServiceId,out var detail)?detail
+                        :new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
                 return Json(404,"{\"error\":\"not_found\"}");
             }
             if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",code="Home12_abc-def",expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
