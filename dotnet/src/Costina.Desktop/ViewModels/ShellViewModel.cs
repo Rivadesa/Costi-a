@@ -168,16 +168,22 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         PendingOutcome.Unavailable => "ORDEN ANTERIOR INACCESIBLE: " + Blocked.Detail
             + " No se admiten órdenes nuevas hasta poder leerla. Cierra otras ventanas o revisa el disco y vuelve a conectar.",
+        // D6.7: de otra sesion con el mismo rol (no se reenvia ni se consulta) o sin autor anotado (se consulta, nunca se reenvia).
+        PendingOutcome.OtherActor => Labels.OtherActorPending(Blocked.Actor, Blocked.Command?.Description, Blocked.Key)
+            + (Blocked.Detail.Length > 0 ? " " + Blocked.Detail : ""),
+        PendingOutcome.UnknownActor => Labels.UnknownActorPending(Blocked.Command?.Description, Blocked.Key, Blocked.Detail),
         _ => "ORDEN ANTERIOR ILEGIBLE" + (Blocked.Key is null ? " (sin identificador)" : " (identificador " + Blocked.Key + ")") + ": "
             + Blocked.Detail + " Pudo haberse aplicado. Consulta al servidor antes de operar; la evidencia se conserva en cuarentena al descartar."
     };
+    // D6.7: "Consultar al servidor" no se ofrece para la orden de otra sesion: el servidor solo responde por las de quien pregunta.
+    public bool BlockedAsksServer => Blocked is not { Outcome: PendingOutcome.OtherActor };
 
     internal void Sync()
     {
         OnPropertyChanged(nameof(Connected)); OnPropertyChanged(nameof(IsMain)); OnPropertyChanged(nameof(HasDining));
         OnPropertyChanged(nameof(IsResponsible)); OnPropertyChanged(nameof(IsStation)); OnPropertyChanged(nameof(LevelText));
         OnPropertyChanged(nameof(Writable)); OnPropertyChanged(nameof(HasPending));
-        OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText));
+        OnPropertyChanged(nameof(HasBlocked)); OnPropertyChanged(nameof(BlockedText)); OnPropertyChanged(nameof(BlockedAsksServer));
         OnPropertyChanged(nameof(CanOpen)); OnPropertyChanged(nameof(PendingText));
         OnPropertyChanged(nameof(ConnectEnabled)); OnPropertyChanged(nameof(TabsEnabled)); OnPropertyChanged(nameof(ConnectionText));
         OnPropertyChanged(nameof(IsKitchen)); OnPropertyChanged(nameof(HasPairedDevice)); OnPropertyChanged(nameof(LoginCardVisible)); OnPropertyChanged(nameof(LoginTitle));
@@ -243,7 +249,7 @@ public sealed partial class ShellViewModel : ObservableObject
             sessionToken = null;   // el servidor ya no la reconoce: no hay nada que cerrar
             var hadPending = Pending is not null;
             ResetInternal();
-            Status = "Tu sesión de responsable ha caducado o fue cerrada." + (hadPending ? " La ORDEN SIN CONFIRMAR sigue guardada y reaparecerá al volver a entrar como responsable." : "")
+            Status = "Tu sesión de responsable ha caducado o fue cerrada." + (hadPending ? " La ORDEN SIN CONFIRMAR sigue guardada en este PC y reaparecerá cuando vuelvas a entrar con tu usuario; si entra otra persona, la verá bloqueada y no se reenviará." : "")
                 + (HasPairedDevice ? " Este PC sigue conectado como puesto." : " Entra de nuevo para continuar.");
             if (HasPairedDevice) await TryConnectStation();
             return;
@@ -444,14 +450,20 @@ public sealed partial class ShellViewModel : ObservableObject
             Api = candidate; ServerReady = true; Session = identity; sessionToken = isUserSession ? token : null;
             previous?.Dispose();
             // Cola durable: con la identidad ya autenticada se engancha el almacen cifrado, aislado por
-            // instalacion, ambito, rol y ventana. Una orden sin confirmar de otra sesion se restaura y
-            // bloquea todo hasta reintentarla identica; una ilegible bloquea hasta conciliar con el servidor.
+            // instalacion, ambito, rol y ventana. Una orden sin confirmar de una sesion anterior del MISMO actor se
+            // restaura y bloquea todo hasta reintentarla identica; una ilegible bloquea hasta conciliar con el servidor;
+            // una de otro actor o sin actor anotado (D6.7) bloquea sin reenviarse nunca.
             candidate.AttachPendingStore(new DpapiPendingStore(identity));
             Pending = candidate.Pending; Blocked = candidate.Blocked;
             Service.ApplyConfiguration(config);
             await StartRealtime(uri, token);
             await RefreshAll();
-            Status = Blocked is not null
+            Status = Blocked is { Outcome: PendingOutcome.OtherActor }
+                ? "Conectado. Hay en este PC una ORDEN SIN CONFIRMAR de " + Labels.Author(Blocked.Actor)
+                    + ": no se reenvía desde tu sesión y no se admiten órdenes nuevas hasta comprobarla y descartarla (el aviso rojo explica cómo)."
+                : Blocked is { Outcome: PendingOutcome.UnknownActor }
+                ? "Conectado. ORDEN ANTERIOR SIN AUTOR ANOTADO: no se reenvía y no se admiten órdenes nuevas hasta consultarla al servidor o descartarla conservando la evidencia."
+                : Blocked is not null
                 ? "Conectado. ORDEN ANTERIOR NO LEGIBLE: no se admiten órdenes nuevas hasta consultarla al servidor o descartarla conservando la evidencia."
                 : Pending is not null
                 ? "Conectado. ORDEN SIN CONFIRMAR recuperada de una sesión anterior: \"" + Pending.Description
@@ -588,26 +600,32 @@ public sealed partial class ShellViewModel : ObservableObject
         Status = "Reintento confirmado con el mismo identificador.";
     });
 
-    // Conciliacion asistida de una orden ilegible: el servidor dice si consta como aplicada.
-    private bool CanReconcile() => Connected && !Busy && Blocked is { Outcome: PendingOutcome.Unreadable, Key: not null };
+    // Conciliacion asistida de una orden ilegible (o sin autor anotado, D6.7): el servidor dice si consta como aplicada PARA ESTA
+    // sesion. La de otro actor no se consulta: el servidor solo responde por las ordenes de quien pregunta.
+    private bool CanReconcile() => Connected && !Busy && Blocked is { Outcome: PendingOutcome.Unreadable or PendingOutcome.UnknownActor, Key: not null };
     [RelayCommand(CanExecute = nameof(CanReconcile))]
     private Task Reconcile() => Run(async () =>
     {
-        var outcome = await Api!.ReconcileAsync();
+        var unknownAuthor = Api!.Blocked?.Outcome == PendingOutcome.UnknownActor;
+        var outcome = await Api.ReconcileAsync();
         await RefreshAll();
         Status = outcome == "confirmed"
             ? "El servidor confirma que la orden anterior SÍ se aplicó. Bloqueo retirado y datos releídos; la evidencia queda en cuarentena."
+            : unknownAuthor ? Labels.UnknownActorNotFound
             : "El servidor NO tiene constancia de la orden anterior. Comprueba el estado antes de repetirla; ahora puedes descartarla (la evidencia se conserva).";
     });
 
-    // Descartar solo tras consultar (o si no hay identificador que consultar); nunca destruye el fichero.
-    private bool CanDiscard() => Connected && !Busy && Blocked is { Outcome: PendingOutcome.Unreadable } load
-        && (load.Key is null || Api?.LastReconciliation == "unknown");
+    // Descartar solo tras consultar (o si no hay identificador que consultar); nunca destruye el fichero. La orden de otra sesion
+    // (D6.7) se descarta sin consultar: consultarla no sirve, y el aviso dice como comprobarla antes.
+    private bool CanDiscard() => Connected && !Busy && (Blocked is { Outcome: PendingOutcome.OtherActor }
+        || (Blocked is { Outcome: PendingOutcome.Unreadable or PendingOutcome.UnknownActor } load && (load.Key is null || Api?.LastReconciliation == "unknown")));
     [RelayCommand(CanExecute = nameof(CanDiscard))]
     private Task Discard() => Run(() =>
     {
-        Api!.DiscardBlocked();
-        Status = "Orden ilegible descartada. El fichero queda en cuarentena en la carpeta de la aplicación para revisión.";
+        var unreadable = Api!.Blocked?.Outcome == PendingOutcome.Unreadable;
+        Api.DiscardBlocked();
+        Status = (unreadable ? "Orden ilegible descartada." : "Orden anterior descartada sin reenviarla.")
+            + " El fichero queda en cuarentena en la carpeta de la aplicación para revisión.";
         return Task.CompletedTask;
     });
 }

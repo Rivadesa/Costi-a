@@ -123,7 +123,10 @@ internal static class Program
             throw new Exception("A closed account offers only reopening, and says why: "+shell.Checkout.ClosedText);
         // D3.4 (F02/F03): almacen durable aislado por instalacion, ambito, rol y ventana; la evidencia se conserva.
         var folder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
-        var session=new Costina.Client.SessionInfo("checks","t","c","l",null,"inst-checks","0.7.0-d3.4");
+        var session=new Costina.Client.SessionInfo("checks","t","c","l",null,"inst-checks","0.7.0-d3.4",Actor:"user:jefa");
+        // D6.7: sin actor no hay almacen (no se sabria de quien es cada orden): fallo cerrado.
+        try { using var anonymous=new DpapiPendingStore(session with {Actor=null},System.IO.Path.Combine(folder,"sin-actor")); throw new Exception("A session without an actor must get no durable store."); }
+        catch(ArgumentException) { }
         string[] files;
         using(var first=new DpapiPendingStore(session,folder))
         using(var second=new DpapiPendingStore(session,folder))
@@ -149,7 +152,7 @@ internal static class Program
             first.Save(command); first.Clear("k123");
             if(File.Exists(files[0])) throw new Exception("Clearing the confirmed key must delete the file.");
             // Fichero de otra instalacion en el mismo hueco: se informa y nunca se reenvia.
-            using(var foreign=new DpapiPendingStore(new("checks","t","c","l",null,"inst-otra","0.7.0-d3.4"),folder)) foreign.Save(command);
+            using(var foreign=new DpapiPendingStore(session with {InstallationId="inst-otra"},folder)) foreign.Save(command);
             File.Move(Directory.GetFiles(folder,"inst-otra-*.bin").Single(),files[0]);
             if(first.Load() is not {Outcome:Costina.Client.PendingOutcome.Unreadable,Key:"k123"}) throw new Exception("A command from another installation must never be restored.");
             first.Discard();
@@ -157,6 +160,91 @@ internal static class Program
         using(var third=new DpapiPendingStore(session,folder))
             if(third.Slot!=0) throw new Exception("A released slot must be reused by the next window.");
         Directory.Delete(folder,true);
+        // D6.7 (PC): el servidor guarda la idempotencia POR ACTOR (la clave se busca con quien la manda). Con el mismo rol en este PC
+        // (otra persona responsable, o un dispositivo antiguo con rol principal) el fichero durable es el mismo: la orden incierta de
+        // «ana» no se reenvia con la sesion de «bea» (se aplicaria otra vez, o un 409 la cerraria como no aplicada) ni se pregunta por
+        // ella (el servidor diria que no consta). Motor simulado con esa regla, almacen DPAPI real y dos identidades del mismo rol.
+        var actorFolder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
+        string anaToken=new('a',40),beaToken=new('b',40);
+        var actorServer=new ActorServer(new(){[anaToken]="user:ana",[beaToken]="user:bea"});
+        var anaSession=new Costina.Client.SessionInfo("main","t","c","l",null,"inst-checks","0.40.1-d6.7",Actor:"user:ana");
+        var beaSession=anaSession with {Actor="user:bea"};
+        Costina.Client.ApiClient ActorClient(string token,Costina.Client.SessionInfo identity,string? where=null)
+        {
+            var client=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),token,actorServer);
+            client.AttachPendingStore(new DpapiPendingStore(identity,where??actorFolder)); return client;
+        }
+        void Refused(Func<Task> attempt,string what)
+        {
+            try { attempt().GetAwaiter().GetResult(); } catch(InvalidOperationException) { return; }
+            throw new Exception(what);
+        }
+        var glassOrder=new{items=new[]{new{productId="albarino",priceCents=450}},stop=Array.Empty<string>()};
+        // «ana» manda una orden; el motor la aplica y la respuesta se pierde: queda incierta en el fichero durable del rol.
+        string LostOrder(string? where=null)
+        {
+            using var anaClient=ActorClient(anaToken,anaSession,where);
+            actorServer.LoseNextResponse=true;
+            try { anaClient.SendAsync("erp/catalog/commands/glass-sale-set",glassOrder,"Vender por copas Albariño").GetAwaiter().GetResult(); throw new Exception("A lost response must leave the order uncertain."); }
+            catch(System.Net.Http.HttpRequestException) { }
+            return anaClient.Pending?.Key??throw new Exception("The order whose response was lost stays uncertain.");
+        }
+        var anaKey=LostOrder();
+        var stored=File.ReadAllBytes(Directory.GetFiles(actorFolder,"*.bin").Single()); var storedHeader=System.Text.Encoding.UTF8.GetString(stored,0,Array.IndexOf(stored,(byte)'\n'));
+        if(!storedHeader.Contains("\"v\":3",StringComparison.Ordinal)||!storedHeader.Contains("\"actor\":\"user:ana\"",StringComparison.Ordinal)||storedHeader.Contains("albarino",StringComparison.Ordinal))
+            throw new Exception("The clear header names the actor (version 3); the order itself stays encrypted: "+storedHeader);
+        using(var beaClient=ActorClient(beaToken,beaSession))
+        {
+            if(beaClient.Pending is not null) throw new Exception("Another person's uncertain order is never restored as this session's pending order: its retry would run under another actor.");
+            if(beaClient.Blocked is null) throw new Exception("Another person's uncertain order blocks this session (one durable slot): nothing new goes over it.");
+            if(beaClient.Blocked is not {Outcome:Costina.Client.PendingOutcome.OtherActor,Actor:"user:ana",Command.Description:"Vender por copas Albariño"} foreign||foreign.Key!=anaKey)
+                throw new Exception("The block says whose order it is and what it was: "+beaClient.Blocked);
+            var before=actorServer.Requests.Length;
+            Refused(()=>beaClient.RetryAsync(),"Retrying another person's order is refused.");
+            Refused(()=>beaClient.ReconcileAsync(),"Asking the server about another person's order is refused (it would say 'no consta').");
+            Refused(()=>beaClient.SendAsync("organization/commands/zone-update",new{id="sala"},"Otra orden"),"No new order goes over another person's uncertain order.");
+            if(actorServer.Requests.Length!=before||actorServer.Applied!=1) throw new Exception("The other session sends nothing at all: "+string.Join(" ; ",actorServer.Requests.Skip(before)));
+        }
+        // Control: con la MISMA persona la orden reaparece y su reintento es seguro (el motor la reconoce por su clave: un solo efecto).
+        using(var anaAgain=ActorClient(anaToken,anaSession))
+        {
+            if(anaAgain.Pending?.Key!=anaKey||anaAgain.Blocked is not null) throw new Exception("The same person gets her uncertain order back.");
+            anaAgain.RetryAsync().GetAwaiter().GetResult();
+            if(anaAgain.Pending is not null||actorServer.Applied!=1||Directory.GetFiles(actorFolder,"*.bin").Length!=0) throw new Exception("Her identical retry is replayed by the server, applied once, and clears the file.");
+        }
+        // Descarte explicito: sin consultar ni enviar nada, la orden ajena va a cuarentena y la sesion vuelve a operar con lo suyo.
+        LostOrder();
+        using(var beaClient=ActorClient(beaToken,beaSession))
+        {
+            var before=actorServer.Requests.Length;
+            beaClient.DiscardBlocked();
+            if(beaClient.Blocked is not null||Directory.GetFiles(actorFolder,"*.bin").Length!=0||Directory.GetFiles(actorFolder,"*.cuarentena-*").Length!=1||actorServer.Requests.Length!=before)
+                throw new Exception("Discarding another person's order quarantines it and sends nothing.");
+            beaClient.SendAsync("organization/commands/zone-update",new{id="sala"},"Otra orden").GetAwaiter().GetResult();
+            if(actorServer.Applied!=3||beaClient.Pending is not null) throw new Exception("After the discard the session works normally.");
+        }
+        // Fichero de 0.40.0: cabecera de version 2, sin actor (el cuerpo cifrado es el mismo). No se sabe de quien es: nunca se reenvia.
+        // Se consulta (D6.6): con otra persona no consta (y no se sabe nada); con quien la hizo consta y se da por aplicada.
+        var legacyKey=LostOrder();
+        var legacyFile=Directory.GetFiles(actorFolder,"*.bin").Single(); var legacyBytes=File.ReadAllBytes(legacyFile); var legacyEnd=Array.IndexOf(legacyBytes,(byte)'\n');
+        var header3=JsonSerializer.Deserialize<JsonElement>(legacyBytes.AsSpan(0,legacyEnd));
+        var header2=JsonSerializer.SerializeToUtf8Bytes(new{v=2,key=legacyKey,installation=header3.GetProperty("installation").GetString(),scope=header3.GetProperty("scope").GetString(),role=header3.GetProperty("role").GetString()});
+        File.WriteAllBytes(legacyFile,[..header2,(byte)'\n',..legacyBytes[(legacyEnd+1)..]]);
+        var appliedBefore=actorServer.Applied;
+        foreach(var (token,identity,expected) in new[]{(beaToken,beaSession,"unknown"),(anaToken,anaSession,"confirmed")})
+            using(var client=ActorClient(token,identity))
+            {
+                if(client.Pending is not null||client.Blocked is not {Outcome:Costina.Client.PendingOutcome.UnknownActor,Command.Description:"Vender por copas Albariño"} legacy||legacy.Key!=legacyKey)
+                    throw new Exception("An order written without its actor is blocked, never restored: "+client.Blocked);
+                Refused(()=>client.RetryAsync(),"An order without its actor is never retried.");
+                Refused(()=>{client.DiscardBlocked();return Task.CompletedTask;},"An order without its actor is asked about before it can be discarded.");
+                if(client.ReconcileAsync().GetAwaiter().GetResult()!=expected) throw new Exception("Asked with "+identity.Actor+", the server says "+expected+".");
+                if(expected=="confirmed"?client.Blocked is not null||Directory.GetFiles(actorFolder,"*.bin").Length!=0:client.Blocked is null)
+                    throw new Exception("Found with this session it was applied (quarantined); not found, it stays blocked until an explicit discard.");
+            }
+        if(actorServer.Applied!=appliedBefore||actorServer.Requests.Count(r=>r.StartsWith("POST ",StringComparison.Ordinal)&&r.EndsWith("glass-sale-set",StringComparison.Ordinal))!=4)
+            throw new Exception("An order without its actor is never resent: "+string.Join(" ; ",actorServer.Requests));
+        Directory.Delete(actorFolder,true);
         // D4.3b: la credencial del puesto emparejado persiste cifrada y lo corrupto se descarta.
         var deviceStore=new DpapiDeviceStore(new Uri("http://127.0.0.1:59998"));
         deviceStore.Clear();
@@ -626,6 +714,24 @@ internal static class Program
         if(levels.Connected||!levels.Status.Contains("caducado")) throw new Exception("A 401 of the person session returns to Puesto (or to the login card) and explains it: "+levels.Status);
         if(levels.Service.BoardRead||levels.Home.ReviewDetail!="Sin leer todavía"||levels.Home.Tiles.Length!=0) throw new Exception("After leaving a level the floor is unread again, never 'Nada por revisar': "+levels.Home.ReviewDetail);
         levels.Clock=()=>DateTimeOffset.UtcNow;
+        // D6.7 (PC): en la ventana, la orden incierta de otra persona sale en el aviso rojo con quien la hizo, que era y como comprobarla;
+        // sin reintento ni "Consultar al servidor", y nada nuevo se envia. El descarte explicito la aparta a cuarentena sin enviar nada.
+        var otherFolder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
+        LostOrder(otherFolder);
+        levels.AssumeResponsible(beaSession with {Modules=["dining"]});
+        levels.Api=ActorClient(beaToken,beaSession,otherFolder); levels.Pending=levels.Api.Pending; levels.Blocked=levels.Api.Blocked; levels.Status=""; levels.Sync(); window.UpdateLayout();
+        var sentBefore=actorServer.Requests.Length;
+        if(levels.Writable||levels.HasPending||levels.RetryCommand.CanExecute(null)||levels.ReconcileCommand.CanExecute(null)||!levels.DiscardCommand.CanExecute(null)||levels.BlockedAsksServer)
+            throw new Exception("Another person's order offers only the explicit discard: no retry, no question to the server, nothing new.");
+        if(!Painted(window).Any(t=>t.StartsWith("ORDEN SIN CONFIRMAR DE OTRA PERSONA, hecha por «ana»: «Vender por copas Albariño» (identificador ",StringComparison.Ordinal)&&t.Contains("pide a «ana» que entre como responsable",StringComparison.Ordinal)))
+            throw new Exception("The red notice says whose order it is, what it was and how to check it: "+levels.BlockedText);
+        if(((Button)window.FindName("ReconcileBlockedButton")).IsVisible||!((Button)window.FindName("DiscardBlockedButton")).IsVisible) throw new Exception("Only the discard is offered for another person's order.");
+        RefuseRaw(window,"pending-other-actor"); Save(Shot(window),"pending-other-actor.png");
+        Press((Button)window.FindName("DiscardBlockedButton"),"Descartar conservando evidencia");
+        if(levels.HasBlocked||!levels.Writable||!levels.Status.StartsWith("Orden anterior descartada sin reenviarla.",StringComparison.Ordinal)||Directory.GetFiles(otherFolder,"*.bin").Length!=0
+            ||Directory.GetFiles(otherFolder,"*.cuarentena-*").Length!=1||actorServer.Requests.Length!=sentBefore) throw new Exception("The explicit discard quarantines the file and sends nothing: "+levels.Status);
+        levels.OnUnauthorized().GetAwaiter().GetResult();   // sin cierre de sesion por red: cierra el cliente y libera su hueco
+        Directory.Delete(otherFolder,true);
         if(Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().Length<4||!Costina.Desktop.ViewModels.DevicesViewModel.ThisPcName().StartsWith("pc-",StringComparison.Ordinal)) throw new Exception("This PC pairs under a stable, readable name.");
         Directory.Delete(settingsFolder,true); DesktopSettings.Folder=checksRoot;
         window.Shell.Session=new("main","t","c","l",["open"],"inst-checks","0.7.0-d3.4",Modules:["dining"]);
@@ -2692,6 +2798,38 @@ internal static class Program
     // confirma las ordenes con el eco de su clave y aplica en memoria las de imagen, como el motor; registra cada peticion. Sin puertos.
     // C2: tambien la configuracion operativa, el tablero del comedor, cada mesa (la entrada del tablero con su version) y las cuentas
     // de Caja, para que elegir una tarjeta del plano pase por la lectura de siempre.
+    // D6.7: motor simulado con la idempotencia POR ACTOR, como PostgresStore: una orden se recuerda por (actor, clave), el reintento del
+    // mismo actor devuelve la respuesta guardada y GET commands/{clave} solo encuentra las del actor que pregunta. Cada credencial es un
+    // actor. Applied cuenta los efectos; LoseNextResponse aplica la siguiente orden nueva y pierde su respuesta (red cortada).
+    private sealed class ActorServer(Dictionary<string,string> actors) : System.Net.Http.HttpMessageHandler
+    {
+        private readonly Dictionary<(string Actor,string Key),string> done=[];
+        private readonly List<string> requests=[];
+        public string[] Requests { get { lock(requests) return [..requests]; } }
+        public int Applied { get; private set; }
+        public bool LoseNextResponse { get; set; }
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)
+        {
+            var actor=actors[request.Headers.Authorization!.Parameter!];
+            var path=request.RequestUri!.AbsolutePath["/api/native/v1/".Length..];
+            lock(requests) requests.Add(request.Method.Method+" "+actor+" "+path);
+            if(request.Method==System.Net.Http.HttpMethod.Get&&path.StartsWith("commands/",StringComparison.Ordinal))
+            {
+                var asked=Uri.UnescapeDataString(path["commands/".Length..]);
+                return Task.FromResult(Json(200,done.TryGetValue((actor,asked),out var stored)?"{\"key\":\""+asked+"\",\"found\":true,\"response\":"+stored+"}":"{\"key\":\""+asked+"\",\"found\":false}"));
+            }
+            var key=request.Headers.GetValues("Idempotency-Key").Single();
+            if(!done.TryGetValue((actor,key),out var response))
+            {
+                Applied++; response="{\"changed\":true}"; done[(actor,key)]=response;
+                if(LoseNextResponse) { LoseNextResponse=false; throw new System.Net.Http.HttpRequestException("respuesta perdida"); }
+            }
+            var ok=Json(200,response); ok.Headers.Add("Idempotency-Key",key);
+            return Task.FromResult(ok);
+        }
+        private static System.Net.Http.HttpResponseMessage Json(int status,string json)=>new((System.Net.HttpStatusCode)status){Content=new System.Net.Http.StringContent(json,System.Text.Encoding.UTF8,"application/json")};
+    }
+
     private sealed record Request(string Method,string Path,string Body,string? Key);
     private sealed class FakeServer(Costina.Client.CatalogDto catalog,Costina.Client.OrganizationDto organization) : System.Net.Http.HttpMessageHandler
     {

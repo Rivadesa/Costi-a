@@ -162,8 +162,8 @@
     <ContentControl Style="{StaticResource DangerBar}" Margin="0,12,0,0" Visibility="{Binding HasBlocked, Converter={StaticResource Bool2Vis}}">
      <DockPanel>
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
-       <Button Content="Consultar al servidor" Command="{Binding ReconcileCommand}"/>
-       <Button Content="Descartar conservando evidencia" Style="{StaticResource DangerButton}" Command="{Binding DiscardCommand}" Margin="0,4,0,4"/>
+       <Button x:Name="ReconcileBlockedButton" Content="Consultar al servidor" Command="{Binding ReconcileCommand}" Visibility="{Binding BlockedAsksServer, Converter={StaticResource Bool2Vis}}"/>
+       <Button x:Name="DiscardBlockedButton" Content="Descartar conservando evidencia" Style="{StaticResource DangerButton}" Command="{Binding DiscardCommand}" Margin="0,4,0,4"/>
       </StackPanel>
       <TextBlock Text="{Binding BlockedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
      </DockPanel>

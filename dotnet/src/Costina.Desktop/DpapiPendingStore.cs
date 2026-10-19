@@ -6,9 +6,11 @@ using Costina.Client;
 
 namespace Costina.Desktop;
 
-// Cabecera EN CLARO del fichero durable: solo la clave de idempotencia (no es secreta) y la identidad
-// de instalacion/ambito/rol a la que pertenece la orden. El cuerpo va cifrado a continuacion.
-public sealed record PendingHeader(int V, string Key, string Installation, string Scope, string Role);
+// Cabecera EN CLARO del fichero durable: la clave de idempotencia (no es secreta), la identidad de
+// instalacion/ambito/rol a la que pertenece la orden y, desde D6.7 (version 3), el ACTOR que la hizo
+// ("user:<nombre>" o "device:<nombre>": el de la auditoria y la barra de estado, no una credencial).
+// El cuerpo va cifrado a continuacion. Una cabecera de version 2 (0.40.0 y anteriores) no lleva actor.
+public sealed record PendingHeader(int V, string Key, string Installation, string Scope, string Role, string? Actor = null);
 
 // Almacen durable de la orden incierta, cifrado con DPAPI del usuario actual.
 // Aislamiento: un fichero por instalacion + ambito + rol + hueco; el hueco se reserva con un bloqueo
@@ -16,9 +18,12 @@ public sealed record PendingHeader(int V, string Key, string Installation, strin
 // la orden, y al rearrancar cada ventana recupera la suya (o la de una ventana caida).
 // Evidencia: un fichero ilegible NO se borra; se informa con su clave y solo se aparta a cuarentena
 // por decision explicita. Un fichero de otra instalacion nunca se reenvia. La clave de acceso NUNCA pasa por aqui.
+// D6.7: el hueco es del ROL, y con el mismo rol entran varias identidades (cada responsable con su usuario; un dispositivo
+// antiguo con rol principal). El servidor guarda la idempotencia por actor: la orden de otro actor, o una sin actor anotado,
+// se devuelve BLOQUEADA (OtherActor, UnknownActor) y nunca restaurada. El contenido se descifra solo para describirla.
 public sealed class DpapiPendingStore : IPendingStore, IDisposable
 {
-    private const int MaxSlots = 16;
+    private const int MaxSlots = 16, MaxActor = 512;
     private static readonly byte[] Entropy = "costina-pending-v2"u8.ToArray();
     private static readonly JsonSerializerOptions HeaderJson = new(JsonSerializerDefaults.Web);
     private readonly string path;
@@ -36,7 +41,10 @@ public sealed class DpapiPendingStore : IPendingStore, IDisposable
             throw new ArgumentException("Rol no válido.");
         var scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             session.TenantId + "\n" + session.CompanyId + "\n" + session.LocationId)))[..16].ToLowerInvariant();
-        identity = new(2, "", installation, scope, role);
+        // D6.7: sin actor no se sabe de quien es cada orden: fallo cerrado (el motor lo envia en /session desde D4.1).
+        var actor = session.Actor is { Length: > 0 and <= MaxActor } known ? known
+            : throw new ArgumentException("El servidor no identifica quién ha entrado: actualiza el motor a la misma versión que este cliente.");
+        identity = new(3, "", installation, scope, role, actor);
         var folder = directory ?? System.IO.Path.Combine(DesktopSettings.DataFolder, "pending");   // C1: misma raiz que desktop.json
         Directory.CreateDirectory(folder);
         var reserved = Reserve(folder, $"{installation}-{scope}-{role}");
@@ -89,17 +97,29 @@ public sealed class DpapiPendingStore : IPendingStore, IDisposable
         if (header is null) return new(PendingOutcome.Unreadable, null, null, "La cabecera del fichero está dañada.");
         if (header.Installation != identity.Installation || header.Scope != identity.Scope || header.Role != identity.Role)
             return new(PendingOutcome.Unreadable, null, header.Key, "La orden pertenece a otra instalación, ámbito o rol y no se reenvía.");
+        var (command, damage) = ReadBody(bytes[offset..], header.Key);
+        // D6.7: quien la hizo manda antes que el contenido. Sin actor anotado (0.40.0 o anterior) no se sabe si fue esta sesion;
+        // de otro actor, reenviarla o consultarla con esta sesion no vale. En los dos casos se bloquea, con la orden solo para describirla.
+        if (header.Actor is null)
+            return new(PendingOutcome.UnknownActor, command, header.Key,
+                "Se guardó con una versión anterior de Costiña, que no anotaba quién la hizo." + (damage is null ? "" : " " + damage));
+        if (header.Actor != identity.Actor)
+            return new(PendingOutcome.OtherActor, command, header.Key, damage ?? "", header.Actor);
+        return command is not null ? new(PendingOutcome.Restored, command, command.Key, "") : new(PendingOutcome.Unreadable, null, header.Key, damage!);
+    }
+
+    // Cuerpo cifrado -> la orden, o por que no se pudo leer (sin borrar nada).
+    private static (PendingCommand? Command, string? Damage) ReadBody(byte[] body, string key)
+    {
         try
         {
-            var plain = ProtectedData.Unprotect(bytes[offset..], Entropy, DataProtectionScope.CurrentUser);
+            var plain = ProtectedData.Unprotect(body, Entropy, DataProtectionScope.CurrentUser);
             var command = JsonSerializer.Deserialize<PendingCommand>(plain, ApiClient.Json);
-            if (command is null || command.Key != header.Key)
-                return new(PendingOutcome.Unreadable, null, header.Key, "El contenido no coincide con su cabecera.");
-            return new(PendingOutcome.Restored, command, command.Key, "");
+            return command is null || command.Key != key ? (null, "El contenido no coincide con su cabecera.") : (command, null);
         }
         catch (Exception e) when (e is CryptographicException or JsonException)
         {
-            return new(PendingOutcome.Unreadable, null, header.Key, $"El contenido cifrado no se pudo descifrar o interpretar ({e.GetType().Name}).");
+            return (null, $"El contenido cifrado no se pudo descifrar o interpretar ({e.GetType().Name}).");
         }
     }
 
@@ -110,7 +130,8 @@ public sealed class DpapiPendingStore : IPendingStore, IDisposable
         try
         {
             var header = JsonSerializer.Deserialize<PendingHeader>(bytes.AsSpan(0, bodyOffset - 1), HeaderJson);
-            return header is { V: 2, Key.Length: > 0 and <= 128 } ? header : null;
+            // Version 2: sin actor (0.40.0 y anteriores). Version 3 (D6.7): con actor, obligatorio.
+            return header is { V: 2, Key.Length: > 0 and <= 128, Actor: null } or { V: 3, Key.Length: > 0 and <= 128, Actor.Length: > 0 and <= MaxActor } ? header : null;
         }
         catch (JsonException) { return null; }
     }

@@ -224,6 +224,51 @@ await Check("unreadable file without key can only be discarded explicitly",async
     await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
     client.DiscardBlocked();Assert(client.Blocked is null&&store.Discarded);
 });
+// D6.7: el servidor guarda la idempotencia por actor. La orden de OTRO actor con el mismo rol nunca se envia ni se consulta (diria
+// que no consta) y solo sale con un descarte explicito; la que no anota su actor (0.40.0) se consulta pero nunca se reenvia.
+await Check("another actor's durable order blocks, is never sent nor asked about, and leaves only by explicit discard",async()=>{
+    var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.OtherActor,new PendingCommand("k-ana","erp/catalog/commands/glass-sale-set","{}","Vender por copas"),"k-ana","","user:ana")};
+    var requests=new List<string>();
+    using var client=Client(new Handler((r,_)=>{requests.Add(r.Method+" "+r.RequestUri!.AbsolutePath);return Task.FromResult(Response(200,"{\"version\":1}"));}));
+    client.AttachPendingStore(store);
+    Assert(client.Pending is null&&client.Blocked is {Outcome:PendingOutcome.OtherActor,Key:"k-ana",Actor:"user:ana"});
+    await Throws<InvalidOperationException>(()=>client.RetryAsync());
+    await Throws<InvalidOperationException>(()=>client.ReconcileAsync());
+    await Throws<InvalidOperationException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});
+    Assert(requests.Count==0&&!store.Discarded);
+    client.DiscardBlocked();   // sin consultar: consultarla no serviria
+    Assert(client.Blocked is null&&store.Discarded&&requests.Count==0);
+    await client.SendAsync("dining/services",new {pax=2},"Open");
+    Assert(requests.Single()=="POST /api/native/v1/dining/services");
+});
+await Check("a durable order without its author is asked about but never resent",async()=>{
+    foreach(var found in new[]{false,true})
+    {
+        var store=new MemoryStore{Forced=new PendingLoad(PendingOutcome.UnknownActor,new PendingCommand("k-old","dining/services","{\"pax\":2}","Abrir mesa"),"k-old","Sin actor.")};
+        var requests=new List<string>();
+        using var client=Client(new Handler((r,_)=>{requests.Add(r.Method+" "+r.RequestUri!.AbsolutePath);return Task.FromResult(Lookup(r,found));}));
+        client.AttachPendingStore(store);
+        Assert(client.Pending is null&&client.Blocked is {Outcome:PendingOutcome.UnknownActor,Key:"k-old"});
+        await Throws<InvalidOperationException>(()=>client.RetryAsync());
+        await Throws<InvalidOperationException>(()=>{client.DiscardBlocked();return Task.CompletedTask;});   // sin consultar no se descarta
+        Assert(await client.ReconcileAsync()==(found?"confirmed":"unknown")&&requests.SequenceEqual(["GET /api/native/v1/commands/k-old"]));
+        if(found) Assert(client.Blocked is null&&store.Discarded);   // consta con esta sesion: se aplico (D6.6)
+        else { Assert(client.Blocked is not null); client.DiscardBlocked(); Assert(client.Blocked is null&&store.Discarded); }
+        Assert(requests.All(r=>r.StartsWith("GET ",StringComparison.Ordinal)));
+    }
+});
+await Check("the author of a stored order is said in words, never as a raw actor",()=>{
+    Assert(Labels.Author("user:ana")=="«ana»"&&Labels.Author("device:pc-barra")=="el dispositivo «pc-barra»"&&Labels.Author(null)=="alguien sin identificar"&&Labels.Author("raro")=="«raro»");
+    var person=Labels.OtherActorPending("user:ana","Vender por copas Albariño","k1");
+    var device=Labels.OtherActorPending("device:pc-barra",null,null);
+    var legacy=Labels.UnknownActorPending("Abrir mesa","k2","Se guardó con una versión anterior de Costiña, que no anotaba quién la hizo.");
+    Assert(person.StartsWith("ORDEN SIN CONFIRMAR DE OTRA PERSONA, hecha por «ana»: «Vender por copas Albariño» (identificador k1). No se reenvía desde tu sesión",StringComparison.Ordinal)
+        &&person.Contains("pide a «ana» que entre como responsable en este PC",StringComparison.Ordinal)&&person.Contains("descártala",StringComparison.Ordinal));
+    Assert(device.StartsWith("ORDEN SIN CONFIRMAR DE OTRO DISPOSITIVO, hecha por el dispositivo «pc-barra». No se reenvía",StringComparison.Ordinal)&&device.Contains("conéctalo como puesto",StringComparison.Ordinal));
+    Assert(legacy.StartsWith("ORDEN ANTERIOR SIN AUTOR ANOTADO: «Abrir mesa» (identificador k2). Se guardó con una versión anterior",StringComparison.Ordinal)&&legacy.Contains("Consulta al servidor",StringComparison.Ordinal));
+    Assert(new[]{person,device,legacy,Labels.UnknownActorNotFound}.All(t=>!t.Contains("user:",StringComparison.Ordinal)&&!t.Contains("device:",StringComparison.Ordinal)));
+    return Task.CompletedTask;
+});
 await Check("auth login parses result and maps generic rejection",async()=>{
     using var auth=new AuthClient(new Uri("http://127.0.0.1:5088"),new Handler((r,_)=>{
         Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/auth/login");
