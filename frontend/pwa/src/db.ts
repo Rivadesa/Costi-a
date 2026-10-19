@@ -28,3 +28,21 @@ export async function run<T>(store: string, mode: IDBTransactionMode, action: (s
     })
   } finally { database.close() }
 }
+
+// Leer Y escribir en UNA sola transaccion readwrite (D6.7). IndexedDB serializa las transacciones readwrite que comparten
+// almacen, tambien entre pestanas y conexiones: comprobar y escribir es atomico SIN Web Locks (que no existen fuera de un
+// contexto seguro, p. ej. la conexion sencilla por http de B.2). `step` lanza las peticiones y fija el resultado con
+// `done` desde sus onsuccess; la promesa solo se resuelve con la transaccion COMPLETADA.
+export async function transact<T>(store: string, step: (store: IDBObjectStore, done: (value: T) => void) => void): Promise<T> {
+  const database = await open()
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const transaction = database.transaction(store, 'readwrite', { durability: 'strict' })
+      let result: { value: T } | null = null
+      transaction.oncomplete = () => result ? resolve(result.value) : reject(new Error('Transaccion completada sin resultado.'))
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error ?? new Error('Transaccion abortada.'))
+      step(transaction.objectStore(store), value => { result = { value } })
+    })
+  } finally { database.close() }
+}

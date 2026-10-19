@@ -23,7 +23,8 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     connect: () => connectHub(fetch, props.token),
     onUnauthorized,
     // El servidor vuelve a responder y la ultima tentativa fallo por RED: se reintenta la MISMA orden (misma clave,
-    // mismos bytes; el servidor no duplica). Solo en primer plano: no hay Background Sync.
+    // mismos bytes; el servidor no duplica). Solo en primer plano: no hay Background Sync. (D6.7) Solo una orden PROPIA
+    // (misma instalacion y mismo actor) llega a `pending`: la de otro nombre de dispositivo queda bloqueada y no se reintenta.
     onRead: () => {
       if (runnerState.pending && !runnerState.busy && runnerState.lastFailure === 'network' && Date.now() - lastAutoRetry > 5000) {
         lastAutoRetry = Date.now(); void resolve(runner.retry())

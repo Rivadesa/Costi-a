@@ -1,9 +1,11 @@
 import { newKey, type Fetch } from './api'
+import { otherActorAdvice } from './labels'
 import { assertNoMoney } from './money-guard'
 import type { PendingCommand, PendingStore } from './pending'
 
 // Ejecutor de comandos de dominio con ORDEN INCIERTA durable (D6.3, espejo de D3.3/D3.4):
-//  1. La orden se guarda ANTES del primer intento. Si no se puede guardar, NO se envia.
+//  1. La orden se guarda ANTES del primer intento, RESERVANDO el unico hueco del dispositivo (D6.7: comprobar y escribir
+//     en la misma transaccion). Si no se puede guardar, o el hueco ya tiene otra orden (de otra pestana), NO se envia.
 //  2. Mientras exista una orden sin confirmar no se admite ninguna otra mutacion.
 //  3. El reintento reenvia los MISMOS bytes con la MISMA clave: el servidor no duplica efectos.
 //  4. La incertidumbre solo se cierra con (a) exito cuyo eco de Idempotency-Key coincide, o (b) rechazo
@@ -11,7 +13,10 @@ import type { PendingCommand, PendingStore } from './pending'
 //     y con el eco de la clave. Cualquier otra cosa (corte, 5xx, 429, HTML de un proxy, eco ausente) la mantiene.
 //  5. Un 401 NO la cierra: el primer intento pudo aplicarse antes de la revocacion. Queda guardada y se
 //     concilia cuando el dispositivo vuelva a estar emparejado con el mismo nombre (mismo actor).
-//  6. Una orden de OTRA instalacion o ilegible jamas se reenvia: se informa y solo admite conciliar o descartar.
+//  6. Una orden de OTRA instalacion, de OTRO actor o ilegible jamas se reenvia: se informa y solo admite conciliar o
+//     descartar. (D6.7) La de otro actor (dispositivo re-emparejado con otro nombre) ni siquiera se concilia: el servidor
+//     guarda la idempotencia POR ACTOR, asi que con esta credencial seria una orden NUEVA (un consumo, dos cargos) y la
+//     consulta por clave diria "no consta" aunque se aplicara. Solo descarte explicito tras comprobarla.
 //  7. (D6.6) Un rechazo definitivo habla de ESTE intento, no de los anteriores: el servidor comprueba el permiso ANTES
 //     de mirar si la clave ya se ejecuto, asi que un reintento puede recibir 403 de una orden que SI se aplico (p. ej.
 //     puesto re-emparejado con otro rol). Antes de cerrar como "no aplicada" se pregunta por la clave: si consta, se
@@ -26,9 +31,14 @@ export type Outcome =
   | { kind: 'unconfirmed'; reason: 'network' | 'server' | 'unverifiable' }
   | { kind: 'unauthorized' }
 
+// Orden guardada que NO se puede reenviar. 'actor' (D6.7) dice con que actor se hizo y que era, para explicar como comprobarla.
+export type BlockedCommand =
+  | { key: string | null; reason: 'unreadable' | 'foreign' }
+  | { key: string; reason: 'actor'; actor: string; description: string }
+
 export interface RunnerState {
   pending: PendingCommand | null
-  blocked: { key: string | null; reason: 'unreadable' | 'foreign' } | null
+  blocked: BlockedCommand | null
   busy: boolean
   lastFailure: 'network' | 'server' | 'unverifiable' | null
   notice: string
@@ -39,8 +49,10 @@ export interface RunnerDeps {
   store: PendingStore
   token: () => string
   identity: { installationId: string; actor: string }
-  lock?: <T>(work: () => Promise<T>) => Promise<T>     // exclusion entre pestanas (Web Locks); sin ella, entre llamadas de esta
+  lock?: <T>(work: () => Promise<T>) => Promise<T>     // cerrojo de los INTENTOS entre pestanas (Web Locks); el hueco lo protege la reserva atomica del almacen
 }
+
+const UNRESOLVED = 'Hay una orden sin resolver: no se admite otra.'
 
 export const REJECTIONS: Record<string, string> = {
   version_conflict: 'Otro puesto cambio esta mesa a la vez. Se ha vuelto a leer: revisa y repite si sigue haciendo falta.',
@@ -66,24 +78,35 @@ export class CommandRunner {
   async restore(): Promise<void> {
     const loaded = await this.deps.store.load()
     this.state.pending = null; this.state.blocked = null
-    if (loaded.kind === 'unreadable') this.state.blocked = { key: loaded.key, reason: 'unreadable' }
-    else if (loaded.kind === 'restored') {
-      if (loaded.command.installationId !== this.deps.identity.installationId) this.state.blocked = { key: loaded.command.key, reason: 'foreign' }
+    if (loaded.kind === 'restored') {
+      const command = loaded.command
+      if (command.installationId !== this.deps.identity.installationId) this.state.blocked = { key: command.key, reason: 'foreign' }
+      // D6.7: hecha con OTRO nombre de dispositivo. Nunca pendiente ni "fallo de red": ni se reintenta sola ni con el boton.
+      else if (command.actor !== this.deps.identity.actor) this.state.blocked = { key: command.key, reason: 'actor', actor: command.actor, description: command.description }
       else {
-        this.state.pending = loaded.command
+        this.state.pending = command
         // Restaurada de otra sesion del navegador: en cuanto el servidor responda se reintenta sola (mismos bytes y clave).
         this.state.lastFailure ??= 'network'
+        return
       }
-    }
+    } else if (loaded.kind === 'unreadable') this.state.blocked = { key: loaded.key, reason: 'unreadable' }
+    this.state.lastFailure = null          // sin orden propia pendiente no hay nada que reintentar
   }
 
   async send(path: string, body: Record<string, unknown>, description: string): Promise<Outcome> {
-    if (this.blocksMutations) throw new Error('Hay una orden sin resolver: no se admite otra.')
+    if (this.blocksMutations) throw new Error(UNRESOLVED)
     const command: PendingCommand = { key: newKey(), path, body: JSON.stringify(body), description, createdAt: new Date().toISOString(), ...this.deps.identity }
     this.state.busy = true
     try {
-      try { await this.deps.store.save(command) }
+      let occupied: boolean
+      try { occupied = (await this.deps.store.reserve(command)).kind !== 'absent' }
       catch { this.state.notice = 'No se pudo guardar la orden en este dispositivo, asi que NO se ha enviado. Libera espacio o revisa el navegador.'; throw new Error('pending store unavailable') }
+      if (occupied) {
+        // D6.7: otra pestana o ventana guardo una orden que esta aun no habia leido. Esta NO sale y se adopta (o bloquea) aquella.
+        await this.restore()
+        this.state.notice = 'Hay otra orden sin resolver en este dispositivo (de otra pestaña o ventana). Esta no se ha enviado: resuelve antes aquella.'
+        throw new Error(UNRESOLVED)
+      }
       this.state.pending = command
       return await this.attempt(command)
     } finally { this.state.busy = false }
@@ -97,10 +120,12 @@ export class CommandRunner {
   }
 
   // Pregunta al servidor por la clave (solo el mismo actor). Si consta, la orden SE APLICO y se cierra.
-  // Si no consta, la orden normal sigue pendiente (un reintento identico es seguro); una ilegible o ajena
-  // queda habilitada para descarte explicito.
+  // Si no consta, la orden normal sigue pendiente (un reintento identico es seguro); una ilegible o de otra
+  // instalacion queda habilitada para descarte explicito. La de otro actor no se pregunta (D6.7): se explica.
   async reconcile(): Promise<'applied' | 'not_found' | 'unknown'> {
-    const key = this.state.pending?.key ?? this.state.blocked?.key
+    const blocked = this.state.blocked
+    if (blocked?.reason === 'actor') { this.state.notice = otherActorAdvice(blocked.actor); return 'unknown' }
+    const key = this.state.pending?.key ?? blocked?.key
     if (!key || this.state.busy) return 'unknown'
     this.state.busy = true
     try {
@@ -126,10 +151,14 @@ export class CommandRunner {
     } catch { return { kind: 'unknown' } }
   }
 
-  // Solo para lo que NO se puede reenviar (ilegible o de otra instalacion), y siempre por decision de la persona.
+  // Solo para lo que NO se puede reenviar (ilegible, de otra instalacion o de otro actor), y siempre por decision de la
+  // persona. Borra solo ESA orden (D6.7: nunca la que otra pestana pudiera haber guardado despues) y relee el hueco.
   async discardBlocked(): Promise<void> {
-    if (!this.state.blocked) return
-    await this.deps.store.discard(); this.state.blocked = null
+    const blocked = this.state.blocked
+    if (!blocked || this.state.busy) return
+    this.state.busy = true
+    try { await this.deps.store.discard(blocked.key) } finally { this.state.busy = false }
+    await this.restore()
   }
 
   private init(method: 'GET' | 'POST', command?: PendingCommand): RequestInit {
@@ -140,9 +169,13 @@ export class CommandRunner {
 
   private attempt(command: PendingCommand): Promise<Outcome> {
     const work = async (): Promise<Outcome> => {
-      // Otra pestana pudo resolver o sustituir la orden mientras esperabamos el turno.
+      // Otra pestana pudo resolver la orden mientras esperabamos el turno. Y solo sale la orden de ESTA instalacion y de
+      // ESTE actor (D6.7): con otro, el servidor la ejecutaria como nueva. Si algo no cuadra, se relee y no se envia nada.
       const current = await this.deps.store.load()
-      if (current.kind !== 'restored' || current.command.key !== command.key) { await this.restore(); return { kind: 'unconfirmed', reason: 'unverifiable' } }
+      const { installationId, actor } = this.deps.identity
+      if (current.kind !== 'restored' || current.command.key !== command.key || current.command.installationId !== installationId || current.command.actor !== actor) {
+        await this.restore(); return { kind: 'unconfirmed', reason: 'unverifiable' }
+      }
       let response: Response
       try { response = await this.http(PREFIX + command.path, this.init('POST', command)) }
       catch { return this.keep('network') }
@@ -185,7 +218,9 @@ export class CommandRunner {
   }
 }
 
-// Exclusion entre pestanas del mismo origen. Sin Web Locks (navegadores antiguos) se ejecuta sin ella:
-// la comprobacion del almacen dentro de attempt() sigue evitando reenviar una orden ya sustituida.
+// Cerrojo de los INTENTOS entre pestanas del mismo origen: solo evita lanzar a la vez el mismo intento desde dos pestanas
+// (seria inocuo: misma clave y mismo actor, el servidor no duplica). NO protege el hueco: eso lo hace la reserva atomica
+// del almacen (reserve/clear/discard en una sola transaccion de IndexedDB, D6.7). Sin Web Locks (navegador antiguo, o http
+// sin contexto seguro, como la conexion sencilla de B.2) se ejecuta sin cerrojo y el hueco sigue protegido.
 export const tabLock = <T>(work: () => Promise<T>): Promise<T> =>
   typeof navigator !== 'undefined' && 'locks' in navigator ? navigator.locks.request('costina-command', () => work()) as Promise<T> : work()

@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import type { Session } from '../api'
 import type { Credential } from '../credentials'
+import { unpairWarning } from '../labels'
+import { indexedDbPendingStore } from '../pending'
 import { PERSISTENCE_HINT, type Persistence } from '../storage'
 import BoardView from './BoardView.vue'
 import KitchenView from './KitchenView.vue'
@@ -11,6 +13,12 @@ defineEmits<{ unpair: []; refresh: [] }>()
 // A11: la cabecera dice QUE es este dispositivo y DONDE esta, con el nombre de la estacion (no su codigo).
 const KINDS: Record<string, string> = { main: 'PRINCIPAL (antiguo)', service: 'COMANDERO', kitchen: 'PANTALLA DE COCINA' }
 const confirming = ref(false)   // desvincular en dos pasos (F9), sin window.confirm (CSP intacta)
+// D6.7: con una orden guardada se AVISA antes de desvincular (no se bloquea): despues solo se comprueba con el mismo nombre.
+const warning = ref('')
+async function ask(): Promise<void> {
+  confirming.value = true
+  warning.value = unpairWarning(await indexedDbPendingStore.load().catch(() => null))
+}
 </script>
 
 <template>
@@ -32,11 +40,14 @@ const confirming = ref(false)   // desvincular en dos pasos (F9), sin window.con
       <details data-testid="options">
         <summary>Opciones</summary>
         <p class="identity">Desvincular deja este dispositivo sin acceso, tambien en el servidor. Para volver a usarlo habra que conectarlo de nuevo desde el PC principal.</p>
-        <button v-if="!confirming" type="button" class="secondary" @click="confirming = true">Desvincular este dispositivo</button>
-        <p v-else class="row">
-          <button type="button" data-testid="unpair-confirm" @click="confirming = false; $emit('unpair')">Si, desvincular</button>
-          <button type="button" class="secondary" @click="confirming = false">No, seguir conectado</button>
-        </p>
+        <button v-if="!confirming" type="button" class="secondary" @click="ask">Desvincular este dispositivo</button>
+        <template v-else>
+          <p v-if="warning" class="pending" role="alert" data-testid="unpair-pending">{{ warning }}</p>
+          <p class="row">
+            <button type="button" data-testid="unpair-confirm" @click="confirming = false; $emit('unpair')">Si, desvincular</button>
+            <button type="button" class="secondary" @click="confirming = false">No, seguir conectado</button>
+          </p>
+        </template>
       </details>
     </footer>
   </section>

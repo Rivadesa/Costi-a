@@ -86,7 +86,8 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
     <PairView v-else-if="state === 'unpaired'" @paired="paired" />
     <section v-else-if="state === 'offline'" data-testid="offline">
       <h2>Sin conexion con el servidor</h2>
-      <p v-if="pendingDescription" class="pending" role="alert" data-testid="offline-pending"><strong>ORDEN SIN CONFIRMAR guardada en este dispositivo: {{ pendingDescription }}.</strong> No la repitas por otro medio: se reintentara, con su mismo identificador, al recuperar la conexion.</p>
+      <!-- D6.7: sin conexion aun no se sabe si se puede reenviar (otra instalacion, otro nombre, ilegible): no se promete un reintento que quiza no ocurra. -->
+      <p v-if="pendingDescription" class="pending" role="alert" data-testid="offline-pending"><strong>ORDEN SIN CONFIRMAR guardada en este dispositivo: {{ pendingDescription }}.</strong> No la repitas por otro medio. Al recuperar la conexión, si se puede reenviar sin riesgo (misma instalación y mismo nombre de dispositivo) se reintentará sola con su mismo identificador; si no, quedará bloqueada hasta comprobarla.</p>
       <p>Este dispositivo esta emparejado, pero el servidor no responde. Comprueba la Wi-Fi. No se muestra ningun dato hasta poder leerlo del servidor.</p>
       <button type="button" @click="refresh">Reintentar</button>
     </section>
