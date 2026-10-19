@@ -1,0 +1,112 @@
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createRenderer, defineComponent } from 'vue'
+import type { Session } from '../src/api'
+import { run as transaction, STORES } from '../src/db'
+import { useOperations } from '../src/operations'
+import { indexedDbPendingStore, type PendingCommand } from '../src/pending'
+
+// D6.7, de punta a punta: el useOperations REAL (LiveBoard, CommandRunner, IndexedDB y tabLock) montado con un renderizador
+// vacio en Node. Sin tiempo real (el tablero degrada a sondeo) y SIN Web Locks, como en la conexion sencilla de B.2 (http).
+vi.mock('../src/realtime', () => ({
+  connectHub: () => ({
+    start: () => Promise.reject(new Error('sin tiempo real en la prueba')), stop: async () => undefined,
+    onEvent: () => undefined, onReconnecting: () => undefined, onReconnected: () => undefined, onClosed: () => undefined,
+  }),
+}))
+
+const renderer = createRenderer<object, object>({
+  patchProp: () => undefined, insert: () => undefined, remove: () => undefined, createElement: () => ({}), createText: () => ({}),
+  createComment: () => ({}), setText: () => undefined, setElementText: () => undefined, parentNode: () => null, nextSibling: () => null,
+})
+const session = (actor: string): Session => ({
+  role: 'service', actor, station: 'sala-1', stationName: 'Sala 1', tenantId: 't', companyId: 'c', locationId: 'l',
+  installationId: 'inst-1', serverVersion: '0.40.1-d6.7', demo: false, actions: ['add-consumption'], modules: ['dining'],
+})
+const order = (actor: string): PendingCommand => ({
+  key: 'k-old', path: '/dining/services/s1/commands/add-consumption', body: '{"expectedVersion":4,"productId":"water","quantity":1}',
+  description: 'Añadir Agua · M1', createdAt: '2026-10-19T10:00:00Z', installationId: 'inst-1', actor,
+})
+
+let requests: Array<{ method: string; url: string; key?: string }> = []
+let listeners: Record<string, () => void> = {}
+const posts = () => requests.filter(request => request.method === 'POST')
+const reads = () => requests.filter(request => request.url.endsWith('/dining/board')).length
+const settle = () => new Promise<void>(resolve => setTimeout(resolve, 150))   // margen para un reintento que NO debe llegar
+
+async function fakeFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const headers = (init?.headers ?? {}) as Record<string, string>
+  requests.push({ method: init?.method ?? 'GET', url: String(url), key: headers['Idempotency-Key'] })
+  const echo: Record<string, string> = headers['Idempotency-Key'] ? { 'Idempotency-Key': headers['Idempotency-Key'] } : {}
+  if (String(url).endsWith('/dining/board')) return new Response('[]', { status: 200 })
+  if (init?.method === 'POST') return new Response('{"version":5,"consumptionId":"c1","productId":"water","quantity":1}', { status: 200, headers: echo })
+  const asked = decodeURIComponent(String(url).split('/commands/')[1] ?? '')
+  return new Response(JSON.stringify({ key: asked, found: false }), { status: 200 })
+}
+
+function mount(actor: string) {
+  let operations: ReturnType<typeof useOperations> | null = null
+  const app = renderer.createApp(defineComponent({
+    setup() { operations = useOperations({ token: 'dev.tablet.s', session: session(actor) }, () => undefined); return () => null },
+  }))
+  app.mount({})
+  return { operations: operations!, unmount: () => app.unmount() }
+}
+
+describe('D6.7 end to end through useOperations (no realtime, no Web Locks)', () => {
+  beforeEach(() => {
+    requests = []; listeners = {}
+    const on = (name: string, handler: () => void) => { listeners[name] = handler }
+    vi.stubGlobal('indexedDB', new IDBFactory())
+    vi.stubGlobal('fetch', fakeFetch)
+    vi.stubGlobal('navigator', {})                                          // sin navigator.locks
+    vi.stubGlobal('window', { setInterval, clearInterval, addEventListener: on, removeEventListener: () => undefined })
+    vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: on, removeEventListener: () => undefined })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('re-paired under ANOTHER name: the stored order is never resent (board read, button, foreground, remount) until explicitly discarded', async () => {
+    await transaction(STORES.pending, 'readwrite', store => store.put(order('device:tablet-vieja'), 'uncertain'))
+    const first = mount('device:tablet-nueva')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      await settle()
+      expect(first.operations.runnerState.blocked).toMatchObject({ reason: 'actor', actor: 'device:tablet-vieja' })
+      expect(first.operations.runnerState.pending).toBeNull()
+      await first.operations.retry()
+      await first.operations.run('/dining/services/s1/commands/pause', { expectedVersion: 5, reason: 'salen' }, 'Pausar servicio · M1')
+      await first.operations.reconcile()
+      expect(first.operations.runnerState.notice).toContain('«tablet-vieja»'); expect(first.operations.runnerState.notice).not.toMatch(/no le consta/i)
+      listeners.visibilitychange?.()                                         // vuelve a primer plano: relee el hueco y el tablero
+      await settle()
+      expect(posts()).toHaveLength(0)
+      expect(requests.filter(request => request.url.includes('/api/native/v1/commands/'))).toHaveLength(0)   // ni pregunta por la clave
+    } finally { first.unmount() }
+
+    const readsBefore = reads()
+    const second = mount('device:tablet-nueva')                             // otra sesion del navegador, mismo nombre nuevo
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(readsBefore))
+      await settle()
+      expect(posts()).toHaveLength(0)
+      expect(second.operations.runnerState.blocked?.reason).toBe('actor')
+      await second.operations.discard()                                     // solo la decision explicita la quita
+      expect(second.operations.runnerState.blocked).toBeNull(); expect(second.operations.locked.value).toBe(false)
+      expect(await indexedDbPendingStore.load()).toEqual({ kind: 'absent' })
+      expect(posts()).toHaveLength(0)
+    } finally { second.unmount() }
+  })
+
+  it('control: re-paired under the SAME name, the stored order is retried once by itself after the first board read', async () => {
+    await transaction(STORES.pending, 'readwrite', store => store.put(order('device:tablet-nueva'), 'uncertain'))
+    const mounted = mount('device:tablet-nueva')
+    try {
+      await vi.waitFor(() => expect(posts()).toHaveLength(1))
+      expect(posts()[0].key).toBe('k-old')
+      await vi.waitFor(async () => expect(await indexedDbPendingStore.load()).toEqual({ kind: 'absent' }))
+      await settle()
+      expect(posts()).toHaveLength(1)
+    } finally { mounted.unmount() }
+  })
+})

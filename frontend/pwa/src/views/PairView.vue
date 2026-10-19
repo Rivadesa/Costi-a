@@ -2,7 +2,9 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { NetworkError } from '../api'
 import type { Credential } from '../credentials'
+import { pairPendingAdvice, pendingDeviceName } from '../labels'
 import { codeFromLocation, pairDevice } from '../pairing'
+import { indexedDbPendingStore } from '../pending'
 
 const emit = defineEmits<{ paired: [credential: Credential] }>()
 const code = ref(codeFromLocation(location.hash))
@@ -12,7 +14,15 @@ const message = ref('')
 const signal = { cancelled: false }
 // Con la PWA ya abierta, escanear el QR solo cambia el fragmento (no recarga la pagina): hay que escucharlo.
 const fromHash = () => { const scanned = codeFromLocation(location.hash); if (scanned && !busy.value) code.value = scanned }
-onMounted(() => window.addEventListener('hashchange', fromHash))
+// D6.7: si queda una orden guardada, el nombre viene relleno con el de esa orden. Solo con ESE nombre (mismo actor) y con el
+// MISMO servidor (misma instalacion) se puede reintentar o preguntar por ella sin riesgo; aqui aun no se sabe el servidor,
+// asi que el aviso lo dice de forma condicional. Con otro nombre u otro servidor, quedara bloqueada.
+const pendingOwner = ref<{ name: string; description: string } | null>(null)
+onMounted(async () => {
+  window.addEventListener('hashchange', fromHash)
+  pendingOwner.value = pendingDeviceName(await indexedDbPendingStore.load().catch(() => null))
+  if (pendingOwner.value && !deviceName.value) deviceName.value = pendingOwner.value.name
+})
 onUnmounted(() => { signal.cancelled = true; window.removeEventListener('hashchange', fromHash) })
 
 const MESSAGES: Record<string, string> = {
@@ -40,6 +50,7 @@ async function submit(): Promise<void> {
   <section data-testid="pair">
     <h2>Emparejar este dispositivo</h2>
     <p>En el PC principal, <strong>Inicio › Dispositivos</strong>, pulsa «Conectar comandero» o «Conectar pantalla de cocina» y lee el QR con la camara (o teclea el codigo). El responsable aprueba alli la solicitud.</p>
+    <p v-if="pendingOwner" class="pending" role="alert" data-testid="pair-pending">Hay una orden sin confirmar guardada en este dispositivo: <strong>{{ pendingOwner.description }}</strong>. {{ pairPendingAdvice(pendingOwner.name) }}</p>
     <form @submit.prevent="submit">
       <label>Codigo de emparejamiento
         <input v-model="code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="busy" />

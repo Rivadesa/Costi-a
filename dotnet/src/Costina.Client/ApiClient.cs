@@ -14,8 +14,14 @@ public sealed record PendingCommand(string Key, string Path, string Body, string
 // Resultado de leer el almacen durable. Ausente y restaurada son los casos normales; ilegible e
 // inaccesible BLOQUEAN las mutaciones nuevas (fallo cerrado): la orden anterior pudo aplicarse y
 // solo el servidor puede decirlo. Nunca se resuelve la duda destruyendo el fichero.
-public enum PendingOutcome { Absent, Restored, Unreadable, Unavailable }
-public sealed record PendingLoad(PendingOutcome Outcome, PendingCommand? Command, string? Key, string Detail);
+// D6.7: el servidor guarda la idempotencia POR ACTOR. Una orden de OTRO actor con el mismo rol (otra persona responsable en este
+// PC, o un dispositivo antiguo con rol principal) y una SIN actor anotado (fichero de 0.40.0 o anterior) tambien BLOQUEAN y nunca
+// se reenvian: con otra identidad el servidor la trataria como nueva y podria aplicarla dos veces. La de otro actor tampoco se
+// consulta (GET commands/{clave} solo responde por las del actor que pregunta: diria que no consta); solo admite el descarte
+// explicito. La de actor desconocido se consulta: si consta con esta sesion, se aplico (D6.6); si no, no se sabe.
+public enum PendingOutcome { Absent, Restored, Unreadable, Unavailable, OtherActor, UnknownActor }
+// Command: la orden leida; en un bloqueo solo sirve para describirla, nunca se envia. Actor: quien la hizo (OtherActor).
+public sealed record PendingLoad(PendingOutcome Outcome, PendingCommand? Command, string? Key, string Detail, string? Actor = null);
 
 // Cola durable minima: exactamente UNA orden incierta, persistida fuera del proceso.
 // La implementacion decide cifrado, ubicacion y aislamiento entre ventanas; esta biblioteca
@@ -42,8 +48,9 @@ public sealed class ApiClient : IDisposable
     public string? LastReconciliation { get; private set; }
 
     // Se llama tras autenticar (cuando ya se conoce la identidad que aisla el almacen).
-    // Una orden persistida de una sesion anterior queda restaurada y bloquea nuevas mutaciones
-    // hasta reintentarla identica; un fichero ilegible o inaccesible bloquea hasta conciliar.
+    // Una orden persistida de una sesion anterior DEL MISMO ACTOR queda restaurada y bloquea nuevas mutaciones
+    // hasta reintentarla identica; un fichero ilegible o inaccesible bloquea hasta conciliar, y uno de otro actor
+    // o sin actor anotado bloquea sin reenviarse nunca (D6.7: lo decide el almacen, que conoce la identidad).
     public void AttachPendingStore(IPendingStore pendingStore)
     {
         store = pendingStore;
@@ -164,7 +171,12 @@ public sealed class ApiClient : IDisposable
         try
         {
             if (Blocked is not null)
-                throw new InvalidOperationException("Hay una orden anterior ilegible o inaccesible. Consúltala en el servidor o descártala conservando la evidencia antes de operar.");
+                throw new InvalidOperationException(Blocked.Outcome switch
+                {
+                    PendingOutcome.OtherActor => "Hay una orden sin confirmar de otra sesión en este equipo y no se reenvía desde la tuya. Compruébala y descártala antes de operar.",
+                    PendingOutcome.UnknownActor => "Hay una orden anterior sin autor anotado y no se reenvía. Consúltala en el servidor o descártala conservando la evidencia antes de operar.",
+                    _ => "Hay una orden anterior ilegible o inaccesible. Consúltala en el servidor o descártala conservando la evidencia antes de operar."
+                });
             if (Pending is not null) throw new InvalidOperationException("Resuelve primero la orden sin confirmar.");
             Pending = new(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
             store?.Save(Pending); // durable ANTES del primer intento: un cierre forzado no la pierde
@@ -184,11 +196,14 @@ public sealed class ApiClient : IDisposable
     }
     // Pregunta al servidor si la orden ilegible consta como aplicada. "confirmed" retira el bloqueo
     // (la evidencia va a cuarentena); "unknown" lo mantiene y solo entonces se permite descartar.
+    // D6.7: la de otro actor no se consulta: el servidor solo responde por las ordenes de quien pregunta.
     public async Task<string> ReconcileAsync()
     {
         if (!await mutation.WaitAsync(0)) throw new InvalidOperationException("Ya hay una operación en curso.");
         try
         {
+            if (Blocked?.Outcome == PendingOutcome.OtherActor)
+                throw new InvalidOperationException("Esa orden la hizo otra sesión: el servidor solo responde por las órdenes de quien pregunta y diría que no le consta aunque se aplicara. Compruébala con quien la hizo y después descártala.");
             var key = Blocked?.Key ?? throw new InvalidOperationException("La orden ilegible no conserva identificador: no se puede consultar.");
             var lookup = await GetAsync<CommandLookup>("commands/" + Segment(key));
             var outcome = lookup.Found ? "confirmed" : "unknown";
@@ -198,12 +213,14 @@ public sealed class ApiClient : IDisposable
         }
         finally { mutation.Release(); }
     }
+    // Descartar: a cuarentena, nunca se destruye. La orden de otro actor se descarta sin consultar (consultarla no sirve, D6.7);
+    // una ilegible o sin actor anotado, solo tras preguntar al servidor si conserva su identificador.
     public void DiscardBlocked()
     {
         if (Blocked is null) return;
         if (Blocked.Outcome == PendingOutcome.Unavailable)
             throw new InvalidOperationException("La orden es inaccesible, no ilegible: no se descarta. Vuelve a conectar cuando el fichero esté disponible.");
-        if (Blocked.Key is not null && LastReconciliation != "unknown")
+        if (Blocked.Outcome != PendingOutcome.OtherActor && Blocked.Key is not null && LastReconciliation != "unknown")
             throw new InvalidOperationException("Consulta primero al servidor si la orden consta como aplicada.");
         store?.Discard(); Blocked = null;
     }

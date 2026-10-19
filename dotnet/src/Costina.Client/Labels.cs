@@ -220,6 +220,42 @@ public static class Labels
         _ => actor
     };
 
+    // D6.7: quien hizo una orden guardada, para decirlo en una frase: una persona por su nombre, un dispositivo como tal. Un actor
+    // de otra forma sale tal cual (Actor); sin actor, se dice.
+    public static string Author(string? actor) => actor switch
+    {
+        null or "" => "alguien sin identificar",
+        _ when actor.StartsWith("device:", StringComparison.Ordinal) => "el dispositivo «" + Actor(actor) + "»",
+        _ => "«" + Actor(actor) + "»"
+    };
+
+    // D6.7: aviso de una orden sin confirmar que guardo en este equipo OTRA sesion con el mismo rol (otra persona responsable, o un
+    // dispositivo antiguo con rol principal). El servidor guarda la idempotencia por actor: reenviarla con la sesion actual podria
+    // aplicarla dos veces, y preguntarle por ella diria que no consta aunque se aplicara. Se dice de quien es, que era y como comprobarla.
+    public static string OtherActorPending(string? actor, string? description, string? key)
+    {
+        var author = Author(actor);
+        var device = actor?.StartsWith("device:", StringComparison.Ordinal) == true;
+        var how = device
+            ? $"si {author} sigue emparejado con este PC, conéctalo como puesto: la orden reaparecerá y se podrá reintentar sin riesgo"
+            : $"pide a {author} que entre como responsable en este PC: la orden le reaparecerá y podrá reintentarla sin riesgo";
+        return (device ? "ORDEN SIN CONFIRMAR DE OTRO DISPOSITIVO" : "ORDEN SIN CONFIRMAR DE OTRA PERSONA") + $", hecha por {author}"
+            + (description is { Length: > 0 } ? $": «{description}»" : "") + (key is null ? "" : $" (identificador {key})")
+            + ". No se reenvía desde tu sesión: el servidor la trataría como una orden nueva y podría aplicarla dos veces, y si le preguntas diría que no le consta aunque se aplicara."
+            + $" Para saber si se aplicó, {how}; o compruébalo en la pantalla que corresponda. Después, si hace falta, descártala: la evidencia se conserva en cuarentena.";
+    }
+
+    // D6.7: aviso de una orden guardada por una version anterior (0.40.0 o antes), que no anotaba quien la hizo. No se reenvia: hecha
+    // por otra persona, el servidor la aplicaria dos veces. Se consulta al servidor (D6.6): si consta con la sesion actual, se aplico;
+    // si no consta, pudo hacerla otra persona, y solo entonces se puede descartar.
+    public static string UnknownActorPending(string? description, string? key, string detail)
+        => "ORDEN ANTERIOR SIN AUTOR ANOTADO" + (description is { Length: > 0 } ? $": «{description}»" : "") + (key is null ? "" : $" (identificador {key})")
+            + ". " + detail + " No se reenvía: si la hizo otra persona, el servidor la aplicaría dos veces."
+            + " Consulta al servidor: si consta con tu sesión, ya se aplicó; si no consta, pudo hacerla otra persona, así que compruébalo antes de repetirla y después descártala (la evidencia se conserva en cuarentena).";
+
+    // D6.7: respuesta "no consta" a la consulta de una orden sin autor anotado: solo habla de la sesion que pregunta.
+    public const string UnknownActorNotFound = "El servidor NO tiene constancia de esa orden con tu sesión. Como no se sabe quién la hizo, pudo aplicarse con la de otra persona: compruébalo antes de repetirla; ahora puedes descartarla (la evidencia se conserva).";
+
     // Presencia de un dispositivo (A3): quitado (con fecha local), conectado ahora o sin conexion.
     public static string Presence(bool online, DateTimeOffset? revokedAt)
         => revokedAt is { } at ? "Quitado el " + at.ToLocalTime().ToString("dd/MM HH:mm", CultureInfo.InvariantCulture)
