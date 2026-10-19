@@ -186,8 +186,12 @@ public static class CatalogOperations
                 if(changed) await unit.Events([Event("product_image_set",product.Id,("sha256",image.Sha256),("bytes",image.Bytes.ToString(System.Globalization.CultureInfo.InvariantCulture)),("content_type",image.ContentType))]);
                 return new { productId=product.Id,sha256=image.Sha256,bytes=image.Bytes,contentType=image.ContentType,changed };
             }
-            // E3.3: vinos por copa en bloque: por cada vino, la presentacion reservada 'copa' (creada o reactivada) con su precio en la
-            // General desde hoy; los de 'stop' dejan de venderse por copa (su precio se queda). Una sola orden, auditada por vino.
+            // E3.3: vinos por copa en bloque: por cada vino, su copa (creada o reactivada) con su precio en la General desde hoy; los de
+            // 'stop' dejan de venderse por copa (su precio se queda). Una sola orden, auditada por vino.
+            // E3.3.1: la copa es CUALQUIER presentacion que Catalog.IsGlass reconoce ('copa' o la 'glass' del laboratorio), como al leer:
+            // items reprecia o reactiva la que elige Catalog.GlassOf y solo crea 'copa' si el vino no tiene ninguna (antes creaba una
+            // 'copa' gemela junto a 'glass'); stop desactiva TODAS las activas, un evento por presentacion (antes no tocaba 'glass' y
+            // respondia stopped 0). marked y stopped cuentan vinos; los eventos llevan el codigo real de la presentacion.
             case "glass-sale-set":
             {
                 var items=request.Items??[]; var stop=request.Stop??[];
@@ -198,7 +202,7 @@ public static class CatalogOperations
                 {
                     var product=await unit.Product(Required(item.ProductId));
                     if(!product.Active) throw new RuleViolation("product_unavailable",$"Product {product.Id} is deactivated.");
-                    var glass=(await unit.Presentations(product.Id)).FirstOrDefault(p=>p.Id==Catalog.GlassPresentation);
+                    var glass=Catalog.GlassOf(await unit.Presentations(product.Id));
                     if(glass is null)
                     {
                         await unit.InsertPresentation(Catalog.Presentation(product.Id,Catalog.GlassPresentation,"Copa",0));
@@ -207,9 +211,9 @@ public static class CatalogOperations
                     else if(!glass.Active)
                     {
                         await unit.UpdatePresentation(glass with { Active=true });
-                        events.Add(Event("presentation_reactivated",product.Id,("presentation",Catalog.GlassPresentation))); marked++;
+                        events.Add(Event("presentation_reactivated",product.Id,("presentation",glass.Id))); marked++;
                     }
-                    var price=Catalog.Price(Catalog.GeneralTariff,product.Id,Catalog.GlassPresentation,Today(),item.PriceCents);
+                    var price=Catalog.Price(Catalog.GeneralTariff,product.Id,glass?.Id??Catalog.GlassPresentation,Today(),item.PriceCents);
                     if(await unit.SetPrice(price))
                     {
                         events.Add(Event("price_set",price.ProductId,("presentation",price.PresentationId),("tariff",price.TariffId),("valid_from",price.ValidFrom.ToString("yyyy-MM-dd")),("price_cents",price.PriceCents.ToString()))); priced++;
@@ -218,12 +222,13 @@ public static class CatalogOperations
                 foreach(var id in stop)
                 {
                     var product=await unit.Product(Required(id));
-                    var glass=(await unit.Presentations(product.Id)).FirstOrDefault(p=>p.Id==Catalog.GlassPresentation);
-                    if(glass is { Active:true })
+                    var glasses=(await unit.Presentations(product.Id)).Where(p=>p.Active && Catalog.IsGlass(p.Id)).ToArray();
+                    foreach(var glass in glasses)
                     {
                         await unit.UpdatePresentation(glass with { Active=false });
-                        events.Add(Event("presentation_deactivated",product.Id,("presentation",Catalog.GlassPresentation))); stopped++;
+                        events.Add(Event("presentation_deactivated",product.Id,("presentation",glass.Id)));
                     }
+                    if(glasses.Length>0) stopped++;
                 }
                 if(events.Count>0) await unit.Events(events);
                 return new { marked,priced,stopped };

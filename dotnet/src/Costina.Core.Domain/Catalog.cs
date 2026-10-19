@@ -34,6 +34,10 @@ public static class Catalog
     public static bool IsSection(string? id) => id is KitchenSection or CellarSection;
     public static string SectionName(string id) => id == KitchenSection ? "Cocina" : "Bodega y bebidas";
     public static bool IsGlass(string? presentationId) => presentationId is GlassPresentation or "glass";
+    // E3.3.1: LA copa de un vino entre sus presentaciones (null si no tiene ninguna): la activa primero; entre varias, 'copa'; despues,
+    // por codigo. glass-sale-set reprecia o reactiva esta (solo crea 'copa' si no hay ninguna) y el puesto pinta la misma.
+    public static PresentationDefinition? GlassOf(IEnumerable<PresentationDefinition> presentations) => presentations.Where(p => IsGlass(p.Id))
+        .OrderByDescending(p => p.Active).ThenBy(p => p.Id == GlassPresentation ? 0 : 1).ThenBy(p => p.Id, StringComparer.Ordinal).FirstOrDefault();
     // Raiz de una categoria (null sin categoria). Se protege de un ciclo con un tope de pasos.
     public static string? RootOf(string? categoryId, Func<string, string?> parentOf)
     {

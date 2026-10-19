@@ -537,6 +537,37 @@ class Catalog(unittest.TestCase):
         self.assertIn(command('glass-sale-set')[0], (409, 422))
         self.assertEqual(command('glass-sale-set', role='service', items=[dict(productId='water', priceCents=1)])[0], 403)
         self.assertEqual(json.loads(command('glass-sale-set', stop=['water'])[1])['stopped'], 1)
+        # E3.3.1: la copa del vino es cualquier presentacion que el servidor marca como copa (la 'glass' del laboratorio cuenta igual):
+        # quitarla la desactiva y cambiar su precio la reprecia, sin crear una 'copa' gemela. Al final vuelve el precio del laboratorio.
+        def wine_glasses():
+            return [(i['presentationId'], i['priceCents']) for i in ok('/checkout/catalog') if i['id'] == 'wine' and i['glass']]
+        lab_price = wine_glasses()[0][1]
+        self.assertEqual(wine_glasses(), [('glass', lab_price)])
+        deactivated = "SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='catalog.presentation_deactivated' AND aggregate_id='{}'"
+        before = int(h.sql(deactivated.format('wine')))
+        self.assertEqual(json.loads(command('glass-sale-set', stop=['wine'])[1]), {'marked': 0, 'priced': 0, 'stopped': 1})
+        self.assertEqual(int(h.sql(deactivated.format('wine'))), before + 1)
+        self.assertNotIn(('wine', 'glass'), [(i['id'], i['presentationId']) for i in ok('/catalog')])
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='wine', priceCents=1000)])[1]), {'marked': 1, 'priced': 1, 'stopped': 0})
+        self.assertEqual(wine_glasses(), [('glass', 1000)])
+        self.assertEqual([p['id'] for p in product('wine')['presentations'] if p['glass']], ['glass'])   # ninguna 'copa' gemela
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='wine', priceCents=lab_price)])[1]), {'marked': 0, 'priced': 1, 'stopped': 0})
+        self.assertEqual(wine_glasses(), [('glass', lab_price)])
+        # Un vino con DOS copas activas (lo que dejaba 0.40.0): 'items' reprecia 'copa'; 'stop' desactiva las dos, un evento por
+        # presentacion, y cuenta un vino; volver a marcarlo reactiva solo 'copa'.
+        self.assertEqual(command('product-create', id='copas-gemelas', name='Vino de dos copas', categoryId='vinos', taxId='iva-21')[0], 200)
+        for pid, cents in (('copa', 500), ('glass', 450)):
+            self.assertEqual(command('presentation-create', productId='copas-gemelas', id=pid, name='Copa', sort=0)[0], 200)
+            self.assertEqual(command('price-set', tariffId='general', productId='copas-gemelas', presentationId=pid, priceCents=cents)[0], 200)
+        def twins():
+            return sorted((i['presentationId'], i['priceCents']) for i in ok('/checkout/catalog') if i['id'] == 'copas-gemelas')
+        self.assertEqual(twins(), [('copa', 500), ('glass', 450)])
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='copas-gemelas', priceCents=550)])[1]), {'marked': 0, 'priced': 1, 'stopped': 0})
+        self.assertEqual(twins(), [('copa', 550), ('glass', 450)])
+        self.assertEqual(json.loads(command('glass-sale-set', stop=['copas-gemelas'])[1]), {'marked': 0, 'priced': 0, 'stopped': 1})
+        self.assertEqual((twins(), h.sql(deactivated.format('copas-gemelas'))), ([], '2'))
+        self.assertEqual(json.loads(command('glass-sale-set', items=[dict(productId='copas-gemelas', priceCents=550)])[1]), {'marked': 1, 'priced': 0, 'stopped': 0})
+        self.assertEqual(twins(), [('copa', 550)])
         # La reimportacion conserva familia, IVA y estacion de un producto que ya existe (solo nombre, referencia, precio e imagen).
         self.assertEqual(command('product-update', id='wine', stationId='cold')[0], 200)
         folder = Path(tempfile.mkdtemp(prefix='costina-e33-'))
