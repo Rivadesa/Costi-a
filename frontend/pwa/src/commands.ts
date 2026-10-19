@@ -53,6 +53,10 @@ export interface RunnerDeps {
 }
 
 const UNRESOLVED = 'Hay una orden sin resolver: no se admite otra.'
+// D6.7: avisos de send() cuando la reserva encuentra el hueco ocupado, segun lo que haya al releer.
+const OTHER_TAB = 'Hay otra orden sin resolver en este dispositivo (de otra pestaña o ventana). Esta no se ha enviado: resuelve antes aquella.'
+const BLOCKED_SLOT = 'Hay una orden guardada en este dispositivo que no se puede reenviar (mírala arriba). Esta no se ha enviado.'
+const SLOT_GONE = 'Esta orden no se ha enviado: había otra guardada en este dispositivo, que ya se ha resuelto. Repítela si sigue haciendo falta.'
 
 export const REJECTIONS: Record<string, string> = {
   version_conflict: 'Otro puesto cambio esta mesa a la vez. Se ha vuelto a leer: revisa y repite si sigue haciendo falta.',
@@ -102,9 +106,11 @@ export class CommandRunner {
       try { occupied = (await this.deps.store.reserve(command)).kind !== 'absent' }
       catch { this.state.notice = 'No se pudo guardar la orden en este dispositivo, asi que NO se ha enviado. Libera espacio o revisa el navegador.'; throw new Error('pending store unavailable') }
       if (occupied) {
-        // D6.7: otra pestana o ventana guardo una orden que esta aun no habia leido. Esta NO sale y se adopta (o bloquea) aquella.
+        // D6.7: el hueco ya tenia una orden que esta pestana aun no habia leido. Esta NO sale: se relee y se adopta aquella
+        // (propia: de otra pestana o ventana) o se bloquea (otro nombre, otra instalacion, ilegible). El aviso solo culpa a
+        // otra pestana cuando la orden es de verdad de este dispositivo y nombre; si no, el panel rojo ya dice el motivo.
         await this.restore()
-        this.state.notice = 'Hay otra orden sin resolver en este dispositivo (de otra pestaña o ventana). Esta no se ha enviado: resuelve antes aquella.'
+        this.state.notice = this.state.pending ? OTHER_TAB : this.state.blocked ? BLOCKED_SLOT : SLOT_GONE
         throw new Error(UNRESOLVED)
       }
       this.state.pending = command

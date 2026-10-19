@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandRunner, type RunnerState } from '../src/commands'
 import { run as transaction, STORES } from '../src/db'
-import { blockedTitle, deviceNameOf, otherActorAdvice, pendingDeviceName, unpairWarning } from '../src/labels'
+import { blockedTitle, deviceNameOf, otherActorAdvice, pairPendingAdvice, pendingDeviceName, unpairWarning } from '../src/labels'
 import { MoneyLeakError } from '../src/money-guard'
 import { indexedDbPendingStore, parsePending, type PendingCommand, type PendingLoad, type PendingStore } from '../src/pending'
 
@@ -320,5 +320,41 @@ describe('D6.7: the uncertain command is safe from another device name and from 
     expect(pendingDeviceName({ kind: 'restored', command: order('k', { actor: 'device:tablet-vieja' }) })).toEqual({ name: 'tablet-vieja', description: 'Añadir Agua · M1' })
     expect(pendingDeviceName({ kind: 'absent' })).toBeNull(); expect(pendingDeviceName(null)).toBeNull()
     expect(unpairWarning({ kind: 'restored', command: order('k') })).toContain('«tablet-sala-1»'); expect(unpairWarning({ kind: 'absent' })).toBe('')
+  })
+
+  // Revision D6.7: el aviso de "otra pestaña" solo cuando la orden encontrada es de verdad de este dispositivo y nombre.
+  it('a send that finds the slot taken by an order it can NEVER resend does not blame another tab: the red panel gives the reason', async () => {
+    const cases: Array<[unknown, string]> = [
+      [order('k-x', { actor: 'device:tablet-vieja' }), 'actor'], [order('k-x', { installationId: 'inst-OTRA' }), 'foreign'], [{ key: 'k-x' }, 'unreadable'],
+    ]
+    for (const [stored, reason] of cases) {
+      vi.stubGlobal('indexedDB', new IDBFactory())
+      const b = tab([{ status: 200, body: { version: 5 } }]); await b.run.restore()     // B leyo el hueco vacio
+      await put(stored)                                                                  // fallo al montar, o dos credenciales a la vez
+      await expect(b.run.send(...PAUSE), reason).rejects.toThrow('sin resolver')
+      expect(b.seen, reason).toHaveLength(0)
+      expect(b.state.blocked?.reason, reason).toBe(reason); expect(b.state.pending, reason).toBeNull()
+      expect(b.state.notice, reason).not.toContain('otra pestaña'); expect(b.state.notice, reason).toContain('no se puede reenviar')
+      expect(await storedKey(), reason).toBe(reason === 'unreadable' ? 'unreadable' : 'k-x')
+    }
+    // Y si la orden que ocupaba el hueco ya se resolvio al releer, tampoco: se dice que esta no salio y que se repita.
+    const gone: PendingStore = { load: async () => ({ kind: 'absent' }), reserve: async () => ({ kind: 'restored', command: order('k-x') }), clear: async () => {}, discard: async () => {} }
+    const c = runner(gone, [{ status: 200, body: { version: 5 } }])
+    await expect(c.run.send(...PAUSE)).rejects.toThrow('sin resolver')
+    expect(c.seen).toHaveLength(0); expect(c.state.pending).toBeNull(); expect(c.state.blocked).toBeNull()
+    expect(c.state.notice).not.toContain('otra pestaña'); expect(c.state.notice).toContain('no se ha enviado')
+  })
+
+  // Revision D6.7: al emparejar aun no se sabe con que servidor; el mismo nombre solo sirve con el MISMO servidor.
+  it('pairing advice is conditional: the same name only helps with the same server; a reinstalled server blocks it as foreign whatever the name', async () => {
+    const saved = order('k-old', { actor: 'device:tablet-vieja' })
+    expect(pendingDeviceName({ kind: 'restored', command: { ...saved, installationId: 'inst-OTRA' } })?.name).toBe('tablet-vieja')   // no puede saber el servidor
+    const advice = pairPendingAdvice('tablet-vieja')
+    expect(advice).toContain('«tablet-vieja»'); expect(advice).toContain('mismo servidor'); expect(advice).toContain('instalado de nuevo')
+    expect(advice).not.toMatch(/^Se hizo con el nombre «tablet-vieja»: empareja/)
+    await put(order('k-old', { installationId: 'inst-ANTERIOR' }))                      // mismo nombre, servidor instalado de nuevo
+    const { run, state } = tab([]); await run.restore()
+    expect(state.blocked).toEqual({ key: 'k-old', reason: 'foreign' }); expect(state.pending).toBeNull()
+    expect(unpairWarning({ kind: 'restored', command: saved })).toContain('mismo servidor')
   })
 })

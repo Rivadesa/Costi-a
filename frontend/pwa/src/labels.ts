@@ -62,10 +62,17 @@ export function pendingDeviceName(load: PendingLoad | null): { name: string; des
   return { name: deviceNameOf(load.command.actor), description: load.command.description }
 }
 
+// D6.7 (revision): antes de emparejar no se sabe con que servidor (instalacion) se va a emparejar. El mismo nombre solo
+// sirve con el MISMO servidor: con uno instalado de nuevo la orden queda bloqueada como de otra instalacion, sea cual sea
+// el nombre. Por eso el consejo es condicional y nunca promete que con ese nombre baste.
+export function pairPendingAdvice(name: string): string {
+  return `Se hizo con el nombre «${name}». Si vuelves a emparejarlo con el mismo servidor, usa ese mismo nombre para poder comprobar si se aplicó. Con otro nombre, o si el servidor se ha instalado de nuevo, quedará bloqueada: compruébala en el PC principal y después descártala.`
+}
+
 // D6.7: aviso (no bloqueo) antes de desvincular con una orden guardada. Desvincular no la borra.
 export function unpairWarning(load: PendingLoad | null): string {
   if (load?.kind === 'restored')
-    return `Atención: hay una orden sin confirmar guardada en este dispositivo («${load.command.description}»). Desvincular no la borra, pero después solo se podrá comprobar volviendo a emparejarlo con el mismo nombre («${deviceNameOf(load.command.actor)}») o en el PC principal. Mejor resuélvela antes.`
+    return `Atención: hay una orden sin confirmar guardada en este dispositivo («${load.command.description}»). Desvincular no la borra, pero después solo se podrá comprobar volviendo a emparejarlo con este mismo servidor y el mismo nombre («${deviceNameOf(load.command.actor)}») o en el PC principal. Mejor resuélvela antes.`
   if (load?.kind === 'unreadable') return 'Atención: hay una orden anterior ilegible guardada en este dispositivo. Desvincular no la borra.'
   return ''
 }
