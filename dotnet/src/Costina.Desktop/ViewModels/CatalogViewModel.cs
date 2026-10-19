@@ -104,7 +104,11 @@ public sealed partial class GlassRow(ProductDto product, string family, string b
     [ObservableProperty] private bool isChecked;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private bool byGlass = byGlassRead;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private string glassPrice = glassPriceRead;
-    public bool Dirty => ByGlass != ByGlassRead || (ByGlass && GlassPrice.Trim() != GlassPriceRead);
+    public bool Dirty => Differs(ByGlass, GlassPrice);
+    // E3.3.1 (revision): el precio se compara con lo leido por IMPORTE (CatalogViewModel.TryCents), no por texto: "6,5", "6" o "6.50"
+    // sobre un "6,50" leido no es un cambio. Asi el recuento, "Guardar copas" y la retirada del borrador en RenderGlass dicen lo mismo.
+    public bool Differs(bool byGlass, string price) => byGlass != ByGlassRead || (byGlass && !SameAmount(price, GlassPriceRead));
+    private static bool SameAmount(string typed, string read) => typed.Trim() == read || (CatalogViewModel.TryCents(typed) is { } a && CatalogViewModel.TryCents(read) is { } b && a == b);
     public string Detail => Family + " · botella " + BottleText + (Product.Reference is { Length: > 0 } r ? " · " + r : "");
     public override string ToString() => $"{Name} · {Family} · botella {BottleText} · copa {(ByGlass ? GlassPrice : "no")}";
 }
@@ -246,6 +250,11 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     partial void OnMoveTargetIdChanged(string? value) => ComposeGlass();
     partial void OnGlassFamilyChanged(string? value) { if (!rendering && !glassRendering && value is not null) RenderGlass(); }
     private IEnumerable<ProductDto> CellarProducts() => catalog is null ? [] : catalog.Products.Where(p => p.Active && SectionOf(p) == "bodega");
+    // E3.3.1: la copa de un producto con la regla del motor (Catalog.GlassOf): la activa; entre varias, 'copa'; despues, por codigo. Asi
+    // una 'copa' desactivada ya no esconde una 'glass' que se sigue vendiendo. Un servidor anterior a E3.3 no marca 'glass': por el codigo.
+    private static bool IsGlass(PresentationDto s) => s.Glass || s.Id is "copa" or "glass";
+    private static PresentationDto? GlassOf(ProductDto p) => p.Presentations.Where(IsGlass)
+        .OrderByDescending(s => s.Active).ThenBy(s => s.Id == "copa" ? 0 : 1).ThenBy(s => s.Id, StringComparer.Ordinal).FirstOrDefault();
     private void RenderGlass()
     {
         if (catalog is null) { GlassRows = []; GlassCount = ""; ShowGlassEmpty = true; return; }
@@ -260,11 +269,13 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
             .Where(p => text.Length == 0 || TextSearch.Contains(p.Name, text) || (p.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false) || TextSearch.Contains(FamilyOf(p), text))
             .Select(p =>
             {
-                var glass = p.Presentations.FirstOrDefault(s => s.Glass || s.Id is "copa" or "glass");
+                var glass = GlassOf(p);
                 var glassPrice = glass is { Active: true } ? Current(glass, "general", today) : null;
-                var bottle = p.Presentations.Where(s => s.Active && !(s.Glass || s.Id is "copa" or "glass")).Select(s => Current(s, "general", today)).FirstOrDefault(c => c is not null);
+                var bottle = p.Presentations.Where(s => s.Active && !IsGlass(s)).Select(s => Current(s, "general", today)).FirstOrDefault(c => c is not null);
                 var row = new GlassRow(p, FamilyOf(p), bottle is null ? "sin precio" : Money(bottle.PriceCents), glassPrice is not null, glassPrice is null ? "" : (glassPrice.PriceCents / 100m).ToString("0.00", Spanish));
-                if (glassDraft.TryGetValue(p.Id, out var draft)) { row.ByGlass = draft.ByGlass; row.GlassPrice = draft.Price; }
+                // E3.3.1: un borrador que ya coincide con lo leido (por importe: guardado, o hecho igual en otro sitio) se retira y la fila
+                // muestra lo leido: si no, taparia un cambio posterior y el siguiente "Guardar copas" devolveria el valor viejo.
+                if (glassDraft.TryGetValue(p.Id, out var draft)) { if (row.Differs(draft.ByGlass, draft.Price)) { row.ByGlass = draft.ByGlass; row.GlassPrice = draft.Price; } else glassDraft.Remove(p.Id); }
                 row.IsChecked = glassChecked.Contains(p.Id);
                 row.PropertyChanged += GlassRowChanged;
                 return row;
@@ -306,29 +317,56 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
         foreach (var r in CheckedRows) { r.ByGlass = true; r.GlassPrice = text; }
         return Task.CompletedTask;
     });
-    // "Guardar": UNA orden glass-sale-set con los cambios (hasta 300 por orden; el resto, en ordenes seguidas, una detras de otra).
+    // "Guardar": los cambios en ordenes glass-sale-set de hasta GlassBatch cambios EN TOTAL (marcados y quitados juntos, el tope del motor:
+    // CatalogOperations.MaxGlassItems), una detras de otra. E3.3.1: antes cada lista se partia por su lado y una orden mixta de mas de 300
+    // se rechazaba siempre (too_many_items). Cada orden se describe como su parte (asi se lee tambien si queda sin confirmar); al
+    // confirmarse, se retiran SUS borradores; si falla una posterior, se relee y el aviso dice cuanto se guardo.
+    internal const int GlassBatch = 300;
+    private sealed record GlassChange(string ProductId, long? PriceCents);   // PriceCents null = quitar la copa (stop)
     private bool CanSaveGlass() => Main && GlassRows.Any(r => r.Dirty);
     [RelayCommand(CanExecute = nameof(CanSaveGlass))]
     private Task SaveGlass() => shell.Attempt(() =>
     {
-        var dirty = GlassRows.Where(r => r.Dirty).ToArray();
-        var items = new List<object>(); var stop = new List<string>();
-        foreach (var r in dirty)
+        // Las comprobaciones del formulario, antes de enviar nada (C2b: ArgumentException a la barra de estado).
+        var changes = new List<GlassChange>();
+        foreach (var r in GlassRows.Where(r => r.Dirty))
         {
-            if (r.ByGlass) { if (r.GlassPrice.Trim().Length == 0) throw new ArgumentException($"Falta el precio de la copa de {r.Name}."); items.Add(new { productId = r.Product.Id, priceCents = Cents(r.GlassPrice) }); }
-            else if (r.ByGlassRead) stop.Add(r.Product.Id);
+            if (r.ByGlass) { if (r.GlassPrice.Trim().Length == 0) throw new ArgumentException($"Falta el precio de la copa de {r.Name}."); changes.Add(new(r.Product.Id, Cents(r.GlassPrice))); }
+            else if (r.ByGlassRead) changes.Add(new(r.Product.Id, null));
         }
-        var sent = dirty.Select(r => r.Product.Id).ToArray();
-        return shell.Run(async () =>
+        return SaveGlassParts([.. changes.Chunk(GlassBatch)], changes.Count);
+    });
+    private async Task SaveGlassParts(GlassChange[][] parts, int total)
+    {
+        static string Counts(IEnumerable<GlassChange> changes) => $"{Labels.Plural(changes.Count(c => c.PriceCents is not null), "copa", "copas")}, {Labels.Plural(changes.Count(c => c.PriceCents is null), "quitado", "quitados")}";
+        int saved = 0; var partial = false;
+        await shell.Run(async () =>
         {
-            for (var i = 0; i < items.Count || i < stop.Count; i += 300)
-                await shell.Api!.SendAsync("erp/catalog/commands/glass-sale-set", new { items = items.Skip(i).Take(300).ToArray(), stop = stop.Skip(i).Take(300).ToArray() },
-                    $"Vinos por copa: {Labels.Plural(items.Count, "copa", "copas")}, {Labels.Plural(stop.Count, "quitado", "quitados")}");
-            foreach (var id in sent) glassDraft.Remove(id);
-            shell.Status = $"Vinos por copa guardados: {Labels.Plural(items.Count, "copa", "copas")}, {Labels.Plural(stop.Count, "quitado", "quitados")}: confirmado por el servidor.";
+            try
+            {
+                for (var k = 0; k < parts.Length; k++)
+                {
+                    var part = parts[k];
+                    await shell.Api!.SendAsync("erp/catalog/commands/glass-sale-set",
+                        new { items = part.Where(c => c.PriceCents is not null).Select(c => new { productId = c.ProductId, priceCents = c.PriceCents!.Value }).ToArray(),
+                              stop = part.Where(c => c.PriceCents is null).Select(c => c.ProductId).ToArray() },
+                        $"Vinos por copa{(parts.Length > 1 ? $" (parte {k + 1} de {parts.Length})" : "")}: {Counts(part)}");
+                    foreach (var c in part) glassDraft.Remove(c.ProductId);
+                    saved += part.Length;
+                }
+            }
+            catch when (saved > 0)
+            {
+                // Lo confirmado ya esta en el servidor: se relee (si se puede) para que deje de verse como borrador; el motivo lo cuenta Run.
+                partial = true;
+                try { await LoadAsync(); } catch (Exception) { }
+                throw;
+            }
+            shell.Status = $"Vinos por copa guardados: {Counts(parts.SelectMany(p => p))}{(parts.Length > 1 ? $", en {parts.Length} órdenes" : "")}: confirmado por el servidor.";
             await LoadAsync();
         });
-    });
+        if (partial) shell.Status = $"Guardados {saved} de {total} cambios de Vinos por copa, confirmados por el servidor{(glassDraft.Count > 0 ? "; los demás siguen en el borrador" : "")}. " + shell.Status;
+    }
     // "Cambiar IVA de los marcados" (decision del promotor: el tipo lo dira el gestor; se cambia sin reimportar).
     private bool CanSetTax() => Main && CheckedRows.Length > 0 && GlassTaxId is { Length: > 0 };
     [RelayCommand(CanExecute = nameof(CanSetTax))]
@@ -987,12 +1025,13 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     // cambiar sin querer la categoria, el impuesto o la estacion.
     private static string Chosen(string? value, string what) => value?.Trim() ?? throw new ArgumentException($"Vuelve a elegir {what}: el desplegable se quedó sin elección.");
     // Importe tecleado en euros ("9,50" o "9.50") a centimos.
-    public static long Cents(string text)
+    public static long Cents(string text) => TryCents(text) ?? throw new ArgumentException("Precio: introduce un importe en euros, por ejemplo 9,50.");
+    // E3.3.1 (revision): lo mismo sin excepcion (null = no es un importe valido), para comparar por importe lo tecleado con lo leido.
+    public static long? TryCents(string text)
     {
         var t = text.Trim().Replace("€", "").Replace(" ", "");
         if (t.Contains(',') && t.Contains('.')) t = t.Replace(".", "").Replace(',', '.'); else t = t.Replace(',', '.');
-        if (!decimal.TryParse(t, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) || value < 0 || value > 999_999.99m)
-            throw new ArgumentException("Precio: introduce un importe en euros, por ejemplo 9,50.");
+        if (!decimal.TryParse(t, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) || value < 0 || value > 999_999.99m) return null;
         return (long)decimal.Round(value * 100, 0, MidpointRounding.AwayFromZero);
     }
 

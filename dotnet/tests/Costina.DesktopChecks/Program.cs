@@ -588,7 +588,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.40.1-d6.7",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.40.2-e3.3.1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -1742,6 +1742,88 @@ internal static class Program
         catalogView.GlassRows.Single(r=>r.Product.Id=="muga").IsChecked=true; window.UpdateLayout();
         Fits("catalog-glass","SaveGlassButton"); Save(Shot(window),"catalog-glass.png");
         catalogView.GlassRows.Single(r=>r.Product.Id=="muga").IsChecked=false;
+        // ===== E3.3.1: «Guardar copas» en ordenes de 300 cambios EN TOTAL, los borradores de cada parte y la copa activa =====
+        // Bodega generada: 301 vinos (los 150 primeros ya por copa a 4,00) y uno con una 'copa' desactivada junto a una 'glass' activa (lo
+        // que dejaba 0.40.0 tras quitar la copa del vino del laboratorio). El servidor simulado aplica glass-sale-set y exige el tope del motor.
+        var cellarBefore=server.Catalog;
+        Costina.Client.ProductDto CellarWine(int n)=>Wine($"bodega-{n:000}",$"Vino de bodega {n:000}","tintos",null,100+n,null,
+            n<150?new[]{Pres("botella","Botella",0,("general",2000)),Pres("copa","Copa",1,("general",400))}:new[]{Pres("botella","Botella",0,("general",2000))});
+        var twoGlasses=Wine("dos-copas","Vino de dos copas","tintos",null,99,null,Pres("copa","Copa",0,("general",450)) with {Active=false},Pres("glass","Copa",0,("general",800)),Pres("botella","Botella",1,("general",2400)));
+        server.Catalog=wineCatalog with {Products=[twoGlasses,..Enumerable.Range(0,301).Select(CellarWine)]};
+        catalogView.GlassSearch=""; catalogView.GlassFamily=""; catalogView.Render(server.Catalog); window.UpdateLayout();
+        var twoGlassesRow=catalogView.GlassRows.Single(r=>r.Product.Id=="dos-copas");
+        if(catalogView.GlassRows.Length!=302||!twoGlassesRow.ByGlassRead||twoGlassesRow.GlassPriceRead!="8,00"||twoGlassesRow.Dirty)
+            throw new Exception("An inactive 'copa' never hides an active 'glass': the wine shows as sold by the glass, at the glass price: "+twoGlassesRow);
+        JsonElement[] GlassSales(int skip)=>[..server.Requests.Where(r=>r.Method=="POST"&&r.Path=="erp/catalog/commands/glass-sale-set").Skip(skip).Select(r=>JsonSerializer.Deserialize<JsonElement>(r.Body))];
+        static int Changes(JsonElement order)=>order.GetProperty("items").GetArrayLength()+order.GetProperty("stop").GetArrayLength();
+        static IEnumerable<string> WinesIn(JsonElement order)=>order.GetProperty("items").EnumerateArray().Select(i=>i.GetProperty("productId").GetString()!).Concat(order.GetProperty("stop").EnumerateArray().Select(s=>s.GetString()!));
+        Costina.Desktop.ViewModels.GlassRow GlassRowOf(string id)=>catalogView.GlassRows.Single(r=>r.Product.Id==id);
+        Costina.Desktop.ViewModels.GlassRow[] CellarRows()=>[..catalogView.GlassRows.Where(r=>r.Product.Id.StartsWith("bodega-",StringComparison.Ordinal))];
+        // 151 vinos nuevos por copa y 150 quitados: 301 cambios. El motor admite 300 por orden SUMANDO items y stop; antes salia una sola
+        // orden de 151 + 150, rechazada siempre con too_many_items y sin aplicar nada.
+        foreach(var r in CellarRows()) { if(r.ByGlassRead) r.ByGlass=false; else { r.ByGlass=true; r.GlassPrice="5,50"; } }
+        window.UpdateLayout();
+        if(catalogView.GlassSummary!="Ninguno marcado · 301 cambios por guardar") throw new Exception("The mixed edit counts its 301 changes: "+catalogView.GlassSummary);
+        var salesBefore=GlassSales(0).Length;
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (151 nuevas y 150 quitadas)");
+        Wait(()=>!window.Shell.Busy&&GlassSales(salesBefore).Length>0,"the mixed glass save is sent");
+        var mixed=GlassSales(salesBefore);
+        if(mixed.Length!=2||mixed.Any(o=>Changes(o)>300)||mixed.SelectMany(WinesIn).Count()!=301||mixed.SelectMany(WinesIn).Distinct().Count()!=301
+            ||!window.Shell.Status.StartsWith("Vinos por copa guardados: 151 copas, 150 quitados",StringComparison.Ordinal)||catalogView.GlassRows.Any(r=>r.Dirty)||catalogView.SaveGlassCommand.CanExecute(null))
+            throw new Exception("151 new and 150 removed wines go in two orders of at most 300 changes IN TOTAL, all saved and nothing left to save: "
+                +string.Join(" + ",mixed.Select(Changes))+" / "+window.Shell.Status+" / "+catalogView.GlassSummary);
+        // Una orden posterior rechazada: la parte confirmada se relee y deja de ser borrador, y el aviso dice cuanto se guardo. Un precio
+        // cambiado despues en otro sitio se ve tal cual: antes el borrador olvidado lo tapaba y el siguiente «Guardar copas» lo devolvia.
+        foreach(var r in CellarRows()) { r.ByGlass=true; r.GlassPrice="6,00"; }
+        window.UpdateLayout();
+        salesBefore=GlassSales(0).Length; server.RejectGlassOrder=server.GlassOrders+2;
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (301 precios; la segunda orden se rechaza)");
+        Wait(()=>!window.Shell.Busy&&GlassSales(salesBefore).Length>1,"the second glass order is refused");
+        var partial=GlassSales(salesBefore); var confirmed=partial[0..1].SelectMany(WinesIn).ToHashSet(StringComparer.Ordinal);
+        var refusedWine=partial.Length==2?WinesIn(partial[1]).Single():"";
+        if(partial.Length!=2||Changes(partial[0])!=300||!window.Shell.Status.StartsWith("Guardados 300 de 301 cambios de Vinos por copa",StringComparison.Ordinal)
+            ||!window.Shell.Status.Contains(Costina.Client.Labels.Rejection("product_unavailable"),StringComparison.Ordinal)||window.Shell.Pending is not null
+            ||catalogView.GlassRows.Where(r=>confirmed.Contains(r.Product.Id)).Any(r=>r.Dirty||r.GlassPriceRead!="6,00")
+            ||GlassRowOf(refusedWine) is not {Dirty:true,GlassPrice:"6,00"}||catalogView.GlassSummary!="Ninguno marcado · 1 cambio por guardar")
+            throw new Exception("After a later order is refused, the confirmed part is re-read and no longer a draft, and the notice says what was saved: "+window.Shell.Status+" / "+catalogView.GlassSummary);
+        window.UpdateLayout();
+        if(Clipped(catalogPanel) is {Length:>0} clippedPartial) throw new Exception("catalog-glass-partial clips text: "+string.Join(" | ",clippedPartial));
+        RefuseRaw(window,"catalog-glass-partial"); Save(Shot(window),"catalog-glass-partial.png");
+        var staleWine=confirmed.Order(StringComparer.Ordinal).First();
+        Costina.Client.CatalogDto WithGlassPrice(Costina.Client.CatalogDto source,string id,long cents)=>source with {Products=[..source.Products.Select(p=>p.Id!=id?p:p with {Presentations=[..p.Presentations.Select(s=>s.Id!="copa"?s
+            :s with {Prices=[..s.Prices.Where(x=>!(x.TariffId=="general"&&x.ValidFrom==source.Today)),new("general",source.Today,cents)]})]})]};
+        server.Catalog=WithGlassPrice(server.Catalog,staleWine,450); catalogView.Render(server.Catalog); window.UpdateLayout();
+        if(GlassRowOf(staleWine) is not {Dirty:false,GlassPrice:"4,50"}) throw new Exception("A price changed elsewhere after a partial save shows as read, never hidden by a forgotten draft: "+GlassRowOf(staleWine));
+        salesBefore=GlassSales(0).Length; server.RejectGlassOrder=0;
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (lo que quedaba)");
+        Wait(()=>!window.Shell.Busy&&GlassSales(salesBefore).Length>0,"the rest is saved");
+        var rest=GlassSales(salesBefore);
+        if(rest.Length!=1||!WinesIn(rest[0]).SequenceEqual([refusedWine])||catalogView.GlassRows.Any(r=>r.Dirty)||GlassRowOf(staleWine).GlassPriceRead!="4,50")
+            throw new Exception("Saving again sends only what was left, never an old price back: "+string.Join(",",rest.SelectMany(WinesIn)));
+        // Una parte que queda SIN CONFIRMAR: la orden pendiente dice que parte era (no el total), el aviso cuenta lo guardado y, tras el
+        // reintento identico, nada queda por guardar ni un borrador igual a lo leido tapa un cambio posterior. Revision de E3.3.1: el precio
+        // se teclea como "6,5" (Cents lo acepta igual que "6,50"): el borrador se compara con lo leido por IMPORTE, no por texto.
+        foreach(var r in CellarRows()) r.GlassPrice="6,5";
+        window.UpdateLayout();
+        salesBefore=GlassSales(0).Length; server.UncertainGlassOrder=server.GlassOrders+2;
+        Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (la segunda orden queda sin confirmar)");
+        Wait(()=>!window.Shell.Busy&&GlassSales(salesBefore).Length>1,"the second glass order is left unconfirmed");
+        var uncertainWine=WinesIn(GlassSales(salesBefore)[^1]).Single();
+        if(window.Shell.Pending?.Description!="Vinos por copa (parte 2 de 2): 1 copa, 0 quitados"||!window.Shell.Status.StartsWith("Guardados 300 de 301 cambios de Vinos por copa",StringComparison.Ordinal)
+            ||GlassRowOf(uncertainWine) is not {Dirty:true,GlassPrice:"6,5"})
+            throw new Exception("An unconfirmed part is described as that part and the partial save is told: "+window.Shell.Pending?.Description+" / "+window.Shell.Status);
+        window.Shell.RetryCommand.Execute(null);
+        Wait(()=>!window.Shell.Busy&&window.Shell.Pending is null,"the identical retry confirms the part");
+        if(catalogView.GlassRows.Any(r=>r.Dirty)||GlassRowOf(uncertainWine) is not {GlassPriceRead:"6,50",GlassPrice:"6,50"})
+            throw new Exception("After the retry nothing is left to save and the row shows what was read: "+catalogView.GlassSummary+" / "+GlassRowOf(uncertainWine));
+        // Volver a teclear el mismo importe de otra forma no es un cambio: ni cuenta ni se guarda (ni deja un borrador que tape lo siguiente).
+        GlassRowOf(uncertainWine).GlassPrice="6.50"; window.UpdateLayout();
+        if(GlassRowOf(uncertainWine).Dirty||catalogView.SaveGlassCommand.CanExecute(null)||catalogView.GlassSummary!="Ninguno marcado · sin cambios por guardar")
+            throw new Exception("The same amount typed another way is not a change: "+catalogView.GlassSummary);
+        server.Catalog=WithGlassPrice(server.Catalog,uncertainWine,480); catalogView.Render(server.Catalog); window.UpdateLayout();
+        if(GlassRowOf(uncertainWine) is not {Dirty:false,GlassPrice:"4,80"}) throw new Exception("A draft equal to what was read is dropped: a later change shows as read: "+GlassRowOf(uncertainWine));
+        server.Catalog=cellarBefore; catalogView.Render(server.Catalog); window.Shell.Status="";
+        catalogView.SelectedProduct=catalogView.Products.Single(p=>p.Product.Id=="albarino"); window.UpdateLayout();   // la bodega generada lo deselecciono
         Section(2,"tariffs");
         // Impuestos: tipo y productos que lo llevan.
         Section(3,"taxes");
@@ -2911,6 +2993,22 @@ internal static class Program
                 var id=command.GetProperty("productId").GetString()!; Images.TryRemove(id,out _);
                 Catalog=Catalog with {Products=[..Catalog.Products.Select(p=>p.Id==id?p with {ImageSha=null}:p)]};
             }
+            // E3.3.1: Vinos por copa como el motor: hasta 300 cambios EN TOTAL por orden (items + stop; mas, 409 too_many_items con el eco
+            // de la clave: rechazo definitivo, y la consulta de la clave dice que no consta); la copa del vino es la activa ('copa' antes
+            // que 'glass') y quitar desactiva todas. RejectGlassOrder rechaza la orden glass-sale-set con ese numero (product_unavailable)
+            // y UncertainGlassOrder la deja sin respuesta reconocible (503 sin aplicar: queda sin confirmar); un reintento lleva otro numero.
+            if(path=="erp/catalog/commands/glass-sale-set")
+            {
+                var items=command.GetProperty("items").EnumerateArray().Select(i=>(Id:i.GetProperty("productId").GetString()!,Cents:i.GetProperty("priceCents").GetInt64())).ToArray();
+                var stop=command.GetProperty("stop").EnumerateArray().Select(s=>s.GetString()!).ToArray();
+                GlassOrders++;
+                if(GlassOrders==UncertainGlassOrder) return Json(503,"{\"error\":\"unavailable\"}");
+                if((items.Length+stop.Length>300?"too_many_items":GlassOrders==RejectGlassOrder?"product_unavailable":null) is {} refusal)
+                {
+                    var refused=Json(409,"{\"error\":\""+refusal+"\"}"); refused.Headers.Add("Idempotency-Key",key); return refused;
+                }
+                Catalog=Catalog with {Products=[..Catalog.Products.Select(p=>GlassSale(p,items.Where(i=>i.Id==p.Id).Select(i=>(long?)i.Cents).LastOrDefault(),stop.Contains(p.Id)))]};
+            }
             // C2b: un alta de tarifa se aplica en memoria, como el motor, para comprobar que lo recien creado queda elegido al releer.
             if(path=="erp/catalog/commands/tariff-create")
                 Catalog=Catalog with {Tariffs=[..Catalog.Tariffs,new(command.GetProperty("id").GetString()!,command.GetProperty("name").GetString()!,command.GetProperty("sort").GetInt32(),true)]};
@@ -2950,6 +3048,26 @@ internal static class Program
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
         public HashSet<string> TablesInUse { get; }=[];
+        public int GlassOrders { get; private set; }
+        public int RejectGlassOrder { get; set; }
+        public int UncertainGlassOrder { get; set; }
+        // E3.3.1: glass-sale-set sobre un producto, como CatalogOperations: items reprecia (General, desde hoy) y reactiva la copa que
+        // elige Catalog.GlassOf (la activa; entre varias, 'copa') o crea 'copa'; stop desactiva todas las copas activas.
+        private Costina.Client.ProductDto GlassSale(Costina.Client.ProductDto product,long? cents,bool stop)
+        {
+            static bool IsGlass(Costina.Client.PresentationDto s)=>s.Glass||s.Id is "copa" or "glass";
+            if(cents is null&&!stop) return product;
+            var presentations=product.Presentations;
+            if(cents is {} price)
+            {
+                var glass=presentations.Where(IsGlass).OrderByDescending(s=>s.Active).ThenBy(s=>s.Id=="copa"?0:1).ThenBy(s=>s.Id,StringComparer.Ordinal).FirstOrDefault()
+                    ??new("copa","Copa",0,true,[],true);
+                var today=Catalog.Today;
+                presentations=[..presentations.Where(s=>s.Id!=glass.Id),glass with {Active=true,Prices=[..glass.Prices.Where(p=>!(p.TariffId=="general"&&p.ValidFrom==today)),new("general",today,price)]}];
+            }
+            if(stop) presentations=[..presentations.Select(s=>IsGlass(s)&&s.Active?s with {Active=false}:s)];
+            return product with {Presentations=[..presentations.OrderBy(s=>s.Sort).ThenBy(s=>s.Id,StringComparer.Ordinal)]};
+        }
         private string? OrganizationCommand(string action,JsonElement command)
         {
             string Text(string name)=>command.GetProperty(name).GetString()!;

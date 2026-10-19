@@ -139,6 +139,16 @@ internal static class Program
             Equal((true, true, false), (Catalog.IsSection("_cocina"), Catalog.IsGlass("glass"), Catalog.IsGlass("bottle")));
             Equal("cocina", Catalog.Slug("_cocina"));   // un slug nunca produce el guion bajo de una seccion
         });
+        // E3.3.1: LA copa de un vino entre sus presentaciones ('copa' o la 'glass' del laboratorio): la activa primero, entre varias
+        // 'copa', nunca una botella ni otro codigo; null si no tiene ninguna (glass-sale-set crea entonces 'copa').
+        Test("the glass of a wine is the active glass presentation, copa first", () => {
+            PresentationDefinition P(string id, bool active) => new("wine", id, id, 0, active);
+            Equal("glass", Catalog.GlassOf([P("copa", false), P("glass", true), P("bottle", true)])?.Id);
+            Equal("copa", Catalog.GlassOf([P("glass", true), P("copa", true)])?.Id);
+            Equal("copa", Catalog.GlassOf([P("glass", false), P("copa", false)])?.Id);
+            Equal("glass", Catalog.GlassOf([P("glass", false), P("bottle", true)])?.Id);
+            Equal(null, Catalog.GlassOf([P("bottle", true), P("copa-15-cl", true)])?.Id);
+        });
         Test("catalog rejects bad prices, rates, colors, references and dates", () => {
             Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), -1));
             Rule("invalid_price", () => Catalog.Price("general", "wine", "glass", new DateOnly(2026, 1, 1), Catalog.MaxPriceCents + 1));

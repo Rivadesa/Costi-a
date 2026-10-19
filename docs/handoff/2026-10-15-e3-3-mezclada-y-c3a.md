@@ -1,5 +1,7 @@
 # Traspaso 2026-10-15 (noche, 2): E3.3 mezclada; siguiente, C3a (comandero nuevo: aspecto y mesas)
 
+> **Ya no es el punto de entrada:** desde el 19-10 lo es `docs/handoff/2026-10-19-d6.7-y-e3.3.1.md`. Este documento sigue valiendo para las trampas de E3.3 y para el PC del promotor.
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-15-e4d-mezclada-y-e3-3.md`, que sigue valiendo para las palabras del promotor y las trampas de E4d.
 
 Leer antes, en este orden:

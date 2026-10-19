@@ -100,6 +100,8 @@ public static class Labels
         ("tax_inactive", "Ese impuesto está desactivado."),
         ("product_unavailable", "Ese producto está desactivado."),
         ("price_missing", "Ese producto no tiene precio vigente."),
+        // E3.3.1: tope de cambios por orden de Vinos por copa (el puesto ya parte en ordenes de 300; con otro tope, sale esta frase).
+        ("too_many_items", "Demasiados cambios para una sola orden: guárdalos por partes (filtra por familia o busca)."),
         // E3.2: imagenes de los articulos (el servidor las reconoce por sus bytes).
         ("image_invalid", "La imagen no es válida: solo se admiten JPEG, PNG o WebP (nunca SVG)."),
         ("image_too_large", "La imagen ocupa más de 2 MB: redúcela y vuelve a intentarlo."),
