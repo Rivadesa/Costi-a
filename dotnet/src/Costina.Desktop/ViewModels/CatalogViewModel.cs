@@ -104,7 +104,11 @@ public sealed partial class GlassRow(ProductDto product, string family, string b
     [ObservableProperty] private bool isChecked;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private bool byGlass = byGlassRead;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(Dirty))] private string glassPrice = glassPriceRead;
-    public bool Dirty => ByGlass != ByGlassRead || (ByGlass && GlassPrice.Trim() != GlassPriceRead);
+    public bool Dirty => Differs(ByGlass, GlassPrice);
+    // E3.3.1 (revision): el precio se compara con lo leido por IMPORTE (CatalogViewModel.TryCents), no por texto: "6,5", "6" o "6.50"
+    // sobre un "6,50" leido no es un cambio. Asi el recuento, "Guardar copas" y la retirada del borrador en RenderGlass dicen lo mismo.
+    public bool Differs(bool byGlass, string price) => byGlass != ByGlassRead || (byGlass && !SameAmount(price, GlassPriceRead));
+    private static bool SameAmount(string typed, string read) => typed.Trim() == read || (CatalogViewModel.TryCents(typed) is { } a && CatalogViewModel.TryCents(read) is { } b && a == b);
     public string Detail => Family + " · botella " + BottleText + (Product.Reference is { Length: > 0 } r ? " · " + r : "");
     public override string ToString() => $"{Name} · {Family} · botella {BottleText} · copa {(ByGlass ? GlassPrice : "no")}";
 }
@@ -269,9 +273,9 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
                 var glassPrice = glass is { Active: true } ? Current(glass, "general", today) : null;
                 var bottle = p.Presentations.Where(s => s.Active && !IsGlass(s)).Select(s => Current(s, "general", today)).FirstOrDefault(c => c is not null);
                 var row = new GlassRow(p, FamilyOf(p), bottle is null ? "sin precio" : Money(bottle.PriceCents), glassPrice is not null, glassPrice is null ? "" : (glassPrice.PriceCents / 100m).ToString("0.00", Spanish));
-                // E3.3.1: un borrador que ya coincide con lo leido (guardado, o hecho igual en otro sitio) se retira: si no, taparia un
-                // cambio posterior y el siguiente "Guardar copas" devolveria el valor viejo.
-                if (glassDraft.TryGetValue(p.Id, out var draft)) { row.ByGlass = draft.ByGlass; row.GlassPrice = draft.Price; if (!row.Dirty) glassDraft.Remove(p.Id); }
+                // E3.3.1: un borrador que ya coincide con lo leido (por importe: guardado, o hecho igual en otro sitio) se retira y la fila
+                // muestra lo leido: si no, taparia un cambio posterior y el siguiente "Guardar copas" devolveria el valor viejo.
+                if (glassDraft.TryGetValue(p.Id, out var draft)) { if (row.Differs(draft.ByGlass, draft.Price)) { row.ByGlass = draft.ByGlass; row.GlassPrice = draft.Price; } else glassDraft.Remove(p.Id); }
                 row.IsChecked = glassChecked.Contains(p.Id);
                 row.PropertyChanged += GlassRowChanged;
                 return row;
@@ -1021,12 +1025,13 @@ public sealed partial class CatalogViewModel(ShellViewModel shell) : ObservableO
     // cambiar sin querer la categoria, el impuesto o la estacion.
     private static string Chosen(string? value, string what) => value?.Trim() ?? throw new ArgumentException($"Vuelve a elegir {what}: el desplegable se quedó sin elección.");
     // Importe tecleado en euros ("9,50" o "9.50") a centimos.
-    public static long Cents(string text)
+    public static long Cents(string text) => TryCents(text) ?? throw new ArgumentException("Precio: introduce un importe en euros, por ejemplo 9,50.");
+    // E3.3.1 (revision): lo mismo sin excepcion (null = no es un importe valido), para comparar por importe lo tecleado con lo leido.
+    public static long? TryCents(string text)
     {
         var t = text.Trim().Replace("€", "").Replace(" ", "");
         if (t.Contains(',') && t.Contains('.')) t = t.Replace(".", "").Replace(',', '.'); else t = t.Replace(',', '.');
-        if (!decimal.TryParse(t, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) || value < 0 || value > 999_999.99m)
-            throw new ArgumentException("Precio: introduce un importe en euros, por ejemplo 9,50.");
+        if (!decimal.TryParse(t, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) || value < 0 || value > 999_999.99m) return null;
         return (long)decimal.Round(value * 100, 0, MidpointRounding.AwayFromZero);
     }
 

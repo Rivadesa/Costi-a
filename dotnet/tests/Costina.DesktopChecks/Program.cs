@@ -1801,19 +1801,25 @@ internal static class Program
         if(rest.Length!=1||!WinesIn(rest[0]).SequenceEqual([refusedWine])||catalogView.GlassRows.Any(r=>r.Dirty)||GlassRowOf(staleWine).GlassPriceRead!="4,50")
             throw new Exception("Saving again sends only what was left, never an old price back: "+string.Join(",",rest.SelectMany(WinesIn)));
         // Una parte que queda SIN CONFIRMAR: la orden pendiente dice que parte era (no el total), el aviso cuenta lo guardado y, tras el
-        // reintento identico, nada queda por guardar ni un borrador igual a lo leido tapa un cambio posterior.
-        foreach(var r in CellarRows()) r.GlassPrice="6,50";
+        // reintento identico, nada queda por guardar ni un borrador igual a lo leido tapa un cambio posterior. Revision de E3.3.1: el precio
+        // se teclea como "6,5" (Cents lo acepta igual que "6,50"): el borrador se compara con lo leido por IMPORTE, no por texto.
+        foreach(var r in CellarRows()) r.GlassPrice="6,5";
         window.UpdateLayout();
         salesBefore=GlassSales(0).Length; server.UncertainGlassOrder=server.GlassOrders+2;
         Press(InCatalog<Button>("SaveGlassButton"),"Guardar copas (la segunda orden queda sin confirmar)");
         Wait(()=>!window.Shell.Busy&&GlassSales(salesBefore).Length>1,"the second glass order is left unconfirmed");
         var uncertainWine=WinesIn(GlassSales(salesBefore)[^1]).Single();
         if(window.Shell.Pending?.Description!="Vinos por copa (parte 2 de 2): 1 copa, 0 quitados"||!window.Shell.Status.StartsWith("Guardados 300 de 301 cambios de Vinos por copa",StringComparison.Ordinal)
-            ||GlassRowOf(uncertainWine) is not {Dirty:true,GlassPrice:"6,50"})
+            ||GlassRowOf(uncertainWine) is not {Dirty:true,GlassPrice:"6,5"})
             throw new Exception("An unconfirmed part is described as that part and the partial save is told: "+window.Shell.Pending?.Description+" / "+window.Shell.Status);
         window.Shell.RetryCommand.Execute(null);
         Wait(()=>!window.Shell.Busy&&window.Shell.Pending is null,"the identical retry confirms the part");
-        if(catalogView.GlassRows.Any(r=>r.Dirty)||GlassRowOf(uncertainWine).GlassPriceRead!="6,50") throw new Exception("After the retry nothing is left to save: "+catalogView.GlassSummary);
+        if(catalogView.GlassRows.Any(r=>r.Dirty)||GlassRowOf(uncertainWine) is not {GlassPriceRead:"6,50",GlassPrice:"6,50"})
+            throw new Exception("After the retry nothing is left to save and the row shows what was read: "+catalogView.GlassSummary+" / "+GlassRowOf(uncertainWine));
+        // Volver a teclear el mismo importe de otra forma no es un cambio: ni cuenta ni se guarda (ni deja un borrador que tape lo siguiente).
+        GlassRowOf(uncertainWine).GlassPrice="6.50"; window.UpdateLayout();
+        if(GlassRowOf(uncertainWine).Dirty||catalogView.SaveGlassCommand.CanExecute(null)||catalogView.GlassSummary!="Ninguno marcado · sin cambios por guardar")
+            throw new Exception("The same amount typed another way is not a change: "+catalogView.GlassSummary);
         server.Catalog=WithGlassPrice(server.Catalog,uncertainWine,480); catalogView.Render(server.Catalog); window.UpdateLayout();
         if(GlassRowOf(uncertainWine) is not {Dirty:false,GlassPrice:"4,80"}) throw new Exception("A draft equal to what was read is dropped: a later change shows as read: "+GlassRowOf(uncertainWine));
         server.Catalog=cellarBefore; catalogView.Render(server.Catalog); window.Shell.Status="";
