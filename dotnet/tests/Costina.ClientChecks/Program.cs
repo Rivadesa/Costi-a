@@ -529,7 +529,7 @@ await Check("vocabulary: server rejections in clear Spanish; an unknown one keep
     foreach(var code in new[]{"version_conflict","table_occupied","account_not_balanced","unfinished_courses","restrictions_unreviewed","restrictions_unacknowledged",
         "wrong_station","account_closed","account_not_closed","refund_exceeds_credit","forbidden","choice_missing","course_empty","no_pending_course","active_course",
         "service_finished","not_found","duplicate_code","table_in_use","reserved_station","reserved_tariff","offer_unavailable","price_missing","image_invalid","image_too_large",
-        "station_kind_mismatch","device_role_not_allowed","storage_conflict","operation_unconfirmed","request_failed"})
+        "station_kind_mismatch","device_role_not_allowed","storage_conflict","operation_unconfirmed","request_failed","too_many_items"})
     {
         var text=Labels.Rejection(code);
         Expect(text!=code&&!text.Contains("(código",StringComparison.Ordinal)&&!text.Contains('_'),"rejection without a sentence: "+code+" -> "+text);
