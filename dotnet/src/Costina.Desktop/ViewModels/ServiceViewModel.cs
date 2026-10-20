@@ -28,14 +28,14 @@ public sealed partial class TableTile : ObservableObject
         PeopleText = service is null ? Labels.Plural(table.Capacity, "plaza", "plazas") : Labels.Plural(service.Pax, "persona", "personas");
         // Libre: sus plazas; ocupada: sus personas y la oferta con la que se abrio.
         Detail = service is null || offerName.Length == 0 ? PeopleText : PeopleText + " · " + offerName;
-        Elapsed = FloorPlan.Since(service) is { } since ? Labels.Minutes(now - since) : "";
+        Elapsed = FloorPlan.Elapsed(service, now);
         Alert = FloorPlan.Alert(service);
         // El mini plano de Inicio parte el aviso solo por su sentido: la palabra en una linea y "por revisar" en la siguiente.
         AlertWord = FloorPlan.AlertWord(service);
         AlertNote = service?.RestrictionsPendingAck == true ? FloorPlan.PendingReview : "";
         AlertAlarming = FloorPlan.AlertIsAlarming(service);
         Steps = FloorPlan.Steps(service);
-        Progress = Steps.Length == 0 ? "" : $"{FloorPlan.Done(service)} de {Steps.Length}";
+        Progress = FloorPlan.Progress(service);
         Description = string.Join(", ", new[] { name, StateLabel, PeopleText, Alert, Progress.Length > 0 ? Progress + " pases" : "" }.Where(p => p.Length > 0));
     }
     public TableChoice Table { get; }

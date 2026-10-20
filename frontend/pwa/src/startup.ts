@@ -7,7 +7,7 @@ import { MoneyLeakError } from './money-guard'
 export type Startup = { state: 'ready' | 'unpaired' | 'offline'; notice: string }
 
 // Un 401 ya no se explica siempre como "revocado": tambien ocurre al desvincular, o tras restaurar una copia anterior.
-export const UNPAIRED_NOTICE = 'Este dispositivo ya no esta emparejado: lo quitaron desde el PC principal, se desvinculo, o el servidor se restauro desde una copia anterior. Pide un codigo nuevo en el PC principal.'
+export const UNPAIRED_NOTICE = 'Este dispositivo ya no está emparejado: lo quitaron desde el PC principal, se desvinculó, o el servidor se restauró desde una copia anterior. Pide un código nuevo en el PC principal.'
 export const NOT_READY_PREFIX = 'Servidor no listo'
 
 export function outcomeOf(error: unknown, hadSession: boolean): Startup {

@@ -48,7 +48,7 @@ export function kitchenTickets(entries: BoardEntry[], station: string | null): K
 // Tiempo desde el envio, siempre escrito. El reloj de la tablet puede ir desajustado respecto al servidor:
 // nunca se pinta un tiempo negativo.
 export function elapsedLabel(firedAt: string | null, now: number): string {
-  if (!firedAt) return 'hora de envio desconocida'
+  if (!firedAt) return 'hora de envío desconocida'
   const minutes = Math.max(0, Math.floor((now - Date.parse(firedAt)) / 60_000))
   return minutes < 1 ? 'enviado hace menos de 1 min' : `enviado hace ${minutes} min`
 }

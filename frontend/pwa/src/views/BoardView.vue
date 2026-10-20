@@ -1,99 +1,106 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { call, getCatalog, type CatalogItem, type Session } from '../api'
-import { boardSummary, courseLabel, diningLabel, pendingReviews, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
-import { offerKindSuffix, proposedOffer } from '../offers'
+import { computed, onMounted, ref, watch } from 'vue'
+import { getCatalog, type CatalogItem, type Session } from '../api'
+import { floorEmpty, floorRooms, floorSummary, floorView, Names, useConfiguration, type FloorTile } from '../configuration'
+import { plural } from '../labels'
 import { useOperations } from '../operations'
-import ServiceActions from './ServiceActions.vue'
+import FloorGrid from './FloorGrid.vue'
+import Icon from './Icon.vue'
+import OpenTable from './OpenTable.vue'
 import StatusPanel from './StatusPanel.vue'
+import TableCard from './TableCard.vue'
 
 // Comandero. Lectura en vivo (D6.2) + acciones con ORDEN INCIERTA durable (D6.3). Sin datos economicos.
 // La lectura en vivo y la orden incierta son las de operations.ts, compartidas con la pantalla de cocina (D6.4).
+// C3a: el plano por salas (FloorGrid), la ficha de la mesa (TableCard) y la hoja «Abrir mesa» (OpenTable). La configuracion
+// (mesas, salas, ofertas y estaciones) se relee al abrir esa hoja y cada 5 minutos; nombres siempre, nunca codigos.
 const props = defineProps<{ token: string; session: Session }>()
 const emit = defineEmits<{ unauthorized: [] }>()
 
-interface TableChoice { id: string; name: string; capacity: number }
-interface MenuChoice { id: string; name: string }
-// E4a: oferta vigente (degustacion o menu cerrado) con sus pases y platos elegibles. Sin dinero.
-export interface OfferItem { productId: string; presentationId: string; name: string; presentation: string }
-export interface OfferChoice { id: string; name: string; kind: string; courses: Array<{ id: string; name: string; dishes: Array<{ id: string; name: string }>; items?: OfferItem[] }> }
-
-const { state, runnerState, live, locked, age, stale, run, retry, reconcile, discard } = useOperations(props, () => emit('unauthorized'))
-
-const selectedId = ref<string | null>(null)
-const selected = computed(() => state.entries.find(entry => entry.service.id === selectedId.value) ?? null)
-const tables = ref<TableChoice[]>([]); const menus = ref<OfferChoice[]>([]); const catalog = ref<CatalogItem[]>([])
-const freeTables = computed(() => tables.value.filter(table => !state.entries.some(entry => entry.occupancy.tableId === table.id && entry.occupancy.state === 'Occupied')))
-const openTable = ref(''); const openMenu = ref(''); const openPax = ref(2)
+const { state, runnerState, live, locked, now, age, stale, run, retry, reconcile, discard } = useOperations(props, () => emit('unauthorized'))
+const { configuration, reload } = useConfiguration(props, () => emit('unauthorized'))
 const can = (action: string) => props.session.actions.includes(action)
+const catalog = ref<CatalogItem[]>([])
 
-function open(): void {
-  if (!openTable.value || !openMenu.value || !Number.isInteger(openPax.value) || openPax.value < 1 || openPax.value > 40) { runnerState.notice = 'Elige mesa, menu y comensales (1 a 40).'; return }
-  void run('/dining/services', { tableId: openTable.value, pax: openPax.value, offerId: openMenu.value, menuId: openMenu.value }, `Abrir mesa ${openTable.value} para ${openPax.value}`)   // menuId: alias para un servidor anterior
-  openTable.value = ''
+const names = computed(() => new Names(configuration))
+const rooms = computed(() => floorRooms(configuration, state.entries))
+const summary = computed(() => floorSummary(rooms.value))
+const tiles = computed(() => rooms.value.flatMap(room => room.tiles))
+// El plano, solo desde una lectura real del tablero (configuration.ts, floorView): nunca una mesa «Libre» sin haberlo leido.
+const view = computed(() => floorView(state, configuration))
+const empty = computed(() => floorEmpty(state, configuration, tiles.value.length))
+// La sala elegida vive aqui y no en el plano: ir a una ficha (o a «Abrir mesa») y volver la conserva, como SelectedZone en el puesto.
+const room = ref('')
+
+// Lo que se ve: el plano, la ficha de una mesa ocupada (por su servicio: la lectura de siempre, F01) o «Abrir mesa» en una libre.
+const selectedId = ref<string | null>(null)
+const openingTable = ref<string | null>(null)
+const selected = computed(() => state.entries.find(entry => entry.service.id === selectedId.value) ?? null)
+const selectedTile = computed(() => tiles.value.find(tile => tile.entry?.service.id === selectedId.value) ?? null)
+const openingTile = computed(() => openingTable.value === null ? null : tiles.value.find(tile => tile.tableId === openingTable.value && tile.entry === null)
+  ?? tiles.value.find(tile => tile.tableId === openingTable.value) ?? null)
+const tableConfig = computed(() => configuration.tables.find(table => table.id === openingTable.value) ?? null)
+// Tras cada lectura correcta del tablero: una mesa que ya no esta (liberada, cerrada en Caja) devuelve al plano, y una configuracion
+// que no se pudo leer se reintenta (el servidor vuelve a responder) sin esperar a los 5 minutos.
+watch(() => state.readAt, () => {
+  if (selectedId.value && !selected.value) selectedId.value = null
+  if (configuration.failed) void reload()
+})
+// Cambiar de pantalla (plano, ficha, «Abrir mesa») empieza arriba, no donde se quedo el plano.
+watch([selectedId, openingTable], () => { window.scrollTo({ top: 0 }) })
+// «Actualizar» relee tambien la configuracion, como RefreshAll en el puesto.
+function refreshAll(): void { void live.refresh(); void reload() }
+
+function pick(tile: FloorTile): void {
+  if (tile.entry) { openingTable.value = null; selectedId.value = tile.entry.service.id; return }
+  if (!can('open')) return
+  selectedId.value = null; openingTable.value = tile.tableId
+  void reload()   // C3a: la configuracion, al dia al abrir la hoja (un menu cambiado por la manana)
+}
+
+async function open(pax: number, offerId: string): Promise<void> {
+  const tableId = openingTable.value
+  if (!tableId) return
+  const name = names.value.table(tableId)
+  // menuId: alias para un servidor anterior a E4a.
+  const outcome = await run('/dining/services', { tableId, pax, offerId, menuId: offerId }, `Abrir ${name} para ${plural(pax, 'persona', 'personas')}`)
+  openingTable.value = null
+  // Confirmada: se pasa a la ficha de la mesa recien abierta (la relectura ya termino). Si no, el plano con el aviso o la orden pendiente.
+  const serviceId = outcome?.kind === 'confirmed' ? (outcome.response as { serviceId?: unknown } | null)?.serviceId : undefined
+  if (typeof serviceId === 'string') selectedId.value = serviceId
 }
 
 onMounted(async () => {
-  try {
-    const configuration = await call<{ tables: TableChoice[]; menus: MenuChoice[]; offers?: OfferChoice[] }>(fetch, '/configuration', { token: props.token })
-    tables.value = configuration.tables
-    menus.value = configuration.offers ?? configuration.menus.map(menu => ({ ...menu, kind: 'tasting', courses: [] }))   // servidor anterior a E4a: solo menus
-    openMenu.value = proposedOffer(menus.value)?.id ?? ''   // E4d: siempre el menu del dia (la primera vigente), aunque haya varias
-    if (can('add-consumption')) catalog.value = await getCatalog(fetch, props.token)
-  } catch { /* sin configuracion no hay formularios; la lectura del tablero ya informa del problema */ }
+  try { if (can('add-consumption')) catalog.value = await getCatalog(fetch, props.token) }
+  catch { /* sin catalogo, «Bodega y bebidas» lo dice; la lectura del tablero ya informa de un servidor caido */ }
 })
 </script>
 
 <template>
-  <section data-testid="board">
-    <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="live.refresh()" />
+  <section class="screen" data-testid="board">
+    <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
 
-    <template v-if="!selected">
-      <h2>Mesas en servicio</h2>
-      <p v-if="state.readAt && state.entries.length === 0" data-testid="empty">No hay mesas abiertas.</p>
-      <ul class="tables">
-        <li v-for="entry in state.entries" :key="entry.service.id">
-          <button type="button" class="table" :data-testid="`table-${entry.service.tableId}`" @click="selectedId = entry.service.id">
-            <strong>{{ entry.service.tableId }}</strong> · {{ entry.service.pax }} personas · {{ diningLabel(entry.service.state) }}
-            <span class="line">{{ boardSummary(entry) }}</span>
-            <span v-if="entry.service.restrictions?.length" class="line alert">⚠ {{ entry.service.restrictions.length }} restriccion(es) declaradas</span>
-            <span v-if="pendingReviews(entry.service) > 0" class="line alert">⚠ {{ pendingReviews(entry.service) }} elaboracion(es) PENDIENTES DE REVISION por cocina</span>
-          </button>
-        </li>
-      </ul>
-      <details v-if="can('open') && menus.length > 0" data-testid="open-form">
-        <summary>Abrir mesa</summary>
-        <label>Mesa
-          <select v-model="openTable" name="table" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="table in freeTables" :key="table.id" :value="table.id">{{ table.name }}</option></select>
-        </label>
-        <label>Comensales <input v-model.number="openPax" name="pax" type="number" min="1" max="40" inputmode="numeric" :disabled="locked" /></label>
-        <label>Menu
-          <select v-model="openMenu" name="menu" :disabled="locked"><option value="" disabled>Elige…</option><option v-for="menu in menus" :key="menu.id" :value="menu.id">{{ menu.name }}{{ offerKindSuffix(menu.kind) }}</option></select>
-        </label>
-        <button type="button" :disabled="locked" data-testid="do-open" @click="open">Abrir mesa</button>
-      </details>
+    <TableCard v-if="selected" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
+      :configuration="configuration" :names="names" :catalog="catalog" :can-consume="can('add-consumption')" :locked="locked" :now="now"
+      @run="run" @back="selectedId = null" />
+
+    <OpenTable v-else-if="openingTable" :key="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"
+      :capacity="tableConfig?.capacity ?? 0" :offers="configuration.offers" :occupied="openingTile?.entry != null" :locked="locked"
+      @open="open" @back="openingTable = null" />
+
+    <template v-else>
+      <div class="floor-h">
+        <h2>Mesas</h2>
+        <span v-if="view === 'ready' && summary" class="muted" data-testid="floor-summary">{{ summary }}</span>
+      </div>
+      <p v-if="view === 'reading'" class="muted" data-testid="floor-reading">Leyendo las mesas…</p>
+      <p v-else-if="view === 'unread'" class="notice neutral" data-testid="floor-unread"><Icon name="info" />Sin ninguna lectura del servidor todavía: las mesas salen en cuanto responda.</p>
+      <template v-else>
+        <p v-if="empty" class="notice neutral" data-testid="empty"><Icon name="info" />No hay mesas activas. Se crean en el PC principal, en Salas, mesas y estaciones.</p>
+        <p v-if="configuration.failed && configuration.tables.length === 0" class="notice" role="status" data-testid="configuration-error">
+          <Icon name="info" />No se pudo leer la configuración de mesas: solo se ven las mesas ocupadas, y sin «Abrir mesa». Se vuelve a intentar en la próxima lectura.</p>
+        <FloorGrid v-model:room="room" :rooms="rooms" :configuration="configuration" :now="now" :can-open="can('open')" @pick="pick" />
+      </template>
     </template>
-
-    <article v-else data-testid="detail">
-      <button type="button" class="secondary" @click="selectedId = null">‹ Volver a las mesas</button>
-      <h2>{{ selected.service.tableId }} · {{ selected.service.pax }} personas · {{ diningLabel(selected.service.state) }}</h2>
-      <ServiceActions :entry="selected" :catalog="catalog" :offers="menus" :can-consume="can('add-consumption')" :disabled="locked" @run="run" />
-      <section v-if="selected.service.restrictions?.length" class="restrictions" data-testid="restrictions">
-        <h3>Restricciones declaradas</h3>
-        <ul><li v-for="restriction in selected.service.restrictions" :key="restriction.id">⚠ {{ restrictionLabel(restriction) }}</li></ul>
-      </section>
-      <section v-for="course in selected.service.courses" :key="course.id" class="course">
-        <h3>{{ course.name }} — {{ courseLabel(course.state) }}</h3>
-        <p v-if="course.skipReason">Motivo: {{ course.skipReason }}</p>
-        <ul>
-          <li v-for="preparation in course.preparations" :key="preparation.id">
-            <strong>{{ preparation.name }}</strong><span v-if="preparation.guestPosition !== null"> · comensal {{ preparation.guestPosition }}</span>
-            · estacion {{ preparation.stationId }} · {{ preparationLabel(preparation.state) }}
-            <span v-for="restriction in preparation.restrictions ?? []" :key="restriction.id" class="line alert">⚠ {{ restrictionLabel(restriction) }}</span>
-            <span v-if="reviewLabel(preparation)" class="line" :class="{ alert: preparation.reviewPending }">{{ reviewLabel(preparation) }}</span>
-          </li>
-        </ul>
-      </section>
-    </article>
   </section>
 </template>

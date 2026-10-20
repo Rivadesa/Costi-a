@@ -2,6 +2,12 @@
 const DATABASE = 'costina'
 const VERSION = 2
 export const STORES = { device: 'device', pending: 'pending' } as const
+// Estos mensajes llegan a la pantalla (startup.ts los pone en «Servidor no listo (…)»): castellano con tildes, como el resto.
+export const DB_TEXTS = {
+  blocked: 'IndexedDB bloqueada por otra pestaña con una versión anterior.',
+  aborted: 'Transacción abortada.',
+  empty: 'Transacción completada sin resultado.',
+} as const
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -11,7 +17,7 @@ function open(): Promise<IDBDatabase> {
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
-    request.onblocked = () => reject(new Error('IndexedDB bloqueada por otra pestana con una version anterior.'))
+    request.onblocked = () => reject(new Error(DB_TEXTS.blocked))
   })
 }
 
@@ -24,7 +30,7 @@ export async function run<T>(store: string, mode: IDBTransactionMode, action: (s
       const request = action(transaction.objectStore(store))
       transaction.oncomplete = () => resolve(request.result)
       transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error ?? new Error('Transaccion abortada.'))
+      transaction.onabort = () => reject(transaction.error ?? new Error(DB_TEXTS.aborted))
     })
   } finally { database.close() }
 }
@@ -39,9 +45,9 @@ export async function transact<T>(store: string, step: (store: IDBObjectStore, d
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(store, 'readwrite', { durability: 'strict' })
       let result: { value: T } | null = null
-      transaction.oncomplete = () => result ? resolve(result.value) : reject(new Error('Transaccion completada sin resultado.'))
+      transaction.oncomplete = () => result ? resolve(result.value) : reject(new Error(DB_TEXTS.empty))
       transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error ?? new Error('Transaccion abortada.'))
+      transaction.onabort = () => reject(transaction.error ?? new Error(DB_TEXTS.aborted))
       step(transaction.objectStore(store), value => { result = { value } })
     })
   } finally { database.close() }

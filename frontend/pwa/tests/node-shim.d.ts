@@ -2,6 +2,7 @@
 // se declara solo lo que usa install.test.ts, en vez de sumar una dependencia para tres funciones.
 declare module 'node:fs' {
   export function readFileSync(path: string): Uint8Array & { toString(encoding: 'utf8'): string }
+  export function readdirSync(path: string): string[]
 }
 declare module 'node:url' {
   export function fileURLToPath(url: URL): string

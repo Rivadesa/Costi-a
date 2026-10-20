@@ -21,7 +21,7 @@ export async function requestPersistence(storage: StorageLike | undefined = glob
 
 export const PERSISTENCE_HINT: Record<Persistence, string> = {
   persisted: '',
-  'best-effort': 'Este navegador puede borrar los datos de esta aplicacion si pasa tiempo sin usarse o falta espacio. Instalala en la pantalla de inicio para protegerlos.',
-  unsupported: 'Este navegador no ofrece almacenamiento protegido. Instala la aplicacion en la pantalla de inicio y no borres los datos del sitio.',
-  'plain-http': 'Conexion sencilla (sin cifrar): asi el navegador no deja instalar la aplicacion ni proteger sus datos. Funciona igual; no borres los datos del sitio y usala solo con el Wi-Fi del personal.',
+  'best-effort': 'Este navegador puede borrar los datos de esta aplicación si pasa tiempo sin usarse o falta espacio. Instálala en la pantalla de inicio para protegerlos.',
+  unsupported: 'Este navegador no ofrece almacenamiento protegido. Instala la aplicación en la pantalla de inicio y no borres los datos del sitio.',
+  'plain-http': 'Conexión sencilla (sin cifrar): así el navegador no deja instalar la aplicación ni proteger sus datos. Funciona igual; no borres los datos del sitio y úsala solo con el Wi-Fi del personal.',
 }

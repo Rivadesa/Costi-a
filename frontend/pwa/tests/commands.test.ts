@@ -111,13 +111,25 @@ describe('durable uncertain command', () => {
       expect(kept.state.pending, JSON.stringify(reply)).not.toBeNull()
     }
   })
+  // C3a: el rechazo se dice con tildes y sin palabras de caja (el de una mesa cerrada en Caja decia «cuenta»); uno desconocido, con su codigo.
+  it('tells a definitive rejection in Spanish with accents, never with checkout words, and an unknown one with its code', async () => {
+    const said = async (error: string) => {
+      const rejected = runner(new MemoryStore(), [{ status: 409, body: { error } }, { status: 200, body: { key: '$key', found: false } }])
+      expect((await rejected.run.send(...SERVE)).kind).toBe('rejected')
+      return rejected.state.notice
+    }
+    expect(await said('brand_new_rule')).toBe('El servidor rechazó la orden (brand_new_rule). No se ha aplicado.')
+    expect(await said('wrong_station')).toBe('Esta acción no corresponde a la estación de este dispositivo.')
+    const closed = await said('account_closed')
+    expect(closed).toContain('Caja'); expect(closed).not.toMatch(/€|precio|saldo|pago|cuenta/i)
+  })
   it('a rejection speaks for THIS attempt only: if the server has the key, an earlier attempt WAS applied and it closes as applied', async () => {
     // Respuesta perdida -> el puesto se re-empareja con otro rol -> el reintento recibe 403 con eco... de una orden que SI se aplico.
     const store = new MemoryStore()
     const { run, state, seen } = runner(store, ['network', { status: 403, body: { error: 'forbidden' } }, { status: 200, body: { key: '$key', found: true, response: { version: 5 } } }])
     await run.send(...SERVE)
     expect(await run.retry()).toEqual({ kind: 'confirmed', response: { version: 5 } })
-    expect(state.pending).toBeNull(); expect(state.notice).toContain('SI se aplico'); expect(store.log).toEqual(['save', 'clear'])
+    expect(state.pending).toBeNull(); expect(state.notice).toContain('SÍ se aplicó'); expect(store.log).toEqual(['save', 'clear'])
     expect(seen.map(request => request.method)).toEqual(['POST', 'POST', 'GET'])
   })
   it('a rejection it cannot verify against the server record closes nothing', async () => {
@@ -143,7 +155,7 @@ describe('durable uncertain command', () => {
     const lost = runner(store, ['network', { status: 200, body: { key: '$key', found: false } }, { status: 200, body: { key: '$key', found: true, response: {} } }])
     await lost.run.send(...SERVE)
     expect(await lost.run.reconcile()).toBe('not_found'); expect(lost.state.pending).not.toBeNull()
-    expect(await lost.run.reconcile()).toBe('applied'); expect(lost.state.pending).toBeNull(); expect(lost.state.notice).toContain('SI se aplico')
+    expect(await lost.run.reconcile()).toBe('applied'); expect(lost.state.pending).toBeNull(); expect(lost.state.notice).toContain('SÍ se aplicó')
     expect(lost.seen[1].url).toContain('/commands/' + lost.seen[0].key); expect(lost.seen[1].method).toBe('GET')
   })
   it('never resends a command from ANOTHER installation or an unreadable one; they block until an explicit decision', async () => {

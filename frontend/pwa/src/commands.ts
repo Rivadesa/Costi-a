@@ -58,13 +58,14 @@ const OTHER_TAB = 'Hay otra orden sin resolver en este dispositivo (de otra pest
 const BLOCKED_SLOT = 'Hay una orden guardada en este dispositivo que no se puede reenviar (mírala arriba). Esta no se ha enviado.'
 const SLOT_GONE = 'Esta orden no se ha enviado: había otra guardada en este dispositivo, que ya se ha resuelto. Repítela si sigue haciendo falta.'
 
+// C3a: con tildes, y sin palabras de caja (el comandero nunca dice «cuenta», «pago», «saldo» ni «precio»).
 export const REJECTIONS: Record<string, string> = {
-  version_conflict: 'Otro puesto cambio esta mesa a la vez. Se ha vuelto a leer: revisa y repite si sigue haciendo falta.',
-  restrictions_unreviewed: 'Hay elaboraciones pendientes de revision por cocina tras un cambio de restricciones.',
-  restrictions_unacknowledged: 'Cocina aun no ha revisado el cambio de restricciones.',
-  wrong_station: 'Esta accion no corresponde a la estacion de este dispositivo.',
-  account_closed: 'La cuenta de esta mesa esta cerrada: avisa en el PC principal.',
-  forbidden: 'Este dispositivo no tiene permiso para esa accion.',
+  version_conflict: 'Otro puesto cambió esta mesa a la vez. Se ha vuelto a leer: revisa y repite si sigue haciendo falta.',
+  restrictions_unreviewed: 'Hay elaboraciones pendientes de revisión por cocina tras un cambio de restricciones.',
+  restrictions_unacknowledged: 'Cocina aún no ha revisado el cambio de restricciones.',
+  wrong_station: 'Esta acción no corresponde a la estación de este dispositivo.',
+  account_closed: 'Esta mesa ya está cerrada en Caja: avisa en el PC principal.',
+  forbidden: 'Este dispositivo no tiene permiso para esa acción.',
 }
 
 export class CommandRunner {
@@ -104,7 +105,7 @@ export class CommandRunner {
     try {
       let occupied: boolean
       try { occupied = (await this.deps.store.reserve(command)).kind !== 'absent' }
-      catch { this.state.notice = 'No se pudo guardar la orden en este dispositivo, asi que NO se ha enviado. Libera espacio o revisa el navegador.'; throw new Error('pending store unavailable') }
+      catch { this.state.notice = 'No se pudo guardar la orden en este dispositivo, así que NO se ha enviado. Libera espacio o revisa el navegador.'; throw new Error('pending store unavailable') }
       if (occupied) {
         // D6.7: el hueco ya tenia una orden que esta pestana aun no habia leido. Esta NO sale: se relee y se adopta aquella
         // (propia: de otra pestana o ventana) o se bloquea (otro nombre, otra instalacion, ilegible). El aviso solo culpa a
@@ -138,7 +139,7 @@ export class CommandRunner {
       const lookup = await this.lookup(key)
       if (lookup.kind === 'applied') {
         await this.deps.store.clear(key); this.state.pending = null; this.state.blocked = null
-        this.state.notice = 'El servidor confirma que esa orden SI se aplico. No la repitas.'
+        this.state.notice = 'El servidor confirma que esa orden SÍ se aplicó. No la repitas.'
         return 'applied'
       }
       if (lookup.kind === 'absent') this.state.notice = 'Al servidor no le consta esa orden.'
@@ -204,11 +205,11 @@ export class CommandRunner {
         if (earlier.kind === 'unknown') return this.keep('unverifiable')
         await this.close(command.key)
         if (earlier.kind === 'applied') {
-          this.state.notice = 'El servidor confirma que esa orden SI se aplico en un intento anterior. No la repitas.'
+          this.state.notice = 'El servidor confirma que esa orden SÍ se aplicó en un intento anterior. No la repitas.'
           assertNoMoney(earlier.response)
           return { kind: 'confirmed', response: earlier.response }
         }
-        this.state.notice = REJECTIONS[code] ?? `El servidor rechazo la orden (${code}). No se ha aplicado.`
+        this.state.notice = REJECTIONS[code] ?? `El servidor rechazó la orden (${code}). No se ha aplicado.`
         return { kind: 'rejected', status: response.status, code }
       }
       return this.keep(response.status >= 500 || response.status === 429 || INCONCLUSIVE.has(code) ? 'server' : 'unverifiable')

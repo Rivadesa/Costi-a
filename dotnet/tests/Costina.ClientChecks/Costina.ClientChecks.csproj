@@ -1,3 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Costina.Client/Costina.Client.csproj" />
 <!-- C1: los enums del dominio dan TODOS los valores que el servidor puede enviar; el vocabulario (Labels) se comprueba contra ellos. -->
-<ProjectReference Include="../../src/Costina.Core.Domain/Costina.Core.Domain.csproj" /><ProjectReference Include="../../src/Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" /></ItemGroup></Project>
+<ProjectReference Include="../../src/Costina.Core.Domain/Costina.Core.Domain.csproj" /><ProjectReference Include="../../src/Costina.Modules.Dining.Domain/Costina.Modules.Dining.Domain.csproj" /></ItemGroup>
+<!-- C3a: tablas de casos COMUNES con la PWA (frontend/pwa/tests/floor.test.ts y labels.test.ts las leen del mismo sitio). -->
+<ItemGroup><None Include="../fixtures/*.json" Link="fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" /></ItemGroup></Project>

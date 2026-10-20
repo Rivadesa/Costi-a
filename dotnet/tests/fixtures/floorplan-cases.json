@@ -1,0 +1,274 @@
+{
+  "about": [
+    "C3a: tabla de casos COMUN del plano de mesas. La leen ClientChecks (Costina.Client/FloorPlan.cs, puesto principal) y vitest (frontend/pwa/src/floor.ts, comandero):",
+    "si una de las dos implementaciones cambia y la otra no, falla su prueba. Para cambiar una regla, se cambia aqui y en las DOS implementaciones.",
+    "service = el servicio tal como llega en /dining/board (null = mesa libre). Cada caso comprueba solo los campos que trae.",
+    "tiles: state (codigo de la tarjeta o el valor crudo del servidor), label, elapsed (minutos del estado que se ve, con now), progress, steps, alert, alertWord, alarming.",
+    "courses: label (estado del pase con su matiz, con pax) y detail (linea corta de la ficha); {firedAt}, {readyAt} y {servedAt} son la hora LOCAL de ese campo (HH:mm)."
+  ],
+  "now": "2026-10-15T20:40:00Z",
+  "tiles": [
+    { "case": "mesa libre: sin servicio en el tablero", "service": null,
+      "state": "free", "label": "Libre", "elapsed": "", "progress": "", "steps": [], "alert": "", "alertWord": "", "alarming": false },
+    { "case": "sentados: mesa abierta y nada enviado; el servidor no da la hora de apertura, no se inventa",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "Open", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "seated", "label": "Sentados", "elapsed": "", "progress": "0 de 2", "steps": ["pending", "pending"], "alert": "", "alertWord": "", "alarming": false },
+    { "case": "en servicio sin nada enviado: sigue en sentados",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "seated", "label": "Sentados", "elapsed": "", "progress": "0 de 2", "steps": ["pending", "pending"] },
+    { "case": "en cocina: minutos desde que se envio el pase",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+        { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "label": "En cocina", "elapsed": "12 min", "progress": "1 de 3", "steps": ["done", "kitchen", "pending"], "alert": "", "alarming": false },
+    { "case": "en preparacion tambien es en cocina; con dos pases en cocina manda el enviado antes",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:00:00Z", "readyAt": "2026-10-15T20:05:00Z", "servedAt": "2026-10-15T20:10:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Primero", "state": "Preparing", "firedAt": "2026-10-15T20:25:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+        { "id": "c3", "name": "Segundo", "state": "Fired", "firedAt": "2026-10-15T20:35:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "label": "En cocina", "elapsed": "15 min", "progress": "1 de 3", "steps": ["done", "kitchen", "kitchen"] },
+    { "case": "listo para servir: minutos desde que cocina lo valido",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Ready", "firedAt": "2026-10-15T20:28:00Z", "readyAt": "2026-10-15T20:37:00Z", "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "ready", "label": "Listo para servir", "elapsed": "3 min", "progress": "1 de 2", "steps": ["done", "ready"] },
+    { "case": "listo para servir manda sobre en cocina",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Ready", "firedAt": "2026-10-15T20:20:00Z", "readyAt": "2026-10-15T20:32:00Z", "servedAt": null, "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": "2026-10-15T20:38:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "ready", "label": "Listo para servir", "elapsed": "8 min", "progress": "0 de 2", "steps": ["ready", "kitchen"] },
+    { "case": "comiendo entre pases: minutos desde el ultimo pase servido",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:00:00Z", "readyAt": "2026-10-15T20:05:00Z", "servedAt": "2026-10-15T20:10:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Served", "firedAt": "2026-10-15T20:20:00Z", "readyAt": "2026-10-15T20:25:00Z", "servedAt": "2026-10-15T20:32:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "eating", "label": "Comiendo", "elapsed": "8 min", "progress": "2 de 3", "steps": ["done", "done", "pending"] },
+    { "case": "un pase omitido cuenta como hecho",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Sopa", "state": "Skipped", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": "sin hambre", "preparations": [] },
+        { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "eating", "label": "Comiendo", "elapsed": "20 min", "progress": "2 de 3", "steps": ["done", "done", "pending"] },
+    { "case": "comiendo sin hora de servido: sin minutos",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "eating", "label": "Comiendo", "elapsed": "", "progress": "1 de 1", "steps": ["done"] },
+    { "case": "en pausa: el servidor no da la hora de la pausa, no se inventa",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "Paused", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Ready", "firedAt": "2026-10-15T20:28:00Z", "readyAt": "2026-10-15T20:37:00Z", "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "paused", "label": "En pausa", "elapsed": "", "progress": "1 de 2", "steps": ["done", "ready"] },
+    { "case": "terminado, por liberar",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "Completed", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T19:40:00Z", "readyAt": "2026-10-15T19:45:00Z", "servedAt": "2026-10-15T19:50:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Served", "firedAt": "2026-10-15T20:00:00Z", "readyAt": "2026-10-15T20:05:00Z", "servedAt": "2026-10-15T20:10:00Z", "skipReason": null, "preparations": [] } ] },
+      "state": "finished", "label": "Terminado, por liberar", "elapsed": "", "progress": "2 de 2", "steps": ["done", "done"] },
+    { "case": "cancelado, por liberar",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "Cancelled", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "cancelled", "label": "Cancelado, por liberar", "elapsed": "", "progress": "0 de 1", "steps": ["pending"] },
+    { "case": "un estado de servicio desconocido sale tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "Closing", "courses": [] },
+      "state": "Closing", "label": "Closing", "elapsed": "", "progress": "", "steps": [] },
+    { "case": "un estado de pase desconocido sale tal cual, nunca rebajado a Comiendo",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "Plating", "firedAt": "2026-10-15T20:35:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "Plating", "label": "Plating", "elapsed": "", "progress": "1 de 2", "steps": ["done", "other"] },
+    { "case": "un pase Cancelled no es una mesa cancelada: tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Cancelled", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "Cancelled", "label": "Cancelled", "elapsed": "", "progress": "0 de 1", "steps": ["other"] },
+    { "case": "un servicio Ready no es una mesa lista para servir: tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "Ready", "courses": [] },
+      "state": "Ready", "label": "Ready", "elapsed": "", "progress": "" },
+    { "case": "un servicio Finished no es una mesa terminada: tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "Finished", "courses": [] },
+      "state": "Finished", "label": "Finished" },
+    { "case": "los estados del servidor se comparan sin distinguir mayusculas",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "inservice", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+        { "id": "c2", "name": "Principal", "state": "FIRED", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "label": "En cocina", "elapsed": "12 min", "progress": "1 de 2", "steps": ["done", "kitchen"] },
+    { "case": "pausa en minusculas",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "paused", "courses": [] },
+      "state": "paused", "label": "En pausa", "progress": "" },
+    { "case": "en cocina sin hora de envio: sin minutos",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Fired", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "label": "En cocina", "elapsed": "" },
+    { "case": "reloj del dispositivo por detras del servidor: nunca minutos negativos",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Fired", "firedAt": "2026-10-15T20:42:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "elapsed": "0 min" },
+    { "case": "mas de una hora en cocina",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Fired", "firedAt": "2026-10-15T19:35:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "elapsed": "1 h 05 min" },
+    { "case": "los minutos se truncan, no se redondean",
+      "service": { "id": "s1", "tableId": "M1", "pax": 2, "state": "InService", "courses": [
+        { "id": "c1", "name": "Entrante", "state": "Fired", "firedAt": "2026-10-15T20:27:18Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] } ] },
+      "state": "kitchen", "elapsed": "12 min" },
+    { "case": "sin restricciones, sin aviso",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [] },
+      "alert": "", "alertWord": "", "alarming": false },
+    { "case": "una alergia se nombra",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" },
+        { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" } ] },
+      "alert": "Alergia", "alertWord": "Alergia", "alarming": true },
+    { "case": "una intolerancia leve es una restriccion sin mas, sin rojo",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" } ] },
+      "alert": "Restricción", "alertWord": "Restricción", "alarming": false },
+    { "case": "un tipo desconocido sale tal cual con su gravedad, nunca rebajado",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r3", "guestPosition": 1, "kind": "Anaphylaxis", "substance": "cacahuete", "severity": "Critical" } ] },
+      "alert": "Anaphylaxis (Critical)", "alarming": true },
+    { "case": "una intolerancia grave lleva tipo y gravedad",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r4", "guestPosition": null, "kind": "Intolerance", "substance": "gluten", "severity": "Severe" } ] },
+      "alert": "Intolerancia (grave)", "alarming": true },
+    { "case": "una gravedad desconocida sale tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r5", "guestPosition": null, "kind": "Preference", "substance": "picante", "severity": "Extreme" } ] },
+      "alert": "Preferencia (Extreme)", "alarming": true },
+    { "case": "lo leve no tapa lo grave",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" },
+        { "id": "r4", "guestPosition": null, "kind": "Intolerance", "substance": "gluten", "severity": "Severe" } ] },
+      "alert": "Intolerancia (grave)", "alarming": true },
+    { "case": "alergia y tipo desconocido: los dos",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" },
+        { "id": "r3", "guestPosition": 1, "kind": "Anaphylaxis", "substance": "cacahuete", "severity": "Critical" } ] },
+      "alert": "Alergia, Anaphylaxis (Critical)", "alarming": true },
+    { "case": "con una alergia, lo grave conocido no se repite",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" },
+        { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" },
+        { "id": "r4", "guestPosition": null, "kind": "Intolerance", "substance": "gluten", "severity": "Severe" } ] },
+      "alert": "Alergia", "alarming": true },
+    { "case": "una alergia de gravedad desconocida lleva la gravedad tal cual",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r6", "guestPosition": 1, "kind": "Allergy", "substance": "sésamo", "severity": "Critical" } ] },
+      "alert": "Alergia (Critical)", "alarming": true },
+    { "case": "solo lo leve o moderado es una restriccion sin mas",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" },
+        { "id": "r7", "guestPosition": 2, "kind": "Preference", "substance": "picante", "severity": "Moderate" } ] },
+      "alert": "Restricción", "alarming": false },
+    { "case": "un cambio sin revisar se dice despues de la palabra",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictionsPendingAck": true, "restrictions": [
+        { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" } ] },
+      "alert": "Alergia · por revisar", "alertWord": "Alergia", "alarming": true },
+    { "case": "un cambio sin revisar alarma aunque la restriccion sea leve",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictionsPendingAck": true, "restrictions": [
+        { "id": "r2", "guestPosition": 3, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" } ] },
+      "alert": "Restricción · por revisar", "alertWord": "Restricción", "alarming": true },
+    { "case": "un cambio sin revisar sin restricciones a la vista",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictionsPendingAck": true },
+      "alert": "Restricción · por revisar", "alertWord": "Restricción", "alarming": true },
+    { "case": "un tipo desconocido por revisar",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictionsPendingAck": true, "restrictions": [
+        { "id": "r3", "guestPosition": 1, "kind": "Anaphylaxis", "substance": "cacahuete", "severity": "Critical" } ] },
+      "alert": "Anaphylaxis (Critical) · por revisar", "alertWord": "Anaphylaxis (Critical)", "alarming": true },
+    { "case": "tipo y gravedad sin distinguir mayusculas",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r8", "guestPosition": 1, "kind": "allergy", "substance": "marisco", "severity": "severe" } ] },
+      "alert": "Alergia", "alarming": true },
+    { "case": "dos alergias: la palabra una vez",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" },
+        { "id": "r9", "guestPosition": 4, "kind": "Allergy", "substance": "marisco", "severity": "Moderate" } ] },
+      "alert": "Alergia", "alarming": true },
+    { "case": "un tipo desconocido repetido sale una vez",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r3", "guestPosition": 1, "kind": "Anaphylaxis", "substance": "cacahuete", "severity": "Critical" },
+        { "id": "r10", "guestPosition": 2, "kind": "Anaphylaxis", "substance": "nuez", "severity": "Critical" } ] },
+      "alert": "Anaphylaxis (Critical)", "alarming": true },
+    { "case": "sin alergia ni tipo desconocido, primero la gravedad desconocida",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r4", "guestPosition": null, "kind": "Intolerance", "substance": "gluten", "severity": "Severe" },
+        { "id": "r5", "guestPosition": null, "kind": "Preference", "substance": "picante", "severity": "Extreme" } ] },
+      "alert": "Preferencia (Extreme), Intolerancia (grave)", "alarming": true },
+    { "case": "una alergia de toda la mesa tambien es una alergia",
+      "service": { "id": "s1", "tableId": "M1", "pax": 4, "state": "InService", "courses": [], "restrictions": [
+        { "id": "r11", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Mild" } ] },
+      "alert": "Alergia", "alarming": true }
+  ],
+  "courses": [
+    { "case": "en cocina con su hora y lo que lleva hecho", "pax": 2,
+      "course": { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "p1", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" },
+        { "id": "p2", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired" } ] },
+      "label": "En cocina", "detail": "En cocina desde las {firedAt} · 1 de 2 elaboraciones listas" },
+    { "case": "en preparacion, una sola elaboracion", "pax": 1,
+      "course": { "id": "c2", "name": "Principal", "state": "Preparing", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "p1", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" } ] },
+      "label": "En preparación", "detail": "En cocina desde las {firedAt} · 1 de 1 elaboración lista" },
+    { "case": "en cocina sin hora ni elaboraciones", "pax": 2,
+      "course": { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+      "label": "En cocina", "detail": "En cocina" },
+    { "case": "servido a su hora", "pax": 2,
+      "course": { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+      "label": "Servido", "detail": "Servido a las {servedAt}" },
+    { "case": "servido sin hora: nada que inventar", "pax": 2,
+      "course": { "id": "c1", "name": "Entrante", "state": "Served", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+      "label": "Servido", "detail": "" },
+    { "case": "listo desde que cocina lo valido", "pax": 2,
+      "course": { "id": "c2", "name": "Principal", "state": "Ready", "firedAt": "2026-10-15T20:28:00Z", "readyAt": "2026-10-15T20:37:00Z", "servedAt": null, "skipReason": null, "preparations": [] },
+      "label": "Listo para servir", "detail": "Listo desde las {readyAt}" },
+    { "case": "omitido con su motivo", "pax": 2,
+      "course": { "id": "c2", "name": "Sopa", "state": "Skipped", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": "sin hambre", "preparations": [] },
+      "label": "Omitido: sin hambre", "detail": "Motivo: sin hambre" },
+    { "case": "omitido sin motivo", "pax": 2,
+      "course": { "id": "c2", "name": "Sopa", "state": "Skipped", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+      "label": "Omitido", "detail": "" },
+    { "case": "menu con eleccion: falta que elijan", "pax": 4,
+      "course": { "id": "c2", "name": "Primeros", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "choiceRequired": true, "preparations": [
+        { "id": "sopa-1", "name": "Sopa", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" } ] },
+      "label": "Falta elegir plato", "detail": "Han elegido 1 de 4 personas" },
+    { "case": "menu con eleccion: ya han elegido todos", "pax": 1,
+      "course": { "id": "c2", "name": "Primeros", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "choiceRequired": true, "preparations": [
+        { "id": "sopa-1", "name": "Sopa", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" } ] },
+      "label": "Sin enviar", "detail": "Han elegido 1 de 1 persona" },
+    { "case": "menu con eleccion: nadie ha elegido", "pax": 2,
+      "course": { "id": "c2", "name": "Primeros", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "choiceRequired": true, "preparations": [] },
+      "label": "Falta elegir plato", "detail": "Han elegido 0 de 2 personas" },
+    { "case": "menu con eleccion: un comensal cuenta una vez", "pax": 2,
+      "course": { "id": "c2", "name": "Primeros", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "choiceRequired": true, "preparations": [
+        { "id": "sopa-1", "name": "Sopa", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
+        { "id": "pan-1", "name": "Pan", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" } ] },
+      "label": "Falta elegir plato", "detail": "Han elegido 1 de 2 personas" },
+    { "case": "grupo de carta sin platos", "pax": 2,
+      "course": { "id": "g1", "name": "Entrantes", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "optional": true, "preparations": [] },
+      "label": "Sin platos pedidos", "detail": "Se piden platos de la carta" },
+    { "case": "grupo de carta con platos pedidos", "pax": 2,
+      "course": { "id": "g1", "name": "Entrantes", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "optional": true, "preparations": [
+        { "id": "croquetas-1", "name": "Croquetas", "stationId": "hot", "quantity": 1, "guestPosition": null, "mandatory": true, "state": "Pending" },
+        { "id": "pulpo-1", "name": "Pulpo", "stationId": "hot", "quantity": 1, "guestPosition": null, "mandatory": true, "state": "Pending" } ] },
+      "label": "Sin enviar", "detail": "2 platos pedidos" },
+    { "case": "pase del menu sin enviar, una elaboracion", "pax": 1,
+      "course": { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "tarta-1", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" } ] },
+      "label": "Sin enviar", "detail": "1 elaboración" },
+    { "case": "pase del menu sin enviar, varias elaboraciones", "pax": 3,
+      "course": { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "tarta-1", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
+        { "id": "tarta-2", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending" },
+        { "id": "tarta-3", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending" } ] },
+      "label": "Sin enviar", "detail": "3 elaboraciones" },
+    { "case": "estado de pase desconocido: tal cual y sin detalle", "pax": 2,
+      "course": { "id": "c2", "name": "Principal", "state": "Plating", "firedAt": "2026-10-15T20:35:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
+      "label": "Plating", "detail": "" },
+    { "case": "estado de pase en minusculas", "pax": 2,
+      "course": { "id": "c1", "name": "Entrante", "state": "served", "firedAt": "2026-10-15T20:10:00Z", "readyAt": "2026-10-15T20:15:00Z", "servedAt": "2026-10-15T20:20:00Z", "skipReason": null, "preparations": [] },
+      "label": "Servido", "detail": "Servido a las {servedAt}" }
+  ]
+}

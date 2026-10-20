@@ -5,6 +5,7 @@ import type { Credential } from '../credentials'
 import { pairPendingAdvice, pendingDeviceName } from '../labels'
 import { codeFromLocation, pairDevice } from '../pairing'
 import { indexedDbPendingStore } from '../pending'
+import Icon from './Icon.vue'
 
 const emit = defineEmits<{ paired: [credential: Credential] }>()
 const code = ref(codeFromLocation(location.hash))
@@ -27,17 +28,17 @@ onUnmounted(() => { signal.cancelled = true; window.removeEventListener('hashcha
 
 const MESSAGES: Record<string, string> = {
   denied: 'Solicitud denegada en el PC principal.',
-  expired: 'La aprobacion no llego a tiempo. Pide un codigo nuevo.',
-  invalid_code: 'Codigo no valido o caducado. Pide uno nuevo.',
+  expired: 'La aprobación no llegó a tiempo. Pide un código nuevo.',
+  invalid_code: 'Código no válido o caducado. Pide uno nuevo.',
   throttled: 'Demasiados intentos. Espera un minuto antes de volver a probar.',
 }
 
 async function submit(): Promise<void> {
   if (busy.value) return
-  if (!code.value.trim() || deviceName.value.trim().length < 3) { message.value = 'Introduce el codigo y un nombre para este dispositivo (3 caracteres o mas).'; return }
+  if (!code.value.trim() || deviceName.value.trim().length < 3) { message.value = 'Introduce el código y un nombre para este dispositivo (3 caracteres o más).'; return }
   busy.value = true; message.value = 'Enviando solicitud…'
   try {
-    const outcome = await pairDevice(code.value, deviceName.value, { fetcher: fetch, signal, onWaiting: () => { message.value = 'Solicitud enviada. Esperando la aprobacion en el PC principal…' } })
+    const outcome = await pairDevice(code.value, deviceName.value, { fetcher: fetch, signal, onWaiting: () => { message.value = 'Solicitud enviada. Esperando la aprobación en el PC principal…' } })
     if (outcome.kind === 'approved') emit('paired', { token: outcome.token, deviceName: deviceName.value.trim(), pairedAt: new Date().toISOString() })
     else message.value = MESSAGES[outcome.kind]
   } catch (error) {
@@ -47,19 +48,24 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section data-testid="pair">
-    <h2>Emparejar este dispositivo</h2>
-    <p>En el PC principal, <strong>Inicio › Dispositivos</strong>, pulsa «Conectar comandero» o «Conectar pantalla de cocina» y lee el QR con la camara (o teclea el codigo). El responsable aprueba alli la solicitud.</p>
-    <p v-if="pendingOwner" class="pending" role="alert" data-testid="pair-pending">Hay una orden sin confirmar guardada en este dispositivo: <strong>{{ pendingOwner.description }}</strong>. {{ pairPendingAdvice(pendingOwner.name) }}</p>
+  <section class="pair-card card" data-testid="pair">
+    <h2><Icon name="mobile" :size="26" />Emparejar este dispositivo</h2>
+    <p>En el PC principal, <strong>Inicio › Dispositivos</strong>, pulsa «Conectar comandero» o «Conectar pantalla de cocina» y lee el QR con la cámara (o teclea el código). El responsable aprueba allí la solicitud.</p>
+    <div v-if="pendingOwner" class="pending" role="alert" data-testid="pair-pending">
+      <h2><Icon name="alert" />ORDEN SIN CONFIRMAR</h2>
+      <p>Hay una orden sin confirmar guardada en este dispositivo: <strong>{{ pendingOwner.description }}</strong>. {{ pairPendingAdvice(pendingOwner.name) }}</p>
+    </div>
     <form @submit.prevent="submit">
-      <label>Codigo de emparejamiento
-        <input v-model="code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="busy" />
-      </label>
-      <label>Nombre de este dispositivo
-        <input v-model="deviceName" name="deviceName" autocomplete="off" placeholder="tablet-sala-1" maxlength="60" :disabled="busy" />
-      </label>
-      <button type="submit" :disabled="busy">Solicitar emparejamiento</button>
+      <div class="field">
+        <label for="pair-code">Código de emparejamiento</label>
+        <input id="pair-code" v-model="code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="busy" />
+      </div>
+      <div class="field">
+        <label for="pair-name">Nombre de este dispositivo</label>
+        <input id="pair-name" v-model="deviceName" name="deviceName" autocomplete="off" placeholder="tablet-sala-1" maxlength="60" :disabled="busy" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-big" :disabled="busy" data-testid="do-pair">Solicitar emparejamiento</button>
     </form>
-    <p v-if="message" role="status" data-testid="pair-status">{{ message }}</p>
+    <p v-if="message" class="notice neutral" role="status" data-testid="pair-status">{{ message }}</p>
   </section>
 </template>

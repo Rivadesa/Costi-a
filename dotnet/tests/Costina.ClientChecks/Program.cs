@@ -628,6 +628,95 @@ await Check("floor plan: tile state, time, progress and alert come from the read
         &&FloorPlan.CourseDetail(C("Pending",preps:[ready,fired],optional:true),2)=="2 platos pedidos"&&FloorPlan.CourseDetail(C("Pending",preps:[ready]),2)=="1 elaboración","pending detail");
     Expect(FloorPlan.CourseDetail(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]),2)=="Motivo: sin hambre"&&FloorPlan.CourseDetail(C("Plating"),2)=="","skipped and unknown");
     return Task.CompletedTask;});
+// C3a: tablas de casos COMUNES con el comandero (dotnet/tests/fixtures, copiadas junto al ejecutable). frontend/pwa/tests/floor.test.ts y
+// labels.test.ts recorren las MISMAS contra floor.ts y labels.ts: si FloorPlan o Labels cambian y la PWA no (o al reves), falla una de las
+// dos. Cada caso compara solo los campos que trae; un campo o una familia que este lado no conoce es un fallo, nunca se salta.
+var sharedCases=Path.Combine(AppContext.BaseDirectory,"fixtures");
+static string Shown(JsonElement value)=>value.ValueKind switch{
+    JsonValueKind.Array=>"["+string.Join(",",value.EnumerateArray().Select(Shown))+"]",
+    JsonValueKind.True=>"true",JsonValueKind.False=>"false",JsonValueKind.Null=>"null",JsonValueKind.Number=>value.GetRawText(),_=>value.GetString()!};
+using var floorCases=JsonDocument.Parse(File.ReadAllText(Path.Combine(sharedCases,"floorplan-cases.json")));
+var floorNow=DateTimeOffset.Parse(floorCases.RootElement.GetProperty("now").GetString()!,System.Globalization.CultureInfo.InvariantCulture);
+// Los estados que la tabla espera (no los de los casos que pasan): un codigo sin caso es un hueco aunque todo lo demas pase.
+var tileStates=floorCases.RootElement.GetProperty("tiles").EnumerateArray().Where(t=>t.TryGetProperty("state",out _))
+    .Select(t=>t.GetProperty("state").GetString()!).ToHashSet(StringComparer.Ordinal);
+foreach(var tile in floorCases.RootElement.GetProperty("tiles").EnumerateArray())
+    await Check("floor plan (shared cases): "+tile.GetProperty("case").GetString(),()=>{
+        var service=tile.GetProperty("service").ValueKind==JsonValueKind.Null?null:tile.GetProperty("service").Deserialize<DiningDto>(ApiClient.Json)!;
+        var actual=new Dictionary<string,string>(StringComparer.Ordinal){
+            ["state"]=FloorPlan.State(service),["label"]=FloorPlan.Label(FloorPlan.State(service)),["elapsed"]=FloorPlan.Elapsed(service,floorNow),
+            ["progress"]=FloorPlan.Progress(service),["steps"]="["+string.Join(",",FloorPlan.Steps(service))+"]",["alert"]=FloorPlan.Alert(service),
+            ["alertWord"]=FloorPlan.AlertWord(service),["alarming"]=FloorPlan.AlertIsAlarming(service)?"true":"false"};
+        var compared=0;
+        foreach(var field in tile.EnumerateObject().Where(f=>f.Name is not ("case" or "service")))
+        {
+            Expect(actual.TryGetValue(field.Name,out var got),"unknown field in the shared cases: "+field.Name);
+            Expect(got==Shown(field.Value),$"{field.Name} = '{got}', the shared case says '{Shown(field.Value)}'");
+            compared++;
+        }
+        Expect(compared>0,"a shared case that compares nothing");
+        return Task.CompletedTask;});
+await Check("floor plan (shared cases): every tile code is covered",()=>{
+    Expect(FloorPlan.Codes.All(tileStates.Contains),"codes without a shared case: "+string.Join(",",FloorPlan.Codes.Where(c=>!tileStates.Contains(c))));
+    return Task.CompletedTask;});
+foreach(var row in floorCases.RootElement.GetProperty("courses").EnumerateArray())
+    await Check("floor plan course (shared cases): "+row.GetProperty("case").GetString(),()=>{
+        var course=row.GetProperty("course").Deserialize<CourseDto>(ApiClient.Json)!; var pax=row.GetProperty("pax").GetInt32();
+        string At(DateTimeOffset? at,string field)=>at is { } value?Labels.Clock(value):"{"+field+"}";
+        var detail=row.GetProperty("detail").GetString()!.Replace("{firedAt}",At(course.FiredAt,"firedAt"),StringComparison.Ordinal)
+            .Replace("{readyAt}",At(course.ReadyAt,"readyAt"),StringComparison.Ordinal).Replace("{servedAt}",At(course.ServedAt,"servedAt"),StringComparison.Ordinal);
+        Expect(Labels.Course(course,pax)==row.GetProperty("label").GetString(),$"label = '{Labels.Course(course,pax)}'");
+        Expect(FloorPlan.CourseDetail(course,pax)==detail,$"detail = '{FloorPlan.CourseDetail(course,pax)}', the shared case says '{detail}'");
+        return Task.CompletedTask;});
+using var vocabularyCases=JsonDocument.Parse(File.ReadAllText(Path.Combine(sharedCases,"vocabulary-cases.json")));
+var sharedFamilies=new Dictionary<string,Func<string,string>>(StringComparer.Ordinal){
+    ["dining"]=Labels.Dining,["course"]=Labels.Course,["preparation"]=Labels.Preparation,["tableState"]=Labels.TableState,["offerKind"]=Labels.OfferKind,
+    ["stationKind"]=Labels.StationKind,["restrictionKind"]=Labels.RestrictionKind,["severity"]=Labels.Severity,["review"]=Labels.Review,["action"]=Labels.Action};
+foreach(var family in vocabularyCases.RootElement.GetProperty("families").EnumerateObject())
+    await Check("vocabulary (shared cases): "+family.Name,()=>{
+        Expect(sharedFamilies.TryGetValue(family.Name,out var label),"unknown family in the shared cases: "+family.Name);
+        foreach(var row in family.Value.EnumerateObject())
+            Expect(label!(row.Name)==row.Value.GetString(),$"'{row.Name}' = '{label!(row.Name)}', the shared case says '{row.Value.GetString()}'");
+        return Task.CompletedTask;});
+// Y al reves: cada valor que el dominio puede enviar en una familia comun tiene su fila. Un valor nuevo con palabra solo en Labels.cs
+// (el puesto en castellano, el comandero en crudo) falla aqui; con su fila en la tabla, vitest obliga a ponerla en labels.ts.
+// Las acciones de caja no tienen palabra en el comandero (ADR-007): no se piden.
+string[] checkoutActions=["add-product","payment","void-charge","refund","close","reopen"];
+var domainValues=new Dictionary<string,string[]>(StringComparer.Ordinal){
+    ["dining"]=Enum.GetNames<DiningState>(),["course"]=Enum.GetNames<CourseState>(),["preparation"]=Enum.GetNames<PreparationState>(),
+    ["tableState"]=FloorPlan.Codes,["offerKind"]=Enum.GetNames<OfferKind>().Select(Kebab).ToArray(),
+    ["stationKind"]=[..Enum.GetNames<StationKind>(),..Lower<StationKind>()],["restrictionKind"]=Enum.GetNames<RestrictionKind>(),
+    ["severity"]=Enum.GetNames<RestrictionSeverity>(),["review"]=Enum.GetNames<ReviewDecision>(),["action"]=actions.Except(checkoutActions).ToArray()};
+await Check("vocabulary (shared cases): every value the domain can send has its row",()=>{
+    Expect(domainValues.Keys.Order().SequenceEqual(sharedFamilies.Keys.Order()),"a shared family without its domain values (or the reverse)");
+    var families=vocabularyCases.RootElement.GetProperty("families");
+    var missing=domainValues.SelectMany(pair=>families.TryGetProperty(pair.Key,out var rows)
+        ? pair.Value.Where(code=>!rows.TryGetProperty(code,out _)).Select(code=>pair.Key+"."+code) : [pair.Key+" (family)"]).ToList();
+    Expect(missing.Count==0,"values without a row in vocabulary-cases.json: "+string.Join(", ",missing));
+    return Task.CompletedTask;});
+await Check("vocabulary (shared cases): guests, restrictions, minutes and plurals",()=>{
+    var root=vocabularyCases.RootElement;
+    foreach(var row in root.GetProperty("guests").EnumerateArray())
+    {
+        int? position=row.GetProperty("position").ValueKind==JsonValueKind.Null?null:row.GetProperty("position").GetInt32();
+        Expect(Labels.Guest(position)==row.GetProperty("text").GetString(),"guest: "+Labels.Guest(position));
+    }
+    foreach(var row in root.GetProperty("restrictions").EnumerateArray())
+    {
+        var text=row.GetProperty("restriction").Deserialize<GuestRestrictionDto>(ApiClient.Json)!.ToString();
+        Expect(text==row.GetProperty("text").GetString(),"restriction: "+text);
+    }
+    foreach(var row in root.GetProperty("minutes").EnumerateArray())
+    {
+        var text=Labels.Minutes(TimeSpan.FromMinutes(row.GetProperty("minutes").GetDouble()));
+        Expect(text==row.GetProperty("text").GetString(),"minutes: "+text);
+    }
+    foreach(var row in root.GetProperty("plural").EnumerateArray())
+    {
+        var text=Labels.Plural(row.GetProperty("count").GetInt32(),row.GetProperty("one").GetString()!,row.GetProperty("many").GetString()!);
+        Expect(text==row.GetProperty("text").GetString(),"plural: "+text);
+    }
+    return Task.CompletedTask;});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;

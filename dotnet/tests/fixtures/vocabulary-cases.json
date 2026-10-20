@@ -1,0 +1,79 @@
+{
+  "about": [
+    "C3a: tabla de casos COMUN del vocabulario. La leen ClientChecks (Costina.Client/Labels.cs, puesto principal) y vitest (frontend/pwa/src/labels.ts, comandero):",
+    "el comandero usa las mismas palabras que el puesto y no pueden separarse sin que falle una de las dos pruebas.",
+    "families: valor del servidor -> texto. Ni mayusculas ni guiones cuentan; un valor desconocido vuelve TAL CUAL (los casos en crudo lo comprueban).",
+    "action solo lleva las acciones OPERATIVAS: las de caja (pago, cobro, cuenta) nunca se rotulan en el comandero.",
+    "vitest comprueba ademas que labels.ts no tiene ninguna palabra que no este aqui."
+  ],
+  "families": {
+    "dining": {
+      "Open": "Sentados", "InService": "En servicio", "Paused": "En pausa", "Completed": "Terminado", "Cancelled": "Cancelado",
+      "in-service": "En servicio", "COMPLETED": "Terminado", "Closing": "Closing"
+    },
+    "course": {
+      "Pending": "Sin enviar", "Fired": "En cocina", "Preparing": "En preparación", "Ready": "Listo para servir", "Served": "Servido", "Skipped": "Omitido",
+      "fired": "En cocina", "Plating": "Plating"
+    },
+    "preparation": {
+      "Pending": "Sin enviar", "Fired": "Por empezar", "Preparing": "En preparación", "Ready": "Lista",
+      "preparing": "En preparación", "Burnt": "Burnt"
+    },
+    "tableState": {
+      "free": "Libre", "seated": "Sentados", "kitchen": "En cocina", "ready": "Listo para servir", "eating": "Comiendo", "paused": "En pausa",
+      "finished": "Terminado, por liberar", "cancelled": "Cancelado, por liberar", "Closing": "Closing"
+    },
+    "offerKind": {
+      "tasting": "Menú degustación", "set-menu": "Menú con elección", "a-la-carte": "Carta",
+      "Tasting": "Menú degustación", "SetMenu": "Menú con elección", "ALaCarte": "Carta", "buffet": "buffet"
+    },
+    "stationKind": {
+      "kitchen": "Cocina", "pass": "Pase", "bar": "Barra", "room": "Sala",
+      "Kitchen": "Cocina", "Pass": "Pase", "Bar": "Barra", "Room": "Sala", "terrace": "terrace"
+    },
+    "restrictionKind": {
+      "Allergy": "ALERGIA", "Intolerance": "Intolerancia", "Preference": "Preferencia",
+      "allergy": "ALERGIA", "intolerance": "Intolerancia", "Anaphylaxis": "Anaphylaxis", "": ""
+    },
+    "severity": {
+      "Severe": "grave", "Moderate": "moderada", "Mild": "leve",
+      "severe": "grave", "Critical": "Critical", "Grave!": "Grave!"
+    },
+    "review": {
+      "Unaffected": "no afecta", "Adapt": "adaptada", "Remake": "rehecha",
+      "unaffected": "no afecta", "adapt": "adaptada", "remake": "rehecha", "Ignore": "Ignore"
+    },
+    "action": {
+      "open": "Abrir mesa", "start": "Iniciar servicio", "fire-next": "Enviar siguiente pase a cocina", "serve": "Marcar servido",
+      "pause": "Pausar servicio", "resume": "Reanudar servicio", "complete": "Terminar servicio", "cancel-unstarted": "Cancelar mesa sin empezar",
+      "skip": "Omitir pase", "ready": "Validar pase listo", "choose": "Elegir plato", "add-dish": "Pedir plato",
+      "preparation-start": "Empezar elaboración", "preparation-ready": "Marcar elaboración lista", "review-preparation": "Revisar elaboración",
+      "declare-restriction": "Declarar restricción", "remove-restriction": "Retirar restricción", "release": "Liberar mesa",
+      "add-consumption": "Añadir consumo", "FireNext": "Enviar siguiente pase a cocina", "teleport": "teleport"
+    }
+  },
+  "guests": [
+    { "position": null, "text": "Toda la mesa" },
+    { "position": 1, "text": "Comensal 1" },
+    { "position": 12, "text": "Comensal 12" }
+  ],
+  "restrictions": [
+    { "restriction": { "id": "r1", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" }, "text": "Comensal 2 · ALERGIA frutos secos (grave)" },
+    { "restriction": { "id": "r2", "guestPosition": null, "kind": "Intolerance", "substance": "lactosa", "severity": "Mild" }, "text": "Toda la mesa · Intolerancia lactosa (leve)" },
+    { "restriction": { "id": "r3", "guestPosition": 1, "kind": "Anaphylaxis", "substance": "cacahuete", "severity": "Critical" }, "text": "Comensal 1 · Anaphylaxis cacahuete (Critical)" }
+  ],
+  "minutes": [
+    { "minutes": 0, "text": "0 min" },
+    { "minutes": 12.7, "text": "12 min" },
+    { "minutes": 59.99, "text": "59 min" },
+    { "minutes": 60, "text": "1 h 00 min" },
+    { "minutes": 65, "text": "1 h 05 min" },
+    { "minutes": 135, "text": "2 h 15 min" },
+    { "minutes": -2, "text": "0 min" }
+  ],
+  "plural": [
+    { "count": 1, "one": "plato", "many": "platos", "text": "1 plato" },
+    { "count": 0, "one": "plato", "many": "platos", "text": "0 platos" },
+    { "count": 3, "one": "persona", "many": "personas", "text": "3 personas" }
+  ]
+}
