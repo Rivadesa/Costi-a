@@ -34,7 +34,7 @@ async function pairThroughTheUi(page: Page, request: APIRequestContext, deviceNa
   await expect(page.locator('input[name=code]')).toHaveValue(issued.code)          // el QR llevara el codigo en el fragmento
   await page.fill('input[name=deviceName]', deviceName)
   await page.click('button[type=submit]')
-  await expect(page.getByTestId('pair-status')).toContainText('Esperando la aprobacion')
+  await expect(page.getByTestId('pair-status')).toContainText('Esperando la aprobación')
   let pairingId = ''
   await expect.poll(async () => {
     const pending = await (await asMain(request, '/auth/pairings/pending')).json() as Array<{ pairingId: string; deviceName: string }>
@@ -58,13 +58,13 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
   await expect(page.getByTestId('pair')).toBeVisible()                              // sin credencial no hay nada que ver
 
   const deviceId = await pairThroughTheUi(page, request, deviceName, 'service', 'sala-1')
-  await expect(page.getByTestId('actor')).toHaveText(`device:${deviceName}`)
-  await expect(page.getByTestId('role')).toContainText('COMANDERO')
+  await expect(page.getByTestId('actor')).toHaveText(deviceName)
+  await expect(page.getByTestId('role')).toContainText('Comandero')
   await expect(page.getByTestId('role')).toContainText('Sala 1')                     // A4: el NOMBRE de la estacion, no su codigo
   expect(page.url()).not.toContain('pair=')                                         // el codigo usado no queda a la vista
 
   await page.reload()                                                               // la credencial vive en IndexedDB
-  await expect(page.getByTestId('actor')).toHaveText(`device:${deviceName}`)
+  await expect(page.getByTestId('actor')).toHaveText(deviceName)
 
   // El service worker cachea SOLO el shell: sin red la aplicacion abre, pero no inventa datos.
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
@@ -96,7 +96,7 @@ test('a kitchen device shows its station and a denied request says so', async ({
   const leaks: string[] = [], violations: string[] = []
   watchResponses(page, leaks, violations)
   const kdsId = await pairThroughTheUi(page, request, `e2e-kds-${RUN}`, 'kitchen', 'cold')
-  await expect(page.getByTestId('role')).toContainText('PANTALLA DE COCINA')
+  await expect(page.getByTestId('role')).toContainText('Pantalla de cocina')
   await expect(page.getByTestId('role')).toContainText('Cocina fr\u00eda')
   // A10 (F9): desvincular va en Opciones, pide confirmacion y revoca EN EL SERVIDOR antes de olvidar la credencial.
   await page.getByText('Opciones').click()
@@ -125,7 +125,7 @@ test('a kitchen device shows its station and a denied request says so', async ({
   await expect(page.getByTestId('pair-status')).toContainText('denegada', { timeout: 15_000 })
   await page.fill('input[name=code]', 'codigo-inventado-0000000000')
   await page.click('button[type=submit]')
-  await expect(page.getByTestId('pair-status')).toContainText('no valido')
+  await expect(page.getByTestId('pair-status')).toContainText('no válido')
   expect(leaks).toEqual([]); expect(violations).toEqual([])
 })
 

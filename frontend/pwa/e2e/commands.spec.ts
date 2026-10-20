@@ -69,17 +69,15 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await pair(page, request, `e2e-waiter-${RUN}`)
 
   // 1) Abrir mesa, iniciar y enviar el primer pase DESDE LA TABLET. Los botones existen porque el servidor los anuncia.
-  await page.locator('[data-testid=open-form] summary').click()
-  await page.selectOption('select[name=table]', 'M7')
-  await page.selectOption('select[name=menu]', 'LAB-TASTING')   // E4a: hay varias ofertas vigentes; la degustacion se elige
+  // C3a: la mesa libre del plano abre la hoja «Abrir mesa»; al confirmarse, la ficha de esa mesa.
+  await page.getByTestId('table-M7').click()
+  await page.getByTestId('offer-LAB-TASTING').click()   // E4a: hay varias ofertas vigentes; la degustacion se elige
   await page.fill('input[name=pax]', '2')
   await page.getByTestId('do-open').click()
-  const tile = page.getByTestId('table-M7')
-  await expect(tile).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('detail')).toContainText('Sentados', { timeout: 15_000 })
   await expect(page.getByTestId('pending')).toHaveCount(0)
   const board = await (await asMain(request, '/dining/board')).json() as Array<{ service: { id: string; tableId: string } }>
   const serviceId = board.find(entry => entry.service.tableId === 'M7')!.service.id
-  await tile.click()
   await page.getByTestId('do-start').click()
   await expect(page.getByTestId('do-fire-next')).toBeVisible({ timeout: 15_000 })
   await page.getByTestId('do-fire-next').click()
@@ -100,7 +98,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await expect(page.getByTestId('detail')).toContainText('Servido', { timeout: 15_000 })
 
   // 3) RESPUESTA PERDIDA de verdad: el servidor APLICA la pausa pero la respuesta nunca llega a la tablet.
-  await page.locator('[data-testid=actions] details', { hasText: 'Motivo' }).locator('summary').click()
+  await page.getByTestId('more-options').locator('summary').click()
   await page.fill('input[name=reason]', 'los comensales salen un momento')
   const before = await audited(request, serviceId)
   const pauseLost = await loseResponses(page, '**/commands/pause')
@@ -109,11 +107,11 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   const pending = page.getByTestId('pending')
   await expect(pending).toBeVisible({ timeout: 15_000 })
   await expect(pending).toContainText('ORDEN SIN CONFIRMAR')
-  await expect(pending).toContainText('Pausar servicio · M7')
+  await expect(pending).toContainText('Pausar servicio · Mesa 7')
   expect((await read(request, serviceId)).data.state).toBe('Paused')                       // el servidor SI la aplico
   // Nada nuevo mientras tanto. El aviso de tiempo real puede releer y CAMBIAR los botones a mitad: se afirma que ninguno esta habilitado, no uno a uno.
   await expect(page.locator('[data-testid=actions] button:not([disabled])')).toHaveCount(0)
-  expect(await storedOrder(page)).toBe('Pausar servicio · M7')                              // persistida en el dispositivo
+  expect(await storedOrder(page)).toBe('Pausar servicio · Mesa 7')                              // persistida en el dispositivo
   await page.unrouteAll({ behavior: 'wait' })
 
   // 4) Cerrar y reabrir el navegador (recarga): la orden sigue ahi, inequivoca, y se resuelve con la MISMA clave.
@@ -141,11 +139,11 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   const beforeFire = await audited(request, serviceId)
   await context.setOffline(true)
   await page.getByTestId('do-fire-next').click()
-  await expect(page.getByTestId('pending')).toContainText('Enviar siguiente pase a cocina · M7', { timeout: 15_000 })
+  await expect(page.getByTestId('pending')).toContainText('Enviar siguiente pase a cocina · Mesa 7', { timeout: 15_000 })
   expect(await audited(request, serviceId)).toBe(beforeFire)                                // no llego: nada aplicado
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
   await page.reload()                                                                       // "cierre del navegador" sin red: abre desde el shell
-  await expect(page.getByTestId('offline-pending')).toContainText('Enviar siguiente pase a cocina · M7', { timeout: 15_000 })
+  await expect(page.getByTestId('offline-pending')).toContainText('Enviar siguiente pase a cocina · Mesa 7', { timeout: 15_000 })
   await context.setOffline(false)
   await expect(page.getByTestId('board')).toBeVisible({ timeout: 30_000 })
   await expect.poll(() => storedOrder(page), { timeout: 30_000 }).toBeNull()
@@ -156,7 +154,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   // 7) Consumo a mayores desde sala: catalogo SIN precios y respuesta sin importes.
   await expect(page.getByTestId('table-M7')).toContainText('En cocina', { timeout: 15_000 })   // tablero al dia tras el reintento: version fresca
   await page.getByTestId('table-M7').click()
-  await page.locator('[data-testid=actions] details', { hasText: 'consumo' }).locator('summary').click()
+  await page.getByTestId('entry-bodega').click()
   await expect(page.locator('select[name=product]')).not.toContainText(/€|\d+[.,]\d{2}/)
   await page.selectOption('select[name=product]', 'water/bottle')   // E3: producto/presentacion
   await page.getByTestId('do-add-consumption').click()

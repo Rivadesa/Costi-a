@@ -75,8 +75,8 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   const coldTicket = coldPage.getByTestId(`ticket-${TABLE}-${course.id}`)
   await expect(coldTicket).toBeVisible({ timeout: 15_000 })
   await expect(coldTicket).toContainText(/enviado hace/)
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${hot.id}`)).toContainText('(otra estacion)')
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`)).not.toContainText('(otra estacion)')
+  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${hot.id}`)).toContainText('(otra estación)')
+  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`)).not.toContainText('(otra estación)')
   await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${hot.id}`).locator('button')).toHaveCount(0)
   await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
 
@@ -103,7 +103,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
 
   // 4) Sala declara una alergia grave con el pase enviado: la estacion lo ve ESCRITO (tipo, sustancia, severidad), sin botones de revision.
   await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
-  await expect(coldTicket).toContainText('PENDIENTES DE REVISION', { timeout: 15_000 })
+  await expect(coldTicket).toContainText(/PENDIENTES? DE REVISIÓN/, { timeout: 15_000 })
   await expect(coldTicket).toContainText('ALERGIA marisco (grave)')
   await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                               // en NINGUNA mesa: el servidor no se lo anuncia a una estacion
 
@@ -112,7 +112,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await pairKitchen(passPage, request, `e2e-pase-${RUN}`, 'pase')
   const passTicket = passPage.getByTestId(`ticket-${TABLE}-${course.id}`)
   await expect(passTicket).toBeVisible({ timeout: 15_000 })
-  await expect(passTicket).not.toContainText('(otra estacion)')
+  await expect(passTicket).not.toContainText('(otra estación)')
   await expect(passPage.locator(`[data-testid^="do-preparation-"][data-testid*="-${TABLE}-"]`)).toHaveCount(0)
   await expect(passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)            // con revisiones pendientes el servidor no anuncia validar
   const reviews = passTicket.locator('[data-testid^="review-"]')

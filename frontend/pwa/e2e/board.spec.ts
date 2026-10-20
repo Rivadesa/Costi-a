@@ -66,17 +66,18 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   // 2) El servicio avanza desde el PC principal: el tablero lo refleja.
   await command(request, opened.serviceId, 'start')
   await command(request, opened.serviceId, 'fire-next')
-  await expect(tile).toContainText('Aperitivos: En cocina', { timeout: 10_000 })
+  await expect(tile.getByTestId('tile-state')).toHaveText('En cocina', { timeout: 10_000 })
+  await expect(tile).toContainText('0 de 2')                                           // avance de los pases
 
   // 3) Alergia declarada con el pase ya enviado: texto + sustancia + severidad, y revision pendiente de cocina.
   await command(request, opened.serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
-  await expect(tile).toContainText('restriccion(es) declaradas', { timeout: 10_000 })
-  await expect(tile).toContainText('PENDIENTES DE REVISION')
+  await expect(tile.getByTestId('tile-alert')).toHaveText('Alergia · por revisar', { timeout: 10_000 })   // siempre escrito, nunca solo color
   await tile.click()
   const detail = page.getByTestId('detail')
   await expect(detail.getByTestId('restrictions')).toContainText('Comensal 1 · ALERGIA marisco (grave)')
   await expect(detail).toContainText('PENDIENTE DE REVISIÓN POR COCINA')
-  await expect(detail).toContainText('estacion cold')
+  await expect(detail).toContainText('Cocina fría')                                  // el NOMBRE de la estacion, no su codigo
+  await expect(detail).not.toContainText(/cold|M6/)
 
   // 4) El detalle abierto tambien vive: cocina marca una elaboracion y se ve sin tocar nada.
   const read = await (await asMain(request, `/dining/services/${opened.serviceId}`)).json()
@@ -94,7 +95,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await command(request, opened.serviceId, 'preparation-start', { courseId: course.id, itemId: cold.id })   // cambio ocurrido durante el corte (la API de test no pasa por el navegador)
   await context.setOffline(false)
   await expect(page.getByTestId('board-error')).toHaveCount(0, { timeout: 30_000 })
-  await expect(detail.locator('li', { hasText: 'En preparación' })).toHaveCount(2, { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
+  await expect(detail.locator('[data-testid^="prep-"]', { hasText: 'En preparación' })).toHaveCount(2, { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
   await expect(page.getByTestId('link')).toHaveText('Tiempo real activo', { timeout: 60_000 })
 
   expect(leaks, 'the PWA received financial data').toEqual([])

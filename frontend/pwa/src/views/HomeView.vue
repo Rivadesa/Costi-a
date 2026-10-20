@@ -6,12 +6,11 @@ import { unpairWarning } from '../labels'
 import { indexedDbPendingStore } from '../pending'
 import { PERSISTENCE_HINT, type Persistence } from '../storage'
 import BoardView from './BoardView.vue'
+import Icon from './Icon.vue'
 import KitchenView from './KitchenView.vue'
 
 defineProps<{ session: Session; credential: Credential; persistence: Persistence }>()
 defineEmits<{ unpair: []; refresh: [] }>()
-// A11: la cabecera dice QUE es este dispositivo y DONDE esta, con el nombre de la estacion (no su codigo).
-const KINDS: Record<string, string> = { main: 'PRINCIPAL (antiguo)', service: 'COMANDERO', kitchen: 'PANTALLA DE COCINA' }
 const confirming = ref(false)   // desvincular en dos pasos (F9), sin window.confirm (CSP intacta)
 // D6.7: con una orden guardada se AVISA antes de desvincular (no se bloquea): despues solo se comprueba con el mismo nombre.
 const warning = ref('')
@@ -23,9 +22,6 @@ async function ask(): Promise<void> {
 
 <template>
   <section data-testid="home">
-    <h2 class="headline" data-testid="role">{{ KINDS[session.role] ?? session.role }}<span v-if="session.stationName || session.station"> · {{ session.stationName || session.station }}</span></h2>
-    <p class="identity"><span data-testid="actor">{{ session.actor }}</span> · servidor {{ session.serverVersion }} · {{ session.companyId }}/{{ session.locationId }}</p>
-
     <!-- ADR-012: cada vista pertenece a un modulo y solo se monta si la instalacion lo tiene activo. -->
     <template v-if="session.modules.includes('dining')">
       <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
@@ -33,22 +29,24 @@ async function ask(): Promise<void> {
       <!-- Cocina ve SU pantalla por estacion (D6.4): misma lectura en vivo y misma orden incierta, sin importes. -->
       <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
     </template>
-    <p v-else data-testid="no-modules">Esta instalacion no tiene activo ningun modulo con pantalla para este dispositivo.</p>
+    <p v-else class="notice neutral" data-testid="no-modules">Esta instalación no tiene activo ningún módulo con pantalla para este dispositivo.</p>
 
-    <footer>
-      <p v-if="PERSISTENCE_HINT[persistence]" class="identity" data-testid="persistence-hint">{{ PERSISTENCE_HINT[persistence] }}</p>
-      <details data-testid="options">
-        <summary>Opciones</summary>
-        <p class="identity">Desvincular deja este dispositivo sin acceso, tambien en el servidor. Para volver a usarlo habra que conectarlo de nuevo desde el PC principal.</p>
-        <button v-if="!confirming" type="button" class="secondary" @click="ask">Desvincular este dispositivo</button>
+    <!-- D6.6: si el navegador puede borrar lo guardado (credencial, orden sin confirmar), se dice siempre a la vista. -->
+    <p v-if="PERSISTENCE_HINT[persistence]" class="notice neutral options" data-testid="persistence-hint"><Icon name="info" />{{ PERSISTENCE_HINT[persistence] }}</p>
+    <details class="options" data-testid="options">
+      <summary><Icon name="dots" :stroke="2.6" />Opciones</summary>
+      <div class="options-b card">
+        <p class="hint">Servidor {{ session.serverVersion }}.</p>
+        <p class="hint">Desvincular deja este dispositivo sin acceso, también en el servidor. Para volver a usarlo habrá que conectarlo de nuevo desde el PC principal.</p>
+        <button v-if="!confirming" type="button" class="btn btn-caution" @click="ask">Desvincular este dispositivo</button>
         <template v-else>
           <p v-if="warning" class="pending" role="alert" data-testid="unpair-pending">{{ warning }}</p>
-          <p class="row">
-            <button type="button" data-testid="unpair-confirm" @click="confirming = false; $emit('unpair')">Si, desvincular</button>
-            <button type="button" class="secondary" @click="confirming = false">No, seguir conectado</button>
-          </p>
+          <div class="row">
+            <button type="button" class="btn btn-primary" data-testid="unpair-confirm" @click="confirming = false; $emit('unpair')">Sí, desvincular</button>
+            <button type="button" class="btn" @click="confirming = false">No, seguir conectado</button>
+          </div>
         </template>
-      </details>
-    </footer>
+      </div>
+    </details>
   </section>
 </template>

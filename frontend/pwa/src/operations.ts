@@ -41,20 +41,24 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   const age = computed(() => state.readAt ? Math.max(0, Math.round((now.value - state.readAt.getTime()) / 1000)) : null)
   const stale = computed(() => age.value === null || age.value > 45)
 
-  async function resolve(work: Promise<Outcome | null>): Promise<void> {
+  // C3a: devuelve el resultado (o null si no hubo orden o fallo antes de enviarla) para que una pantalla pueda seguir a lo confirmado,
+  // p. ej. pasar a la ficha de la mesa recien abierta. Al resolverse, la relectura posterior ya termino.
+  async function resolve(work: Promise<Outcome | null>): Promise<Outcome | null> {
     settling.value++
     const noticeBefore = runnerState.notice
     try {
       const outcome = await work
-      if (!outcome) return
-      if (outcome.kind === 'unauthorized') { onUnauthorized(); return }
+      if (!outcome) return null
+      if (outcome.kind === 'unauthorized') { onUnauthorized(); return outcome }
       // Una confirmacion retira el aviso ANTERIOR, no el que acaba de poner esta misma orden ("se aplico en un intento anterior").
       if (outcome.kind === 'confirmed' && runnerState.notice === noticeBefore) runnerState.notice = ''
       if (outcome.kind !== 'unconfirmed') await live.refresh()
+      return outcome
     } catch (error) {
       // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.
       if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SÍ se aplicó. ${error.message}`; await live.refresh() }
       else if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
+      return null
     } finally { settling.value-- }
   }
   const run = (path: string, body: Record<string, unknown>, description: string) => resolve(runner.send(path, body, description))
