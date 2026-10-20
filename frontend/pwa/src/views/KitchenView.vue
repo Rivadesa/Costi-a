@@ -3,7 +3,7 @@ import { computed, reactive } from 'vue'
 import type { Session } from '../api'
 import { Names, useConfiguration } from '../configuration'
 import { restrictionAlarming } from '../floor'
-import { elapsedLabel, kitchenTickets, PASS_STATION, REVIEW_DECISIONS, reviewNoteOk, type KitchenTicket } from '../kitchen'
+import { elapsedLabel, kitchenTickets, PASS_STATION, REVIEW_DECISIONS, reviewNoteOk, type KitchenLine, type KitchenTicket } from '../kitchen'
 import { courseLabel, guestLabel, plural, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
 import { useOperations } from '../operations'
 import type { Preparation } from '../types'
@@ -33,6 +33,8 @@ const notes = reactive<Record<string, string>>({})
 const lineKey = (ticket: KitchenTicket, preparation: Preparation) => `${ticket.key}:${preparation.id}`
 const can = (actions: string[] | undefined, action: string) => actions?.includes(action) === true
 const tableName = (ticket: KitchenTicket) => names.value.table(ticket.entry.service.tableId)
+// La estacion de cada linea solo donde dice algo: en lo ajeno, en el pase y sin estacion asignada. En lo propio ya la dice la cabecera.
+const showStation = (line: KitchenLine) => !line.own || station.value === null || station.value === PASS_STATION
 
 function command(ticket: KitchenTicket, action: string, fields: Record<string, unknown>, description: string): void {
   const service = ticket.entry.service
@@ -72,7 +74,7 @@ function refreshAll(): void { void live.refresh(); void reload() }
             <!-- Lo de otra estacion se atenua (solo el rotulo); los avisos de restriccion conservan siempre toda su fuerza. -->
             <p class="prep-title" :class="{ other: !line.own }">
               <strong>{{ line.preparation.name }}</strong><template v-if="line.preparation.quantity > 1"> × {{ line.preparation.quantity }}</template>
-              · {{ guestLabel(line.preparation.guestPosition) }} · {{ names.station(line.preparation.stationId) }}<template v-if="!line.own"> (otra estación)</template>
+              · {{ guestLabel(line.preparation.guestPosition) }}<template v-if="showStation(line)"> · {{ names.station(line.preparation.stationId) }}<template v-if="!line.own"> (otra estación)</template></template>
               · <strong>{{ preparationLabel(line.preparation.state) }}</strong>
             </p>
             <p v-for="restriction in line.preparation.restrictions ?? []" :key="restriction.id" class="line-alert" :class="{ alarm: restrictionAlarming(restriction) }">

@@ -8,7 +8,8 @@ import Icon from './Icon.vue'
 
 // C3a: «Carta y menús» de la ficha. Es lo de HOY con el aspecto nuevo (C3c lo rehace en tres toques y agrupado): elegir plato por
 // comensal en los pases donde el servidor anuncia 'choose' (menu con eleccion, E4a) y pedir platos de la carta donde anuncia 'add-dish'
-// (E4b). Los platos salen de la oferta vigente con que se abrio la mesa (/configuration). Sin dinero; lo unico local es el formato.
+// (E4b). Los platos salen de la oferta con que se abrio la mesa (/configuration): la vigente o, si ya no lo es, la ultima leida en esta
+// sesion (configuration.offerFor). Sin dinero; lo unico local es el formato.
 const props = defineProps<{ entry: BoardEntry; offer: OfferChoice | null; tableName: string; locked: boolean }>()
 const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string] }>()
 

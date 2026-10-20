@@ -21,7 +21,7 @@ async function ask(): Promise<void> {
 </script>
 
 <template>
-  <section data-testid="home">
+  <section class="screen" data-testid="home">
     <!-- ADR-012: cada vista pertenece a un modulo y solo se monta si la instalacion lo tiene activo. -->
     <template v-if="session.modules.includes('dining')">
       <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->

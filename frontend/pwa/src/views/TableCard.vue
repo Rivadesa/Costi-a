@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { CatalogItem } from '../api'
-import { offerName, type Configuration, type Names } from '../configuration'
+import { offerFor, type Configuration, type Names } from '../configuration'
 import { commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
 import { courseDetail, courseStep, isTileCode, restrictionAlarming, tileLabel, tileState } from '../floor'
 import type { IconName } from '../icons'
@@ -31,8 +31,14 @@ watch(panel, () => { window.scrollTo({ top: 0 }) })
 // ---- Cabecera ----
 const state = computed(() => tileState(service.value))
 const tone = computed(() => isTileCode(state.value) ? `t-${state.value}` : 't-other')
-const offer = computed(() => props.configuration.offers.find(candidate => candidate.id === service.value.offerId) ?? null)
-const roomAndOffer = computed(() => [props.roomName, offerName(props.configuration, service.value.offerId)].filter(part => part).join(' · '))
+// La oferta de la mesa, aunque ya no sea vigente (un menu de comida despues de las 17:00): sus platos siguen valiendo para esta mesa.
+const offer = computed(() => offerFor(props.configuration, service.value.offerId))
+const roomAndOffer = computed(() => [props.roomName, offer.value?.name ?? ''].filter(part => part).join(' · '))
+// «4 personas · en cocina desde las 21:14 (12 min)»: la linea corta antes de la hora, nunca deja «min)» sola en un movil.
+const info = computed(() => {
+  const text = tableInfo(service.value, props.now), cut = text.lastIndexOf(' (')
+  return cut < 0 ? { head: text, tail: '' } : { head: text.slice(0, cut), tail: text.slice(cut) }
+})
 const PANEL_TITLES = { carta: 'Carta y menús', bodega: 'Bodega y bebidas' } as const
 
 // ---- Restricciones: siempre escritas; el rojo solo cuando alarman (alergia, grave, desconocida o sin revisar por cocina). ----
@@ -114,7 +120,7 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
           <span class="pill" :class="tone" data-testid="detail-state">{{ tileLabel(state) }}</span>
         </div>
         <p v-if="roomAndOffer" class="appbar-sub">{{ roomAndOffer }}</p>
-        <p class="appbar-sub" data-testid="detail-info">{{ tableInfo(service, now) }}</p>
+        <p class="appbar-sub" data-testid="detail-info">{{ info.head }}<span v-if="info.tail" class="nw">{{ info.tail }}</span></p>
       </div>
     </header>
 

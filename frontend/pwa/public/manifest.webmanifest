@@ -1,7 +1,7 @@
 {
   "name": "Costina",
   "short_name": "Costina",
-  "description": "Comandero y cocina. Aplicacion operativa: sin precios, cuentas ni pagos.",
+  "description": "Comandero y pantalla de cocina de Costina.",
   "lang": "es",
   "start_url": "/app/",
   "scope": "/app/",

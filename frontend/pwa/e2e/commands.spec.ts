@@ -89,7 +89,9 @@ test('a waiter runs a table from the handheld; lost responses and network cuts n
   await expect(pending).toContainText(`Pausar servicio · ${table.name}`)
   expect((await read(request, serviceId)).data.state).toBe('Paused')                      // el servidor SI la aplico
   // Nada nuevo mientras tanto. El aviso de tiempo real puede releer y CAMBIAR los botones a mitad: se afirma que ninguno esta habilitado, no uno a uno.
-  await expect(page.locator('[data-testid=actions] button:not([disabled])')).toHaveCount(0)
+  // En TODA la ficha: el boton grande, «Más opciones» y tambien anotar o retirar una restriccion, que van en el bloque de arriba.
+  await expect(detail.locator('button[data-testid^="do-"]')).not.toHaveCount(0)
+  await expect(detail.locator('button[data-testid^="do-"]:not([disabled])')).toHaveCount(0)
   expect(await storedOrder(page)).toBe(`Pausar servicio · ${table.name}`)                 // persistida en el dispositivo
   await checkScreen(page, 'uncertain order')
   await page.unrouteAll({ behavior: 'wait' })

@@ -68,6 +68,29 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await expect(tile.getByTestId('tile-state')).toHaveText('En cocina')
   await checkScreen(page, 'floor after the card')
 
+  // 7) Con dos salas, la elegida sigue elegida al volver de una ficha (como SelectedZone en el Comedor). El laboratorio tiene una sola
+  // sala: /configuration se reescribe EN EL NAVEGADOR (la mesa del carril pasa a una «Terraza»); el motor y la base no cambian.
+  const configurationRoute = '**/api/native/v1/configuration'
+  await page.route(configurationRoute, async route => {
+    const response = await route.fetch()
+    const body = await response.json() as { tables: Array<{ id: string; zoneId?: string | null; zoneName?: string | null }> }
+    for (const row of body.tables) if (row.id === table.id) { row.zoneId = 'e2e-terraza'; row.zoneName = 'Terraza' }
+    await route.fulfill({ response, json: body })
+  })
+  await press(page.getByTestId('refresh'))                                               // «Actualizar» relee tambien la configuracion
+  const terrace = page.getByTestId('room-tab-e2e-terraza')
+  await press(terrace)
+  await expect(terrace).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('table-M1')).toHaveCount(0)                               // solo la Terraza
+  await checkScreen(page, 'floor with two rooms')
+  await press(tile)
+  await expect(detail.getByTestId('detail-state')).toHaveText('En cocina')
+  await press(detail.getByTestId('back'))
+  await expect(page.getByTestId('room-tab-e2e-terraza')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('table-M1')).toHaveCount(0)
+  await expect(tile).toBeVisible()
+  await page.unroute(configurationRoute)
+
   expect(leaks, 'the PWA received financial data').toEqual([])
   expect(violations, 'CSP violations in the console').toEqual([])
 })

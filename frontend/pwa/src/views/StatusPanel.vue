@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RunnerState } from '../commands'
-import { ageLabel, blockedTitle, otherActorAdvice } from '../labels'
+import { ageLabel, ageShort, blockedTitle, otherActorAdvice } from '../labels'
 import { LINK_TEXT, type LiveState } from '../live'
 import Icon from './Icon.vue'
 
@@ -16,7 +16,8 @@ defineEmits<{ retry: []; reconcile: []; discard: []; refresh: [] }>()
 <template>
   <div class="status">
     <p class="net" :class="{ warn: state.link !== 'live' }" role="status"><span class="dot" aria-hidden="true"></span><span data-testid="link">{{ LINK_TEXT[state.link] }}</span></p>
-    <p class="age" :class="{ stale }" data-testid="age">Última lectura del servidor: {{ ageLabel(age) }}<strong v-if="stale"> · DATOS ANTIGUOS</strong></p>
+    <!-- En un movil, la antiguedad en corto al lado del enlace («Leído hace 3 s»): una fila menos sobre la mesa, y siempre a la vista. -->
+    <p class="age" :class="{ stale }" data-testid="age"><span class="age-l">Última lectura del servidor: {{ ageLabel(age) }}</span><span class="age-s">{{ ageShort(age) }}</span><strong v-if="stale"> · DATOS ANTIGUOS</strong></p>
     <button type="button" class="btn btn-quiet refresh" data-testid="refresh" @click="$emit('refresh')"><Icon name="refresh" /><span class="refresh-t">Actualizar</span></button>
   </div>
 

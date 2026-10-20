@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, defineComponent } from 'vue'
 import type { Fetch } from '../src/api'
-import { floorRooms, floorSummary, Names, normalizeConfiguration, offerName, OTHER_ROOM, RELOAD_MS, roomSummary, useConfiguration, type Configuration } from '../src/configuration'
+import {
+  floorEmpty, floorRooms, floorSummary, floorView, Names, normalizeConfiguration, offerFor, offerName, OTHER_ROOM, RELOAD_MS, roomSummary, useConfiguration,
+  type Configuration,
+} from '../src/configuration'
 import type { BoardEntry, Dining } from '../src/types'
 
 // C3a: la configuracion del comandero (mesas con su sala, ofertas, estaciones): nombres en vez de codigos, plano por salas con las
@@ -29,7 +32,7 @@ describe('names, never codes', () => {
     expect(new Names(null).table('M1')).toBe('M1')               // antes de leer la configuracion
     expect(names.table(null)).toBe('')
   })
-  it('the offer of a table is named only while it is still offered (its code is never painted)', () => {
+  it('the offer of a table is named only if this handheld read it (its code is never painted)', () => {
     expect(offerName(configuration, 'DIA')).toBe('Menú del día')
     expect(offerName(configuration, 'CENA')).toBe('')
     expect(offerName(configuration, null)).toBe('')
@@ -63,6 +66,40 @@ describe('floor plan by room', () => {
   })
   it('a table without room (older server) goes under «Mesas»', () => {
     expect(floorRooms({ tables: [{ id: 'M1', name: 'Mesa 1', capacity: 2 }], offers: [], stations: [] }, []).map(room => room.name)).toEqual(['Mesas'])
+  })
+})
+
+describe('the floor is painted only from a real read of the board (D6.1: nothing unread is shown as current)', () => {
+  const read = new Date(), configured = { readAt: read, failed: false }
+  it('with the configuration read but the board not yet: no tiles (every table would say «Libre» without knowing it)', () => {
+    expect(floorRooms(configuration, []).flatMap(room => room.tiles).every(tile => tile.entry === null)).toBe(true)   // lo que se pintaria
+    expect(floorView({ readAt: null, error: '' }, configured)).toBe('reading')
+    expect(floorEmpty({ readAt: null }, configured, 0)).toBe(false)
+  })
+  it('a failed first board read is said, not replaced by free tables', () => {
+    expect(floorView({ readAt: null, error: 'No se pudo leer el estado del servidor.' }, configured)).toBe('unread')
+  })
+  it('with the board read, it waits for the first answer of the configuration, good or failed (no code painted meanwhile)', () => {
+    expect(floorView({ readAt: read, error: '' }, { readAt: null, failed: false })).toBe('reading')
+    expect(floorView({ readAt: read, error: '' }, { readAt: null, failed: true })).toBe('ready')
+    expect(floorView({ readAt: read, error: '' }, configured)).toBe('ready')
+    expect(floorView({ readAt: read, error: 'Servidor sin respuesta.' }, configured)).toBe('ready')   // lo ultimo leido se queda (D6.2)
+  })
+  it('«No hay mesas activas» only when both reads went well and there is no table', () => {
+    expect(floorEmpty({ readAt: read }, configured, 0)).toBe(true)
+    expect(floorEmpty({ readAt: read }, { readAt: null }, 0)).toBe(false)                 // configuracion caida: no se sabe
+    expect(floorEmpty({ readAt: read }, configured, 3)).toBe(false)
+  })
+})
+
+describe('an open table keeps the offer it was opened with, even when it is no longer current', () => {
+  const lunch = { id: 'COMIDA', name: 'Menú de mediodía', kind: 'set-menu', courses: [{ id: 'c1', name: 'Primero', dishes: [{ id: 'd1', name: 'Pulpo' }] }] }
+  it('the current offer first, else the last definition read in this session; never one that was never read', () => {
+    const after17 = { ...configuration, known: [lunch, ...configuration.offers] }
+    expect(offerFor(after17, 'COMIDA')?.courses[0].dishes.map(dish => dish.name)).toEqual(['Pulpo'])
+    expect(offerName(after17, 'COMIDA')).toBe('Menú de mediodía')
+    expect(offerFor(configuration, 'COMIDA')).toBeNull()
+    expect(offerFor(after17, null)).toBeNull()
   })
 })
 
@@ -114,6 +151,21 @@ describe('useConfiguration: re-read on demand and every 5 minutes', () => {
       expect(unauthorized).toBe(1)
       status = 200; await used.reload()
       expect(used.configuration.failed).toBe(false)
+    } finally { unmount() }
+  })
+
+  it('an offer that stops being current (a lunch menu at 17:00) is remembered for the tables opened with it, never offered again', async () => {
+    let offers = [{ id: 'COMIDA', name: 'Menú de mediodía', kind: 'set-menu', courses: [{ id: 'c1', name: 'Primero', dishes: [{ id: 'd1', name: 'Pulpo' }] }] },
+      { id: 'CARTA', name: 'Carta', kind: 'a-la-carte', courses: [] }]
+    const fetcher: Fetch = async () => new Response(JSON.stringify({ tables: [], offers, stations: [] }), { status: 200 })
+    const { used, unmount } = mount(fetcher)
+    try {
+      await used.reload()
+      offers = offers.filter(offer => offer.id !== 'COMIDA')
+      await used.reload()
+      expect(used.configuration.offers.map(offer => offer.id)).toEqual(['CARTA'])          // «Abrir mesa» solo ofrece lo vigente
+      expect(offerFor(used.configuration, 'COMIDA')?.courses[0].dishes.map(dish => dish.name)).toEqual(['Pulpo'])
+      expect(offerName(used.configuration, 'COMIDA')).toBe('Menú de mediodía')
     } finally { unmount() }
   })
 

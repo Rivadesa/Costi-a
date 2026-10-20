@@ -31,7 +31,15 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- Marco ---------- */
-.app { max-width: 75rem; margin: 0 auto; padding: max(10px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+/* La app es una columna de al menos la pantalla y cada pantalla (.screen) se estira en ella: la ficha ocupa lo que QUEDA bajo la
+   cabecera, asi que su boton grande cae al pie sin dejar debajo un desplazamiento en blanco. */
+.app { max-width: 75rem; margin: 0 auto; padding: max(10px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.screen { flex: 1 0 auto; display: flex; flex-direction: column; }
+/* Con una ficha abierta, «Opciones» (version y desvincular) no se ofrece: queda en el plano. El aviso de almacenamiento sigue (D6.6). */
+.app:has(.ficha) { padding-bottom: 0; }
+.app:has(.ficha) .options:not(.notice) { display: none; }
+.app:has(.ficha) .options.notice { margin-bottom: 16px; }
 .topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 48px; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand h1 { font-size: 19px; font-weight: 700; letter-spacing: .01em; }
@@ -73,14 +81,21 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .net.warn .dot { background: var(--warn-text); }
 .age { font-size: 13.5px; color: var(--muted); }
 .age.stale { color: var(--warn-text); font-weight: 600; }
+.age-s { display: none; }
 .status .refresh { margin-left: auto; min-height: var(--touch); min-width: var(--touch); padding: 0 10px; }
-/* En el movil, «Actualizar» queda en su icono (su nombre accesible sigue siendo «Actualizar») y la antiguedad, debajo. La cabecera
-   aprieta su aire para dejar sitio a la mesa, y «Volver» es solo la flecha, como en la maqueta (su nombre accesible sigue siendo «Mesas»). */
+.nw { white-space: nowrap; }
+/* En el movil, «Actualizar» queda en su icono (su nombre accesible sigue siendo «Actualizar») y la antiguedad, en corto en la misma fila
+   que el enlace («Leído hace 3 s»). La cabecera aprieta su aire para dejar sitio a la mesa, y «Volver» es solo la flecha, como en la
+   maqueta (su nombre accesible sigue siendo «Mesas»). Con una ficha abierta, la marca y el aparato se quitan, como en la maqueta: la
+   mesa empieza bajo el enlace. El aviso de DEMOSTRACION se queda; el papel y el nombre siguen en el plano, la cocina y al emparejar. */
 @media (max-width: 699px) {
   .app { padding-top: max(6px, env(safe-area-inset-top)); }
   .topbar { min-height: 44px; margin-bottom: 4px; }
   .status { margin-bottom: 8px; }
-  .status .age { flex-basis: 100%; order: 3; }
+  .age-l { display: none; }
+  .age-s { display: inline; }
+  .app:has(.ficha) .brand, .app:has(.ficha) .who { display: none; }
+  .app:has(.ficha) .topbar { min-height: 0; margin: 0; }
   .refresh-t, .back-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .bar .btn-big { font-size: 16px; padding: 8px 12px; }
 }
@@ -119,7 +134,8 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .step.st-kitchen { background: #C98A1B; }
 .step.st-other { background: var(--muted); }
 .steps-n { flex: none; margin-left: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-.badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 8px; font-size: 13px; font-weight: 700; background: var(--warn-soft); color: var(--warn-text); overflow-wrap: anywhere; }
+.badge .icon { margin-top: 1px; }
+.badge { align-self: flex-start; display: inline-flex; align-items: flex-start; gap: 5px; padding: 4px 8px; border-radius: 8px; font-size: 13px; font-weight: 700; background: var(--warn-soft); color: var(--warn-text); overflow-wrap: anywhere; }
 .badge.alarm { background: var(--danger-soft); color: var(--danger-text); }
 
 /* Chips de estado: la palabra va siempre escrita; el color solo acompana. */
@@ -190,9 +206,9 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .more > summary .icon { color: var(--muted); }
 .more-b { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-top: 1px solid var(--border); }
 .more-b .btn { width: 100%; justify-content: flex-start; text-align: left; padding: 8px 14px; }
-/* El boton grande, abajo y siempre a la vista (la seccion de acciones no crea caja: el borde de la ficha lo limita). La ficha ocupa al
-   menos la pantalla, asi que con poco contenido el boton tambien queda al pie, como en la maqueta, y lo demas (Opciones) debajo. */
-.ficha { min-height: 100vh; min-height: 100dvh; }
+/* El boton grande, abajo y siempre a la vista (la seccion de acciones no crea caja: el borde de la ficha lo limita). La ficha ocupa lo
+   que queda de pantalla (.app y .screen son columnas), asi que con poco contenido el boton tambien queda al pie, como en la maqueta. */
+.ficha { flex: 1 0 auto; }
 .actions { display: contents; }
 .bar { position: sticky; bottom: 0; z-index: 5; margin: auto -16px 0; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .bar-note { font-size: 13.5px; color: var(--muted); text-align: center; }
@@ -247,9 +263,12 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .review { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2px solid var(--danger-line); border-radius: 12px; background: var(--danger-soft); }
 .review .lbl { color: var(--danger-text); }
 .review input { min-height: var(--touch-kitchen); }
+/* Las tres decisiones en una fila, a partes iguales (siguen de 64 px de alto y de mas de 64 de ancho, tambien a 375 px). */
+.review .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.review .kbtn { min-width: 0; padding: 0 8px; }
 
 /* ---------- Emparejar, sin conexion y opciones ---------- */
-.pair-card { max-width: 36rem; margin: 8px auto 0; display: flex; flex-direction: column; gap: 14px; }
+.pair-card { width: 100%; max-width: 36rem; margin: 8px auto 0; display: flex; flex-direction: column; gap: 14px; }
 .pair-card h2, .offline h2 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
 .pair-card form { display: flex; flex-direction: column; gap: 14px; }
 .options { margin-top: 28px; }
@@ -260,8 +279,12 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 /* Tableta y PC: mas aire y las entradas de la ficha en fila. */
 @media (min-width: 700px) {
   .app { padding-left: 24px; padding-right: 24px; }
-  .ficha { max-width: 52rem; margin: 0 auto; }
-  .bar { margin: auto 0 0; padding: 12px 0 max(16px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 0; align-items: flex-end; }
+  .ficha { width: 100%; max-width: 52rem; margin: 0 auto; }
+  /* Barra blanca de lado a lado con su linea arriba, como la maqueta de tableta: lo que pasa por debajo no asoma cortado. Dos sombras
+     extienden la barra fuera de la ficha: la blanca, bajada para que no tape la linea; la gris, la linea de 1 px que clip-path deja ver
+     encima. Ni desplazamiento lateral (las sombras no cuentan) ni estilo en linea. */
+  .bar { margin: auto 0 0; padding: 12px 0 max(16px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 0; align-items: flex-end;
+    box-shadow: 0 100vmax 0 100vmax var(--surface), 0 -1px 0 100vmax var(--border); clip-path: inset(-1px -100vmax 0 -100vmax); }
   .bar .btn-big { max-width: 520px; }
   .bar-note { text-align: right; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 12px; }

@@ -114,6 +114,8 @@ export function ageLabel(seconds: number | null): string {
   if (seconds === null) return 'sin lectura'
   return seconds < 60 ? `hace ${seconds} s` : `hace ${Math.floor(seconds / 60)} min ${seconds % 60} s`
 }
+// C3a: la misma antiguedad en corto, junto al estado del enlace en un movil (sigue SIEMPRE a la vista, D6.2).
+export const ageShort = (seconds: number | null): string => seconds === null ? 'Sin lectura' : `Leído ${ageLabel(seconds)}`
 
 // D6.7: el nombre de dispositivo de un actor 'device:<nombre>'. Cualquier otro actor se muestra tal cual (nunca se suaviza).
 export const deviceNameOf = (actor: string): string => actor.startsWith('device:') ? actor.slice('device:'.length) : actor

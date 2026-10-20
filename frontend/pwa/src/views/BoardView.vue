@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { getCatalog, type CatalogItem, type Session } from '../api'
-import { floorRooms, floorSummary, Names, useConfiguration, type FloorTile } from '../configuration'
+import { floorEmpty, floorRooms, floorSummary, floorView, Names, useConfiguration, type FloorTile } from '../configuration'
 import { plural } from '../labels'
 import { useOperations } from '../operations'
 import FloorGrid from './FloorGrid.vue'
@@ -26,6 +26,11 @@ const names = computed(() => new Names(configuration))
 const rooms = computed(() => floorRooms(configuration, state.entries))
 const summary = computed(() => floorSummary(rooms.value))
 const tiles = computed(() => rooms.value.flatMap(room => room.tiles))
+// El plano, solo desde una lectura real del tablero (configuration.ts, floorView): nunca una mesa «Libre» sin haberlo leido.
+const view = computed(() => floorView(state, configuration))
+const empty = computed(() => floorEmpty(state, configuration, tiles.value.length))
+// La sala elegida vive aqui y no en el plano: ir a una ficha (o a «Abrir mesa») y volver la conserva, como SelectedZone en el puesto.
+const room = ref('')
 
 // Lo que se ve: el plano, la ficha de una mesa ocupada (por su servicio: la lectura de siempre, F01) o «Abrir mesa» en una libre.
 const selectedId = ref<string | null>(null)
@@ -72,7 +77,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section data-testid="board">
+  <section class="screen" data-testid="board">
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
 
     <TableCard v-if="selected" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
@@ -86,13 +91,16 @@ onMounted(async () => {
     <template v-else>
       <div class="floor-h">
         <h2>Mesas</h2>
-        <span v-if="summary" class="muted" data-testid="floor-summary">{{ summary }}</span>
+        <span v-if="view === 'ready' && summary" class="muted" data-testid="floor-summary">{{ summary }}</span>
       </div>
-      <p v-if="!state.readAt && !configuration.readAt" class="muted">Leyendo las mesas…</p>
-      <p v-else-if="tiles.length === 0" class="notice neutral" data-testid="empty"><Icon name="info" />No hay mesas activas. Se crean en el PC principal, en Salas, mesas y estaciones.</p>
-      <p v-if="configuration.failed && configuration.tables.length === 0" class="notice" role="status" data-testid="configuration-error">
-        <Icon name="info" />No se pudo leer la configuración de mesas: solo se ven las mesas ocupadas, y sin «Abrir mesa». Se vuelve a intentar en la próxima lectura.</p>
-      <FloorGrid :rooms="rooms" :configuration="configuration" :now="now" :can-open="can('open')" @pick="pick" />
+      <p v-if="view === 'reading'" class="muted" data-testid="floor-reading">Leyendo las mesas…</p>
+      <p v-else-if="view === 'unread'" class="notice neutral" data-testid="floor-unread"><Icon name="info" />Sin ninguna lectura del servidor todavía: las mesas salen en cuanto responda.</p>
+      <template v-else>
+        <p v-if="empty" class="notice neutral" data-testid="empty"><Icon name="info" />No hay mesas activas. Se crean en el PC principal, en Salas, mesas y estaciones.</p>
+        <p v-if="configuration.failed && configuration.tables.length === 0" class="notice" role="status" data-testid="configuration-error">
+          <Icon name="info" />No se pudo leer la configuración de mesas: solo se ven las mesas ocupadas, y sin «Abrir mesa». Se vuelve a intentar en la próxima lectura.</p>
+        <FloorGrid v-model:room="room" :rooms="rooms" :configuration="configuration" :now="now" :can-open="can('open')" @pick="pick" />
+      </template>
     </template>
   </section>
 </template>

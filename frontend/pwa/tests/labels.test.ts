@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { REJECTIONS } from '../src/commands'
+import { DB_TEXTS } from '../src/db'
 import { elapsedLabel, REVIEW_DECISIONS } from '../src/kitchen'
 import {
-  actionLabel, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
+  actionLabel, ageLabel, ageShort, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
   preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, severityLabel, stationKindLabel, tableStateLabel,
   unpairWarning, VOCABULARY,
 } from '../src/labels'
@@ -73,9 +74,12 @@ const SHOWN = [
   unpairWarning({ kind: 'restored', command: { key: 'k', path: '/x', body: '{}', description: 'Servir', createdAt: '', installationId: 'i', actor: 'device:tablet' } }),
   new MoneyLeakError('$.x').message, elapsedLabel(null, 0), ...REVIEW_DECISIONS.map(option => option.label),
   reviewLabel({ id: 'p', name: 'x', stationId: 's', quantity: 1, guestPosition: null, mandatory: true, state: 'Fired', reviewPending: true }),
+  // Los errores de IndexedDB llegan al aviso «Servidor no listo (…)» de la pantalla de arranque (startup.ts).
+  ...Object.values(DB_TEXTS), ageLabel(null), ageLabel(75), ageShort(null), ageShort(5),
 ]
 const UNACCENTED = ['aplicacion', 'aplico', 'revision', 'accion', 'estacion', 'codigo', 'conexion', 'envio', 'preparacion', 'eleccion', 'menu',
-  'restriccion', 'elaboracion', 'economicos', 'desvinculo', 'restauro', 'instalala', 'usala', 'asi']
+  'restriccion', 'elaboracion', 'economicos', 'desvinculo', 'restauro', 'instalala', 'usala', 'asi', 'pestana', 'version', 'transaccion',
+  'leido', 'ultima']
 
 describe('words on screen', () => {
   it('no checkout word, not even inside another word', () => {

@@ -678,6 +678,22 @@ foreach(var family in vocabularyCases.RootElement.GetProperty("families").Enumer
         foreach(var row in family.Value.EnumerateObject())
             Expect(label!(row.Name)==row.Value.GetString(),$"'{row.Name}' = '{label!(row.Name)}', the shared case says '{row.Value.GetString()}'");
         return Task.CompletedTask;});
+// Y al reves: cada valor que el dominio puede enviar en una familia comun tiene su fila. Un valor nuevo con palabra solo en Labels.cs
+// (el puesto en castellano, el comandero en crudo) falla aqui; con su fila en la tabla, vitest obliga a ponerla en labels.ts.
+// Las acciones de caja no tienen palabra en el comandero (ADR-007): no se piden.
+string[] checkoutActions=["add-product","payment","void-charge","refund","close","reopen"];
+var domainValues=new Dictionary<string,string[]>(StringComparer.Ordinal){
+    ["dining"]=Enum.GetNames<DiningState>(),["course"]=Enum.GetNames<CourseState>(),["preparation"]=Enum.GetNames<PreparationState>(),
+    ["tableState"]=FloorPlan.Codes,["offerKind"]=Enum.GetNames<OfferKind>().Select(Kebab).ToArray(),
+    ["stationKind"]=[..Enum.GetNames<StationKind>(),..Lower<StationKind>()],["restrictionKind"]=Enum.GetNames<RestrictionKind>(),
+    ["severity"]=Enum.GetNames<RestrictionSeverity>(),["review"]=Enum.GetNames<ReviewDecision>(),["action"]=actions.Except(checkoutActions).ToArray()};
+await Check("vocabulary (shared cases): every value the domain can send has its row",()=>{
+    Expect(domainValues.Keys.Order().SequenceEqual(sharedFamilies.Keys.Order()),"a shared family without its domain values (or the reverse)");
+    var families=vocabularyCases.RootElement.GetProperty("families");
+    var missing=domainValues.SelectMany(pair=>families.TryGetProperty(pair.Key,out var rows)
+        ? pair.Value.Where(code=>!rows.TryGetProperty(code,out _)).Select(code=>pair.Key+"."+code) : [pair.Key+" (family)"]).ToList();
+    Expect(missing.Count==0,"values without a row in vocabulary-cases.json: "+string.Join(", ",missing));
+    return Task.CompletedTask;});
 await Check("vocabulary (shared cases): guests, restrictions, minutes and plurals",()=>{
     var root=vocabularyCases.RootElement;
     foreach(var row in root.GetProperty("guests").EnumerateArray())

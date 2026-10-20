@@ -13,7 +13,9 @@ export interface StationChoice { id: string; name: string; kind: string; active?
 export interface OfferItem { productId: string; presentationId: string; name: string; presentation: string }
 export interface OfferCourse { id: string; name: string; dishes: Array<{ id: string; name: string }>; items?: OfferItem[] }
 export interface OfferChoice { id: string; name: string; kind: string; courses: OfferCourse[] }
-export interface Configuration { tables: TableChoice[]; offers: OfferChoice[]; stations: StationChoice[] }
+// known: cada oferta leida en esta sesion, con su ultima definicion. /configuration solo lista las vigentes AHORA (un menu de comida
+// deja de estarlo a las 17:00), pero una mesa abierta con ella sigue con sus platos: el servidor sigue anunciando 'choose' y 'add-dish'.
+export interface Configuration { tables: TableChoice[]; offers: OfferChoice[]; stations: StationChoice[]; known?: OfferChoice[] }
 
 interface RawConfiguration { tables?: TableChoice[]; menus?: Array<{ id: string; name: string }>; offers?: OfferChoice[]; stations?: StationChoice[] }
 
@@ -82,9 +84,25 @@ export function floorSummary(rooms: readonly FloorRoom[]): string {
 export const roomSummary = (room: FloorRoom): string =>
   `${plural(room.tiles.length, 'mesa', 'mesas')} · ${plural(room.tiles.filter(tile => tile.entry !== null).length, 'ocupada', 'ocupadas')}`
 
-// Nombre de la oferta con la que se abrio la mesa. Si ya no esta entre las vigentes no se pinta su codigo: los pases ya dicen que pasa.
-export const offerName = (configuration: Configuration, offerId: string | null | undefined): string =>
-  offerId ? configuration.offers.find(offer => offer.id === offerId)?.name ?? '' : ''
+// La oferta con la que se abrio una mesa: la vigente o, si ya no lo es, la ultima definicion leida en esta sesion (sus platos siguen
+// valiendo para esa mesa). «Abrir mesa» ofrece SOLO las vigentes (configuration.offers), nunca estas.
+export const offerFor = (configuration: Configuration, offerId: string | null | undefined): OfferChoice | null =>
+  offerId ? configuration.offers.find(offer => offer.id === offerId) ?? configuration.known?.find(offer => offer.id === offerId) ?? null : null
+// Su nombre. Una oferta que este comandero nunca leyo no se nombra: no se pinta su codigo, los pases ya dicen que pasa.
+export const offerName = (configuration: Configuration, offerId: string | null | undefined): string => offerFor(configuration, offerId)?.name ?? ''
+
+// D6.1: nada sin leer se pinta como actual. El plano sale solo tras una lectura REAL del tablero (sin ella, cada mesa de la configuracion
+// saldria «Libre» sin saberlo, y una mesa ocupada ofreceria «Abrir mesa») y tras la primera respuesta de la configuracion, buena o
+// fallida (sin ella, una mesa ocupada saldria un instante con su codigo en «Otras mesas ocupadas»). 'unread': la lectura del tablero
+// fallo y no hay ninguna anterior; el aviso del fallo ya esta en StatusPanel.
+export type FloorView = 'reading' | 'unread' | 'ready'
+export function floorView(board: { readAt: Date | null; error: string }, configuration: { readAt: Date | null; failed: boolean }): FloorView {
+  if (board.readAt === null) return board.error ? 'unread' : 'reading'
+  return configuration.readAt !== null || configuration.failed ? 'ready' : 'reading'
+}
+// «No hay mesas activas» solo cuando las dos lecturas fueron bien alguna vez y no hay ninguna mesa: sin configuracion no se sabe.
+export const floorEmpty = (board: { readAt: Date | null }, configuration: { readAt: Date | null }, tiles: number): boolean =>
+  board.readAt !== null && configuration.readAt !== null && tiles === 0
 
 export const RELOAD_MS = 5 * 60_000
 
@@ -92,7 +110,8 @@ export const RELOAD_MS = 5 * 60_000
 // que relee la sesion. Lecturas solapadas se funden en una.
 export function useConfiguration(props: { token: string }, onUnauthorized: () => void = () => undefined,
                                  deps: { fetcher?: Fetch; everyMs?: number } = {}) {
-  const configuration = reactive<Configuration & { readAt: Date | null; failed: boolean }>({ tables: [], offers: [], stations: [], readAt: null, failed: false })
+  const configuration = reactive<Configuration & { known: OfferChoice[]; readAt: Date | null; failed: boolean }>(
+    { tables: [], offers: [], stations: [], known: [], readAt: null, failed: false })
   let current: Promise<void> | null = null
   let timer: ReturnType<typeof setInterval> | undefined
 
@@ -100,7 +119,11 @@ export function useConfiguration(props: { token: string }, onUnauthorized: () =>
     try {
       // window.fetch se llama sin receptor (D6.3): se resuelve en cada lectura, no se guarda como metodo de un objeto.
       const raw = await call<RawConfiguration>(deps.fetcher ?? ((input, init) => fetch(input, init)), '/configuration', { token: props.token })
-      Object.assign(configuration, normalizeConfiguration(raw), { readAt: new Date(), failed: false })
+      const next = normalizeConfiguration(raw)
+      // Las ofertas que dejan de ser vigentes se recuerdan (con su ultima definicion) para las mesas ya abiertas con ellas.
+      const known = new Map(configuration.known.map(offer => [offer.id, offer]))
+      for (const offer of next.offers) known.set(offer.id, offer)
+      Object.assign(configuration, next, { known: [...known.values()], readAt: new Date(), failed: false })
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) onUnauthorized()
       configuration.failed = true

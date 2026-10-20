@@ -55,7 +55,7 @@ Fecha: 2026-10-20. Rama `feat/c3a-comandero-nuevo` sobre `develop` (`0fd446e`, `
   - los pases «n de m» y su barra;
   - el aviso de restricciones: «Alergia», en crudo lo desconocido, « · por revisar» mientras cocina no decide; siempre escrito, rojo solo si alarma;
   - el detalle corto de cada pase.
-- **Una sola tabla de casos para las dos implementaciones.** `dotnet/tests/fixtures/floorplan-cases.json` (45 casos de tarjeta y 18 de pase) y `vocabulary-cases.json` (10 familias de palabras, más comensales, restricciones, minutos y plurales) los leen vitest y ClientChecks. Si el comandero y el puesto se separan, falla una de las dos. Un campo o una familia que la prueba no conoce es un fallo, nunca se salta. vitest falla además si `labels.ts` tiene una palabra que la tabla no tiene.
+- **Una sola tabla de casos para las dos implementaciones.** `dotnet/tests/fixtures/floorplan-cases.json` (44 casos de tarjeta y 18 de pase) y `vocabulary-cases.json` (10 familias de palabras, más comensales, restricciones, minutos y plurales) los leen vitest y ClientChecks. Si el comandero y el puesto se separan, falla una de las dos. Un campo o una familia que la prueba no conoce es un fallo, nunca se salta. vitest falla además si `labels.ts` tiene una palabra que la tabla no tiene, y ClientChecks si un valor que el dominio puede enviar (un estado, un tipo, una acción operativa) no tiene su fila: una palabra nueva solo en `Labels.cs` no pasa.
 - **`FloorPlan.cs`** gana `Elapsed(service, now)` y `Progress(service)`, y el `TableTile` del Comedor las usa: lo que la tabla común prueba es exactamente lo que pinta la tarjeta del puesto. Su comportamiento no cambia.
 - **Tildes en todos los textos** de `commands.ts`, `operations.ts`, `startup.ts`, `storage.ts`, `kitchen.ts` y `money-guard.ts`, también los de D6.7. El rechazo `account_closed` ya no dice «cuenta».
 
@@ -65,11 +65,15 @@ Fecha: 2026-10-20. Rama `feat/c3a-comandero-nuevo` sobre `develop` (`0fd446e`, `
   - normaliza `/configuration`, también la de un servidor anterior (solo `menus`, sin `stations`);
   - `Names` resuelve mesas y estaciones como el `Names` del puesto: el nombre configurado o, si falta, el código tal cual;
   - `floorRooms` hace lo que `RebuildFloor` en el Comedor: todas las mesas activas por sala, también las libres, en el orden de la configuración. Una mesa ocupada que la configuración ya no lista sale al final, en «Otras mesas ocupadas»: nunca se esconde una mesa con gente;
-  - `useConfiguration` lee al montar, cada 5 minutos y con `reload()`. Un fallo conserva lo último leído y lo dice; un 401 avisa a la aplicación.
+  - `useConfiguration` lee al montar, cada 5 minutos y con `reload()`. Un fallo conserva lo último leído y lo dice; un 401 avisa a la aplicación;
+  - `/configuration` solo trae las ofertas vigentes ahora, y un menú de comida deja de serlo a las 17:00. `useConfiguration` recuerda cada oferta leída en la sesión (`known`) y `offerFor` da la de una mesa ya abierta aunque haya dejado de estar vigente: su nombre y sus platos siguen en la tarjeta, en la cabecera y en «Carta y menús». «Abrir mesa» solo ofrece las vigentes;
+  - `floorView`: **el plano solo se pinta tras una lectura de verdad del tablero** (D6.1). Antes, con la configuración leída y el tablero aún no, todas las mesas salían «Libre» un momento, y si esa lectura fallaba se quedaban así, con «Abrir mesa» en mesas ocupadas. Ahora se lee «Leyendo las mesas…» o, si la lectura falló, que las mesas saldrán cuando el servidor responda. «No hay mesas activas» solo se dice con las dos lecturas buenas.
 - **Cada tarjeta es un botón** (`data-testid="table-<id>"`). **Tocarla solo elige:**
   - una ocupada abre su ficha con la lectura de siempre (F01);
   - una libre abre «Abrir mesa», solo si el servidor anuncia `open`. Sin `open`, la tarjeta libre queda apagada.
 - **«Actualizar»** relee el tablero y la configuración, como `RefreshAll` en el puesto. Tras una lectura buena del tablero, una configuración que falló se reintenta sin esperar a los 5 minutos.
+- **La sala elegida se conserva** al ir a una ficha o a «Abrir mesa» y volver, como `SelectedZone` en el Comedor (la guarda `BoardView`, no el plano).
+- El aviso de la tarjeta se parte por su separador: en un móvil, «Alergia ·» y «por revisar» debajo, nunca «por» y «revisar» separados.
 
 ### Ficha de mesa (`TableCard.vue`, `ficha.ts`, `DishPanel.vue`, `DrinksPanel.vue`)
 
@@ -93,14 +97,17 @@ Fecha: 2026-10-20. Rama `feat/c3a-comandero-nuevo` sobre `develop` (`0fd446e`, `
 ### Cocina (`KitchenView.vue`)
 
 - Solo el aspecto nuevo y los nombres de mesa y de estación. Las reglas de D6.4 no cambian: cada estación ve el pase entero, lo ajeno atenuado y sin botones, y el `pase` valida y revisa.
-- Botones de acción y nota de revisión de 64 px.
+- La estación de cada línea solo se escribe donde dice algo: en lo de otra estación («Cocina caliente (otra estación)»), en el `pase` y en una pantalla sin estación. En lo propio ya la dice la cabecera.
+- Botones de acción y nota de revisión de 64 px. Las tres decisiones de una revisión («No afecta», «Adaptar», «Rehacer») van en una sola fila, a partes iguales.
 - La agrupación por plato llega en C3c.
 
 ### Emparejar, cabecera y orden pendiente (`App.vue`, `PairView.vue`, `HomeView.vue`, `StatusPanel.vue`)
 
 - Barra superior con la marca, el papel y la estación por su nombre, y el nombre del dispositivo.
+- **En el móvil, la ficha empieza justo bajo el enlace**, como en la maqueta: con una ficha o «Abrir mesa» abiertas no se ven la marca ni el aparato (siguen en el plano, en cocina y al emparejar; el aviso de DEMOSTRACIÓN se queda), y la antigüedad de la lectura va en corto en la fila del enlace («Leído hace 3 s»), siempre a la vista (D6.2). La mesa empieza a unos 160 px, antes a 236.
 - `StatusPanel`, con el aspecto nuevo. Los paneles de D6.7 (pendiente, bloqueada por `actor`, `foreign` o `unreadable`) conservan sus textos y sus botones.
-- «Opciones» al pie, con la versión del servidor y desvincular en dos pasos.
+- «Opciones» al pie, con la versión del servidor y desvincular en dos pasos. Con una ficha abierta no se ofrece, para que el botón grande quede al pie; el aviso de almacenamiento (D6.6) sí se ve.
+- Los errores de IndexedDB que llegan a la pantalla de arranque («Servidor no listo (…)») tienen tildes, como el resto.
 - `ServiceActions.vue` desaparece: su contenido está en la ficha.
 
 ### Aspecto (`style.css`, `icons.ts`, `Icon.vue`, `index.html`, manifiesto)
@@ -109,12 +116,13 @@ Fecha: 2026-10-20. Rama `feat/c3a-comandero-nuevo` sobre `develop` (`0fd446e`, `
   - **Rojo solo para alergias y restricciones que alarman.** Lo pendiente y lo bloqueado van en ámbar, y las acciones sin vuelta atrás (liberar, cancelar) llevan borde de aviso, nunca rojo.
   - Objetivos de 48 px en el comandero y de 64 px en cocina.
 - Iconos de trazo como rutas SVG en la plantilla: ni imágenes, ni estilos en línea, ni cambios en la CSP.
-- `index.html` y el manifiesto, con los colores del tema claro.
+- `index.html` y el manifiesto, con los colores del tema claro. El icono de la pantalla de inicio es la «C» blanca sobre el verde de la casa, como la marca de la cabecera y del puesto (`public/icon.svg` y los PNG, que genera `scripts/make-icons.mjs`), y el manifiesto se describe como «Comandero y pantalla de cocina de Costina.».
+- La ficha ocupa lo que queda de pantalla (la app es una columna), así que el botón grande cae al pie sin dejar debajo un desplazamiento en blanco. En tableta, la barra del botón es blanca de lado a lado, con su línea arriba, como la maqueta.
 
 ## Divergencias deliberadas, para revisar
 
 1. **El botón grande dice «Enviar siguiente pase · <pase>»**, como la maqueta y el vocabulario del plan. La orden pendiente y el puesto mantienen «Enviar siguiente pase a cocina».
-2. **Una oferta que ya no está vigente no se nombra** en la tarjeta ni en la cabecera de la ficha. Los pases ya dicen qué pasa. El puesto muestra su código.
+2. **Una oferta que ya no está vigente** se sigue nombrando, con sus platos en «Carta y menús», si este comandero la leyó en la sesión. Una que nunca leyó (el comandero se encendió después de las 17:00 con una mesa de mediodía abierta) no se nombra: nunca se pinta su código. Los pases ya dicen qué pasa. El puesto muestra su código.
 3. **La orden pendiente nombra la mesa** («Pausar servicio · Mesa 7»), no su código. Una orden guardada por una versión anterior conserva su texto.
 4. **«¿Para quién?» no tiene valor por defecto** al anotar una restricción, como en la maqueta. Antes era «Toda la mesa».
 5. **El aviso de mesa cerrada** dice «Esta mesa ya está cerrada en Caja: avisa en el PC principal.» El promotor no lo ha visto aún.
@@ -170,12 +178,12 @@ Tarda unos 50 s. En la CI no corre nunca.
 
 ## Comprobaciones automáticas
 
-- **vitest:** 192 pruebas en 12 ficheros (antes, 78 en 7). `npm run build` (comprobación de tipos `vue-tsc` y build de Vite) en verde. Las nuevas:
-  - `floor.test.ts` y `labels.test.ts`: las dos tablas comunes;
-  - `configuration.test.ts`: nombres, nunca códigos; plano por salas, con las mesas libres y la ocupada que ya no está en la configuración; relectura al montar, a petición y cada 5 minutos; fallo, 401 y guarda de dinero;
+- **vitest:** 198 pruebas en 12 ficheros (antes, 78 en 7). `npm run build` (comprobación de tipos `vue-tsc` y build de Vite) en verde. Las nuevas:
+  - `floor.test.ts` y `labels.test.ts`: las dos tablas comunes; también, sin tilde ni palabra de caja, los errores de IndexedDB y la antigüedad corta;
+  - `configuration.test.ts`: nombres, nunca códigos; plano por salas, con las mesas libres y la ocupada que ya no está en la configuración; el plano solo tras leer el tablero (`floorView`, `floorEmpty`); la oferta que deja de estar vigente, recordada para las mesas abiertas y nunca ofrecida al abrir; relectura al montar, a petición y cada 5 minutos; fallo, 401 y guarda de dinero;
   - `ficha.test.ts`: solo lo anunciado, el orden del botón grande, liberar desde la ocupación, la orden con la versión leída y el nombre de la mesa, y el rótulo del motivo;
   - `views.test.ts` lee las plantillas `.vue` sin navegador y exige cuatro cosas: ninguna palabra de caja (ni dentro de otra), tildes, ningún código pintado (`tableId`, `stationId`…) y nada que la CSP rechace (estilos en línea, imágenes).
-- **ClientChecks:** 200 (antes 126). Las 74 nuevas pasan `FloorPlan` y `Labels` por las dos tablas comunes.
+- **ClientChecks:** 201 (antes 126). Las 75 nuevas pasan `FloorPlan` y `Labels` por las dos tablas comunes, y exigen una fila para cada valor que el dominio puede enviar en una familia común.
 - **DesktopChecks** (`sh tools/agent/local-tests.sh desktop`): «WPF startup and viewmodel checks passed». `TableTile` usa ahora `FloorPlan.Elapsed` y `Progress`.
 - **Playwright contra el motor real**, en dos proyectos con las mismas historias:
   - `desktop` (Chrome de escritorio);
@@ -190,7 +198,8 @@ Tarda unos 50 s. En la CI no corre nunca.
     - el corte de red con la orden anunciada;
     - Carta y menús;
     - una consumición, que da un solo cargo.
-  - **board:** la tarjeta libre, la mesa abierta por otro, «En cocina» y «0 de 2», «Alergia · por revisar», la ficha («SIN REVISAR POR COCINA», «Cocina fría», ningún código), las elaboraciones en vivo y la pérdida de red.
+  - **board:** la tarjeta libre, la mesa abierta por otro, «En cocina» y «0 de 2», «Alergia · por revisar», la ficha («SIN REVISAR POR COCINA», «Cocina fría», ningún código), las elaboraciones en vivo y la pérdida de red. Al final, dos salas: `/configuration` se reescribe en el navegador (la mesa del carril pasa a una «Terraza»; el motor y la base no cambian), se elige esa sala, se abre la ficha y al volver la sala sigue elegida.
+  - **commands:** con la orden sin confirmar, ningún botón `do-…` de toda la ficha está habilitado (también anotar y retirar restricciones, que van arriba).
   - **kitchen:** el nombre de la mesa y «Cocina caliente (otra estación)»; lo demás como en D6.4.
   - **pairing:** igual que antes, con los nuevos selectores.
   - **En cada pantalla visitada**, `checkScreen` comprueba que:
@@ -201,7 +210,7 @@ Tarda unos 50 s. En la CI no corre nunca.
     `checkDevice` comprueba que cada proyecto tiene de verdad su ancho y su pantalla táctil. Cada JSON se pasa por la guarda de dinero y se cuentan las violaciones de la CSP: cero.
 - **Batería completa** (`COSTINA_E2E=1 sh tools/agent/local-tests.sh`, puerto 5090, binarios de `.lab/pgsql/bin`, sin administrador), en verde:
   - compilación con 0 advertencias y 0 errores;
-  - dominio 83/83 y ClientChecks 200;
+  - dominio 83/83 y ClientChecks 201;
   - las 14 suites HTTP: packaging 14 (1 saltada), native 11, security 6/6, desktop_reads 9, affordances 5, restrictions 6, checkout 4, identity 10, pairing 14, station 8, organization 5, catalog 10, offers 7 y pwa_http 5, esta vez con la E2E;
   - Realtime 12/12;
   - en `pwa_http`, Playwright con **12 pasadas**: 6 de escritorio y 6 de móvil (board, commands, kitchen y 3 de pairing en cada uno).
@@ -210,7 +219,9 @@ Tarda unos 50 s. En la CI no corre nunca.
     - cambiar un caso de la tabla («12 min» por «13 min») hizo fallar vitest y ClientChecks;
     - quitar una cláusula de `floor.ts` hizo fallar vitest;
     - devolver «Sentados» para una mesa en pausa en `FloorPlan.cs` hizo fallar 4 comprobaciones de ClientChecks;
-    - renombrar una palabra en `labels.ts` o en `Labels.cs` hizo fallar su lado.
+    - renombrar una palabra en `labels.ts` o en `Labels.cs` hizo fallar su lado;
+    - quitar de la tabla las filas `course.Skipped` y `action.release` hizo fallar ClientChecks («values without a row in vocabulary-cases.json: course.Skipped, action.release»).
+  - **Tildes en lo que llega a la pantalla:** con «Transaccion abortada.» en `db.ts`, `labels.test` falla.
   - **Plantillas:** con las vistas `BoardView.vue` y `KitchenView.vue` de `0fd446e`, `views.test` falla por las palabras sin tilde y por los códigos pintados. Con «cuenta» y un `style="…"` metidos en `DrinksPanel.vue`, falla por las dos cosas.
   - **Ficha:** con el botón grande en otro orden, `ficha.test` falla. Con liberar leído del servicio en lugar de la ocupación, fallan 4 pruebas.
   - **Configuración:** sin la relectura de 5 minutos, falla una prueba. Si se esconden las mesas ocupadas que faltan en la configuración, fallan 2.
@@ -218,6 +229,8 @@ Tarda unos 50 s. En la CI no corre nunca.
     - objetivos de menos de 48 px en «Abrir mesa»;
     - desplazamiento lateral en la ficha del móvil (550 > 375);
     - objetivos de menos de 64 px en cocina y en el inicio de un dispositivo de cocina, en los dos proyectos.
+
+    Un build que volvía a «Todas las salas» al abrir una ficha y dejaba «Anotar restricción» sin el bloqueo de la orden sin confirmar dio «4 failed, 8 passed»: `board` (la sala ya no seguía elegida al volver) y `commands` (un botón `do-…` habilitado en la ficha), en los dos proyectos.
 
 ## Guion para el promotor (un móvil y un iPad)
 
@@ -255,8 +268,9 @@ Tarda unos 50 s. En la CI no corre nunca.
   - las alergias en la misma hoja y la misma orden que «Abrir mesa»;
   - el menú agrupado («Ostra × 7»);
   - la cocina por plato.
+  - la oferta de una mesa abierta que el comandero nunca leyó vigente (encendido después de las 17:00 con una mesa de mediodía): sin nombre y sin platos en «Carta y menús», también en el puesto. El servidor sigue aceptando elegir y pedir, pero `/configuration` solo trae las ofertas vigentes; hace falta que el motor dé la oferta de cada mesa abierta.
 - **Sin fecha:** la hora de apertura de la mesa («sentados hace N minutos»). Necesita un cambio pequeño del motor. Hasta entonces, una mesa sentada no marca minutos.
-- **La cabecera del móvil** (marca, enlace en vivo y antigüedad de los datos) ocupa unos 120 px sobre la mesa. La maqueta lleva «En línea» dentro de la barra de la app. Moverlo obliga a reorganizar `App` y `StatusPanel`; queda para un corte de comandero.
+- **La cabecera del móvil** sigue encima de la ficha con el enlace y la antigüedad (unos 50 px). La maqueta lleva «En línea» dentro de la barra de la mesa; moverlo obliga a reorganizar `App` y `StatusPanel`, y queda para un corte de comandero.
 - **Al recargar** se vuelve al plano: la mesa elegida no se recuerda, como antes.
 - **Terminar, validar sin estación, cancelar y liberar** solo se pintan si el servidor los anuncia. Solo los recibe un dispositivo antiguo con papel principal; validar llega a un comandero solo si no tiene estación. vitest los cubre, pero ninguna E2E, porque los comanderos del laboratorio nunca los reciben.
 - **Playwright solo prueba Chromium**, el único navegador que instala la CI. Safari (iPhone, iPad) se comprueba con el guion.

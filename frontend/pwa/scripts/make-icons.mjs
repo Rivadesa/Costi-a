@@ -5,17 +5,19 @@ import { crc32, deflateSync } from 'node:zlib'
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const BACKGROUND = [0x1f, 0x2a, 0x37], FOREGROUND = [0xf3, 0xf5, 0xf8]
-const CENTER = 256, SAMPLES = 4
+// C3a: la «C» blanca sobre el verde de la casa (#0E7A5F), la misma marca que la cabecera de la PWA y el puesto principal.
+const BACKGROUND = [0x0e, 0x7a, 0x5f], FOREGROUND = [0xff, 0xff, 0xff]
+const CENTER = 256, SAMPLES = 4, CORNER = 112
+// La «C»: un arco de radio 92 y trazo 52 (extremos rectos, radiales) centrado en (276, 256), abierto 48 grados a cada lado de la
+// derecha. Va 20 px a la derecha del centro para que se vea centrada (la abertura pesa menos que el lomo).
+const C_X = 276, C_RADIUS = 92, C_WIDTH = 52, C_GAP = 48 * Math.PI / 180
 
 // Geometria en el espacio 512x512 del SVG.
 const inRoundedSquare = (x, y, radius) => {
   const dx = Math.max(radius - x, x - (512 - radius), 0), dy = Math.max(radius - y, y - (512 - radius), 0)
   return x >= 0 && x <= 512 && y >= 0 && y <= 512 && dx * dx + dy * dy <= radius * radius
 }
-const inRing = (x, y, radius, width) => Math.abs(Math.hypot(x - CENTER, y - CENTER) - radius) <= width / 2
-const inCapsule = (x, y, y0, y1, width) => Math.hypot(x - CENTER, y - Math.min(Math.max(y, y0), y1)) <= width / 2
-const inMark = (x, y) => inRing(x, y, 150, 28) || inRing(x, y, 86, 16) || inCapsule(x, y, 66, 126, 20) || inCapsule(x, y, 386, 446, 20)
+const inMark = (x, y) => Math.abs(Math.hypot(x - C_X, y - CENTER) - C_RADIUS) <= C_WIDTH / 2 && Math.abs(Math.atan2(y - CENTER, x - C_X)) >= C_GAP
 
 // rounded: esquinas del SVG y fondo transparente fuera. Si no: fondo a sangre (maskable y iOS, que recortan ellos).
 // scale: reduce la marca hacia el centro para que quepa en la zona segura de un icono maskable (circulo del 80 %).
@@ -25,7 +27,7 @@ function render(size, { rounded, scale }) {
     let inside = 0, mark = 0
     for (let sy = 0; sy < SAMPLES; sy++) for (let sx = 0; sx < SAMPLES; sx++) {
       const x = (px + (sx + 0.5) / SAMPLES) * 512 / size, y = (py + (sy + 0.5) / SAMPLES) * 512 / size
-      if (rounded && !inRoundedSquare(x, y, 96)) continue
+      if (rounded && !inRoundedSquare(x, y, CORNER)) continue
       inside++
       if (inMark(CENTER + (x - CENTER) / scale, CENTER + (y - CENTER) / scale)) mark++
     }
