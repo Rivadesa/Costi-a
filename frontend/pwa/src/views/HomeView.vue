@@ -38,7 +38,7 @@ async function ask(): Promise<void> {
       <div class="options-b card">
         <p class="hint">Servidor {{ session.serverVersion }}.</p>
         <p class="hint">Desvincular deja este dispositivo sin acceso, también en el servidor. Para volver a usarlo habrá que conectarlo de nuevo desde el PC principal.</p>
-        <button v-if="!confirming" type="button" class="btn btn-caution" @click="ask">Desvincular este dispositivo</button>
+        <button v-if="!confirming" type="button" class="btn btn-caution" data-testid="unpair" @click="ask">Desvincular este dispositivo</button>
         <template v-else>
           <p v-if="warning" class="pending" role="alert" data-testid="unpair-pending">{{ warning }}</p>
           <div class="row">
