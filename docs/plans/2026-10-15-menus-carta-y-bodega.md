@@ -432,6 +432,12 @@ Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
 
 ### 4.3. C3a — Comandero nuevo: aspecto y mesas (`0.41.0-c3a`, sin cambio de esquema ni de motor)
 
+**Entregado el 20-10**: `docs/native/C3a-comandero-nuevo.md`, con los pasos de `docs/plans/2026-10-20-c3a-comandero-nuevo.md`. Como aquí, con estas diferencias:
+- **«Abrir mesa»** ya queda en tres toques con el menú del día propuesto (mesa libre → personas → «Abrir»). Las alergias en la misma hoja siguen en C3c.
+- **Las tablas de casos** son dos, comunes al comandero y al puesto (`dotnet/tests/fixtures/floorplan-cases.json` y `vocabulary-cases.json`).
+- **Cada proyecto de Playwright tiene sus mesas:** escritorio M6, M7 y M8; móvil M3, M4 y M5.
+- **Quedan para revisar con el promotor** cinco palabras o decisiones, en el documento del corte: el botón «Enviar siguiente pase · <pase>», la oferta que ya no está vigente, la mesa por su nombre en la orden pendiente, «¿Para quién?» sin valor por defecto y el aviso de mesa cerrada en Caja.
+
 Es la primera parte de C3 (plan del nuevo aspecto, apartado C3): el aspecto y el vocabulario del puesto principal llegan a la PWA. No toca el motor, para que la reescritura de las E2E y el proyecto móvil se revisen solos.
 
 **Comandero (PWA):**

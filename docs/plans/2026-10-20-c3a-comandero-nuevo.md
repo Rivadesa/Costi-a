@@ -2,6 +2,8 @@
 
 Fecha: 2026-10-20. **Estado: APROBADO** por el promotor el 20-10, con «merge y sigue»: es el permiso para hacer el corte, subirlo y mezclarlo.
 
+**Entregado el 20-10**: `docs/native/C3a-comandero-nuevo.md`, con sus capturas en `docs/native/images/c3a/`. Todo el alcance de abajo, salvo dos detalles: «Abrir mesa» ya queda en tres toques con el menú del día propuesto, y las mesas propias de las E2E van por proyecto de Playwright (ver «Qué no cambia»). Cinco palabras o decisiones quedan para revisar con el promotor; están en «Divergencias deliberadas» del documento del corte.
+
 Es el corte 3 del plan aprobado `docs/plans/2026-10-15-menus-carta-y-bodega.md` (sección 4.3). Aquí solo se baja a pasos. Las reglas de las secciones 2 («más intuitivo»), 3 (vocabulario), 9 y 10 (decisiones del promotor) se aplican tal cual.
 
 - **Base:** `develop` en `0fd446e` (`0.40.2-e3.3.1`, esquema v8).
@@ -73,7 +75,7 @@ Como en la maqueta:
 - **Una sola orden incierta durable**, con los bloqueos de D6.7 (`actor`, `foreign`, `unreadable`) a la vista.
 - **Restricciones siempre escritas**, nunca solo con color. Lo desconocido sale en crudo.
 - **Tiempo real** como en D6.2: el aviso solo provoca una relectura.
-- **Mesas propias de cada spec E2E:** board=M6, commands=M7, kitchen=M8.
+- **Mesas propias de cada spec E2E:** board=M6, commands=M7, kitchen=M8 en el proyecto de escritorio, y M3, M4 y M5 en el móvil (`e2e/support.ts`, carriles). M2 sigue siendo de `pwa_http.py`; las capturas usan M1 y M3–M8, solo con una base nueva.
 
 ## Pruebas
 
