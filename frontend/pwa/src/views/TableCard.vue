@@ -106,7 +106,7 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
 <template>
   <article class="ficha stack" data-testid="detail">
     <header class="appbar">
-      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" />Mesas</button>
+      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
       <button v-else type="button" class="back" data-testid="back" @click="panel = 'ficha'"><Icon name="back" :size="24" :stroke="2.2" />{{ tableName }}</button>
       <div class="appbar-t">
         <div class="appbar-title">

@@ -42,7 +42,7 @@ function submit(): void {
 <template>
   <article class="ficha stack" data-testid="open-form">
     <header class="appbar">
-      <button type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" />Mesas</button>
+      <button type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
       <div class="appbar-t">
         <div class="appbar-title"><h2>Abrir {{ tableName }}</h2><span class="pill t-free">Libre</span></div>
         <p class="appbar-sub">{{ [roomName, capacity > 0 ? `hasta ${plural(capacity, 'persona', 'personas')}` : ''].filter(part => part).join(' · ') }}</p>

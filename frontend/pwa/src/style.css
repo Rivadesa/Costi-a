@@ -74,10 +74,15 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .age { font-size: 13.5px; color: var(--muted); }
 .age.stale { color: var(--warn-text); font-weight: 600; }
 .status .refresh { margin-left: auto; min-height: var(--touch); min-width: var(--touch); padding: 0 10px; }
-/* En el movil, «Actualizar» queda en su icono (su nombre accesible sigue siendo «Actualizar») y la antiguedad, debajo. */
+/* En el movil, «Actualizar» queda en su icono (su nombre accesible sigue siendo «Actualizar») y la antiguedad, debajo. La cabecera
+   aprieta su aire para dejar sitio a la mesa, y «Volver» es solo la flecha, como en la maqueta (su nombre accesible sigue siendo «Mesas»). */
 @media (max-width: 699px) {
+  .app { padding-top: max(6px, env(safe-area-inset-top)); }
+  .topbar { min-height: 44px; margin-bottom: 4px; }
+  .status { margin-bottom: 8px; }
   .status .age { flex-basis: 100%; order: 3; }
-  .refresh-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .refresh-t, .back-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .bar .btn-big { font-size: 16px; padding: 8px 12px; }
 }
 .status-panels { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 /* La orden sin confirmar no se puede pasar por alto: titulo en mayusculas, borde grueso y texto, no solo color. */
@@ -90,7 +95,7 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .floor-h h2 { font-size: 24px; font-weight: 600; }
 .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; margin-bottom: 4px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { flex: none; min-height: 44px; padding: 0 15px; border-radius: 22px; border: 1px solid var(--border); background: var(--surface); font-size: 15px; white-space: nowrap; }
+.tab { flex: none; min-height: var(--touch); padding: 0 15px; border-radius: 24px; border: 1px solid var(--border); background: var(--surface); font-size: 15px; white-space: nowrap; }
 .tab[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .room + .room { margin-top: 18px; }
 .room-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0 2px 8px; }
@@ -185,9 +190,11 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .more > summary .icon { color: var(--muted); }
 .more-b { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-top: 1px solid var(--border); }
 .more-b .btn { width: 100%; justify-content: flex-start; text-align: left; padding: 8px 14px; }
-/* El boton grande, abajo y siempre a la vista (la seccion de acciones no crea caja: el borde de la ficha lo limita). */
+/* El boton grande, abajo y siempre a la vista (la seccion de acciones no crea caja: el borde de la ficha lo limita). La ficha ocupa al
+   menos la pantalla, asi que con poco contenido el boton tambien queda al pie, como en la maqueta, y lo demas (Opciones) debajo. */
+.ficha { min-height: 100vh; min-height: 100dvh; }
 .actions { display: contents; }
-.bar { position: sticky; bottom: 0; z-index: 5; margin: 6px -16px 0; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.bar { position: sticky; bottom: 0; z-index: 5; margin: auto -16px 0; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .bar-note { font-size: 13.5px; color: var(--muted); text-align: center; }
 .bar-note b { color: var(--text); }
 .sheet-panel { display: flex; flex-direction: column; gap: 12px; }
@@ -254,7 +261,7 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 @media (min-width: 700px) {
   .app { padding-left: 24px; padding-right: 24px; }
   .ficha { max-width: 52rem; margin: 0 auto; }
-  .bar { margin: 6px 0 0; padding: 12px 0 max(16px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 0; align-items: flex-end; }
+  .bar { margin: auto 0 0; padding: 12px 0 max(16px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 0; align-items: flex-end; }
   .bar .btn-big { max-width: 520px; }
   .bar-note { text-align: right; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 12px; }
