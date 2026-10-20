@@ -83,9 +83,9 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await page.getByTestId('do-start').click()
   await expect(page.getByTestId('do-fire-next')).toBeVisible({ timeout: 15_000 })
   await page.getByTestId('do-fire-next').click()
-  await expect(page.getByTestId('detail')).toContainText('Enviado a cocina', { timeout: 15_000 })
+  await expect(page.getByTestId('detail')).toContainText('En cocina', { timeout: 15_000 })
   // Un dispositivo de SALA no ve acciones de cocina ni de cierre: el servidor no se las anuncia.
-  await expect(page.getByTestId('actions')).not.toContainText(/Validar|Terminar|Liberar|Elaboracion lista/i)
+  await expect(page.getByTestId('actions')).not.toContainText(/Validar|Terminar|Liberar|elaboraci[oó]n lista/i)
 
   // 2) Cocina termina y valida el pase (por API): aparece "Servir". Se sirve desde la tablet.
   let current = await read(request, serviceId)
@@ -122,7 +122,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await expect.poll(() => storedOrder(page), { timeout: 30_000 }).toBeNull()                 // reintento automatico con la misma clave: cerrada
   await expect(page.getByTestId('pending')).toHaveCount(0)
   expect(await audited(request, serviceId)).toBe(before + 1)                                // UN solo efecto: ni perdida ni duplicada
-  await expect(page.getByTestId('table-M7')).toContainText('EN PAUSA', { timeout: 15_000 })
+  await expect(page.getByTestId('table-M7')).toContainText('En pausa', { timeout: 15_000 })
 
   // 5) Otra respuesta perdida, resuelta PREGUNTANDO al servidor en vez de reintentar.
   await page.getByTestId('table-M7').click()
@@ -132,7 +132,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   await resumeLost.lost
   await expect(page.getByTestId('pending')).toBeVisible({ timeout: 15_000 })
   await page.getByTestId('reconcile').click()                                               // la ruta sigue cortada: solo la consulta por clave llega
-  await expect(page.getByTestId('command-notice')).toContainText('SI se aplico', { timeout: 15_000 })
+  await expect(page.getByTestId('command-notice')).toContainText('SÍ se aplicó', { timeout: 15_000 })
   await page.unrouteAll({ behavior: 'wait' })
   await expect(page.getByTestId('pending')).toHaveCount(0)
   expect(await audited(request, serviceId)).toBe(beforeResume + 1)
@@ -154,7 +154,7 @@ test('a waiter runs a table from the tablet; lost responses and network cuts nev
   expect((await read(request, serviceId)).data.courses[1].state).toBe('Fired')
 
   // 7) Consumo a mayores desde sala: catalogo SIN precios y respuesta sin importes.
-  await expect(page.getByTestId('table-M7')).toContainText('Enviado a cocina', { timeout: 15_000 })   // tablero al dia tras el reintento: version fresca
+  await expect(page.getByTestId('table-M7')).toContainText('En cocina', { timeout: 15_000 })   // tablero al dia tras el reintento: version fresca
   await page.getByTestId('table-M7').click()
   await page.locator('[data-testid=actions] details', { hasText: 'consumo' }).locator('summary').click()
   await expect(page.locator('select[name=product]')).not.toContainText(/€|\d+[.,]\d{2}/)

@@ -60,7 +60,7 @@ describe('kitchen labels and input format', () => {
     expect(elapsedLabel('2026-09-21T12:23:10Z', now)).toBe('enviado hace 6 min')
     expect(elapsedLabel('2026-09-21T12:29:40Z', now)).toBe('enviado hace menos de 1 min')
     expect(elapsedLabel('2026-09-21T12:45:00Z', now)).toBe('enviado hace menos de 1 min')   // reloj de la tablet atrasado
-    expect(elapsedLabel(null, now)).toBe('hora de envio desconocida')
+    expect(elapsedLabel(null, now)).toBe('hora de envío desconocida')
   })
   it('a review note is mandatory', () => {
     expect(reviewNoteOk('')).toBe(false); expect(reviewNoteOk('  a ')).toBe(false); expect(reviewNoteOk('sin nata')).toBe(true)

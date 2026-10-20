@@ -5,7 +5,7 @@ const MONEY_KEY = /(price|cents|amount|balance|subtotal|total|paid|payment|refun
 
 export class MoneyLeakError extends Error {
   constructor(public readonly path: string) {
-    super(`Respuesta con datos economicos (${path}): esta aplicacion es solo operativa.`)
+    super(`Respuesta con datos económicos (${path}): esta aplicación es solo operativa.`)
   }
 }
 

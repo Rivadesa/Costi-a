@@ -3,25 +3,101 @@ import type { BoardEntry, Course, Dining, GuestRestriction, Preparation } from '
 
 // Textos en pantalla. Regla de AGENTS.md: una alerta de alergia NUNCA depende solo del color; aqui
 // todo aviso lleva palabra, sustancia y severidad escritas. Sin reglas de negocio: solo se rotula.
-const DINING: Record<Dining['state'], string> = { Open: 'Mesa abierta', InService: 'En servicio', Paused: 'EN PAUSA', Completed: 'Terminado', Cancelled: 'Cancelado' }
-const COURSE: Record<Course['state'], string> = { Pending: 'Sin enviar', Fired: 'Enviado a cocina', Preparing: 'En preparacion', Ready: 'LISTO PARA SERVIR', Served: 'Servido', Skipped: 'Omitido' }
-const PREPARATION: Record<Preparation['state'], string> = { Pending: 'Sin enviar', Fired: 'Enviada', Preparing: 'En preparacion', Ready: 'Lista' }
-const KIND: Record<GuestRestriction['kind'], string> = { Allergy: 'ALERGIA', Intolerance: 'Intolerancia', Preference: 'Preferencia' }
-const SEVERITY: Record<GuestRestriction['severity'], string> = { Severe: 'grave', Moderate: 'moderada', Mild: 'leve' }
-const REVIEW: Record<string, string> = { Unaffected: 'no afecta', Adapt: 'adaptada', Remake: 'rehecha' }
+//
+// C3a: el MISMO vocabulario que el puesto principal (Costina.Client/Labels.cs), con tildes. La tabla de casos comun
+// dotnet/tests/fixtures/vocabulary-cases.json la recorren vitest y ClientChecks: las dos copias no pueden separarse.
+// Reglas, como en el puesto:
+//  - un valor DESCONOCIDO se muestra tal cual: nunca se rebaja a una etiqueta mas suave ni se inventa;
+//  - ni mayusculas ni guiones cuentan: las lecturas llegan en PascalCase (InService) y /configuration manda los tipos de
+//    estacion en minuscula (kitchen); las dos formas dan el mismo texto;
+//  - el comandero NUNCA rotula vocabulario de caja (pagos, cobros, cuentas): esas acciones no estan aqui y saldrian en crudo.
 
-export const diningLabel = (state: Dining['state']) => DINING[state] ?? state
-export const courseLabel = (state: Course['state']) => COURSE[state] ?? state
-export const preparationLabel = (state: Preparation['state']) => PREPARATION[state] ?? state
+// Clave de busqueda de una familia (espejo de Labels.Vocabulary.Key): solo letras y cifras, en minuscula.
+const key = (value: string) => Array.from(value).filter(char => /[\p{L}\p{Nd}]/u.test(char)).join('').toLowerCase()
+
+// Tabla de una familia: codigo -> texto. Lo que no esta en la tabla vuelve sin tocar.
+function vocabulary(rows: Readonly<Record<string, string>>): (value: string | null | undefined) => string {
+  const labels = new Map(Object.entries(rows).map(([code, label]) => [key(code), label]))
+  return value => value === null || value === undefined ? '' : labels.get(key(value)) ?? value
+}
+
+// Las tablas, exportadas para que la prueba compruebe que no hay ni una palabra fuera de la tabla de casos comun.
+export const VOCABULARY = {
+  dining: { Open: 'Sentados', InService: 'En servicio', Paused: 'En pausa', Completed: 'Terminado', Cancelled: 'Cancelado' },
+  course: { Pending: 'Sin enviar', Fired: 'En cocina', Preparing: 'En preparación', Ready: 'Listo para servir', Served: 'Servido', Skipped: 'Omitido' },
+  preparation: { Pending: 'Sin enviar', Fired: 'Por empezar', Preparing: 'En preparación', Ready: 'Lista' },
+  // C2: estado de una mesa en el plano (codigos de floor.ts). Solo presentacion: nunca habilita nada.
+  tableState: {
+    free: 'Libre', seated: 'Sentados', kitchen: 'En cocina', ready: 'Listo para servir', eating: 'Comiendo', paused: 'En pausa',
+    finished: 'Terminado, por liberar', cancelled: 'Cancelado, por liberar',
+  },
+  // E4d: tasting es el «Menú degustación» del promotor; set-menu, el «Menú con elección» (cada persona elige).
+  offerKind: { tasting: 'Menú degustación', 'set-menu': 'Menú con elección', 'a-la-carte': 'Carta' },
+  stationKind: { kitchen: 'Cocina', pass: 'Pase', bar: 'Barra', room: 'Sala' },
+  // D3.2: la alergia en mayusculas para que se vea sin depender del color.
+  restrictionKind: { Allergy: 'ALERGIA', Intolerance: 'Intolerancia', Preference: 'Preferencia' },
+  severity: { Severe: 'grave', Moderate: 'moderada', Mild: 'leve' },
+  review: { Unaffected: 'no afecta', Adapt: 'adaptada', Remake: 'rehecha' },
+  // Acciones que anuncia el servidor, solo las OPERATIVAS (las de caja no existen en el comandero).
+  action: {
+    open: 'Abrir mesa', start: 'Iniciar servicio', 'fire-next': 'Enviar siguiente pase a cocina', serve: 'Marcar servido',
+    pause: 'Pausar servicio', resume: 'Reanudar servicio', complete: 'Terminar servicio', 'cancel-unstarted': 'Cancelar mesa sin empezar',
+    skip: 'Omitir pase', ready: 'Validar pase listo', choose: 'Elegir plato', 'add-dish': 'Pedir plato',
+    'preparation-start': 'Empezar elaboración', 'preparation-ready': 'Marcar elaboración lista', 'review-preparation': 'Revisar elaboración',
+    'declare-restriction': 'Declarar restricción', 'remove-restriction': 'Retirar restricción', release: 'Liberar mesa',
+    'add-consumption': 'Añadir consumo',
+  },
+} as const satisfies Record<string, Record<string, string>>
+
+export const diningLabel = vocabulary(VOCABULARY.dining)
+export const courseLabel = vocabulary(VOCABULARY.course)
+export const preparationLabel = vocabulary(VOCABULARY.preparation)
+export const tableStateLabel = vocabulary(VOCABULARY.tableState)
+export const offerKindLabel = vocabulary(VOCABULARY.offerKind)
+export const stationKindLabel = vocabulary(VOCABULARY.stationKind)
+export const restrictionKindLabel = vocabulary(VOCABULARY.restrictionKind)
+export const severityLabel = vocabulary(VOCABULARY.severity)
+export const reviewDecisionLabel = vocabulary(VOCABULARY.review)
+export const actionLabel = vocabulary(VOCABULARY.action)
+
+const same = (value: string | null | undefined, code: string) => (value ?? '').toLowerCase() === code.toLowerCase()
+
+// Estado de un pase con su matiz (espejo de Labels.Course(CourseDto, pax)): el motivo de la omision, la eleccion pendiente de un
+// menu con eleccion y el grupo de carta vacio. Sin el numero de personas solo se sabe que falta elegir cuando nadie ha elegido.
+export function courseStateLabel(course: Course, pax?: number | null): string {
+  if (same(course.state, 'Skipped') && course.skipReason) return `${courseLabel(course.state)}: ${course.skipReason}`
+  if (same(course.state, 'Pending')) {
+    if (course.optional === true && course.preparations.length === 0) return 'Sin platos pedidos'
+    const chosen = new Set(course.preparations.filter(p => p.guestPosition !== null && p.guestPosition !== undefined).map(p => p.guestPosition)).size
+    if (course.choiceRequired === true && (pax !== null && pax !== undefined ? chosen < pax : chosen === 0)) return 'Falta elegir plato'
+  }
+  return courseLabel(course.state)
+}
+
+// «Toda la mesa» o «Comensal n», como en el puesto (plan, sección 3: nada de «Mesa» ni de «Para compartir»).
+export const guestLabel = (position: number | null | undefined) => position === null || position === undefined ? 'Toda la mesa' : `Comensal ${position}`
+
+// Hora LOCAL del dispositivo (el servidor sella en UTC), como Labels.Clock del puesto.
+export function clockLabel(at: string): string {
+  const date = new Date(at)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// Minutos transcurridos ("12 min", "1 h 05 min"), truncados y nunca negativos si el reloj del dispositivo va por detras del servidor.
+export function minutesLabel(elapsedMs: number): string {
+  const minutes = Math.max(0, Math.trunc(elapsedMs / 60_000))
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min`
+}
+
+export const plural = (count: number, one: string, many: string) => count === 1 ? `1 ${one}` : `${count} ${many}`
 
 export function restrictionLabel(restriction: GuestRestriction): string {
-  const who = restriction.guestPosition === null ? 'Mesa' : `Comensal ${restriction.guestPosition}`
-  return `${who} · ${KIND[restriction.kind] ?? restriction.kind} ${restriction.substance} (${SEVERITY[restriction.severity] ?? restriction.severity})`
+  return `${guestLabel(restriction.guestPosition)} · ${restrictionKindLabel(restriction.kind)} ${restriction.substance} (${severityLabel(restriction.severity)})`
 }
 
 export function reviewLabel(preparation: Preparation): string {
-  if (preparation.reviewPending) return 'PENDIENTE DE REVISION POR COCINA'
-  return preparation.review ? `Revisada: ${REVIEW[preparation.review.decision] ?? preparation.review.decision} — ${preparation.review.note}` : ''
+  if (preparation.reviewPending) return 'PENDIENTE DE REVISIÓN POR COCINA'
+  return preparation.review ? `Revisada: ${reviewDecisionLabel(preparation.review.decision)} — ${preparation.review.note}` : ''
 }
 
 // El pase "en curso" de una mesa: el primero que no esta servido ni omitido.

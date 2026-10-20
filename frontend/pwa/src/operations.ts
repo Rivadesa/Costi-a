@@ -53,7 +53,7 @@ export function useOperations(props: { token: string; session: Session }, onUnau
       if (outcome.kind !== 'unconfirmed') await live.refresh()
     } catch (error) {
       // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.
-      if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SI se aplico. ${error.message}`; await live.refresh() }
+      if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SÍ se aplicó. ${error.message}`; await live.refresh() }
       else if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
     } finally { settling.value-- }
   }

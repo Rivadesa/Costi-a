@@ -61,12 +61,12 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   const tile = page.getByTestId('table-M6')
   await expect(tile).toBeVisible({ timeout: 10_000 })
   await expect(tile).toContainText('3 personas')
-  await expect(tile).toContainText('Mesa abierta')
+  await expect(tile).toContainText('Sentados')
 
   // 2) El servicio avanza desde el PC principal: el tablero lo refleja.
   await command(request, opened.serviceId, 'start')
   await command(request, opened.serviceId, 'fire-next')
-  await expect(tile).toContainText('Aperitivos: Enviado a cocina', { timeout: 10_000 })
+  await expect(tile).toContainText('Aperitivos: En cocina', { timeout: 10_000 })
 
   // 3) Alergia declarada con el pase ya enviado: texto + sustancia + severidad, y revision pendiente de cocina.
   await command(request, opened.serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
@@ -75,16 +75,16 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await tile.click()
   const detail = page.getByTestId('detail')
   await expect(detail.getByTestId('restrictions')).toContainText('Comensal 1 · ALERGIA marisco (grave)')
-  await expect(detail).toContainText('PENDIENTE DE REVISION POR COCINA')
+  await expect(detail).toContainText('PENDIENTE DE REVISIÓN POR COCINA')
   await expect(detail).toContainText('estacion cold')
 
   // 4) El detalle abierto tambien vive: cocina marca una elaboracion y se ve sin tocar nada.
   const read = await (await asMain(request, `/dining/services/${opened.serviceId}`)).json()
   const course = read.data.courses[0] as { id: string; preparations: Array<{ id: string; stationId: string }> }
   const hot = course.preparations.find(p => p.stationId === 'hot')!, cold = course.preparations.find(p => p.stationId === 'cold')!
-  await expect(detail).not.toContainText('En preparacion')
+  await expect(detail).not.toContainText('En preparación')
   await command(request, opened.serviceId, 'preparation-start', { courseId: course.id, itemId: hot.id })
-  await expect(detail).toContainText('En preparacion', { timeout: 10_000 })
+  await expect(detail).toContainText('En preparación', { timeout: 10_000 })
 
   // 5) Sin red: lo dice, conserva lo ultimo leido y marca la antiguedad. Al volver, relee sola.
   await context.setOffline(true)
@@ -94,7 +94,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await command(request, opened.serviceId, 'preparation-start', { courseId: course.id, itemId: cold.id })   // cambio ocurrido durante el corte (la API de test no pasa por el navegador)
   await context.setOffline(false)
   await expect(page.getByTestId('board-error')).toHaveCount(0, { timeout: 30_000 })
-  await expect(detail.locator('li', { hasText: 'En preparacion' })).toHaveCount(2, { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
+  await expect(detail.locator('li', { hasText: 'En preparación' })).toHaveCount(2, { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
   await expect(page.getByTestId('link')).toHaveText('Tiempo real activo', { timeout: 60_000 })
 
   expect(leaks, 'the PWA received financial data').toEqual([])

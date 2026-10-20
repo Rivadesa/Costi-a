@@ -84,7 +84,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await coldPage.getByTestId(id('preparation-start', cold.id)).click()
   // El motor anuncia "empezar" y "marcar lista" A LA VEZ en una elaboracion enviada: la senal de que la primera orden
   // se aplico y se releyo es el ESTADO escrito, no que el segundo boton exista (ya existia).
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· En preparacion', { timeout: 15_000 })
+  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· En preparación', { timeout: 15_000 })
   await expect(coldPage.getByTestId(id('preparation-start', cold.id))).toHaveCount(0)
   await coldPage.getByTestId(id('preparation-ready', cold.id)).click()
   // La senal es el ESTADO escrito y que el servidor ya no anuncie la accion (no el texto del boton).
@@ -138,7 +138,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(ready).toBeVisible({ timeout: 15_000 })
   await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
   await ready.click()
-  await expect(passTicket.locator('h3')).toContainText('LISTO PARA SERVIR', { timeout: 15_000 })          // el encabezado, no el texto del boton
+  await expect(passTicket.locator('h3')).toContainText('Listo para servir', { timeout: 15_000 })          // el encabezado, no el texto del boton
   await expect(ready).toHaveCount(0)
   await expect(passPage.getByTestId('pending')).toHaveCount(0)
   expect((await read(request, serviceId)).data.courses[0].state).toBe('Ready')

@@ -1,0 +1,88 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import { REJECTIONS } from '../src/commands'
+import { elapsedLabel, REVIEW_DECISIONS } from '../src/kitchen'
+import {
+  actionLabel, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
+  preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, severityLabel, stationKindLabel, tableStateLabel,
+  unpairWarning, VOCABULARY,
+} from '../src/labels'
+import { LINK_TEXT } from '../src/live'
+import { MoneyLeakError } from '../src/money-guard'
+import { UNPAIRED_NOTICE } from '../src/startup'
+import { PERSISTENCE_HINT } from '../src/storage'
+import type { GuestRestriction, Preparation } from '../src/types'
+
+// C3a: la MISMA tabla de casos que ClientChecks recorre contra Costina.Client/Labels.cs: el comandero habla como el puesto.
+const cases = JSON.parse(readFileSync(fileURLToPath(new URL('../../../dotnet/tests/fixtures/vocabulary-cases.json', import.meta.url))).toString('utf8')) as {
+  families: Record<string, Record<string, string>>
+  guests: Array<{ position: number | null; text: string }>
+  restrictions: Array<{ restriction: GuestRestriction; text: string }>
+  minutes: Array<{ minutes: number; text: string }>
+  plural: Array<{ count: number; one: string; many: string; text: string }>
+}
+const FAMILIES: Record<string, (value: string) => string> = {
+  dining: diningLabel, course: courseLabel, preparation: preparationLabel, tableState: tableStateLabel, offerKind: offerKindLabel,
+  stationKind: stationKindLabel, restrictionKind: restrictionKindLabel, severity: severityLabel, review: reviewDecisionLabel, action: actionLabel,
+}
+
+describe('vocabulary: the case table shared with the main PC (Labels.cs)', () => {
+  it.each(Object.entries(cases.families))('%s', (family, rows) => {
+    expect(Object.keys(FAMILIES), `unknown family in the shared cases: ${family}`).toContain(family)
+    for (const [code, text] of Object.entries(rows)) expect(FAMILIES[family](code), code).toBe(text)
+  })
+  it('labels.ts has no family and no word that the shared table does not have', () => {
+    expect(Object.keys(VOCABULARY).sort()).toEqual(Object.keys(cases.families).sort())
+    for (const [family, rows] of Object.entries(VOCABULARY))
+      for (const [code, text] of Object.entries(rows)) expect(cases.families[family][code], `${family}.${code}`).toBe(text)
+  })
+  it('guests, restrictions, minutes and plurals', () => {
+    for (const row of cases.guests) expect(guestLabel(row.position)).toBe(row.text)
+    for (const row of cases.restrictions) expect(restrictionLabel(row.restriction)).toBe(row.text)
+    for (const row of cases.minutes) expect(minutesLabel(row.minutes * 60_000), String(row.minutes)).toBe(row.text)
+    for (const row of cases.plural) expect(plural(row.count, row.one, row.many)).toBe(row.text)
+  })
+})
+
+describe('vocabulary of the handheld', () => {
+  it('station kinds arrive lowercase from /configuration and are named, not shown as codes', () => {
+    expect(['kitchen', 'pass', 'bar', 'room'].map(stationKindLabel)).toEqual(['Cocina', 'Pase', 'Barra', 'Sala'])
+  })
+  it('never labels a checkout action: it would come back raw, never as a word of the till', () => {
+    for (const action of ['payment', 'void-charge', 'refund', 'close', 'reopen', 'add-product']) expect(actionLabel(action)).toBe(action)
+  })
+  it('nothing read is ever shown as an empty word, and an absent value is empty', () => {
+    expect(diningLabel(null)).toBe(''); expect(courseLabel(undefined)).toBe(''); expect(diningLabel('Closing')).toBe('Closing')
+  })
+  it('a kitchen review is always written, with accents', () => {
+    const base: Preparation = { id: 'p1', name: 'Tosta', stationId: 'cold', quantity: 1, guestPosition: 3, mandatory: true, state: 'Fired' }
+    expect(reviewLabel({ ...base, reviewPending: true })).toBe('PENDIENTE DE REVISIÓN POR COCINA')
+    expect(reviewLabel({ ...base, review: { decision: 'Adapt', note: 'pan de maíz', at: '2026-10-20T12:00:00Z' } })).toBe('Revisada: adaptada — pan de maíz')
+    expect(reviewLabel(base)).toBe('')
+  })
+})
+
+// Lo que el comandero y la cocina pueden llegar a pintar desde la logica (las vistas, aparte): sin palabras de caja, ni siquiera
+// dentro de otra palabra (regla de kitchen.spec.ts), y sin las formas sin tilde que tenia la PWA antes de C3a.
+const SHOWN = [
+  ...Object.values(VOCABULARY).flatMap(rows => Object.values(rows) as string[]),
+  ...Object.values(REJECTIONS), ...Object.values(LINK_TEXT), ...Object.values(PERSISTENCE_HINT), UNPAIRED_NOTICE,
+  blockedTitle({ reason: 'actor', actor: 'device:tablet' }), blockedTitle({ reason: 'foreign' }), blockedTitle({ reason: 'unreadable' }),
+  otherActorAdvice('device:tablet'), pairPendingAdvice('tablet'), unpairWarning({ kind: 'unreadable', key: 'k' }),
+  unpairWarning({ kind: 'restored', command: { key: 'k', path: '/x', body: '{}', description: 'Servir', createdAt: '', installationId: 'i', actor: 'device:tablet' } }),
+  new MoneyLeakError('$.x').message, elapsedLabel(null, 0), ...REVIEW_DECISIONS.map(option => option.label),
+  reviewLabel({ id: 'p', name: 'x', stationId: 's', quantity: 1, guestPosition: null, mandatory: true, state: 'Fired', reviewPending: true }),
+]
+const UNACCENTED = ['aplicacion', 'aplico', 'revision', 'accion', 'estacion', 'codigo', 'conexion', 'envio', 'preparacion', 'eleccion', 'menu',
+  'restriccion', 'elaboracion', 'economicos', 'desvinculo', 'restauro', 'instalala', 'usala', 'asi']
+
+describe('words on screen', () => {
+  it('no checkout word, not even inside another word', () => {
+    expect(SHOWN.filter(text => /€|precio|saldo|pago|cuenta/i.test(text))).toEqual([])
+  })
+  it('Spanish with accents: none of the unaccented forms the PWA used to show', () => {
+    const found = SHOWN.flatMap(text => UNACCENTED.filter(word => new RegExp(`(^|[^\\p{L}])${word}($|[^\\p{L}])`, 'iu').test(text)).map(word => `${word}: ${text}`))
+    expect(found).toEqual([])
+  })
+})

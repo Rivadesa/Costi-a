@@ -45,8 +45,14 @@ public static class FloorPlan
         _ => null
     };
 
+    // C3a: lo que pinta la tarjeta con Since: los minutos del estado que se ve ("12 min"); sin hora del servidor, nada.
+    public static string Elapsed(DiningDto? service, DateTimeOffset now) => Since(service) is { } since ? Labels.Minutes(now - since) : "";
+
     // Avance de los pases: cada uno con su tono (hecho, listo, en cocina, pendiente) y cuantos estan servidos u omitidos.
     public static string[] Steps(DiningDto? service) => service is null ? [] : service.Courses.Select(Step).ToArray();
+    // C3a: el avance en corto de la tarjeta, "2 de 5" (servidos u omitidos de todos); sin pases, nada.
+    public static string Progress(DiningDto? service) => Steps(service) is { Length: > 0 } steps
+        ? Done(service).ToString(CultureInfo.InvariantCulture) + " de " + steps.Length.ToString(CultureInfo.InvariantCulture) : "";
     public static string Step(CourseDto course) =>
         Same(course.State, "Served") || Same(course.State, "Skipped") ? "done"
         : Same(course.State, "Ready") ? "ready"

@@ -28,16 +28,16 @@ const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0))
 describe('labels never rely on colour', () => {
   it('spells out kind, substance and severity, per guest or whole table', () => {
     expect(restrictionLabel({ id: 'r', guestPosition: 2, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })).toBe('Comensal 2 · ALERGIA marisco (grave)')
-    expect(restrictionLabel({ id: 'r', guestPosition: null, kind: 'Preference', substance: 'sin picante', severity: 'Mild' })).toBe('Mesa · Preferencia sin picante (leve)')
+    expect(restrictionLabel({ id: 'r', guestPosition: null, kind: 'Preference', substance: 'sin picante', severity: 'Mild' })).toBe('Toda la mesa · Preferencia sin picante (leve)')
   })
   it('says when kitchen still has to review, and what it decided', () => {
-    expect(reviewLabel(preparation({ reviewPending: true }))).toBe('PENDIENTE DE REVISION POR COCINA')
+    expect(reviewLabel(preparation({ reviewPending: true }))).toBe('PENDIENTE DE REVISIÓN POR COCINA')
     expect(reviewLabel(preparation({ review: { decision: 'Remake', note: 'sin frutos secos', at: '' } }))).toBe('Revisada: rehecha — sin frutos secos')
     expect(reviewLabel(preparation())).toBe('')
     expect(pendingReviews(dining({ courses: [{ ...dining().courses[0], preparations: [preparation({ reviewPending: true }), preparation({ id: 'b' })] }] }))).toBe(1)
   })
   it('summarises the current course and formats data age', () => {
-    expect(boardSummary(entry())).toBe('Aperitivos: Enviado a cocina')
+    expect(boardSummary(entry())).toBe('Aperitivos: En cocina')
     expect(boardSummary(entry(dining({ courses: [{ ...dining().courses[0], state: 'Served' }] })))).toBe('Todos los pases servidos')
     expect([ageLabel(null), ageLabel(7), ageLabel(125)]).toEqual(['sin lectura', 'hace 7 s', 'hace 2 min 5 s'])
   })

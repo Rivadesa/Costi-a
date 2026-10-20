@@ -84,7 +84,7 @@ test('a device pairs, survives reload, opens offline from the shell cache and ho
   expect((await asMain(request, `/auth/devices/${deviceId}/revoke`, {})).ok()).toBeTruthy()
   // Nadie pulsa nada: la revocacion corta el tiempo real y la siguiente lectura devuelve 401; la PWA lo descubre SOLA.
   await expect(page.getByTestId('pair')).toBeVisible({ timeout: 45_000 })
-  await expect(page.getByTestId('notice')).toContainText('ya no esta emparejado')
+  await expect(page.getByTestId('notice')).toContainText('ya no está emparejado')
   await page.reload()
   await expect(page.getByTestId('pair')).toBeVisible()                              // la credencial se borro de verdad
 
