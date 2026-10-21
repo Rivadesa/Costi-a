@@ -1147,6 +1147,13 @@ internal static class Program
         // Con la accion anunciada (el Puesto es un dispositivo de sala: la tiene), el boton sale habilitado y abre SIN pedir la contrasena.
         window.Shell.Session=puestoSession; window.UpdateLayout();
         if(!window.Shell.IsStation||!addConsumption.IsVisible||!addConsumption.IsEnabled) throw new Exception("At the Puesto level an open table offers «Añadir consumición», enabled by the announced add-consumptions.");
+        // Revision: el boton va en la cabecera FIJA de la ficha (bajo «Ver cuenta»), nunca dentro del desplazamiento tras los pases: en la
+        // degustacion de 6 pases de la Mesa 1, desde arriba, esta a la vista (en la cabecera de «Lo que lleva la mesa» quedaba debajo).
+        Pick("Mesa 1","s1"); var detailScrollC3b=(ScrollViewer)serviceView.FindName("DetailScroll"); detailScrollC3b.ScrollToHome(); window.UpdateLayout();
+        var addBottom=addConsumption.TranslatePoint(new Point(0,addConsumption.ActualHeight),fichaPanel).Y; var scrollTop=detailScrollC3b.TranslatePoint(new Point(0,0),fichaPanel).Y;
+        if(!addConsumption.IsVisible||addConsumption.IsDescendantOf(detailScrollC3b)||addBottom>scrollTop+0.5)
+            throw new Exception("«Añadir consumición» is in the fixed header of the ficha, above what scrolls, in view on a 6-course table: "+addBottom+" > "+scrollTop);
+        Pick("Mesa 4","s4");
         var readsBeforePicker=server.Requests.Length;
         Press(addConsumption,"Añadir consumición");
         Wait(()=>!window.Shell.Busy&&drinks.Rows.Length>0,"the picker reads the operational catalog"); window.UpdateLayout();
@@ -1158,6 +1165,11 @@ internal static class Program
         string ChipText()=>string.Join(", ",drinks.Chips.Select(c=>c.Label+" "+c.Count+(c.IsCurrent?"*":"")));
         if(ChipText()!="Por copa 4*, Blancos 2, Cafés e infusiones 1, Cervezas 1, Refrescos y aguas 2, Tintos 3"||drinks.ListTitle!="Por copa"||drinks.ListDetail!="4 vinos por copa · de la A a la Z")
             throw new Exception("Quick accesses: «Por copa» first and chosen, then the families A to Z with their counts (no kitchen dish, no menu): "+ChipText());
+        // «Por copa» con el borde discontinuo de acento, como en el comandero (.chip-glass) y la maqueta; las familias, no.
+        bool Dashed(Button chip)=>chip.Template.FindName("Dash",chip) is System.Windows.Shapes.Rectangle{Visibility:Visibility.Visible};
+        var chipButtons=Descendants<Button>(drinksPicker).Where(b=>b.IsVisible&&b.DataContext is Costina.Desktop.ViewModels.ChipRow).ToArray();
+        if(!chipButtons.Where(b=>((Costina.Desktop.ViewModels.ChipRow)b.DataContext).Glass).Select(Dashed).SequenceEqual([true])||chipButtons.Any(b=>!((Costina.Desktop.ViewModels.ChipRow)b.DataContext).Glass&&Dashed(b)))
+            throw new Exception("«Por copa» has the dashed accent border of the handheld; the families do not.");
         if(DrinkRows()!="Albariño Pazo de Señoráns [Blancos › Rías Baixas] Copa/Botella 0.75 L | Guímaro Mencía 2022 [Tintos › Ribeira Sacra] Copa/Botella 0.75 L | Lalama 2019 [Tintos › Ribeira Sacra] Copa/Botella 0.75 L | Vino de la casa [Tintos › Ribeiro] Copa/Botella")
             throw new Exception("One row per product, family › region and one button per presentation, the glass first: "+DrinkRows());
         if(!drinks.Repeats.Select(r=>r.Name+" · "+r.Detail).SequenceEqual(["Vino de la casa · Botella","Agua mineral · Botella 1 L"])) throw new Exception("«En esta mesa» repeats what was sent and not voided: "+string.Join(", ",drinks.Repeats.Select(r=>r.Name)));
@@ -1247,14 +1259,18 @@ internal static class Program
         server.LoseNextRound=true;
         Press(InTray("SendRoundButton"),"Enviar (respuesta perdida)");
         Wait(()=>!window.Shell.Busy&&window.Shell.HasPending,"a lost response leaves the round uncertain");
+        window.UpdateLayout();
         if(drinks.HasLines||window.Shell.Pending?.Description!="Ronda para Mesa 4: 1 × Agua con gas Mondariz"||Directory.GetFiles(roundFolder,"*.bin").Length!=1)
             throw new Exception("An unconfirmed round IS the durable uncertain order (stored, described) and leaves the tray: "+window.Shell.Pending?.Description);
+        if(drinks.EmptyRoundText!=Costina.Desktop.ViewModels.DrinksViewModel.RoundUnconfirmed||!Painted(pickerTray).Contains(Costina.Desktop.ViewModels.DrinksViewModel.RoundUnconfirmed))
+            throw new Exception("The empty tray says the round is the unconfirmed order above, not to order it again: "+drinks.EmptyRoundText);
         var appliedRounds=server.RoundsApplied;
         Press(Format("agua","Añadir"),"Añadir Agua mineral con una orden incierta"); window.UpdateLayout();
         if(drinks.Summary!="Ronda · 1 sin enviar"||drinks.SendCommand.CanExecute(null)||InTray("SendRoundButton").IsEnabled||drinks.LockedText!=Costina.Desktop.ViewModels.DrinksViewModel.LockedHint
             ||!Painted(pickerTray).Contains(Costina.Desktop.ViewModels.DrinksViewModel.LockedHint)) throw new Exception("With an uncertain order the round can be filled but not sent.");
         Await(window.Shell.RetryCommand.ExecuteAsync(null),"retry the same order");
-        if(window.Shell.HasPending||server.RoundsApplied!=appliedRounds||Directory.GetFiles(roundFolder,"*.bin").Length!=0||drinks.Had.Count(h=>h.Name=="Agua con gas Mondariz")!=1||!drinks.SendCommand.CanExecute(null))
+        if(window.Shell.HasPending||server.RoundsApplied!=appliedRounds||Directory.GetFiles(roundFolder,"*.bin").Length!=0||drinks.Had.Count(h=>h.Name=="Agua con gas Mondariz")!=1||!drinks.SendCommand.CanExecute(null)
+            ||drinks.EmptyRoundText!=Costina.Desktop.ViewModels.DrinksViewModel.EmptyRound)
             throw new Exception("The identical retry confirms ONE effect and the round can be sent again: "+HadText());
         // Cambiar de mesa (o de vista) con una ronda sin enviar pide confirmacion; quedarse no toca nada.
         var readsBeforeLeave=server.Requests.Length;
@@ -1272,6 +1288,14 @@ internal static class Program
         Press((Button)drinksPicker.FindName("ClosePickerButton"),"Cerrar el selector"); window.UpdateLayout();
         if(drinks.IsOpen||!InFicha("FichaRound")||!InFicha("DetailScroll")||!Named("PrimaryActionButton").IsVisible||Math.Abs(fichaPanel.ActualWidth-400)>0.5||drinks.Summary!="Ronda · 1 sin enviar")
             throw new Exception("Closing the picker brings the ficha back (400 px) and keeps the round in its tray.");
+        // Revision: encima de la accion grande, el envio de la ronda es «Enviar ronda» en verde claro; la ficha tiene UN boton principal.
+        bool IsPrimary(Button b){ for(var style=b.Style;style is not null;style=style.BasedOn) if(ReferenceEquals(style,window.FindResource("Primary"))) return true; return false; }
+        var fichaRound=(FrameworkElement)serviceView.FindName("FichaRound"); var fichaSend=(Button)fichaRound.FindName("SendRoundButton");
+        var fichaPrimaries=Descendants<Button>(fichaRound).Concat(Descendants<Button>((FrameworkElement)serviceView.FindName("ActionArea"))).Count(b=>b.IsVisible&&IsPrimary(b));
+        if(fichaSend.Content as string!="Enviar ronda"||IsPrimary(fichaSend)||!IsPrimary(InTray("SendRoundButton"))||fichaPrimaries!=1)
+            throw new Exception("Over the big action the round's send is «Enviar ronda», not a second primary button: "+fichaSend.Content+" / "+fichaPrimaries);
+        window.Shell.Status=""; window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+        Save(Shot(window),"comedor-ronda-ficha.png");
         Press(TileButton("Mesa 3"),"Mesa 3 again"); Press(Named("LeaveRoundButton"),"Salir sin enviar");
         Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id=="s3","leaving discards the round and reads Mesa 3");
         if(drinks.HasLines||drinks.IsOpen||InFicha("FichaRound")||server.RoundsApplied!=appliedRounds) throw new Exception("Leaving without sending discards the draft and sends nothing.");
@@ -1284,7 +1308,7 @@ internal static class Program
         ((FrameworkElement)serviceView.FindName("HadBlock")).BringIntoView(); window.Shell.Status="";
         window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
         var hadTexts=Painted((FrameworkElement)serviceView.FindName("HadBlock")).ToArray();
-        foreach(var text in new[]{"Lo que lleva la mesa","Añadir consumición","Albariño Pazo de Señoráns","Copa · Comensal 3","Anulado en Caja","Los importes solo se ven en Caja.",Costina.Client.Labels.Clock(c2Now)})
+        foreach(var text in new[]{"Lo que lleva la mesa","Albariño Pazo de Señoráns","Copa · Comensal 3","Anulado en Caja","Los importes solo se ven en Caja.",Costina.Client.Labels.Clock(c2Now)})
             if(!hadTexts.Contains(text)) throw new Exception("«Lo que lleva la mesa» paints '"+text+"': "+string.Join(" | ",hadTexts));
         NoMoneyNoCodes("comedor-lo-que-lleva");
         var hadBlock=(FrameworkElement)serviceView.FindName("HadBlock"); var detailScroll=(FrameworkElement)serviceView.FindName("DetailScroll");
@@ -1527,6 +1551,12 @@ internal static class Program
         if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Vino de la casa","Albariño Pazo de Señoráns"])) throw new Exception("Caja ranks like the table picker: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
         checkout.ProductSearch="pazo albar"; window.UpdateLayout();
         if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Albariño Pazo de Señoráns"])) throw new Exception("Caja finds every written word, in any order: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        // Y, solo en Caja, por el nombre de su categoria, como antes de C3b: tambien un producto colgado directamente de la seccion (ruta vacia).
+        var cajaProducts=checkout.Products;
+        checkout.Products=[..cajaProducts,new("hielo","Hielo","Unidad",50,"unidad","Bodega y bebidas","general",Section:"bodega",CategoryPath:[])];
+        checkout.ProductSearch="bebidas"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Agua mineral","Hielo"])) throw new Exception("Caja still finds a product by its category name, also one hanging from the section: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        checkout.Products=cajaProducts;
         checkout.ProductSearch=""; window.UpdateLayout();
         var cajaTexts=Texts(checkoutView).ToArray();
         foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",

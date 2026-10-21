@@ -4,7 +4,9 @@
       Abajo, «Ronda · n sin enviar» con sus nombres, el boton de desplegar y «Enviar» (la UNICA orden de la bandeja, add-consumptions); al
       desplegar, cada linea con «Para:» (toda la mesa o un comensal, con sus restricciones escritas) y − / + (en 1, la papelera quita).
       Es un borrador en memoria: sus botones cambian la ronda, nunca mandan nada; «Enviar» se habilita solo sin una orden incierta.
-      Va dentro del selector «Añadir consumición» y, con algo dentro y el selector cerrado, tambien en la ficha, sobre la accion grande. -->
+      Va dentro del selector «Añadir consumición» y, con algo dentro y el selector cerrado, tambien en la ficha, sobre la accion grande.
+      El estilo de «Enviar» es un recurso dinamico (RoundSendButton, Components.xaml): en el selector es el principal («Enviar»); la ficha
+      lo sustituye por «Enviar ronda» en verde claro, porque alli el unico boton principal es la accion grande. -->
  <Border x:Name="TrayFrame" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="10" Padding="12,10">
   <StackPanel>
    <!-- Ronda vacia (solo se ve en el selector): que hace un toque, o que la ultima se envio. -->
@@ -87,12 +89,8 @@
        </Path.Style>
       </Path>
      </Button>
-     <Button x:Name="SendRoundButton" Grid.Column="2" Style="{StaticResource Primary}" Command="{Binding SendCommand}" Content="{Binding SendText}" Margin="0" MinHeight="42" MaxWidth="210"
-             Padding="14,4,16,4" FontSize="14" VerticalAlignment="Center" ToolTip="Manda la ronda entera en una sola orden">
-      <Button.ContentTemplate>
-       <DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource Icon}" Data="{StaticResource IconSend}" Margin="0,0,8,0"/><TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center"/></StackPanel></DataTemplate>
-      </Button.ContentTemplate>
-     </Button>
+     <Button x:Name="SendRoundButton" Grid.Column="2" Style="{DynamicResource RoundSendButton}" Command="{Binding SendCommand}" Margin="0" MinHeight="42" MaxWidth="210"
+             Padding="14,4,16,4" FontSize="14" VerticalAlignment="Center" ToolTip="Manda la ronda entera en una sola orden"/>
     </Grid>
    </StackPanel>
   </StackPanel>

@@ -6,7 +6,7 @@ Fecha: 2026-10-21. **Estado: APROBADO** por el promotor el 21-10, con «adelante
 - una ronda sin confirmar sale de la bandeja, porque ya es la orden pendiente durable;
 - las E2E de la ronda usan la Mesa 1 en los dos proyectos de Playwright, una detrás de otra.
 
-Veinte decisiones pequeñas quedan para revisar con el promotor; están en «Decisiones y diferencias con la maqueta» del documento del corte. La pregunta de los varios tamaños de copa sigue abierta.
+Veinticuatro decisiones pequeñas quedan para revisar con el promotor (las cuatro últimas, de la revisión del 21-10 antes de subir: «Enviar ronda» en verde claro en la ficha, la bandeja que dice cuándo la ronda está sin confirmar, «Añadir consumición» en la cabecera fija de la ficha del PC y «Por copa» discontinuo en el PC); están en «Decisiones y diferencias con la maqueta» del documento del corte. La pregunta de los varios tamaños de copa sigue abierta. No hay vuelta atrás a `0.41.0-c3a` sin la copia previa: está en «Límites y diferido» del documento del corte.
 
 Es el corte 4 del plan aprobado `docs/plans/2026-10-15-menus-carta-y-bodega.md` (sección 4.4). Aquí solo se baja a pasos. Se aplican tal cual las reglas de las secciones 1 («Consumos desde la mesa en el puesto principal»), 2 («más intuitivo»), 3 (vocabulario), 6 (diferimientos), 9 y 10 (decisiones del promotor). Lleva también lo que D6.7 y E3.3.1 dejaron para antes de C3b (traspasos del 19-10 y del 20-10).
 

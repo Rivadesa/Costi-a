@@ -26,17 +26,17 @@ Lleva también lo que D6.7 y E3.3.1 dejaron para antes de C3b:
     - «Por copa», con los vinos que el servidor vende por copa;
     - las familias en chips con su número (Blancos 3, Tintos 5…) y, debajo, sus subfamilias (Rías Baixas, Ribeira Sacra…);
     - en la primera ficha, **«En esta mesa»**: lo ya pedido, para repetirlo con «+1»;
-  - **una fila por vino o bebida**, con la foto, el nombre, «familia › región» y **un botón por formato**: «Copa» primero, después «Botella 0.75 L». Si solo hay uno, un botón «Añadir»;
+  - **una fila por vino o bebida**, con la foto, el nombre, «familia › región» y **un botón por formato**: «Copa» primero, después «Botella 0.75 L». Si solo hay uno, un botón «Añadir», y el formato va al final del detalle sin partirse nunca en dos líneas;
   - **sin precios**, como siempre en el comandero.
 - **Un toque suma 1 a la ronda**, para toda la mesa, sin hojas intermedias. La fila dice «1 en la ronda».
 - **La ronda va abajo**: «Ronda · 3 sin enviar», con lo que lleva y el botón **«Enviar»**.
   - Al desplegarla: «−» y «+» (en 1, la papelera quita la línea) y «Para: Toda la mesa».
   - «Para» abre la hoja de la línea, con la cantidad y el comensal. Los comensales con alergia o restricción llevan un punto rojo, y la hoja la escribe entera.
-  - Mientras la ronda tenga algo, también se ve en la ficha de la mesa, encima del botón grande.
+  - Mientras la ronda tenga algo, también se ve en la ficha de la mesa, encima del botón grande. Allí su envío es **«Enviar ronda»**, en verde claro y sin icono: el único botón verde lleno de la ficha sigue siendo el grande («Enviar siguiente pase»), como pide la maqueta.
 - **«Enviar» es una sola orden**, aunque la ronda lleve 4 bebidas. Antes eran 4 órdenes, con la pantalla bloqueada entre una y otra.
   - Al confirmarse, la ronda se vacía y dice «Ronda enviada: ya sale en «Lo que lleva la mesa».».
-  - Si no llega la respuesta, la ronda pasa a ser la **orden sin confirmar** de siempre («Ronda para Mesa 4: 2 × Albariño · Copa, 1 × Agua mineral · Botella»): se reintenta igual y se resuelve sola, con un solo efecto.
-  - Mientras haya una orden sin confirmar, la ronda se puede seguir llenando, pero no enviar.
+  - Si no llega la respuesta, la ronda pasa a ser la **orden sin confirmar** de siempre («Ronda para Mesa 4: 2 × Albariño · Copa, 1 × Agua mineral · Botella»): se reintenta igual y se resuelve sola, con un solo efecto. La pantalla sube a ese aviso y la bandeja vacía dice «La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.».
+  - Mientras haya una orden sin confirmar, la ronda se puede seguir llenando, pero no enviar, y la bandeja dice por qué: «Hay una orden sin confirmar: resuélvela arriba antes de enviar la ronda. Mientras tanto puedes seguir llenándola.».
 - **Si la mesa cambió mientras tanto** (por ejemplo, cocina marcó un plato), la ronda **sigue en la bandeja**, la mesa se relee y el botón dice **«La mesa ha cambiado: enviar de nuevo»**.
 - **Si el servidor rechaza una línea**, la ronda sigue entera y la bandeja dice cuál y por qué («Línea 2, …: …»). No se añade nada.
 - **La ronda es un borrador**: no se guarda en el aparato. Si la página se recarga, se pierde, y la bandeja ya lo avisa. Salir de la mesa con una ronda sin enviar pregunta antes («¿Salir sin enviar la ronda?»).
@@ -54,15 +54,16 @@ Lleva también lo que D6.7 y E3.3.1 dejaron para antes de C3b:
 
 Es la petición del 15-10 (pestaña «5 · En el PC» de la maqueta):
 - **«Lo que lleva la mesa»** en la ficha de una mesa abierta, entre los pases y las elaboraciones, con lo mismo que el comandero y el pie «Los importes solo se ven en Caja.». **Sin importes, también para el responsable.**
-- En su cabecera, **«Añadir consumición»**:
+- En la cabecera de la ficha, bajo «Ver cuenta», **«Añadir consumición»**, siempre a la vista (también en una degustación de 6 o 7 pases):
   - **no pide la contraseña en el nivel Puesto**. Sale y se habilita solo si el servidor anuncia la ronda: el Puesto es un aparato de sala y la tiene;
-  - abre **dentro de la ficha**, sin salir del Comedor, el mismo selector «Bodega y bebidas» del comandero: buscador con el cursor ya puesto, «Por copa», familias y subfamilias, «En esta mesa», filas con foto y un botón por formato. Sin precios;
+  - abre **dentro de la ficha**, sin salir del Comedor, el mismo selector «Bodega y bebidas» del comandero: buscador con el cursor ya puesto, «Por copa» (con su borde discontinuo, como en el comandero), familias y subfamilias, «En esta mesa», filas con foto y un botón por formato. Sin precios;
   - mientras está abierto, la ficha se ensancha y el plano pasa a dos columnas, como en la maqueta. Las restricciones se quedan arriba, escritas.
 - **La ronda**, abajo: «Ronda · n sin enviar», plegada como en la maqueta. Al desplegarla: «−», «+», la papelera y «Para:», un desplegable con cada comensal y sus restricciones escritas («Comensal 2 · ALERGIA frutos secos (grave)»).
   - «Enviar» es **una sola orden**, con la mesa tal como se leyó en ese momento.
-  - Con la ronda sin enviar y el selector cerrado, la bandeja sigue en la ficha, encima del botón grande.
+  - Con la ronda sin enviar y el selector cerrado, la bandeja sigue en la ficha, encima del botón grande, con «Enviar ronda» en verde claro, como en el comandero.
+  - Si no llega la respuesta, la bandeja vacía dice que la ronda es la orden sin confirmar de arriba y que no se repita, como en el comandero.
 - **Cambiar de mesa o de vista con una ronda sin enviar** pregunta antes, dentro de la propia ventana: «¿Salir sin enviar la ronda?», con «Salir sin enviar» o «Seguir con la ronda». Vale para cambiar de mesa, para «Abrir mesa» y para ir a otra vista desde el menú, la barra lateral o un acceso como «Ver cuenta».
-- **Caja busca igual que el selector:** sin tildes, por nombre, referencia, familia y región, y con las palabras en cualquier orden («pazo albar» encuentra «Albariño Pazo de Señoráns»). Sigue buscando desde una letra y con sus precios. Cobrar, anular y cerrar no cambian.
+- **Caja busca igual que el selector:** sin tildes, por nombre, referencia, familia y región, y con las palabras en cualquier orden («pazo albar» encuentra «Albariño Pazo de Señoráns»). Además, como antes, por el nombre de la categoría. Sigue buscando desde una letra y con sus precios. Cobrar, anular y cerrar no cambian.
 
 ### En Caja y en la cuenta
 
@@ -180,6 +181,9 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
   - Filas de 60 en 60, con «Ver más».
   - Un `data-testid` en cada fila y en cada botón.
 - **`RoundTray.vue`** (la bandeja) y **`LineSheet.vue`** (la hoja de una línea). La ronda pertenece a la ficha de la mesa (`TableCard.vue`), que también pinta «Lo que lleva la mesa».
+  - En la ficha, el envío es «Enviar ronda» (`btn-soft`, sin icono); en Bebidas, «Enviar» (`btn-primary`). Las filas de la bandeja se identifican por su posición (`trayKey`): dos líneas iguales que juntas pasarían de 99 siguen separadas.
+  - Con una orden incierta o bloqueada, `round-locked` dice por qué «Enviar» no se puede tocar. Una ronda sin confirmar deja en la bandeja vacía `ROUND_UNCONFIRMED` (mientras esa orden siga incierta) y sube la pantalla al aviso.
+  - `keepTail` une con espacios duros el formato del final del detalle de una fila («Botella 0.75 L») y su «·».
 - **`bodega.ts`**: los textos y los accesos, sin reglas de negocio, y `settlementOf`, que traduce el resultado de la orden. Sin respuesta, la ronda cuenta como sin confirmar **solo si esta misma orden** quedó guardada como la pendiente.
 - **`commands.ts`** lleva el `line` de un 422 hasta la bandeja.
 - **`operations.ts`** da por **confirmada** una orden aplicada cuya respuesta traía dinero. Así una ronda nunca se envía dos veces.
@@ -199,14 +203,14 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 
 ### Puesto principal (WPF)
 
-- **`ServiceView.xaml`**: «Lo que lleva la mesa» (`HadBlock`) con «Añadir consumición» en su cabecera. Sale cuando el tablero trae `consumptions` o el servidor anuncia la ronda. Contra un motor o una sesión de C2 (sin ninguna de las dos), la ficha es exactamente la de antes; la captura `service.png` no cambia.
+- **`ServiceView.xaml`**: «Lo que lleva la mesa» (`HadBlock`), que sale cuando el tablero trae `consumptions` o el servidor anuncia la ronda, y «Añadir consumición» en la cabecera fija de la ficha, bajo «Ver cuenta» (`ShowAddButton`). Contra un motor o una sesión de C2 (sin ninguna de las dos), la ficha es exactamente la de antes; la captura `service.png` no cambia.
 - **«Añadir consumición»** (`SoftAccentButton`) solo existe y se habilita si `/session` anuncia `add-consumptions`, y nunca pasa por `RequestElevation`.
 - **`Views/DrinksPicker.xaml`**, con `ViewModels/DrinksViewModel.cs`, abre dentro de la ficha:
   - la ficha pasa de 400 a 480 px y el plano, de 3 a 2 columnas;
   - se ocultan los pases y la acción grande, que vuelven al cerrar;
   - lee `GET /catalog` cada vez que se abre, nunca `/checkout/catalog`;
   - las fotos van por el `ImageLoader` del Catálogo.
-- **`Views/RoundTray.xaml`**: la bandeja. «Enviar» manda **una** orden `add-consumptions` con la versión de la ficha leída en ese momento (F01).
+- **`Views/RoundTray.xaml`**: la bandeja. «Enviar» manda **una** orden `add-consumptions` con la versión de la ficha leída en ese momento (F01). Su estilo es un recurso dinámico: `RoundSendButton` (el principal, «Enviar») en el selector; en la ficha, `FichaRound` lo cambia por `RoundSendInFicha` («Enviar ronda», `SoftAccentButton`, sin icono).
   - **Confirmada:** se vacía, la barra de estado lo dice y la mesa se relee.
   - **Sin confirmar:** pasa a ser la orden pendiente de siempre.
   - **Rechazada:** sigue, con el motivo y la línea.
@@ -216,10 +220,10 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
   Una relectura del tablero nunca toca la ronda. Si la mesa desaparece del tablero, la ronda se descarta y la barra de estado lo dice.
 - **Salir con una ronda sin enviar** pregunta en una capa dentro de la vista, no en otra ventana.
 - **`ApiError.Line`**: la línea de un 422 de la ronda. Con cualquier otra forma de respuesta queda vacía; nunca se inventa una línea.
-- **Caja** (`CheckoutViewModel`) usa la búsqueda y el orden comunes (`DrinksPicker.SearchFields`). Sigue buscando desde 1 letra, con el orden del servidor cuando el buscador está vacío y como mucho 24 grupos.
+- **Caja** (`CheckoutViewModel`) usa la búsqueda y el orden comunes (`DrinksPicker.SearchFields`) y, solo en Caja, también el nombre de la categoría: un producto colgado directamente de una sección trae la ruta vacía y antes se encontraba por «bebidas». Sigue buscando desde 1 letra, con el orden del servidor cuando el buscador está vacío y como mucho 24 grupos.
 - **Tema:**
   - iconos `IconGlass`, `IconMinus`, `IconTrash`, `IconSend`, `IconChevronUp` e `IconChevronDown`;
-  - estilos `SoftAccentButton`, `FormatButton`, `ChipButton`, `SubChipButton` y `StepButton`.
+  - estilos `SoftAccentButton`, `FormatButton`, `ChipButton` (con el borde discontinuo de «Por copa», `Tag` = `glass`), `SubChipButton`, `StepButton`, `RoundSendButton` y `RoundSendInFicha`.
 
 ### Diferidos de D6.7 y E3.3.1
 
@@ -242,7 +246,7 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 **Comandero:**
 
 5. Las restricciones siguen arriba también en Bebidas (regla de C3a); la maqueta no las pone ahí. La hoja de la línea las escribe además junto a cada comensal.
-6. La ronda sale también en la ficha, encima del botón grande. En el móvil son dos botones verdes, uno encima del otro.
+6. La ronda sale también en la ficha, encima del botón grande. Su envío es «Enviar ronda», en verde claro y sin icono, para que la ficha tenga un solo botón verde lleno, el grande (revisión del 21-10; antes eran dos verdes llenos, uno encima del otro, y era fácil mandar el pase en lugar de la ronda).
 7. «En esta mesa» sale solo en la primera ficha, como en la maqueta.
 8. Las familias van de la A a la Z (regla común), no en el orden a mano de la maqueta.
 9. La hoja dice «Cantidad», no «¿Cuántas?»: no se sabe el género de cada formato.
@@ -262,11 +266,18 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 **Los dos:**
 
 19. Una ronda **sin confirmar** se vacía de la bandeja: ya es la orden pendiente, que se ve en su panel.
-20. Caja busca ahora con la regla común. Encuentra todo lo que encontraba antes, y más.
+20. Caja busca ahora con la regla común y, solo en Caja, también por el nombre de la categoría, como antes. Encuentra todo lo que encontraba antes, y más.
+
+**Revisión del 21-10:**
+
+21. **Los dos:** una ronda sin confirmar deja en la bandeja vacía «La ronda está sin confirmar: mírala arriba…» mientras esa orden siga incierta, y con una orden incierta la bandeja dice por qué «Enviar» no se puede tocar. El comandero sube además la pantalla a su aviso. Antes la bandeja decía «Ronda vacía…», que invitaba a pedirla otra vez.
+22. **PC:** «Añadir consumición» va en la cabecera fija de la ficha, bajo «Ver cuenta», y no en la cabecera de «Lo que lleva la mesa» como en la maqueta: en una degustación de 6 o 7 pases quedaba fuera de la vista.
+23. **PC:** «Por copa» lleva el borde discontinuo de acento, como en el comandero y en la maqueta.
+24. **Comandero:** el formato al final del detalle de una fila no se parte en dos líneas (antes, «Botella 0.75» y una «L» sola en otra).
 
 ## Qué NO cambia
 
-- **El esquema (v8), `grants.sql`, las copias y el instalador.** Solo cambian las versiones.
+- **El esquema (v8) y `grants.sql`.** Solo cambian las versiones. Las copias y el instalador tampoco cambian, pero **no hay vuelta atrás** sin la copia previa: ver «Sin vuelta atrás» en «Límites y diferido».
 - **Sin dinero en el comandero ni en cocina** (ADR-007). La guarda de la PWA (`money-guard.ts`) se aplica a cada respuesta, también al catálogo nuevo y a `consumptions`. Ninguna clave nueva lleva vocabulario de caja, y `pwa_http.py` lo comprueba con la misma regla. En el comandero no se escribe «precio», «cuenta», «pago», «saldo» ni «€». **El selector del PC tampoco pinta precios, ni para el responsable.**
 - **Los botones solo existen por lo que anuncia el servidor:** Bebidas y «Añadir consumición», por la acción de sesión `add-consumptions`.
 - **Una sola orden incierta durable** por cliente, con los bloqueos de D6.7. La ronda es un borrador en memoria: **nunca una cola** y nunca se guarda antes de enviarse.
@@ -280,9 +291,9 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 
 ## Comprobaciones automáticas
 
-- **vitest:** 302 pruebas en 16 ficheros (antes 198 en 12). `npm run build` (`vue-tsc` y Vite) en verde. Las nuevas:
-  - `drinks.test.ts`: la tabla común (plegado, agrupación, familias, «Por copa», «En esta mesa», 22 búsquedas y 12 rondas guionizadas) y que la ronda no se guarda en ningún sitio;
-  - `bodega.test.ts`: «Por copa» y las familias, los botones de cada fila, el resultado de cada envío, la línea rechazada, la hoja con el punto Y la restricción escrita, y ninguna palabra de caja;
+- **vitest:** 306 pruebas en 16 ficheros (antes 198 en 12). `npm run build` (`vue-tsc` y Vite) en verde. Las nuevas:
+  - `drinks.test.ts`: la tabla común (plegado, agrupación, familias, «Por copa», «En esta mesa», 22 búsquedas y 12 rondas guionizadas) y que la ronda no se guarda en ningún sitio. Como ClientChecks, falla con un apartado o un campo de la tabla que no conoce (revisión: antes vitest los saltaba);
+  - `bodega.test.ts`: «Por copa» y las familias, los botones de cada fila, el resultado de cada envío, la línea rechazada, la hoja con el punto Y la restricción escrita, y ninguna palabra de caja. De la revisión: el formato que no se parte (`keepTail`), «Enviar ronda» en la ficha y «Enviar» en Bebidas, las filas de la bandeja con su posición (dos líneas iguales de más de 99 juntas) y los textos nuevos;
   - `catalog.test.ts`:
     - se lee al montar y se revalida al abrir Bebidas y cada 5 minutos; un 304 conserva la misma lista;
     - dos lecturas a la vez son una, y sin la ronda anunciada no se lee nada;
@@ -314,7 +325,8 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
   - `version_conflict` conserva la ronda y «enviar de nuevo» usa otra clave;
   - una anulación en Caja sale como «Anulado en Caja» en los dos comanderos;
   - salir con la ronda sin enviar pregunta;
-  - la foto se pinta desde una URL `blob:` con **cero** violaciones de CSP, y no aparece ninguna clave ni palabra de dinero.
+  - la foto se pinta desde una URL `blob:` con **cero** violaciones de CSP, y no aparece ninguna clave ni palabra de dinero;
+  - de la revisión: tras la respuesta perdida, la bandeja vacía dice que la ronda está sin confirmar y, al llenarla otra vez, `round-locked` dice por qué no se envía; en la ficha, el envío de la ronda es «Enviar ronda», no es `btn-primary` y hay como mucho un botón principal a la vista.
 
   `commands.spec.ts` usa ahora la ronda en lugar del desplegable de antes.
 - **DesktopChecks:** en verde, con un apartado C3b nuevo en la muestra del Comedor. El `FakeServer` sirve `GET /catalog` y `add-consumptions` como el motor: idempotente por clave, 409 con otra versión, líneas en `consumptions` y respuestas perdidas a propósito. Comprueba:
@@ -329,7 +341,8 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
   - la confirmación al salir;
   - las anulaciones de Caja;
   - el responsable, sin precios;
-  - nada de importes ni códigos pintados, sin desplazamientos anidados ni texto cortado, y que todo cabe a 1280 × 860.
+  - nada de importes ni códigos pintados, sin desplazamientos anidados ni texto cortado, y que todo cabe a 1280 × 860;
+  - de la revisión: «Añadir consumición» en la cabecera fija de la ficha, por encima de lo que se desplaza, en la degustación de 6 pases de la Mesa 1; «Por copa» con su borde discontinuo y las familias sin él; la bandeja vacía tras una respuesta perdida y de vuelta al texto de siempre al resolverse; en la ficha, «Enviar ronda» sin estilo principal y un solo botón principal entre la bandeja y la acción grande; y Caja, que encuentra por «bebidas» un producto colgado directamente de la sección.
 - **Batería completa** (`COSTINA_E2E=1 sh tools/agent/local-tests.sh`, puerto 5090, sin administrador): compilación con 0 advertencias. Cifras por suite:
   - dominio 86/86 y ClientChecks 263;
   - packaging 14 (1 saltada), native 11, security 6/6, desktop_reads 9, affordances 6, restrictions 6, checkout 8, identity 10, pairing 14, station 8, organization 5, catalog 10, offers 7 y pwa_http 7 (con Playwright 14);
@@ -337,7 +350,11 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 
 ### En rojo antes de su arreglo
 
-Cada prueba nueva falló primero. Cada rotura fue temporal y se restauró.
+Cada prueba nueva falló primero. Cada rotura fue temporal y se restauró (desde una copia en el `scratchpad`).
+- **Revisión del 21-10:**
+  - vitest: con `keepTail` sin efecto, `sendLabel` sin mirar la ficha y `trayKey` sin la posición, fallaron exactamente esas tres pruebas; con un apartado desconocido en `drinks-cases.json`, falló «every section of the table is known here», y con un campo desconocido en una fila de cada tipo, fallaron las seis filas;
+  - Playwright (`drinks.spec`, en los dos proyectos): sin el texto de la ronda sin confirmar, falló en la bandeja vacía (línea 99); sin `round-locked`, en la línea 105; con el envío de la ficha como `btn-primary` y «Enviar», en la línea 163;
+  - DesktopChecks: con la `ServiceView.xaml` de antes, falló «in the fixed header of the ficha… 635 > 107»; sin el estilo de la ficha, «not a second primary button: Enviar / 2»; sin el `Tag` de las fichas, «Por copa has the dashed accent border»; sin el texto de la ronda sin confirmar, «The empty tray says the round is the unconfirmed order above»; y con el `CheckoutViewModel.cs` de antes, «Caja still finds a product by its category name… Agua mineral».
 - **Motor:**
   - D0 no compilaba contra el código anterior.
   - Con el motor de C3a, sobre una base nueva, fallaban:
@@ -390,8 +407,11 @@ Las del comandero las hace `e2e/captures-c3b.spec.ts` contra el motor real, con 
 - [Lo que lleva la mesa](images/c3b/lo-que-lleva-820x1180.png), a dos columnas.
 
 **Puesto principal**, de DesktopChecks, en el nivel Puesto:
-- [«Añadir consumición»](images/c3b/comedor-consumicion.png): el selector abierto en la ficha de la Mesa 4, la búsqueda «albar» y una ronda sin enviar.
+- [«Añadir consumición»](images/c3b/comedor-consumicion.png): el selector abierto en la ficha de la Mesa 4, la búsqueda «albar», «Por copa» con su borde discontinuo y una ronda sin enviar.
+- [La ficha con la ronda sin enviar](images/c3b/comedor-ronda-ficha.png): «Enviar ronda» en verde claro sobre la acción grande, y «Añadir consumición» en la cabecera, bajo «Ver cuenta».
 - [Lo que lleva la mesa](images/c3b/comedor-lo-que-lleva.png): el selector cerrado y la ronda ya confirmada, junto a dos líneas «Anulado en Caja».
+
+Las capturas se rehicieron tras la revisión del 21-10 («Enviar ronda» en la ficha, el formato que no se parte y el botón en la cabecera del PC).
 
 **Para repetir las del comandero** hacen falta una base nueva y el motor con el build actual de la PWA:
 1. `npm run build` en `frontend/pwa`.
@@ -415,10 +435,10 @@ La demostración trae «Vino de ensayo» (Copa y Botella) y «Agua mineral» (so
 
    En el PC, Caja de esa mesa tiene las dos líneas con su importe.
 5. **Repetir.** Vuelve a «Bodega y bebidas»: «En esta mesa» ofrece las dos con «+1». Toca el agua y «Enviar».
-6. **Sin Wi-Fi.** Toca «Copa», quita la Wi-Fi y toca «Enviar». Sale «ORDEN SIN CONFIRMAR» con «Ronda para Mesa N: 1 × Vino de ensayo · Copa», y la bandeja queda vacía. Toca «Copa» otra vez: entra en la ronda, pero «Enviar» no se puede tocar. Devuelve la Wi-Fi: la orden se resuelve sola. En Caja, esa copa está **una sola vez**. Envía después la copa que quedó en la ronda.
+6. **Sin Wi-Fi.** Toca «Copa», quita la Wi-Fi y toca «Enviar». La pantalla sube a «ORDEN SIN CONFIRMAR» con «Ronda para Mesa N: 1 × Vino de ensayo · Copa», y la bandeja vacía dice «La ronda está sin confirmar…». Toca «Copa» otra vez: entra en la ronda, pero «Enviar» no se puede tocar y la bandeja dice por qué. Devuelve la Wi-Fi: la orden se resuelve sola. En Caja, esa copa está **una sola vez**. Envía después la copa que quedó en la ronda.
 7. **Anular en Caja.** En el PC, como responsable, anula en Caja una de las líneas. En el móvil, sin tocar nada, sale tachada con «Anulado en Caja».
-8. **Salir sin enviar.** Toca «Copa» y vuelve a Mesas: pregunta «¿Salir sin enviar la ronda?». Toca «Salir sin enviar»: en Caja no aparece.
-9. **En el PC, nivel Puesto** (sin entrar como responsable). En Comedor, elige la mesa: la ficha tiene «Lo que lleva la mesa» con lo de antes y «Añadir consumición». Tócalo: **no pide contraseña**. Busca «ensa», toca «Copa» y «Enviar». En el móvil, la copa aparece sola en «Lo que lleva la mesa».
+8. **Salir sin enviar.** Toca «Copa» y vuelve a la ficha: la ronda sigue abajo, con «Enviar ronda» en verde claro sobre el botón grande. Vuelve a Mesas: pregunta «¿Salir sin enviar la ronda?». Toca «Salir sin enviar»: en Caja no aparece.
+9. **En el PC, nivel Puesto** (sin entrar como responsable). En Comedor, elige la mesa: la ficha tiene «Añadir consumición» arriba, bajo «Ver cuenta», y «Lo que lleva la mesa» con lo de antes. Tócalo: **no pide contraseña**. Busca «ensa», toca «Copa» y «Enviar». En el móvil, la copa aparece sola en «Lo que lleva la mesa».
 10. **Cambiar de mesa con una ronda.** En el PC, abre otra vez «Añadir consumición», toca «Copa» y elige otra mesa: pregunta «¿Salir sin enviar la ronda?». «Seguir con la ronda» la conserva.
 11. **El responsable, sin precios.** Entra como responsable y abre «Añadir consumición»: tampoco hay precios. Los importes solo están en Caja.
 12. **Caja.** En Caja, el buscador encuentra «ensayo vino», con las palabras al revés.
@@ -430,6 +450,7 @@ La demostración trae «Vino de ensayo» (Copa y Botella) y «Agua mineral» (so
 
 ## Límites y diferido
 
+- **Sin vuelta atrás.** En cuanto `0.42.0-c3b` guarda una cuenta (basta abrir una mesa), volver a `0.41.0-c3a` exige **restaurar la copia que hizo el instalador antes de actualizar**, no solo reinstalar. La línea de la cuenta gana `guestPosition`, `origin` y `at`, que se escriben siempre (también vacíos), y el motor anterior lee las cuentas con un lector estricto que no los conoce: esas mesas darían `invalid_request` y Caja no podría abrirlas, cobrarlas ni cerrarlas. El esquema no cambia (sigue la v8), así que nada lo impide: el instalador no comprueba que no baja de versión y la restauración no mira qué versión del motor hizo la copia. Por lo mismo, **una copia hecha con `0.42.0-c3b` no se restaura en un motor anterior**. Las dos defensas quedan abiertas; el plan cuenta con la del instalador para E4e, que tiene el mismo efecto.
 - **Una ronda se pierde sin aviso** en el comandero si su mesa desaparece mientras está sin enviar (liberada o cerrada en Caja): el tablero vuelve a Mesas. En el PC, la barra de estado lo dice.
 - **Volver atrás mientras la ronda se está enviando** no pregunta. Un rechazo posterior solo se ve en el aviso de arriba, y el borrador ya no está.
 - **Una foto se guarda en memoria con la huella que pidió su fila.** Si la foto cambia en el servidor entretanto, la fila enseña la nueva hasta que el catálogo se revalida.

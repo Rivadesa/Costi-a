@@ -98,7 +98,8 @@ async function open(pax: number, offerId: string): Promise<void> {
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
 
     <TableCard v-if="selected" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
-      :configuration="configuration" :names="names" :products="products" :catalog-status="catalogStatus" :can-consume="canRound" :locked="locked" :now="now"
+      :configuration="configuration" :names="names" :products="products" :catalog-status="catalogStatus" :can-consume="canRound" :locked="locked"
+      :uncertain="runnerState.pending !== null || runnerState.blocked !== null" :now="now"
       :send-round="sendRound" @run="run" @back="selectedId = null" @bodega="refreshCatalog" />
 
     <OpenTable v-else-if="openingTable" :key="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"

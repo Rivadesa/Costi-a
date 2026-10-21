@@ -31,9 +31,11 @@ Leer antes, en este orden:
     - el aviso `service.consumptions_changed`;
     - la CSP con `img-src 'self' blob:`.
   - **Diferidos cerrados:** el puesto deja la orden como pendiente solo después de guardarla, y los rechazos de E3.3.1 tienen texto.
+  - **Revisión del 21-10** (antes de subir): en la ficha, el envío de la ronda es «Enviar ronda» en verde claro (un solo botón verde lleno, el grande); tras una respuesta perdida la bandeja dice que la ronda está sin confirmar y, con una orden incierta, por qué no se envía; en el PC, «Añadir consumición» en la cabecera fija de la ficha y «Por copa» discontinuo; vitest rechaza, como ClientChecks, lo que no conoce de `drinks-cases.json`; Caja vuelve a buscar también por el nombre de la categoría.
+- **Sin vuelta atrás:** en cuanto `0.42.0-c3b` guarda una cuenta, volver a `0.41.0-c3a` exige restaurar la copia previa a la actualización: el motor anterior no lee las líneas con `guestPosition`, `origin` y `at`. Nada lo impide (esquema v8 sin cambios; el instalador no comprueba que no baja de versión y la restauración no mira la versión que hizo la copia). Está en «Límites y diferido» del documento de C3b.
 - **Pruebas compartidas:** `search.ts`, `drinks.ts` y `round.ts` (PWA), y `CatalogSearch.cs`, `DrinksPicker.cs` y `Round.cs` (`Costina.Client`), comparten casos en `dotnet/tests/fixtures/drinks-cases.json`. Se cambian la tabla Y las dos implementaciones.
 - **Cifras en la punta:**
-  - vitest 302, en 16 ficheros;
+  - vitest 306, en 16 ficheros;
   - ClientChecks 263;
   - dominio 86;
   - las 14 suites HTTP (checkout 8, pwa_http 7, affordances 6) y Realtime 13;
@@ -56,11 +58,13 @@ Leer antes, en este orden:
 ## Para el promotor
 
 1. **Pregunta abierta: varios tamaños de copa por vino** («Copa 15 cl»). Está en la última sección del documento de C3b. Mientras no conteste, sigue una copa por vino.
-2. **Veinte decisiones pequeñas para revisar**, en «Decisiones y diferencias con la maqueta» del documento de C3b. Por ejemplo:
+2. **Veinticuatro decisiones pequeñas para revisar**, en «Decisiones y diferencias con la maqueta» del documento de C3b (las cuatro últimas, de la revisión). Por ejemplo:
    - las restricciones también arriba en Bebidas;
    - las familias de la A a la Z;
    - una ronda sin confirmar que sale de la bandeja;
-   - la ronda plegada en el PC.
+   - la ronda plegada en el PC;
+   - «Enviar ronda» en verde claro en la ficha;
+   - «Añadir consumición» en la cabecera de la ficha del PC, no en la de «Lo que lleva la mesa».
 
    Siguen pendientes las cinco de C3a.
 3. **Guion manual de C3b**, solo en un PC de laboratorio, con un móvil y el PC: 13 pasos, con su tabla de resultados.
@@ -75,7 +79,7 @@ Leer antes, en este orden:
      - `open` con alergias;
      - `fire-next` desde «Sentados»;
      - el mínimo de la PWA para el pase.
-   - **Sin vuelta atrás:** un motor anterior no lee una mesa guardada con revisiones en pases sin enviar. El documento del corte lo dice.
+   - **Sin vuelta atrás:** un motor anterior no lee una mesa guardada con revisiones en pases sin enviar. El documento del corte lo dice. C3b ya tiene el mismo efecto con las cuentas: conviene que E4e (o un corte propio) haga que el instalador nunca baje de versión y que restaurar una copia rechace la de un motor más nuevo.
    - Hay que proponer el plan del corte y **pedir permiso para subir y mezclar**.
 2. Después:
    - C3c, que incluye «Carta y menús», la mesa abierta con una oferta que ya no está vigente (el motor debe servirla) y el «Preguntar al servidor» con una orden de otra instalación;

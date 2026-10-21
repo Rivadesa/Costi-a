@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { CatalogItem } from '../src/api'
 import {
   addLabel, addProblem, chipHeader, chipProducts, chosenChip, doneDetail, drinkChips, EMPTY_ROUND, formatParts, GLASS_CHIP, guestChoices, HAD_EMPTY, HAD_FOOT,
-  HAD_SUB, HAD_TITLE, hadDetail, leaveText, NO_RESULTS_HINT, noResults, ONE_MORE_LETTER, OTHER_CHIP, resultsCount, RESULTS_WHERE, ROUND_CONFLICT, ROUND_HINT,
-  ROUND_SENT, roundNames, roundProblem, restrictionsNote, settlementOf, VOIDED,
+  HAD_SUB, HAD_TITLE, hadDetail, keepTail, leaveText, NO_RESULTS_HINT, noResults, ONE_MORE_LETTER, OTHER_CHIP, resultsCount, RESULTS_WHERE, ROUND_CONFLICT, ROUND_HINT,
+  ROUND_LOCKED, ROUND_SENT, ROUND_UNCONFIRMED, roundNames, roundProblem, restrictionsNote, SEND_ROUND, SENDING, sendLabel, settlementOf, trayKey, VOIDED,
 } from '../src/bodega'
 import type { Outcome } from '../src/commands'
 import { drinkProducts, roundItem } from '../src/drinks'
-import { Round } from '../src/round'
+import { MAX_QUANTITY, Round, SEND, SEND_AGAIN } from '../src/round'
 import type { GuestRestriction, TableConsumption } from '../src/types'
 
 // C3b: lo que pinta «Bodega y bebidas» en el comandero (bodega.ts), sin DOM. Lo comun con el puesto (busqueda, agrupacion y ronda) ya lo
@@ -70,6 +70,13 @@ describe('one row per product, one button per presentation', () => {
     expect(addLabel('Agua con gas', 'unit', 'Unidad', true)).toBe('Añadir 1 Agua con gas')
     expect(addLabel('Estrella Galicia', 'cana', 'Caña', true)).toBe('Añadir 1 Estrella Galicia · Caña')
   })
+  it('the format at the end of a detail never breaks inside, and the «·» stays with what comes before (no «L» alone on a phone)', () => {
+    expect(keepTail('Blancos › Rías Baixas · Botella 0.75 L')).toBe('Blancos › Rías Baixas\u00a0· Botella\u00a00.75\u00a0L')
+    expect(keepTail('Blancos › Rías Baixas · Ref. V-1001')).toBe('Blancos › Rías Baixas\u00a0· Ref.\u00a0V-1001')
+    expect(keepTail('Blancos › Rías Baixas')).toBe('Blancos › Rías Baixas')                                  // sin formato, como estaba
+    expect(keepTail('Otros · Una presentación con un nombre muy largo')).toBe('Otros · Una presentación con un nombre muy largo')   // larga: se parte
+    expect(keepTail('Botella 0.75 L').replace(/\u00a0/g, ' ')).toBe('Botella 0.75 L')
+  })
   it('a tap that cannot add says why (the limits of the server, or the round is on its way)', () => {
     expect(addProblem('added')).toBe(''); expect(addProblem('more')).toBe('')
     expect(addProblem('full')).toContain('30 líneas'); expect(addProblem('max')).toContain('99')
@@ -94,6 +101,24 @@ describe('the round in the tray', () => {
     expect(roundProblem({ code: 'use_add_dish', line: 1 }, lines)).toMatch(/^Línea 2, Agua con gas: Ese producto pasa por cocina/)
     expect(roundProblem({ code: 'use_add_dish', line: 7 }, lines)).toMatch(/^Ese producto pasa por cocina/)          // ya no esta en la ronda
     expect(roundProblem({ code: 'brand_new', line: null }, lines)).toBe('El servidor rechazó la ronda (brand_new). No se ha añadido nada.')
+  })
+  it('its send: «Enviar» in Bebidas; «Enviar ronda» in the table card, over the big button; the conflict and the sending say so in both', () => {
+    const draft = round()
+    expect([sendLabel(draft, false), sendLabel(draft, true)]).toEqual([SEND, SEND_ROUND])
+    draft.begin(4, 'Mesa 1')
+    expect([sendLabel(draft, false), sendLabel(draft, true)]).toEqual([SENDING, SENDING])
+    draft.settle({ kind: 'rejected', code: 'version_conflict', line: null })
+    expect([sendLabel(draft, false), sendLabel(draft, true)]).toEqual([SEND_AGAIN, SEND_AGAIN])
+  })
+  it('its rows are keyed by position: two equal lines kept apart (over 99 together) never share a key', () => {
+    const draft = new Round()
+    const estrella = products.find(product => product.id === 'estrella')!
+    draft.add(roundItem(estrella, estrella.buttons[0])); draft.setQuantity(0, 98); draft.setGuest(0, 1)
+    draft.add(roundItem(estrella, estrella.buttons[0])); draft.setQuantity(1, 5); draft.setGuest(1, 1)
+    expect(draft.lines.map(line => [line.quantity, line.guestPosition])).toEqual([[98, 1], [5, 1]])         // 103 > 99: siguen separadas
+    expect(MAX_QUANTITY).toBe(99)
+    const keys = draft.lines.map(trayKey)
+    expect(new Set(keys).size).toBe(keys.length)
   })
   it('its sheet offers the whole table and every guest, with a dot AND the written restriction of who has one', () => {
     const choices = guestChoices(4, restrictions)
@@ -137,7 +162,7 @@ describe('what the table has (no amounts, no totals)', () => {
 })
 
 describe('the words of «Bodega y bebidas»', () => {
-  const texts = [EMPTY_ROUND, ROUND_SENT, ROUND_HINT, ROUND_CONFLICT, HAD_TITLE, HAD_SUB, HAD_EMPTY, HAD_FOOT, VOIDED, ONE_MORE_LETTER, NO_RESULTS_HINT, RESULTS_WHERE,
+  const texts = [EMPTY_ROUND, ROUND_SENT, ROUND_HINT, ROUND_CONFLICT, ROUND_UNCONFIRMED, ROUND_LOCKED, SEND_ROUND, SENDING, HAD_TITLE, HAD_SUB, HAD_EMPTY, HAD_FOOT, VOIDED, ONE_MORE_LETTER, NO_RESULTS_HINT, RESULTS_WHERE,
     addProblem('full'), addProblem('max'), addProblem('sending'), leaveText(3), chipHeader(drinkChips(products)[0], 2), resultsCount(2), noResults('albar'),
     roundProblem({ code: 'too_many_lines', line: null }, []), addLabel('Vino', 'copa', 'Copa', false)]
   it('no checkout word, not even inside another word', () => {

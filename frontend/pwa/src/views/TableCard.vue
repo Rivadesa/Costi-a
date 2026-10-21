@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, roundNames, roundProblem, VOIDED } from '../bodega'
+import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, ROUND_UNCONFIRMED, roundNames, roundProblem, VOIDED } from '../bodega'
 import type { CatalogStatus } from '../catalog'
 import { offerFor, type Configuration, type Names } from '../configuration'
 import type { DrinkProduct, RoundItem } from '../drinks'
@@ -25,10 +25,11 @@ import RoundTray from './RoundTray.vue'
 // C3b: «Bodega y bebidas» rehecha (DrinksPanel), la RONDA de esta mesa (un borrador en memoria, de la ficha: sigue al ir y volver de
 // Bebidas y se ve abajo tambien en la ficha) y «Lo que lleva la mesa», sin importes (ADR-007, apartado C3b). La ronda sale en UNA orden
 // add-consumptions por sendRound (la orden incierta de siempre) con la version de ESTA lectura (F01). Salir de la mesa con una ronda sin
-// enviar pide confirmacion: no se guarda en ningun sitio.
+// enviar pide confirmacion: no se guarda en ningun sitio. Una ronda sin confirmar ya es la orden incierta: la bandeja lo dice y la
+// pantalla sube a su panel; con una orden incierta o bloqueada (uncertain) la bandeja explica por que «Enviar» no se puede tocar.
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
-  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; now: number
+  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number
   sendRound: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
 }>()
 const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; back: []; bodega: [] }>()
@@ -67,6 +68,8 @@ const imageOf = (productId: string) => props.products.find(product => product.id
 watch(() => round.lines.length, count => { if (count === 0) { trayOpen.value = false; editing.value = null } })
 // El aviso de un toque que no sumo (30 lineas, 99 de una) deja de valer en cuanto la ronda cambia.
 watch(() => [round.units, round.lines.length], () => { addMessage.value = '' })
+// «Sin confirmar» solo mientras haya una orden incierta: resuelta (o descartada), la bandeja vacia vuelve a decir lo de siempre.
+watch(() => props.uncertain, uncertain => { if (!uncertain && sent.value === ROUND_UNCONFIRMED) sent.value = '' })
 
 function openBodega(): void { panel.value = 'bodega'; emit('bodega') }   // el catalogo se revalida al abrir Bebidas (ETag)
 function addToRound(item: RoundItem): void {
@@ -81,6 +84,8 @@ async function sendRound(): Promise<void> {
   const settlement = await props.sendRound(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
   round.settle(settlement)
   if (settlement.kind === 'confirmed') sent.value = ROUND_SENT
+  // Sin confirmar: la ronda ya es la orden de arriba («Orden sin confirmar»); la bandeja vacia lo dice y la pantalla sube hasta ella.
+  if (settlement.kind === 'unconfirmed') { sent.value = ROUND_UNCONFIRMED; window.scrollTo({ top: 0 }) }
   // La linea que el servidor rechaza se ensena: la lista de la ronda se abre.
   if (settlement.kind === 'rejected' && settlement.line !== null && settlement.line !== undefined) trayOpen.value = true
 }
@@ -303,7 +308,7 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
           </div>
         </details>
         <div class="bar">
-          <RoundTray v-if="canConsume && round.lines.length > 0" v-model:open="trayOpen" embedded :round="round" :locked="locked" :message="roundMessage"
+          <RoundTray v-if="canConsume && round.lines.length > 0" v-model:open="trayOpen" embedded :round="round" :locked="locked" :uncertain="uncertain" :message="roundMessage"
             :sent="sent" :bad-line="round.problem?.line ?? null" @send="sendRound" @edit="editing = $event" />
           <p v-if="problem" class="notice" role="alert" data-testid="action-problem"><Icon name="info" />{{ problem }}</p>
           <div v-if="reasonInBar" class="field">
@@ -320,7 +325,7 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
     <DishPanel v-else-if="panel === 'carta'" :entry="entry" :offer="offer" :table-name="tableName" :locked="locked" @run="send" />
     <template v-else>
       <DrinksPanel :entry="entry" :products="products" :status="catalogStatus" :can-consume="canConsume" :round="round" @add="addToRound" />
-      <RoundTray v-if="canConsume" v-model:open="trayOpen" :round="round" :locked="locked" :message="roundMessage" :sent="sent"
+      <RoundTray v-if="canConsume" v-model:open="trayOpen" :round="round" :locked="locked" :uncertain="uncertain" :message="roundMessage" :sent="sent"
         :bad-line="round.problem?.line ?? null" @send="sendRound" @edit="editing = $event" />
     </template>
 

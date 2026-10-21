@@ -67,9 +67,10 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     // C3b: la MISMA regla que el selector «Añadir consumicion» del Comedor y que el comandero (Costina.Client/CatalogSearch, con la tabla de
     // casos comun): cada palabra escrita en el nombre, la referencia, la familia o la ruta de categorias, sin tildes ni mayusculas; con
     // texto, primero lo que empieza por lo escrito. Caja sigue buscando desde la primera letra y, sin texto, lo lista todo en el orden
-    // del servidor.
+    // del servidor. Solo en Caja, ademas, el nombre de su categoria (como antes de C3b): un producto colgado directamente de una seccion
+    // («Bodega y bebidas», «Cocina») trae la ruta vacia y, sin esto, «bebidas» ya no lo encontraria. La regla comun no cambia.
     private static bool MatchesProduct(ProductChoice p, string[] words) => words.Length == 0
-        || CatalogSearch.Matches(words, DrinksPicker.SearchFields(p.Name, p.Reference, p.Family, p.CategoryPath, p.CategoryName));
+        || CatalogSearch.Matches(words, [.. DrinksPicker.SearchFields(p.Name, p.Reference, p.Family, p.CategoryPath, p.CategoryName), CatalogSearch.Fold(p.CategoryName)]);
     private void BuildProductGroups()
     {
         var text = ProductSearch.Trim();

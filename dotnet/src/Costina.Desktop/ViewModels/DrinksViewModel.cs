@@ -139,6 +139,10 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
     public const string RoundHint = "Sin enviar. Si cierras el programa o sales de la mesa, la ronda se pierde.";
     public const string RoundConflict = "La mesa ha cambiado mientras tanto y se ha vuelto a leer: revisa la ronda y envíala de nuevo.";
     public const string LockedHint = "Hay una orden sin confirmar: resuélvela arriba antes de enviar la ronda. Mientras tanto puedes seguir llenándola.";
+    // Sin confirmar, la ronda ya ES la orden incierta (su aviso, arriba): la bandeja vacia lo dice para que nadie la vuelva a pedir.
+    public const string RoundUnconfirmed = "La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.";
+    // En la ficha la bandeja va sobre la accion grande: su envio es «Enviar ronda», en verde claro (un solo boton principal por ficha).
+    public const string SendRound = "Enviar ronda";
     public const string HadTitle = "Lo que lleva la mesa";
     public const string HadSub = "Bebidas y extras ya enviados";
     public const string HadEmptyText = "Aún no se ha enviado ninguna bebida ni ningún extra.";
@@ -160,7 +164,7 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
     private string addMessage = "";
     private Action? leaveProceed;
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowPicker), nameof(ShowFicha), nameof(ShowTrayInFicha))] private bool isOpen;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowPicker), nameof(ShowFicha), nameof(ShowTrayInFicha), nameof(ShowAddButton))] private bool isOpen;
     [ObservableProperty] private string query = "";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasChips))] private ChipRow[] chips = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSubChips))] private SubChipRow[] subChips = [];
@@ -186,6 +190,9 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
     // ---- Lo que anuncia el servidor y lo que se ve ----
     public bool CanConsume => shell.Connected && shell.Session?.Actions?.Contains(RoundAction, StringComparer.Ordinal) == true;
     public bool ShowAdd => CanConsume;
+    // El boton va en la cabecera FIJA de la ficha (bajo «Ver cuenta»), siempre a la vista: al final de los pases, en una degustacion de
+    // 6 o 7, quedaba fuera. Con el selector abierto no se ve (su cabecera ya dice «Añadir consumición»).
+    public bool ShowAddButton => ShowAdd && ShowFicha;
     public bool ShowPicker => IsOpen && service.HasContext;
     public bool ShowFicha => !IsOpen && service.HasContext;
     public bool ShowHad => service.HasContext && (HasHadList || CanConsume);
@@ -201,7 +208,9 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
     public string Summary => round.Summary;
     public string Names => string.Join(", ", round.Lines.Select(l => l.Text));
     public string SendText => round.Sending ? "Enviando…" : round.SendLabel;
-    public string EmptyRoundText => SentText.Length > 0 ? SentText : EmptyRound;
+    public string FichaSendText => round.Sending ? "Enviando…" : round.Conflict ? round.SendLabel : SendRound;
+    // «Sin confirmar» solo mientras haya una orden incierta; resuelta (o descartada), la bandeja vacia vuelve a decir lo de siempre.
+    public string EmptyRoundText => SentText.Length == 0 || (SentText == RoundUnconfirmed && shell.Pending is null && shell.Blocked is null) ? EmptyRound : SentText;
     public bool ShowTrayInFicha => HasLines && !IsOpen;
     public string TrayToggleText => TrayOpen ? "Ocultar la ronda" : "Ver la ronda";
     // Una orden sin confirmar, una bloqueada u otra en curso: la ronda se llena, pero no sale (D6.7: una sola orden incierta).
@@ -211,8 +220,8 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
 
     internal void Sync()
     {
-        foreach (var name in new[] { nameof(CanConsume), nameof(ShowAdd), nameof(ShowPicker), nameof(ShowFicha), nameof(ShowHad), nameof(Locked), nameof(LockedText),
-                     nameof(SendText), nameof(ShowTrayInFicha), nameof(Title) })
+        foreach (var name in new[] { nameof(CanConsume), nameof(ShowAdd), nameof(ShowAddButton), nameof(ShowPicker), nameof(ShowFicha), nameof(ShowHad), nameof(Locked), nameof(LockedText),
+                     nameof(SendText), nameof(FichaSendText), nameof(EmptyRoundText), nameof(ShowTrayInFicha), nameof(Title) })
             OnPropertyChanged(name);
         OpenCommand.NotifyCanExecuteChanged(); SendCommand.NotifyCanExecuteChanged();
     }
@@ -374,8 +383,8 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
         RoundMessage = ProblemText() is { Length: > 0 } problem ? problem : addMessage;
         if (!HasLines) TrayOpen = false;
         MarkRows();
-        foreach (var name in new[] { nameof(Lines), nameof(HasLines), nameof(Summary), nameof(Names), nameof(SendText), nameof(Sending), nameof(Conflict), nameof(ShowTrayInFicha),
-                     nameof(LockedText), nameof(TrayToggleText) })
+        foreach (var name in new[] { nameof(Lines), nameof(HasLines), nameof(Summary), nameof(Names), nameof(SendText), nameof(FichaSendText), nameof(Sending), nameof(Conflict),
+                     nameof(ShowTrayInFicha), nameof(LockedText), nameof(TrayToggleText) })
             OnPropertyChanged(name);
         SendCommand.NotifyCanExecuteChanged();
     }
@@ -418,8 +427,8 @@ public sealed partial class DrinksViewModel(ShellViewModel shell, ServiceViewMod
             catch (Exception) when (api.Pending is { } pending && pending.Path == path && pending.Body == body)
             {
                 // Sin confirmar: lo enviado YA es la orden incierta (su aviso la muestra y se reintenta identica); la ronda se vacia para no
-                // mandarlo dos veces.
-                round.Settle(RoundOutcome.Unconfirmed); RenderRound();
+                // mandarlo dos veces, y la bandeja vacia lo dice (como el comandero).
+                round.Settle(RoundOutcome.Unconfirmed); SentText = RoundUnconfirmed; RenderRound();
                 throw;
             }
             catch (Exception notSent) when (api.Pending is null && notSent is not ApiError)

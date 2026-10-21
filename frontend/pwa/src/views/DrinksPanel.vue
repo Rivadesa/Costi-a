@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { addLabel, chipHeader, chipProducts, chosenChip, drinkChips, formatParts, NO_RESULTS_HINT, noResults, ONE_MORE_LETTER, PAGE, resultsCount, RESULTS_WHERE, type DrinkChip } from '../bodega'
+import { addLabel, chipHeader, chipProducts, chosenChip, drinkChips, formatParts, keepTail, NO_RESULTS_HINT, noResults, ONE_MORE_LETTER, PAGE, resultsCount, RESULTS_WHERE, type DrinkChip } from '../bodega'
 import type { CatalogStatus } from '../catalog'
 import { atThisTable, detailFor, roundItem, searchDrinks, subfamilyChips, type DrinkButton, type DrinkProduct, type RoundItem } from '../drinks'
 import type { Round } from '../round'
@@ -41,7 +41,8 @@ const repeats = computed(() => atThisTable(props.entry.consumptions ?? [], props
 watch([query, chipKey, subfamily], () => { visible.value = PAGE })
 function pick(next: DrinkChip): void { chipKey.value = next.key; subfamily.value = null; query.value = '' }
 const add = (product: DrinkProduct, button: DrinkButton) => emit('add', roundItem(product, button))
-const detail = (product: DrinkProduct) => detailFor(product, searching.value === null ? '' : query.value)
+// El formato (o «Ref. X») del final no se parte en dos lineas (keepTail): nunca una «L» sola.
+const detail = (product: DrinkProduct) => keepTail(detailFor(product, searching.value === null ? '' : query.value))
 </script>
 
 <template>

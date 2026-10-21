@@ -675,6 +675,22 @@
   <Setter Property="Foreground" Value="{DynamicResource ButtonForeground}"/>
   <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorderBrush}"/>
  </Style>
+ <!-- «Enviar» de la bandeja de la ronda (RoundTray, por recurso dinamico): en el selector, el principal con «Enviar» (o «La mesa ha
+      cambiado: enviar de nuevo»); en la ficha (FichaRound, ServiceView) va RoundSendInFicha: «Enviar ronda» en verde claro, porque alli el
+      unico boton principal es la accion grande («Enviar siguiente pase») y dos verdes llenos uno encima de otro se confunden. -->
+ <Style x:Key="RoundSendButton" TargetType="Button" BasedOn="{StaticResource Primary}">
+  <Setter Property="Content" Value="{Binding SendText}"/>
+  <Setter Property="ContentTemplate">
+   <Setter.Value>
+    <DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource Icon}" Data="{StaticResource IconSend}" Margin="0,0,8,0"/><TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center"/></StackPanel></DataTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <!-- Sin icono, como en el comandero: en la ficha no compite con la accion grande. -->
+ <Style x:Key="RoundSendInFicha" TargetType="Button" BasedOn="{StaticResource SoftAccentButton}">
+  <Setter Property="Content" Value="{Binding FichaSendText}"/>
+  <Setter Property="ContentTemplate" Value="{StaticResource ButtonText}"/>
+ </Style>
  <!-- Boton de una presentacion de una bebida (Copa, Botella 0.75 L, Añadir): blanco con contorno y texto de acento, alto para pulsarlo
       sin apuntar; al pasar el raton, verde claro. Un toque suma 1 a la ronda: no es una orden al servidor. -->
  <Style x:Key="FormatButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -696,7 +712,8 @@
   <Setter Property="VerticalAlignment" Value="Center"/>
  </Style>
  <!-- Ficha de acceso (Por copa, Tintos, Blancos...) y de subfamilia (la region): pastilla blanca con su cifra; la elegida (Ui.Current), con
-      fondo y borde de acento. Son botones que solo filtran lo que se ve. -->
+      fondo y borde de acento. Son botones que solo filtran lo que se ve. «Por copa» (Tag "glass") lleva el borde DISCONTINUO de acento,
+      como en el comandero (.chip-glass) y en la maqueta: es el acceso especial, no una familia mas. -->
  <Style x:Key="ChipButton" TargetType="Button">
   <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="13"/><Setter Property="Cursor" Value="Hand"/>
@@ -704,15 +721,22 @@
   <Setter Property="Template">
    <Setter.Value>
     <ControlTemplate TargetType="Button">
-     <Border x:Name="Bd" CornerRadius="17" MinHeight="{TemplateBinding MinHeight}" Padding="{TemplateBinding Padding}" Background="{StaticResource Surface}"
-             BorderBrush="{StaticResource Stroke}" BorderThickness="1" SnapsToDevicePixels="True">
-      <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False"/>
-     </Border>
+     <Grid SnapsToDevicePixels="True">
+      <Border x:Name="Bd" CornerRadius="17" MinHeight="{TemplateBinding MinHeight}" Padding="{TemplateBinding Padding}" Background="{StaticResource Surface}"
+              BorderBrush="{StaticResource Stroke}" BorderThickness="1" SnapsToDevicePixels="True">
+       <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False"/>
+      </Border>
+      <Rectangle x:Name="Dash" RadiusX="17" RadiusY="17" Stroke="{StaticResource Accent}" StrokeThickness="1" StrokeDashArray="4 3" Visibility="Collapsed" IsHitTestVisible="False"/>
+     </Grid>
      <ControlTemplate.Triggers>
       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
       <Trigger Property="local:Ui.Current" Value="True">
        <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
        <Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="FontWeight" Value="SemiBold"/>
+      </Trigger>
+      <!-- Despues de los demas: el discontinuo manda tambien elegida o con el raton encima (como .chip-glass del comandero). -->
+      <Trigger Property="Tag" Value="glass">
+       <Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/><Setter TargetName="Dash" Property="Visibility" Value="Visible"/>
       </Trigger>
       <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource InkDisabled}"/></Trigger>
      </ControlTemplate.Triggers>

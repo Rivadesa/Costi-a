@@ -1,7 +1,7 @@
 import { REJECTIONS, type Outcome } from './commands'
 import { ADD, byGlass, familyChips, inFamily, lineText, type DrinkProduct } from './drinks'
 import { guestLabel, plural, restrictionLabel } from './labels'
-import { MAX_LINES, MAX_QUANTITY, roundLineText, type AddResult, type RoundLine, type Settlement } from './round'
+import { MAX_LINES, MAX_QUANTITY, roundLineText, type AddResult, type Round, type RoundLine, type Settlement } from './round'
 import type { GuestRestriction, TableConsumption } from './types'
 
 // C3b: lo que PINTA «Bodega y bebidas» del comandero, sin DOM (plan 2026-10-15, seccion 4.4; maqueta, pestanas «2 · Bodega y bebidas»
@@ -48,6 +48,14 @@ export function formatParts(label: string): [string, string] {
   const text = label.trim(), cut = text.indexOf(' ')
   return cut < 0 ? [text, ''] : [text.slice(0, cut), text.slice(cut + 1).trim()]
 }
+// El detalle de una fila con su formato («Blancos › Rías Baixas · Botella 0.75 L»): el ultimo tramo (el formato, o «Ref. X») no se parte
+// por dentro y el «·» se queda con lo de delante, asi en un movil nunca queda una «L» sola en otra linea. Solo pinta (espacios duros).
+export function keepTail(text: string): string {
+  const cut = text.lastIndexOf(' · ')
+  if (cut < 0) return text
+  const tail = text.slice(cut + 3)
+  return tail.length === 0 || tail.length > 20 ? text : `${text.slice(0, cut)}\u00a0· ${tail.replace(/ /g, '\u00a0')}`
+}
 // Lo que dice el boton a un lector de pantalla: «Añadir 1 Copa de Albariño» o, con una sola presentacion, «Añadir 1 Agua con gas».
 export const addLabel = (name: string, presentationId: string, presentation: string, single: boolean): string =>
   single ? `Añadir 1 ${lineText(name, presentationId, presentation)}` : `Añadir 1 ${presentation} de ${name}`
@@ -67,8 +75,21 @@ export const EMPTY_ROUND = 'Ronda vacía. Copa o Botella suman 1 para toda la me
 export const ROUND_SENT = 'Ronda enviada: ya sale en «Lo que lleva la mesa».'
 export const ROUND_HINT = 'Sin enviar. Cambia la cantidad con − y +, o para quién en «Para». Si la página se recarga, la ronda se pierde.'
 export const ROUND_CONFLICT = 'La mesa ha cambiado mientras tanto y se ha vuelto a leer: revisa la ronda y envíala de nuevo.'
+// Sin confirmar, la ronda ya ES la orden incierta (arriba, en su panel): la bandeja vacia lo dice, para que nadie la vuelva a pedir.
+export const ROUND_UNCONFIRMED = 'La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.'
+// Con una orden incierta o bloqueada (D6.7) la ronda se llena pero no sale: la bandeja dice por que «Enviar» no se puede tocar (como el PC).
+export const ROUND_LOCKED = 'Hay una orden sin confirmar: resuélvela arriba antes de enviar la ronda. Mientras tanto puedes seguir llenándola.'
+// En la ficha la bandeja va sobre el boton grande: su envio se llama «Enviar ronda» y no es verde lleno (un solo boton principal por
+// ficha, maqueta «1 · Mesa»), para no confundirlo con «Enviar siguiente pase». En Bebidas es el principal: «Enviar».
+export const SEND_ROUND = 'Enviar ronda'
+export const SENDING = 'Enviando…'
+export const sendLabel = (round: Pick<Round, 'sending' | 'conflict' | 'sendLabel'>, embedded: boolean): string =>
+  round.sending ? SENDING : embedded && !round.conflict ? SEND_ROUND : round.sendLabel
 export const roundNames = (lines: readonly RoundLine[]): string => lines.map(roundLineText).join(', ')
 export const forLabel = (guestPosition: number | null): string => `Para: ${guestLabel(guestPosition)}`
+// La clave de una fila de la bandeja: con su POSICION, porque dos lineas iguales que juntas pasarian de 99 siguen separadas (round.ts)
+// y todas las acciones de la bandeja van por indice.
+export const trayKey = (line: RoundLine, index: number): string => `${index}:${line.productId}/${line.presentationId}/${line.guestPosition ?? ''}`
 
 // El ultimo rechazo, con la linea que el servidor dice (desde 0) si la hay y sigue en la ronda.
 export function roundProblem(problem: { code: string; line: number | null } | null, lines: readonly RoundLine[]): string {

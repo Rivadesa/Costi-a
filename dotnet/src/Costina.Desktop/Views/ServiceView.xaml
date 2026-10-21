@@ -237,21 +237,32 @@
 
     <!-- Detalle de la mesa ocupada elegida -->
     <DockPanel x:Name="TableDetail" Visibility="{Binding Service.ShowDetail, Converter={StaticResource Bool2Vis}}">
-     <!-- Cabecera: sala y oferta (con "Ver cuenta" a su altura), mesa con su estado, y personas y tiempo a todo lo ancho. -->
+     <!-- Cabecera: sala y oferta (con "Ver cuenta" a su altura), mesa con su estado, y personas y tiempo a todo lo ancho. C3b: «Añadir
+          consumición» en la fila de la mesa, bajo «Ver cuenta»: en esta cabecera FIJA siempre esta a la vista (al final de los pases, en
+          una degustacion de 6 o 7, quedaba fuera). Solo si el servidor anuncia add-consumptions (sin contrasena en el nivel Puesto). -->
      <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <TextBlock Text="{Binding Service.DetailZoneOffer}" Style="{StaticResource Body}" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
-      <Button x:Name="ViewAccountButton" Grid.Column="1" Style="{StaticResource BarButton}" Margin="8,0,0,0" Command="{Binding Service.ViewAccountCommand}" Content="Ver cuenta"
+      <Button x:Name="ViewAccountButton" Grid.Column="1" Style="{StaticResource BarButton}" Margin="8,0,0,0" HorizontalAlignment="Right" Command="{Binding Service.ViewAccountCommand}" Content="Ver cuenta"
               ToolTip="Abre la cuenta de esta mesa en Cuenta / Caja (apartado del responsable)">
        <Button.ContentTemplate><DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconLock}" Margin="0,0,6,0"/><TextBlock Text="{Binding}"/></StackPanel></DataTemplate></Button.ContentTemplate>
       </Button>
-      <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,2,0,0">
+      <WrapPanel Grid.Row="1" Margin="0,2,0,0">
+       <WrapPanel.Style>
+        <Style TargetType="WrapPanel">
+         <Setter Property="Grid.ColumnSpan" Value="2"/>
+         <Style.Triggers><DataTrigger Binding="{Binding Service.Drinks.ShowAddButton}" Value="True"><Setter Property="Grid.ColumnSpan" Value="1"/></DataTrigger></Style.Triggers>
+        </Style>
+       </WrapPanel.Style>
        <TextBlock x:Name="DetailTitleText" Text="{Binding Service.DetailTitle}" Style="{StaticResource PanelTitle}" FontSize="22" Margin="0,0,10,0"/>
        <Border Style="{StaticResource ToneChip}" Tag="{Binding Service.DetailTone}" Margin="0,5,0,0" VerticalAlignment="Top" Visibility="{Binding Service.DetailState, Converter={StaticResource Text2Vis}}">
         <TextBlock Text="{Binding Service.DetailState}"/>
        </Border>
       </WrapPanel>
+      <Button x:Name="AddConsumptionButton" Grid.Row="1" Grid.Column="1" Style="{StaticResource SoftAccentButton}" Command="{Binding Service.Drinks.OpenCommand}" Content="Añadir consumición"
+              Margin="8,4,0,0" VerticalAlignment="Center" ContentTemplate="{StaticResource PlusText}" Visibility="{Binding Service.Drinks.ShowAddButton, Converter={StaticResource Bool2Vis}}"
+              ToolTip="Bodega y bebidas para esta mesa: Copa o Botella, sin precios; se envía la ronda entera en una orden"/>
       <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Service.DetailInfo}" Style="{StaticResource Body}" Margin="0,2,0,0"/>
      </Grid>
 
@@ -259,7 +270,10 @@
           enviar, su bandeja va encima (como en la maqueta); con «Añadir consumición» abierto, el selector ocupa este sitio. -->
      <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,12,0,0" Visibility="{Binding Service.Drinks.ShowFicha, Converter={StaticResource Bool2Vis}}">
      <StackPanel>
-     <views:RoundTray x:Name="FichaRound" DataContext="{Binding Service.Drinks}" Margin="0,0,0,10" Visibility="{Binding ShowTrayInFicha, Converter={StaticResource Bool2Vis}}"/>
+     <!-- Encima de la accion grande, su envio es «Enviar ronda» en verde claro: un solo boton principal por ficha (maqueta «1 · Mesa»). -->
+     <views:RoundTray x:Name="FichaRound" DataContext="{Binding Service.Drinks}" Margin="0,0,0,10" Visibility="{Binding ShowTrayInFicha, Converter={StaticResource Bool2Vis}}">
+      <views:RoundTray.Resources><Style x:Key="RoundSendButton" TargetType="Button" BasedOn="{StaticResource RoundSendInFicha}"/></views:RoundTray.Resources>
+     </views:RoundTray>
      <StackPanel x:Name="ActionArea">
       <DockPanel Margin="0,0,0,10" Visibility="{Binding Service.ReasonNeeded, Converter={StaticResource Bool2Vis}}"
                  ToolTip="Obligatorio para pausar, omitir un pase, cancelar la mesa, retirar una restricción o liberar la mesa">
@@ -440,18 +454,13 @@
        </StackPanel></Border>
 
        <!-- C3b: «Lo que lleva la mesa»: bebidas y extras ya enviados (tambien los de Caja), con formato, cantidad, comensal, hora y «Anulado en
-            Caja». SIN importes ni totales: no es la cuenta provisional (ADR-007, apartado C3b). «Añadir consumición» en su cabecera, solo si
-            el servidor anuncia add-consumptions (sin contrasena en el nivel Puesto); «Ver cuenta», con su candado, sigue arriba. -->
+            Caja». SIN importes ni totales: no es la cuenta provisional (ADR-007, apartado C3b). «Añadir consumición» va en la cabecera fija de
+            la ficha, siempre a la vista; «Ver cuenta», con su candado, sobre el. -->
        <StackPanel x:Name="HadBlock" Margin="0,8,0,10" Visibility="{Binding Service.Drinks.ShowHad, Converter={StaticResource Bool2Vis}}">
-        <DockPanel Margin="0,0,0,8">
-         <Button x:Name="AddConsumptionButton" DockPanel.Dock="Right" Style="{StaticResource SoftAccentButton}" Command="{Binding Service.Drinks.OpenCommand}" Content="Añadir consumición"
-                 VerticalAlignment="Center" ContentTemplate="{StaticResource PlusText}" Visibility="{Binding Service.Drinks.ShowAdd, Converter={StaticResource Bool2Vis}}"
-                 ToolTip="Bodega y bebidas para esta mesa: Copa o Botella, sin precios; se envía la ronda entera en una orden"/>
-         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="{x:Static vm:DrinksViewModel.HadTitle}" Style="{StaticResource Section}" Margin="0"/>
-          <TextBlock Text="{x:Static vm:DrinksViewModel.HadSub}" Style="{StaticResource Subtle}"/>
-         </StackPanel>
-        </DockPanel>
+        <StackPanel Margin="0,0,0,8">
+         <TextBlock Text="{x:Static vm:DrinksViewModel.HadTitle}" Style="{StaticResource Section}" Margin="0"/>
+         <TextBlock Text="{x:Static vm:DrinksViewModel.HadSub}" Style="{StaticResource Subtle}"/>
+        </StackPanel>
         <TextBlock x:Name="HadEmptyText" Text="{x:Static vm:DrinksViewModel.HadEmptyText}" Style="{StaticResource Body}" Margin="0,0,0,6"
                    Visibility="{Binding Service.Drinks.HadEmpty, Converter={StaticResource Bool2Vis}}"/>
         <ItemsControl x:Name="HadList" ItemsSource="{Binding Service.Drinks.Had}" Focusable="False">

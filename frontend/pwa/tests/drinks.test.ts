@@ -28,6 +28,12 @@ const cases = JSON.parse(readFileSync(fileURLToPath(new URL('../../../dotnet/tes
 }
 const products = drinkProducts(cases.catalog)
 const ids = (list: ReadonlyArray<{ id: string }> | null) => list === null ? null : list.map(product => product.id)
+// Como Only de ClientChecks: un apartado o un campo que esta prueba no conoce es un fallo (si no, lo que solo hiciera Costina.Client
+// pasaria aqui sin mirarse, que es justo la deriva que la tabla comun existe para pillar).
+const SECTIONS = ['about', 'catalog', 'fold', 'products', 'families', 'subfamilies', 'inFamily', 'glass', 'search', 'consumptions', 'atThisTable', 'round']
+function only(row: object, fields: string[], where: string): void {
+  expect(Object.keys(row).filter(field => !fields.includes(field)), `unknown field in the shared cases (${where})`).toEqual([])
+}
 
 function itemOf(key: unknown): RoundItem {
   const [id, presentationId] = String(key).split('/')
@@ -38,11 +44,13 @@ function itemOf(key: unknown): RoundItem {
 }
 
 describe('drinks picker: the case table shared with the main PC (CatalogSearch.cs, DrinksPicker.cs)', () => {
-  it.each(cases.fold.map(row => [row.text, row] as const))('fold «%s»', (_, row) => { expect(fold(row.text)).toBe(row.folded) })
+  it('every section of the table is known here', () => { only(cases, SECTIONS, 'sections') })
+  it.each(cases.fold.map(row => [row.text, row] as const))('fold «%s»', (_, row) => { only(row, ['text', 'folded'], 'fold'); expect(fold(row.text)).toBe(row.folded) })
 
   it('one row per product of the bodega section, A to Z, the glass first and one button per presentation («Añadir» if only one)', () => {
     expect(ids(products)).toEqual(cases.products.map(row => row.id))
     for (const [index, row] of cases.products.entries()) {
+      only(row, ['id', 'name', 'family', 'subfamily', 'detail', 'glass', 'buttons'], 'products')
       const product = products[index]
       expect({ id: product.id, name: product.name, family: product.family, subfamily: product.subfamily, detail: product.detail, glass: product.glass,
         buttons: product.buttons.map(button => [button.presentationId, button.label]) }, row.id).toEqual(row)
@@ -52,21 +60,25 @@ describe('drinks picker: the case table shared with the main PC (CatalogSearch.c
     expect(familyChips(products)).toEqual(cases.families)
   })
   it.each(cases.subfamilies.map(row => [row.case, row] as const))('subfamilies: %s', (_, row) => {
+    only(row, ['case', 'family', 'expect'], 'subfamilies')
     expect(subfamilyChips(products, row.family).map(chip => [chip.name, chip.count])).toEqual(row.expect)
   })
   it.each(cases.inFamily.map(row => [row.case, row] as const))('in a family: %s', (_, row) => {
+    only(row, ['case', 'family', 'subfamily', 'expect'], 'inFamily')
     expect(ids(inFamily(products, row.family, row.subfamily))).toEqual(row.expect)
   })
   it('«Por copa»: the products the server marks with a glass', () => {
     expect(ids(byGlass(products))).toEqual(cases.glass)
   })
   it.each(cases.search.map(row => [row.case, row] as const))('search: %s', (_, row) => {
+    only(row, ['case', 'query', 'expect', 'details'], 'search')
     const found = searchDrinks(products, row.query)
     expect(ids(found)).toEqual(row.expect)
     expect(isSearching(row.query)).toBe(row.expect !== null)
     if (row.details) expect(found!.map(product => detailFor(product, row.query))).toEqual(row.details)
   })
   it('«En esta mesa»: what the table already has, once, in order, only if it is still sold in the bodega', () => {
+    for (const row of cases.atThisTable) only(row, ['item', 'name', 'detail'], 'atThisTable')
     const repeats = atThisTable(cases.consumptions, products)
     expect(repeats.map(repeat => ({ item: `${repeat.productId}/${repeat.presentationId}`, name: repeat.name, detail: repeat.detail }))).toEqual(cases.atThisTable)
     expect(repeats.map(repeat => roundItem(repeat.product, repeat.button))).toEqual(cases.atThisTable.map(row => itemOf(row.item)))
@@ -127,6 +139,7 @@ function apply(round: Round, step: Step): unknown {
 
 describe('round: the case table shared with the main PC (Round.cs)', () => {
   it.each(cases.round.map(row => [row.case, row] as const))('%s', (_, row) => {
+    only(row, ['case', 'steps'], 'round')
     const round = new Round()
     for (const [index, step] of row.steps.entries()) {
       expect(Object.keys(FIELDS), `unknown round step: ${step.op}`).toContain(step.op)

@@ -95,12 +95,14 @@ test('Bodega y bebidas: a round is ONE command, applied once after a lost answer
     const pending = page.getByTestId('pending')
     await expect(pending).toContainText('ORDEN SIN CONFIRMAR', { timeout: 15_000 })
     await expect(pending).toContainText(`Ronda para ${TABLE.name}: 2 × ${ALBARINO.name} · Copa, 1 × Agua mineral · Botella (Comensal 2)`)
-    await expect(page.getByTestId('round-empty')).toBeVisible()
+    // La bandeja vacia no invita a pedirla otra vez: dice que la ronda es la orden de arriba y que no se repita.
+    await expect(page.getByTestId('round-empty')).toHaveText('La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.')
     expect(await drinkLines(request, serviceId)).toEqual([[ALBARINO.id, 'copa', 2, null], ['water', 'bottle', 1, 2]])   // el servidor SI la aplico
-    // Mientras tanto se puede llenar otra ronda, pero no enviarla (una sola orden incierta, D6.7).
+    // Mientras tanto se puede llenar otra ronda, pero no enviarla (una sola orden incierta, D6.7), y la bandeja dice por que.
     await press(page.getByTestId('add-water-bottle'))
     await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
     await expect(page.getByTestId('do-send-round')).toBeDisabled()
+    await expect(page.getByTestId('round-locked')).toHaveText('Hay una orden sin confirmar: resuélvela arriba antes de enviar la ronda. Mientras tanto puedes seguir llenándola.')
     await checkScreen(page, 'uncertain round')
     await page.unrouteAll({ behavior: 'wait' })
     await page.reload()                                                                    // la orden sigue en el dispositivo y sale sola
@@ -157,6 +159,10 @@ test('Bodega y bebidas: a round is ONE command, applied once after a lost answer
     await press(page.getByTestId(`repeat-${ALBARINO.id}-copa`))
     await press(page.getByTestId('back'))                                                      // a la ficha: la ronda sigue, abajo
     await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
+    // Sobre el boton grande, su envio es «Enviar ronda» en verde claro: la ficha tiene un solo boton principal (maqueta «1 · Mesa»).
+    await expect(page.getByTestId('do-send-round')).toHaveText('Enviar ronda')
+    await expect(page.getByTestId('do-send-round')).not.toHaveClass(/btn-primary/)
+    expect(await page.locator('[data-testid=detail] .btn-primary:visible').count()).toBeLessThanOrEqual(1)
     await press(page.getByTestId('back'))                                                      // a Mesas: se pregunta
     await expect(page.getByTestId('leave-sheet')).toContainText('La ronda tiene 1 sin enviar')
     await checkScreen(page, 'leave with a round')

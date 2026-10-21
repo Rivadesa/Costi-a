@@ -469,7 +469,8 @@ Es la primera parte de C3 (plan del nuevo aspecto, apartado C3): el aspecto y el
 - **El catálogo del comandero** se lee también al montar el tablero. El del PC se lee entero cada vez que se abre el selector, sin `ETag`.
 - **Las E2E de la ronda** usan la Mesa 1 en los dos proyectos, una detrás de otra.
 - **Varios tamaños de copa** («Copa 15 cl») quedan como pregunta para el promotor. Mientras tanto sigue una copa por vino.
-- **Quedan para revisar con el promotor** veinte decisiones pequeñas del motor, del comandero y del PC, en el documento del corte. Por ejemplo: las restricciones también arriba en Bebidas, las familias de la A a la Z y la ronda plegada en el PC.
+- **Quedan para revisar con el promotor** veinticuatro decisiones pequeñas del motor, del comandero y del PC, en el documento del corte. Por ejemplo: las restricciones también arriba en Bebidas, las familias de la A a la Z, la ronda plegada en el PC, «Enviar ronda» en verde claro sobre el botón grande de la ficha y «Añadir consumición» en la cabecera fija de la ficha del PC.
+- **Sin vuelta atrás:** como se prevé para E4e, una cuenta guardada por `0.42.0-c3b` ya no la lee `0.41.0-c3a`; bajar de versión exige restaurar la copia previa. Lo dice el documento del corte, y que el instalador nunca baje de versión sigue pendiente.
 
 Lleva también la petición del promotor del 15-10 de añadir una consumición desde la mesa abierta del puesto principal, sin ir a Caja (sección «Origen»). Usa la misma orden de ronda y la misma regla de una orden por gesto que el comandero, así que el motor no añade nada más por ella.
 
