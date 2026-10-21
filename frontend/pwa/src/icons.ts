@@ -32,6 +32,9 @@ export const ICONS = {
   chef: ['M7 14a4 4 0 1 1 2.2-7.4A4 4 0 0 1 17 7a4 4 0 0 1 0 7', 'M7 14v6h10v-6', 'M7 17h10'],
   info: [circle(12, 12, 9), 'M12 11v5', 'M12 8h.01'],
   grid: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
+  // C3b: el buscador de «Bodega y bebidas» y la papelera de la ronda.
+  search: [circle(11, 11, 7), 'M20 20l-4-4'],
+  trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13', 'M10 11v6', 'M14 11v6'],
 } as const satisfies Record<string, readonly string[]>
 
 export type IconName = keyof typeof ICONS

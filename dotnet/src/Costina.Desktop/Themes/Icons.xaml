@@ -58,4 +58,11 @@
  <Geometry x:Key="IconClock">M2.5,10 A7.5,7.5 0 1 0 17.5,10 A7.5,7.5 0 1 0 2.5,10 Z M10,5.833 V10 l2.917,1.667</Geometry>
  <!-- Plegar la barra lateral -->
  <Geometry x:Key="IconSidebar">M4.167,3.333 H15.833 A1.667,1.667 0 0 1 17.5,5 V15 A1.667,1.667 0 0 1 15.833,16.667 H4.167 A1.667,1.667 0 0 1 2.5,15 V5 A1.667,1.667 0 0 1 4.167,3.333 Z M7.5,3.333 v13.333</Geometry>
+ <!-- C3b: los del comandero (frontend/pwa/src/icons.ts) para «Añadir consumicion» y la ronda: copa, menos, papelera, enviar y desplegar -->
+ <Geometry x:Key="IconGlass">M5.833,2.5 h8.333 v3.333 a4.167,4.167 0 0 1 -8.333,0 Z M10,10 v6.667 M6.667,17.5 h6.667</Geometry>
+ <Geometry x:Key="IconMinus">M4.167,10 h11.667</Geometry>
+ <Geometry x:Key="IconTrash">M3.333,5.833 h13.333 M7.5,5.833 V3.333 h5 v2.5 M5,5.833 l0.833,10.833 h8.333 l0.833,-10.833 M8.333,9.167 v5 M11.667,9.167 v5</Geometry>
+ <Geometry x:Key="IconSend">M17.5,2.5 L2.5,8.75 l5.833,2.083 l2.083,5.833 Z M8.333,10.833 L17.5,2.5</Geometry>
+ <Geometry x:Key="IconChevronDown">M5,7.5 l5,5 l5,-5</Geometry>
+ <Geometry x:Key="IconChevronUp">M5,12.5 l5,-5 l5,5</Geometry>
 </ResourceDictionary>

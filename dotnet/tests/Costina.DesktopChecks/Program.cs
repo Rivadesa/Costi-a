@@ -588,7 +588,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.41.0-c3a",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.42.0-c3b",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -1089,6 +1089,254 @@ internal static class Program
         var salaTops=service.Groups[0].Tiles.Take(4).Select(t=>Math.Round(TileButton(t.Name).TranslatePoint(new Point(0,0),serviceView).Y)).ToArray();
         if(window.ActualWidth>=1270&&!window.Shell.SideNavCompact&&(salaTops[0]!=salaTops[1]||salaTops[1]!=salaTops[2]||salaTops[3]<=salaTops[2])) throw new Exception("At 1280 px with the sidebar unfolded the plan shows three tiles per row: "+string.Join(",",salaTops));
         if(Descendants<Button>(serviceView).Where(b=>b.DataContext is Costina.Desktop.ViewModels.TableTile).Any(b=>b.ActualWidth<Costina.Desktop.Views.ServiceView.MinTile-0.5)) throw new Exception("No tile is narrower than its minimum.");
+        // ===== C3b (plan 2026-10-15, seccion 4.4): «Añadir consumicion» en la ficha de la mesa del Comedor =====
+        // El MISMO comedor de C2 y sus cuentas: el catalogo operativo (GET /catalog, SIN precios) trae las bebidas de esas cuentas (Albarino,
+        // Vino de la casa, Agua mineral, Cafe solo, Estrella Galicia) y otras de la bodega; un plato de cocina y el producto-menu no son de
+        // Bodega y bebidas. La Mesa 4 ya lleva lo de su cuenta (el cafe, anulado en Caja). El motor simulado aplica la ronda como el de verdad
+        // (idempotente por clave, con la version leida). En el nivel Puesto (dispositivo de sala) y con el almacen DPAPI real de la orden
+        // incierta, para ver que la ronda nunca va a el antes de «Enviar».
+        server.RoundClock=c2Now; var c3bStart=server.Requests.Length;
+        string Photo(string id,Color glassColour,Color label){ var bytes=Bottle(glassColour,label,new PngBitmapEncoder()); server.Images[id]=("image/png",bytes); return Costina.Client.ProductImages.Sha256(bytes); }
+        string albarinoSha=Photo("albarino",Color.FromRgb(0xC9,0xA2,0x3C),Color.FromRgb(0xF4,0xEC,0xD8)),ferreiroSha=Photo("ferreiro",Color.FromRgb(0x6B,0x8F,0x3A),Color.FromRgb(0xFF,0xFF,0xFF)),
+            guimaroSha=Photo("guimaro",Color.FromRgb(0x5E,0x17,0x25),Color.FromRgb(0xEB,0xDC,0xB8)),aguaSha=Photo("agua",Color.FromRgb(0x4F,0x8F,0xC9),Color.FromRgb(0xFF,0xFF,0xFF));
+        Costina.Client.CatalogItem Sell(string id,string presentationId,string name,string presentation,string family,string? region,string? sha=null,bool glass=false,string? reference=null,string? section="bodega")
+            =>new(id,presentationId,name,presentation,"cat-"+id,region??family,sha,section,family,region is null?[family]:[family,region],reference,glass);
+        server.Sellables=[
+            Sell("albarino","botella-0-75-l","Albariño Pazo de Señoráns","Botella 0.75 L","Blancos","Rías Baixas",albarinoSha,reference:"V-1001"),
+            Sell("albarino","copa","Albariño Pazo de Señoráns","Copa","Blancos","Rías Baixas",albarinoSha,glass:true,reference:"V-1001"),
+            Sell("ferreiro","botella-0-75-l","Do Ferreiro Albariño 2022","Botella 0.75 L","Blancos","Rías Baixas",ferreiroSha,reference:"V-1002"),
+            Sell("guimaro","copa","Guímaro Mencía 2022","Copa","Tintos","Ribeira Sacra",guimaroSha,glass:true),
+            Sell("guimaro","botella-0-75-l","Guímaro Mencía 2022","Botella 0.75 L","Tintos","Ribeira Sacra",guimaroSha),
+            Sell("lalama","copa","Lalama 2019","Copa","Tintos","Ribeira Sacra",glass:true),Sell("lalama","botella-0-75-l","Lalama 2019","Botella 0.75 L","Tintos","Ribeira Sacra"),
+            Sell("vino-casa","botella","Vino de la casa","Botella","Tintos","Ribeiro"),Sell("vino-casa","copa","Vino de la casa","Copa","Tintos","Ribeiro",glass:true),
+            Sell("agua","botella-1-l","Agua mineral","Botella 1 L","Refrescos y aguas",null,aguaSha),Sell("agua-gas","unit","Agua con gas Mondariz","Unidad","Refrescos y aguas",null),
+            Sell("estrella","botellin","Estrella Galicia","Botellín","Cervezas",null),Sell("cafe","unit","Café solo","Unidad","Cafés e infusiones",null),
+            Sell("pulpo","racion","Pulpo á feira","Ración","Entrantes",null,section:"cocina"),Sell("menu-dia","person","Menú del día","Por persona","Menús",null,section:null)];
+        Costina.Client.ConsumptionDto[] mesa4Had=[new("had-vino","vino-casa","botella","Vino de la casa","Botella",1,null,c2Now.AddMinutes(-50)),
+            new("had-agua","agua","botella-1-l","Agua mineral","Botella 1 L",2,null,c2Now.AddMinutes(-50)),new("had-cafe","cafe","unit","Café solo",null,1,null,c2Now.AddMinutes(-20),true)];
+        Costina.Client.BoardEntry[] c3bBoard=[..diningBoard.Select(AsStation).Select(b=>b with {Consumptions=b.Service.Id=="s4"?mesa4Had:[]})];
+        var puestoSession=new Costina.Client.SessionInfo("service","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.42.0-c3b",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
+        var roundFolder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
+        var drinks=service.Drinks; var drinksPicker=(FrameworkElement)serviceView.FindName("DrinksPicker"); var pickerTray=(FrameworkElement)drinksPicker.FindName("PickerRound");
+        var fichaPanel=(FrameworkElement)serviceView.FindName("TablePanel"); var addConsumption=Named("AddConsumptionButton");
+        bool InFicha(string name)=>((FrameworkElement)serviceView.FindName(name)).IsVisible;
+        Button Format(string product,string top){ window.UpdateLayout(); return Descendants<Button>(drinksPicker).FirstOrDefault(b=>b.IsVisible&&b.DataContext is Costina.Desktop.ViewModels.DrinkChoice c&&c.Product.Id==product&&c.Top==top)??throw new Exception("No button "+top+" painted for "+product); }
+        Button InTray(string name)=>(Button)pickerTray.FindName(name);
+        string DrinkRows()=>string.Join(" | ",drinks.Rows.Select(r=>r.Name+" ["+r.Detail+"] "+string.Join("/",r.Choices.Select(c=>c.Top+(c.HasBottom?" "+c.Bottom:"")))));
+        string HadText()=>string.Join(" | ",drinks.Had.Select(h=>h.Quantity+" "+h.Name+(h.HasDetail?" ("+h.Detail+")":"")+(h.Voided?" ANULADO":"")));
+        // Lo pintado no lleva importes ni codigos: ni euros ni cifras con centimos, ni el codigo de un producto o de una presentacion.
+        var amount=new Regex(@"€|\d+,\d{2}\b",RegexOptions.CultureInvariant);
+        var codes=new Regex(@"(?<![\w-])(albarino|ferreiro|guimaro|lalama|vino-casa|agua-gas|estrella|cafe|pulpo|menu-dia|botella-0-75-l|botella-1-l|botellin|unit|racion|cat-[\w-]+|s4|M4)(?![\w-])",RegexOptions.CultureInvariant);
+        void NoMoneyNoCodes(string what)
+        {
+            RefuseRaw(window,what);
+            if(Painted(serviceView).FirstOrDefault(t=>amount.IsMatch(t)||codes.IsMatch(t)) is {} leak) throw new Exception(what+": no amounts and no codes are painted, found '"+leak+"'.");
+        }
+        // Sin la accion anunciada (un servidor anterior, o un rol que no la tiene) no hay «Añadir consumicion»; lo que lleva la mesa, si.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        window.Shell.Session=puestoSession with {Actions=["open"]};
+        server.Board=c3bBoard;
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        window.Shell.Api.AttachPendingStore(new DpapiPendingStore(window.Shell.Session!,roundFolder));
+        window.Shell.Status=""; tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the Puesto reads the plan with what each table has");
+        Pick("Mesa 4","s4");
+        if(addConsumption.IsVisible||drinks.ShowAdd||drinks.OpenCommand.CanExecute(null)) throw new Exception("Without add-consumptions announced there is no «Añadir consumición».");
+        if(!InFicha("HadBlock")||HadText()!="1× Vino de la casa (Botella · Toda la mesa) | 2× Agua mineral (Botella 1 L · Toda la mesa) | 1× Café solo (Toda la mesa) ANULADO")
+            throw new Exception("What the table has is painted from the board: "+HadText());
+        // Con la accion anunciada (el Puesto es un dispositivo de sala: la tiene), el boton sale habilitado y abre SIN pedir la contrasena.
+        window.Shell.Session=puestoSession; window.UpdateLayout();
+        if(!window.Shell.IsStation||!addConsumption.IsVisible||!addConsumption.IsEnabled) throw new Exception("At the Puesto level an open table offers «Añadir consumición», enabled by the announced add-consumptions.");
+        // Revision: el boton va en la cabecera FIJA de la ficha (bajo «Ver cuenta»), nunca dentro del desplazamiento tras los pases: en la
+        // degustacion de 6 pases de la Mesa 1, desde arriba, esta a la vista (en la cabecera de «Lo que lleva la mesa» quedaba debajo).
+        Pick("Mesa 1","s1"); var detailScrollC3b=(ScrollViewer)serviceView.FindName("DetailScroll"); detailScrollC3b.ScrollToHome(); window.UpdateLayout();
+        var addBottom=addConsumption.TranslatePoint(new Point(0,addConsumption.ActualHeight),fichaPanel).Y; var scrollTop=detailScrollC3b.TranslatePoint(new Point(0,0),fichaPanel).Y;
+        if(!addConsumption.IsVisible||addConsumption.IsDescendantOf(detailScrollC3b)||addBottom>scrollTop+0.5)
+            throw new Exception("«Añadir consumición» is in the fixed header of the ficha, above what scrolls, in view on a 6-course table: "+addBottom+" > "+scrollTop);
+        Pick("Mesa 4","s4");
+        var readsBeforePicker=server.Requests.Length;
+        Press(addConsumption,"Añadir consumición");
+        Wait(()=>!window.Shell.Busy&&drinks.Rows.Length>0,"the picker reads the operational catalog"); window.UpdateLayout();
+        if(window.Shell.ElevationRequested||window.Shell.LoginCardVisible||window.Shell.RequestedView is not null) throw new Exception("«Añadir consumición» at the Puesto level never asks for the responsible's password.");
+        if(!server.Requests.Skip(readsBeforePicker).Any(r=>r.Method=="GET"&&r.Path=="catalog")||server.Requests.Skip(c3bStart).Any(r=>r.Path.StartsWith("checkout/catalog",StringComparison.Ordinal)))
+            throw new Exception("The picker reads GET /catalog (no prices), never /checkout/catalog.");
+        if(!InFicha("DrinksPicker")||InFicha("DetailScroll")||Named("PrimaryActionButton").IsVisible||Math.Abs(fichaPanel.ActualWidth-480)>0.5||!InFicha("DrinksRestrictions"))
+            throw new Exception("The picker opens INSIDE the ficha (480 px), with the restrictions still on top and the courses and the big action hidden: "+fichaPanel.ActualWidth);
+        string ChipText()=>string.Join(", ",drinks.Chips.Select(c=>c.Label+" "+c.Count+(c.IsCurrent?"*":"")));
+        if(ChipText()!="Por copa 4*, Blancos 2, Cafés e infusiones 1, Cervezas 1, Refrescos y aguas 2, Tintos 3"||drinks.ListTitle!="Por copa"||drinks.ListDetail!="4 vinos por copa · de la A a la Z")
+            throw new Exception("Quick accesses: «Por copa» first and chosen, then the families A to Z with their counts (no kitchen dish, no menu): "+ChipText());
+        // «Por copa» con el borde discontinuo de acento, como en el comandero (.chip-glass) y la maqueta; las familias, no.
+        bool Dashed(Button chip)=>chip.Template.FindName("Dash",chip) is System.Windows.Shapes.Rectangle{Visibility:Visibility.Visible};
+        var chipButtons=Descendants<Button>(drinksPicker).Where(b=>b.IsVisible&&b.DataContext is Costina.Desktop.ViewModels.ChipRow).ToArray();
+        if(!chipButtons.Where(b=>((Costina.Desktop.ViewModels.ChipRow)b.DataContext).Glass).Select(Dashed).SequenceEqual([true])||chipButtons.Any(b=>!((Costina.Desktop.ViewModels.ChipRow)b.DataContext).Glass&&Dashed(b)))
+            throw new Exception("«Por copa» has the dashed accent border of the handheld; the families do not.");
+        if(DrinkRows()!="Albariño Pazo de Señoráns [Blancos › Rías Baixas] Copa/Botella 0.75 L | Guímaro Mencía 2022 [Tintos › Ribeira Sacra] Copa/Botella 0.75 L | Lalama 2019 [Tintos › Ribeira Sacra] Copa/Botella 0.75 L | Vino de la casa [Tintos › Ribeiro] Copa/Botella")
+            throw new Exception("One row per product, family › region and one button per presentation, the glass first: "+DrinkRows());
+        if(!drinks.Repeats.Select(r=>r.Name+" · "+r.Detail).SequenceEqual(["Vino de la casa · Botella","Agua mineral · Botella 1 L"])) throw new Exception("«En esta mesa» repeats what was sent and not voided: "+string.Join(", ",drinks.Repeats.Select(r=>r.Name)));
+        Wait(()=>drinks.Rows.Where(r=>r.Product.ImageSha is not null).All(r=>r.Thumbnail is not null)&&window.Shell.Catalog.Images.Waiting==0,"the rows show their photos");
+        if(drinks.Rows.Single(r=>r.Product.Id=="lalama") is not {Thumbnail:null,Initials:"L"}) throw new Exception("A product without a photo shows its initials, without the vintage.");
+        // Familias: Tintos con sus subfamilias (la region); elegir una filtra.
+        Press(Descendants<Button>(drinksPicker).First(b=>b.DataContext is Costina.Desktop.ViewModels.ChipRow{Label:"Tintos"}),"Tintos");
+        if(!drinks.SubChips.Select(s=>s.Label).SequenceEqual(["Todas","Ribeira Sacra","Ribeiro"])||drinks.Rows.Length!=3||drinks.HasRepeats) throw new Exception("A family shows its subfamilies (2 or more) and its rows; «En esta mesa» only on the entrance.");
+        Press(Descendants<Button>(drinksPicker).First(b=>b.DataContext is Costina.Desktop.ViewModels.SubChipRow{Label:"Ribeiro"}),"Ribeiro");
+        if(DrinkRows()!="Vino de la casa [Tintos › Ribeiro] Copa/Botella") throw new Exception("A subfamily narrows the rows: "+DrinkRows());
+        // Buscar «albar»: sin tildes, por nombre; el que empieza por lo escrito va primero. Un producto con una sola presentacion, «Añadir».
+        var drinksSearch=(TextBox)drinksPicker.FindName("DrinksSearch");
+        drinksSearch.Text="a"; window.UpdateLayout();
+        if(drinks.Hint!="Escribe una letra más para buscar.") throw new Exception("One letter asks for one more.");
+        drinksSearch.Text="albar"; window.UpdateLayout();
+        if(drinks.Query!="albar"||drinks.ListTitle!="2 resultados"||drinks.Chips.Any(c=>c.IsCurrent)||drinks.HasSubChips
+            ||DrinkRows()!="Albariño Pazo de Señoráns [Blancos › Rías Baixas] Copa/Botella 0.75 L | Do Ferreiro Albariño 2022 [Blancos › Rías Baixas · Botella 0.75 L] Añadir")
+            throw new Exception("Searching «albar» finds both albariños, the one that starts with it first: "+DrinkRows());
+        var postsBeforeRound=server.Count("POST","");
+        Press(Format("albarino","Copa"),"Copa"); Press(Format("albarino","Copa"),"Copa otra vez"); Press(Format("ferreiro","Añadir"),"Añadir Do Ferreiro");
+        if(drinks.Summary!="Ronda · 3 sin enviar"||drinks.Names!="Albariño Pazo de Señoráns · Copa, Do Ferreiro Albariño 2022 · Botella 0.75 L"||drinks.Rows[0].InRoundText!="2 en la ronda")
+            throw new Exception("A tap adds 1 to the round for the whole table: "+drinks.Summary+" / "+drinks.Names);
+        // La ronda es un BORRADOR EN MEMORIA: llenarla no manda nada ni escribe nada en el almacen de la orden incierta.
+        if(server.Count("POST","")!=postsBeforeRound||window.Shell.Api.Pending is not null||(Directory.Exists(roundFolder)&&Directory.GetFiles(roundFolder,"*.bin").Length!=0))
+            throw new Exception("Filling the round sends nothing and stores nothing: it is a draft in memory, never a queue.");
+        // «Para»: toda la mesa o un comensal, con sus restricciones escritas.
+        Press(InTray("RoundToggleButton"),"Ver la ronda"); window.UpdateLayout();
+        var guestBox=Descendants<ComboBox>(pickerTray).First(c=>c.IsVisible&&c.DataContext is Costina.Desktop.ViewModels.RoundLineRow{Index:0});
+        if(!guestBox.Items.Cast<Costina.Desktop.ViewModels.GuestChoice>().Select(g=>g.Label).SequenceEqual(["Toda la mesa","Comensal 1","Comensal 2 · ALERGIA frutos secos (grave)","Comensal 3 · Intolerancia lactosa (leve)","Comensal 4"])
+            ||guestBox.SelectedValue as string!="") throw new Exception("A line is for the whole table by default, and each guest is named with their restrictions in words.");
+        guestBox.SelectedIndex=3;   // como una persona: elegir «Comensal 3» en el desplegable de la primera linea
+        Wait(()=>drinks.RoundLines.Length==2&&drinks.RoundLines[0].GuestKey=="3","the first line is for Comensal 3"); window.UpdateLayout();
+        if(drinks.Lines[0].GuestPosition!=3||drinks.Lines[1].GuestPosition is not null||!Painted(pickerTray).Contains("Comensal 3 · Intolerancia lactosa (leve)")) throw new Exception("The chosen guest is the line's, written with their restriction.");
+        var drinksResults=(FrameworkElement)drinksPicker.FindName("DrinksResults");
+        if(window.ActualWidth>=1270&&drinksResults.ActualHeight<60) throw new Exception("With the round unfolded the results keep some room: "+drinksResults.ActualHeight);
+        // Captura del selector (como la maqueta «5 · En el PC»): la busqueda, las filas con foto y Copa / Botella, y la ronda sin enviar
+        // plegada en su barra. Cabe a 1.280 x 860.
+        Press(InTray("RoundToggleButton"),"Ocultar la ronda"); window.UpdateLayout();
+        if(drinks.TrayOpen||window.ActualWidth>=1270&&Descendants<FrameworkElement>(drinksResults).Where(e=>e.DataContext is Costina.Desktop.ViewModels.DrinkRow&&e is Border).Any(row=>row.TranslatePoint(new Point(0,row.ActualHeight),drinksResults).Y>drinksResults.ActualHeight+0.5))
+            throw new Exception("With the round folded both results are in view.");
+        window.Shell.Status=""; window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+        NoMoneyNoCodes("comedor-consumicion");
+        if(!Painted(serviceView).Contains("Ronda · 3 sin enviar")||!Painted(serviceView).Contains("Añadir consumición")||!Painted(serviceView).Contains("Comensal 2 · ALERGIA frutos secos (grave)"))
+            throw new Exception("The picker paints its round and the restrictions stay written on top.");
+        var sendButton=InTray("SendRoundButton");
+        if(!sendButton.IsEnabled||sendButton.TranslatePoint(new Point(0,sendButton.ActualHeight),serviceView).Y>serviceView.ActualHeight+0.5) throw new Exception("«Enviar» is enabled and in view.");
+        if(NestedScrolls(serviceView) is {Length:>0} nestedPicker) throw new Exception("The picker nests scroll viewers: "+string.Join(", ",nestedPicker));
+        if(window.ActualWidth>=1270||window.Shell.SideNavCompact)
+            foreach(var part in new[]{(FrameworkElement)drinksPicker.FindName("DrinksResults"),pickerTray,(FrameworkElement)serviceView.FindName("DrinksRestrictions")})
+                if(Clipped(part) is {Length:>0} clippedPicker) throw new Exception("The picker clips text: "+string.Join(" | ",clippedPicker));
+        Save(Shot(window),"comedor-consumicion.png");
+        // «Enviar» = UNA orden add-consumptions con la version de la mesa LEIDA y las lineas de la ronda; nada de Caja.
+        Press(sendButton,"Enviar");
+        Wait(()=>!window.Shell.Busy&&!drinks.HasLines,"the round is confirmed");
+        var roundPosts=server.Requests.Where(r=>r.Method=="POST").Skip(postsBeforeRound).ToArray();
+        if(roundPosts.Length!=1||roundPosts[0].Path!="dining/services/s4/commands/add-consumptions"
+            ||roundPosts[0].Body!="{\"expectedVersion\":5,\"lines\":[{\"productId\":\"albarino\",\"presentationId\":\"copa\",\"quantity\":2,\"guestPosition\":3},{\"productId\":\"ferreiro\",\"presentationId\":\"botella-0-75-l\",\"quantity\":1,\"guestPosition\":null}]}")
+            throw new Exception("«Enviar» sends exactly ONE add-consumptions with the read version and the round: "+string.Join(" ; ",roundPosts.Select(p=>p.Path+" "+p.Body)));
+        if(server.Requests.Skip(c3bStart).Any(r=>r.Path.StartsWith("checkout/",StringComparison.Ordinal))) throw new Exception("Nothing of Caja is read or sent from the dining room.");
+        if(drinks.EmptyRoundText!=Costina.Desktop.ViewModels.DrinksViewModel.RoundSent||window.Shell.Status!="Operación confirmada por el servidor: ronda enviada a Mesa 4."||window.Shell.HasPending)
+            throw new Exception("A confirmed round empties and says so: "+window.Shell.Status);
+        if(HadText()!="1× Vino de la casa (Botella · Toda la mesa) | 2× Agua mineral (Botella 1 L · Toda la mesa) | 1× Café solo (Toda la mesa) ANULADO | 2× Albariño Pazo de Señoráns (Copa · Comensal 3) | 1× Do Ferreiro Albariño 2022 (Botella 0.75 L · Toda la mesa)")
+            throw new Exception("What the table has includes the confirmed round after the re-read: "+HadText());
+        // version_conflict (cocina movio la mesa entre la lectura y el envio): la ronda SIGUE, la ficha se relee y se ofrece enviar de nuevo,
+        // que es otra orden con otra clave y la version releida. Una relectura del tablero no toca la ronda.
+        drinksSearch.Text=""; window.UpdateLayout();
+        Press(Descendants<Button>(drinksPicker).First(b=>b.DataContext is Costina.Desktop.ViewModels.ChipRow{Label:"Cervezas"}),"Cervezas");
+        Press(Format("estrella","Añadir"),"Añadir Estrella Galicia");
+        server.Board=[..server.Board.Select(b=>b.Service.Id=="s4"?b with {Version=6}:b)];
+        var postsBeforeConflict=server.Count("POST","");
+        Press(InTray("SendRoundButton"),"Enviar (la mesa ha cambiado)");
+        Wait(()=>!window.Shell.Busy&&drinks.Conflict,"the conflicted round stays");
+        var conflicted=server.Requests.Where(r=>r.Method=="POST").Last();
+        if(server.Count("POST","")!=postsBeforeConflict+1||drinks.Summary!="Ronda · 1 sin enviar"||drinks.SendText!="La mesa ha cambiado: enviar de nuevo"||service.Dining?.Version!=6
+            ||drinks.RoundMessage!=Costina.Desktop.ViewModels.DrinksViewModel.RoundConflict||window.Shell.Status!=Costina.Desktop.ViewModels.DrinksViewModel.RoundConflict)
+            throw new Exception("version_conflict keeps the round, re-reads the table and offers to send again: "+drinks.SendText+" / "+window.Shell.Status);
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"a board re-read with the round unsent");
+        if(drinks.Summary!="Ronda · 1 sin enviar"||!drinks.Conflict||!drinks.IsOpen) throw new Exception("A board re-read never overwrites the round.");
+        Press(InTray("SendRoundButton"),"La mesa ha cambiado: enviar de nuevo");
+        Wait(()=>!window.Shell.Busy&&!drinks.HasLines,"the round is sent again");
+        var sentAgain=server.Requests.Where(r=>r.Method=="POST").Last();
+        if(sentAgain.Key==conflicted.Key||!sentAgain.Body.StartsWith("{\"expectedVersion\":6,",StringComparison.Ordinal)||drinks.Conflict) throw new Exception("Sending again is a NEW order (new key) with the re-read version: "+sentAgain.Body);
+        // Una orden incierta (respuesta perdida): lo enviado YA es esa orden (su aviso la muestra y se reintenta identica) y la ronda se
+        // vacia; mientras siga sin confirmar se puede llenar otra ronda, pero no enviar. El reintento no cobra dos veces.
+        Press(Descendants<Button>(drinksPicker).First(b=>b.DataContext is Costina.Desktop.ViewModels.ChipRow{Label:"Refrescos y aguas"}),"Refrescos y aguas");
+        Press(Format("agua-gas","Añadir"),"Añadir Agua con gas");
+        server.LoseNextRound=true;
+        Press(InTray("SendRoundButton"),"Enviar (respuesta perdida)");
+        Wait(()=>!window.Shell.Busy&&window.Shell.HasPending,"a lost response leaves the round uncertain");
+        window.UpdateLayout();
+        if(drinks.HasLines||window.Shell.Pending?.Description!="Ronda para Mesa 4: 1 × Agua con gas Mondariz"||Directory.GetFiles(roundFolder,"*.bin").Length!=1)
+            throw new Exception("An unconfirmed round IS the durable uncertain order (stored, described) and leaves the tray: "+window.Shell.Pending?.Description);
+        if(drinks.EmptyRoundText!=Costina.Desktop.ViewModels.DrinksViewModel.RoundUnconfirmed||!Painted(pickerTray).Contains(Costina.Desktop.ViewModels.DrinksViewModel.RoundUnconfirmed))
+            throw new Exception("The empty tray says the round is the unconfirmed order above, not to order it again: "+drinks.EmptyRoundText);
+        var appliedRounds=server.RoundsApplied;
+        Press(Format("agua","Añadir"),"Añadir Agua mineral con una orden incierta"); window.UpdateLayout();
+        if(drinks.Summary!="Ronda · 1 sin enviar"||drinks.SendCommand.CanExecute(null)||InTray("SendRoundButton").IsEnabled||drinks.LockedText!=Costina.Desktop.ViewModels.DrinksViewModel.LockedHint
+            ||!Painted(pickerTray).Contains(Costina.Desktop.ViewModels.DrinksViewModel.LockedHint)) throw new Exception("With an uncertain order the round can be filled but not sent.");
+        Await(window.Shell.RetryCommand.ExecuteAsync(null),"retry the same order");
+        if(window.Shell.HasPending||server.RoundsApplied!=appliedRounds||Directory.GetFiles(roundFolder,"*.bin").Length!=0||drinks.Had.Count(h=>h.Name=="Agua con gas Mondariz")!=1||!drinks.SendCommand.CanExecute(null)
+            ||drinks.EmptyRoundText!=Costina.Desktop.ViewModels.DrinksViewModel.EmptyRound)
+            throw new Exception("The identical retry confirms ONE effect and the round can be sent again: "+HadText());
+        // Cambiar de mesa (o de vista) con una ronda sin enviar pide confirmacion; quedarse no toca nada.
+        var readsBeforeLeave=server.Requests.Length;
+        Press(TileButton("Mesa 3"),"Mesa 3 with an unsent round"); window.UpdateLayout();
+        if(!drinks.Leaving||!InFicha("LeaveRoundLayer")||service.SelectedEntry?.Service.Id!="s4"||server.Requests.Length!=readsBeforeLeave
+            ||drinks.LeaveText!="La ronda de Mesa 4 tiene 1 sin enviar. Si cambias de mesa, se pierde: nada de ella ha llegado al servidor.")
+            throw new Exception("Changing table with an unsent round asks first and reads nothing: "+drinks.LeaveText);
+        RefuseRaw(window,"leave-round");
+        Press(Named("StayRoundButton"),"Seguir con la ronda");
+        if(drinks.Leaving||drinks.Summary!="Ronda · 1 sin enviar"||service.SelectedEntry?.Service.Id!="s4") throw new Exception("Staying keeps the round and the table.");
+        Press((Button)window.FindName("NavHome"),"Inicio with an unsent round");
+        if(!drinks.Leaving||tabs.SelectedItem!=(TabItem)window.FindName("ServiceTab")||!drinks.LeaveText.Contains("Si vas a «Inicio», se pierde",StringComparison.Ordinal)) throw new Exception("Leaving the view with an unsent round asks first: "+drinks.LeaveText);
+        Press(Named("StayRoundButton"),"Seguir con la ronda (vista)");
+        // Cerrar el selector: vuelven los pases, lo que lleva la mesa y la accion grande; la ronda sigue, con su bandeja sobre la accion.
+        Press((Button)drinksPicker.FindName("ClosePickerButton"),"Cerrar el selector"); window.UpdateLayout();
+        if(drinks.IsOpen||!InFicha("FichaRound")||!InFicha("DetailScroll")||!Named("PrimaryActionButton").IsVisible||Math.Abs(fichaPanel.ActualWidth-400)>0.5||drinks.Summary!="Ronda · 1 sin enviar")
+            throw new Exception("Closing the picker brings the ficha back (400 px) and keeps the round in its tray.");
+        // Revision: encima de la accion grande, el envio de la ronda es «Enviar ronda» en verde claro; la ficha tiene UN boton principal.
+        bool IsPrimary(Button b){ for(var style=b.Style;style is not null;style=style.BasedOn) if(ReferenceEquals(style,window.FindResource("Primary"))) return true; return false; }
+        var fichaRound=(FrameworkElement)serviceView.FindName("FichaRound"); var fichaSend=(Button)fichaRound.FindName("SendRoundButton");
+        var fichaPrimaries=Descendants<Button>(fichaRound).Concat(Descendants<Button>((FrameworkElement)serviceView.FindName("ActionArea"))).Count(b=>b.IsVisible&&IsPrimary(b));
+        if(fichaSend.Content as string!="Enviar ronda"||IsPrimary(fichaSend)||!IsPrimary(InTray("SendRoundButton"))||fichaPrimaries!=1)
+            throw new Exception("Over the big action the round's send is «Enviar ronda», not a second primary button: "+fichaSend.Content+" / "+fichaPrimaries);
+        window.Shell.Status=""; window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+        Save(Shot(window),"comedor-ronda-ficha.png");
+        Press(TileButton("Mesa 3"),"Mesa 3 again"); Press(Named("LeaveRoundButton"),"Salir sin enviar");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id=="s3","leaving discards the round and reads Mesa 3");
+        if(drinks.HasLines||drinks.IsOpen||InFicha("FichaRound")||server.RoundsApplied!=appliedRounds) throw new Exception("Leaving without sending discards the draft and sends nothing.");
+        // Lo que lleva la mesa (captura): la ronda confirmada, con su comensal y su hora, y lo anulado en Caja (aqui, el agua con gas,
+        // como lo dejaria void-charge, que avisa a todos con service.consumptions_changed). Sin importes.
+        server.Board=[..server.Board.Select(b=>b.Service.Id!="s4"?b:b with {Consumptions=[..b.Consumptions!.Select(c=>c.Name=="Agua con gas Mondariz"?c with {Voided=true}:c)]})];
+        Pick("Mesa 4","s4");
+        if(HadText()!="1× Vino de la casa (Botella · Toda la mesa) | 2× Agua mineral (Botella 1 L · Toda la mesa) | 1× Café solo (Toda la mesa) ANULADO | 2× Albariño Pazo de Señoráns (Copa · Comensal 3) | 1× Do Ferreiro Albariño 2022 (Botella 0.75 L · Toda la mesa) | 1× Estrella Galicia (Botellín · Toda la mesa) | 1× Agua con gas Mondariz (Toda la mesa) ANULADO"
+            ||drinks.Had.Any(h=>h.Time.Length==0)) throw new Exception("What the table has: the confirmed rounds with their guest and time, and «Anulado en Caja»: "+HadText());
+        ((FrameworkElement)serviceView.FindName("HadBlock")).BringIntoView(); window.Shell.Status="";
+        window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+        var hadTexts=Painted((FrameworkElement)serviceView.FindName("HadBlock")).ToArray();
+        foreach(var text in new[]{"Lo que lleva la mesa","Albariño Pazo de Señoráns","Copa · Comensal 3","Anulado en Caja","Los importes solo se ven en Caja.",Costina.Client.Labels.Clock(c2Now)})
+            if(!hadTexts.Contains(text)) throw new Exception("«Lo que lleva la mesa» paints '"+text+"': "+string.Join(" | ",hadTexts));
+        NoMoneyNoCodes("comedor-lo-que-lleva");
+        var hadBlock=(FrameworkElement)serviceView.FindName("HadBlock"); var detailScroll=(FrameworkElement)serviceView.FindName("DetailScroll");
+        var hadTop=hadBlock.TranslatePoint(new Point(0,0),detailScroll).Y; var hadBottom=hadBlock.TranslatePoint(new Point(0,hadBlock.ActualHeight),detailScroll).Y;
+        if(window.ActualWidth>=1270&&(hadTop<-0.5||hadBottom>detailScroll.ActualHeight+0.5)) throw new Exception("«Lo que lleva la mesa» fits in the ficha at 1.280 x 860: "+hadTop+".."+hadBottom+" of "+detailScroll.ActualHeight);
+        Save(Shot(window),"comedor-lo-que-lleva.png");
+        // Tambien para el responsable: sin precios (GET /catalog, nunca /checkout/catalog) y sin contrasena que pedir.
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.42.0-c3b",Actor:"user:jefa",Modules:["dining"]));
+        server.Board=[..server.Board.Select(b=>b with {Service=diningBoard.Single(d=>d.Service.Id==b.Service.Id).Service,Occupancy=diningBoard.Single(d=>d.Service.Id==b.Service.Id).Occupancy})];
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan");
+        Pick("Mesa 4","s4");
+        Press(Named("AddConsumptionButton"),"Añadir consumición (responsable)");
+        Wait(()=>!window.Shell.Busy&&drinks.IsOpen&&drinks.Rows.Length>0,"the responsible opens the picker"); window.UpdateLayout();
+        if(server.Requests.Skip(c3bStart).Any(r=>r.Path.StartsWith("checkout/",StringComparison.Ordinal))||window.Shell.ElevationRequested) throw new Exception("The responsible's picker reads no prices either.");
+        NoMoneyNoCodes("comedor-consumicion responsable");
+        Press((Button)drinksPicker.FindName("ClosePickerButton"),"Cerrar el selector (responsable)");
+        // De vuelta al estado de C2 para lo que sigue (Inicio, Caja...): responsable, el tablero de C2 sin consumos y la Mesa 4 elegida.
+        window.Shell.OnUnauthorized().GetAwaiter().GetResult();
+        if(drinks.HasLines||drinks.IsOpen||drinks.Had.Length!=0) throw new Exception("Leaving the session clears the picker.");
+        Directory.Delete(roundFolder,true);
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open"],"inst-checks","0.37.0-c2",Actor:"user:jefa",Modules:["dining"]));
+        server.Board=diningBoard;
+        window.Shell.Api=new Costina.Client.ApiClient(new Uri(ChecksEndpoint),new string('c',40),server);
+        tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the C2 plan again");
+        Pick("Mesa 4","s4"); window.Shell.Status="";
+        if(InFicha("HadBlock")||addConsumption.IsVisible) throw new Exception("Against a server without consumptions nor add-consumptions, the ficha is the C2 one.");
+        ((ScrollViewer)detailScroll).ScrollToHome(); window.UpdateLayout();   // las capturas de C2 parten de la ficha desde arriba
         // ===== C2 (plan 2026-10-14): Inicio como panel (Main.dc.html) =====
         // Las cifras y el mini plano salen de las MISMAS tarjetas del Comedor (sin lecturas propias); los dispositivos con su conexion y la
         // conexion sencilla, del servidor simulado; sus botones abren el asistente de Dispositivos; una mesa del mini plano y "Abrir mesa"
@@ -1297,6 +1545,18 @@ internal static class Program
             throw new Exception("Picking a presentation only chooses it (nothing is sent): "+checkout.ChosenProductText);
         checkout.ProductSearch="zzz"; window.UpdateLayout();
         if(checkout.ProductGroups.Length!=0||checkout.ProductGroupsNote!="Ningún producto coincide con «zzz».") throw new Exception("A search without results says so: "+checkout.ProductGroupsNote);
+        // C3b: Caja busca con la MISMA regla que «Añadir consumición» y el comandero (CatalogSearch, tabla de casos comun drinks-cases.json):
+        // cada palabra en cualquier campo (antes, la frase entera en uno) y primero lo que empieza por lo escrito (antes, el orden del servidor).
+        checkout.ProductSearch="vino"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Vino de la casa","Albariño Pazo de Señoráns"])) throw new Exception("Caja ranks like the table picker: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        checkout.ProductSearch="pazo albar"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Albariño Pazo de Señoráns"])) throw new Exception("Caja finds every written word, in any order: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        // Y, solo en Caja, por el nombre de su categoria, como antes de C3b: tambien un producto colgado directamente de la seccion (ruta vacia).
+        var cajaProducts=checkout.Products;
+        checkout.Products=[..cajaProducts,new("hielo","Hielo","Unidad",50,"unidad","Bodega y bebidas","general",Section:"bodega",CategoryPath:[])];
+        checkout.ProductSearch="bebidas"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Agua mineral","Hielo"])) throw new Exception("Caja still finds a product by its category name, also one hanging from the section: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        checkout.Products=cajaProducts;
         checkout.ProductSearch=""; window.UpdateLayout();
         var cajaTexts=Texts(checkoutView).ToArray();
         foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",
@@ -2954,6 +3214,7 @@ internal static class Program
                     return found;
                 }
                 if(path=="erp/catalog") return Json(200,JsonSerializer.Serialize(Catalog,Costina.Client.ApiClient.Json));
+                if(path=="catalog") return Json(200,JsonSerializer.Serialize(Sellables,Costina.Client.ApiClient.Json));   // C3b: el catalogo operativo, SIN precios
                 if(path=="organization") return Json(200,JsonSerializer.Serialize(Organization,Costina.Client.ApiClient.Json));
                 if(path=="configuration"&&Configuration is not null) return Json(200,JsonSerializer.Serialize(Configuration,Costina.Client.ApiClient.Json));
                 if(path=="dining/board") return Json(200,JsonSerializer.Serialize(Board,Costina.Client.ApiClient.Json));
@@ -2982,6 +3243,30 @@ internal static class Program
                 return Json(200,"{\"revoked\":true}");
             }
             var command=JsonSerializer.Deserialize<JsonElement>(body);
+            // C3b: la ronda (add-consumptions) como el motor: idempotente por clave (la misma clave devuelve lo guardado sin cobrar otra vez),
+            // exige la version leida de la mesa (si no, 409 version_conflict con el eco de la clave: rechazo definitivo) y no la mueve; cada
+            // linea entra en lo que lleva la mesa (nombre y formato del catalogo, sin el formato por defecto, comensal, hora). LoseNextRound
+            // aplica la siguiente ronda nueva y pierde su respuesta (red cortada). RoundsApplied cuenta los efectos.
+            if(path.StartsWith("dining/services/",StringComparison.Ordinal)&&path.EndsWith("/commands/add-consumptions",StringComparison.Ordinal))
+            {
+                if(Rounds.TryGetValue(key!,out var stored)) { var again=Json(200,stored); again.Headers.Add("Idempotency-Key",key); return again; }
+                var serviceId=Uri.UnescapeDataString(path["dining/services/".Length..^"/commands/add-consumptions".Length]);
+                var table=Board.Single(b=>b.Service.Id==serviceId);
+                if(command.GetProperty("expectedVersion").GetInt64()!=table.Version) { var refused=Json(409,"{\"error\":\"version_conflict\"}"); refused.Headers.Add("Idempotency-Key",key); return refused; }
+                var added=command.GetProperty("lines").EnumerateArray().Select((line,index)=>
+                {
+                    var productId=line.GetProperty("productId").GetString()!; var presentationId=line.GetProperty("presentationId").GetString()!;
+                    var sellable=Sellables.Single(s=>s.Id==productId&&s.PresentationId==presentationId);
+                    return new Costina.Client.ConsumptionDto(key+"-"+index,productId,presentationId,sellable.Name,presentationId=="unit"?null:sellable.Presentation,line.GetProperty("quantity").GetInt32(),
+                        line.GetProperty("guestPosition").ValueKind==JsonValueKind.Number?line.GetProperty("guestPosition").GetInt32():null,RoundClock,false);
+                }).ToArray();
+                Board=[..Board.Select(b=>b.Service.Id==serviceId?b with {Consumptions=[..b.Consumptions??[],..added]}:b)];
+                RoundsApplied++;
+                var response="{\"version\":"+table.Version+",\"consumptionIds\":["+string.Join(",",added.Select(a=>"\""+a.Id+"\""))+"]}";
+                Rounds[key!]=response;
+                if(LoseNextRound) { LoseNextRound=false; throw new System.Net.Http.HttpRequestException("respuesta perdida"); }
+                var applied=Json(200,response); applied.Headers.Add("Idempotency-Key",key); return applied;
+            }
             if(path=="erp/catalog/commands/product-image-set")
             {
                 var id=command.GetProperty("productId").GetString()!; var content=Convert.FromBase64String(command.GetProperty("data").GetString()!);
@@ -3048,6 +3333,12 @@ internal static class Program
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
         public HashSet<string> TablesInUse { get; }=[];
+        // C3b: el catalogo operativo (GET /catalog, sin precios), las rondas aplicadas por clave y la hora con que se anotan.
+        public Costina.Client.CatalogItem[] Sellables { get; set; }=[];
+        public System.Collections.Concurrent.ConcurrentDictionary<string,string> Rounds { get; }=new();
+        public int RoundsApplied { get; private set; }
+        public bool LoseNextRound { get; set; }
+        public DateTimeOffset RoundClock { get; set; }=DateTimeOffset.UtcNow;
         public int GlassOrders { get; private set; }
         public int RejectGlassOrder { get; set; }
         public int UncertainGlassOrder { get; set; }

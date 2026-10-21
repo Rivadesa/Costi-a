@@ -42,7 +42,8 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   const stale = computed(() => age.value === null || age.value > 45)
 
   // C3a: devuelve el resultado (o null si no hubo orden o fallo antes de enviarla) para que una pantalla pueda seguir a lo confirmado,
-  // p. ej. pasar a la ficha de la mesa recien abierta. Al resolverse, la relectura posterior ya termino.
+  // p. ej. pasar a la ficha de la mesa recien abierta. Al resolverse, la relectura posterior ya termino. C3b: con null, quien la envio
+  // mira si quedo guardada como la orden pendiente (bodega.ts, settlementOf): entonces es incierta, no «no enviada».
   async function resolve(work: Promise<Outcome | null>): Promise<Outcome | null> {
     settling.value++
     const noticeBefore = runnerState.notice
@@ -55,9 +56,10 @@ export function useOperations(props: { token: string; session: Session }, onUnau
       if (outcome.kind !== 'unconfirmed') await live.refresh()
       return outcome
     } catch (error) {
-      // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee.
-      if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SÍ se aplicó. ${error.message}`; await live.refresh() }
-      else if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
+      // La orden se aplico (se cerro con su eco) pero la respuesta traia datos economicos: no se pinta, se avisa y se relee. C3b: se
+      // devuelve como CONFIRMADA (sin respuesta), para que quien la envio no la de por no enviada: una ronda no se vuelve a mandar.
+      if (error instanceof MoneyLeakError) { runnerState.notice = `La orden SÍ se aplicó. ${error.message}`; await live.refresh(); return { kind: 'confirmed', response: null } }
+      if (!runnerState.notice) runnerState.notice = 'No se pudo enviar la orden.'
       return null
     } finally { settling.value-- }
   }

@@ -24,6 +24,9 @@ public sealed partial class SettlementAccount
                 "invalid_snapshot", "Invalid or duplicate charge.");
             Guard.Rule(line.Voided == !string.IsNullOrWhiteSpace(line.VoidReason),
                 "invalid_snapshot", "Invalid charge cancellation.");
+            // C3b: comensal, origen y hora son aditivos (una cuenta anterior no los tiene). Un origen desconocido se conserva tal cual.
+            Guard.Rule(line.GuestPosition is null or > 0 && (line.Origin is null || line.Origin.Trim().Length > 0),
+                "invalid_snapshot", "Invalid charge guest or origin.");
             _ = checked(line.Quantity * line.UnitPriceCents);
             result.charges.Add(line);
         }

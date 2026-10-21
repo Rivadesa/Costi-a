@@ -34,7 +34,9 @@ public static partial class PwaHosting
                 // Safari no siempre equipara 'self' con wss:// del mismo origen: se nombra de forma explicita.
                 var host=request.Host.Value ?? "";
                 var sockets=SafeHost().IsMatch(host) ? " wss://"+host+" ws://"+host : "";
-                headers.ContentSecurityPolicy="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; "
+                // C3b: img-src admite blob: SOLO para pintar las fotos de los articulos que la propia PWA ha pedido con su token
+                // (GET /catalog/images, URL.createObjectURL). Nunca en script-src, sin data:, sin unsafe-inline y sin terceros.
+                headers.ContentSecurityPolicy="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'self'; "
                     +"manifest-src 'self'; worker-src 'self'; connect-src 'self'"+sockets+"; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
                 headers.XContentTypeOptions="nosniff";
                 headers["Referrer-Policy"]="no-referrer";

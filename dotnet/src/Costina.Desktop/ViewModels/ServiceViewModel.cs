@@ -161,6 +161,13 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     // y solo si coincide con la fila seleccionada. Null = no hay nada accionable.
     private Versioned<DiningDto>? Context =>
         Dining is not null && SelectedEntry?.Service.Id == Dining.Data.Id ? Dining : null;
+    // C3b: «Añadir consumicion» y «Lo que lleva la mesa» (DrinksViewModel) usan el MISMO contexto leido (F01) y la entrada del tablero
+    // de esa mesa (sus consumos). Se crea al pedirlo: el cascaron construye sus vistas antes de conectar.
+    private DrinksViewModel? drinks;
+    public DrinksViewModel Drinks => drinks ??= new(shell, this);
+    internal Versioned<DiningDto>? ReadContext => Context;
+    internal BoardEntry? ReadEntry => Context is not null ? SelectedEntry : null;
+    internal string TableName(Versioned<DiningDto> context) => TableOf(context);
 
     // Unico punto de verdad para la habilitacion: la accion esta en la lista que envio el servidor.
     private bool Allowed(string action) => action switch
@@ -211,6 +218,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         OnPropertyChanged(nameof(PreparationActionsAnnounced)); OnPropertyChanged(nameof(ReviewAnnounced)); OnPropertyChanged(nameof(HasContext));
         var secondary = SecondaryOrder.Where(a => a != PrimaryAction && Allowed(a)).Select(a => new ActionButton(a, ActionText(a), a is "release" or "cancel-unstarted")).ToArray();
         if (!secondary.SequenceEqual(SecondaryActions)) SecondaryActions = secondary;   // sin rehacer los botones en cada cambio de "ocupado"
+        Drinks.Sync();
     }
 
     // C2: la configuracion se relee en cada actualizacion (RefreshAll): una mesa creada aparece sin reconectar. La mesa y la oferta
@@ -247,6 +255,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             Invalidate(); ServiceTitle = "Selecciona una mesa";
         }
         finally { rendering = false; }
+        Drinks.Clear();   // C3b: la ronda sin enviar se pierde con la sesion (nunca se guarda ni se recupera como enviada, D6.1)
         UpdatePanel();
     }
 
@@ -310,6 +319,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         }
         finally { rendering = false; }
         MarkSelection(); UpdatePanel(); Sync();
+        Drinks.OnRead();   // C3b: lo que lleva la mesa y para quien puede ser cada linea; la ronda solo se pierde si su mesa ya no es esta
     }
 
     private void UpdatePreparations()
@@ -467,6 +477,13 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private void PickTile(TableTile? tile)
     {
         if (tile is null || shell.Busy) return;
+        // C3b: salir de la ficha (otra mesa, o una libre para abrirla) con una ronda sin enviar pide confirmacion; sin ronda, el selector de
+        // la mesa anterior se cierra (la ronda es de la ficha leida al abrirlo, F01).
+        if (tile.Entry?.Service.Id is not { } target || target != SelectedEntry?.Service.Id || OpenForm)
+        {
+            if (Drinks.AskLeave("cambias de mesa", () => PickTile(tile))) return;
+            Drinks.Discard();
+        }
         if (tile.Entry is { } entry)
         {
             OpenForm = false;
@@ -484,6 +501,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanStartOpen))]
     private void StartOpen()
     {
+        if (Drinks.AskLeave("abres otra mesa", StartOpen)) return;   // C3b: con una ronda sin enviar, primero se pregunta
+        Drinks.Discard();
         if (SelectedTable is null || Board.Any(b => b.Service.TableId == SelectedTable.Id))
         {
             var free = Groups.SelectMany(g => g.Tiles).Concat(Tiles).FirstOrDefault(t => !t.Occupied);
@@ -621,6 +640,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
                      nameof(OpenTone), nameof(OpenWarning), nameof(OpenButtonText), nameof(BackText), nameof(HasContext), nameof(PrimaryText) })
             OnPropertyChanged(name);
         ViewAccountCommand.NotifyCanExecuteChanged();
+        drinks?.Sync();
     }
 
     private void UpdateCourseRows()

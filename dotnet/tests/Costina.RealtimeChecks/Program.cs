@@ -80,7 +80,7 @@ await Check("A2 financial types route to fin audience only", async () =>
     var cases = new (Guid Id, string Type, string Audience)[] {
         (Guid.NewGuid(), "account.charge_added", "fin"), (Guid.NewGuid(), "payment.recorded", "fin"),
         (Guid.NewGuid(), "account.opened", "fin"), (Guid.NewGuid(), "service.started", "ops"),
-        (Guid.NewGuid(), "table.occupancy_released", "ops") };
+        (Guid.NewGuid(), "table.occupancy_released", "ops"), (Guid.NewGuid(), "service.consumptions_changed", "ops") };   // C3b: lo que lleva la mesa, a todos
     foreach (var c in cases) await InsertEvent(c.Id, "rt-a2", c.Type, now);
     await Drain(publisher);
     foreach (var c in cases)
@@ -342,6 +342,34 @@ try
         var rows = await Get("/api/native/v1/auth/devices", admin);
         Assert(rows.EnumerateArray().Any(d => d.GetProperty("name").GetString() == "tablet-b7" && d.GetProperty("revokedAt").ValueKind != JsonValueKind.Null && !d.GetProperty("online").GetBoolean()),
             "an unpaired device is listed as revoked and offline");
+    });
+
+    await Check("B9 a handheld re-reads what the table has after another's round and after a void in checkout", async () =>
+    {
+        // C3b: la ronda de OTRO (aqui el puesto principal) y una anulacion en Caja dejan el aviso operativo service.consumptions_changed,
+        // que llega a sala (nunca los account.*); con el, el comandero relee el tablero y ve la ronda y luego «Anulado en Caja».
+        var notices = new ConcurrentQueue<Costina.Client.EventNotice>(); var states = new ConcurrentQueue<string>();
+        await using var handheld = Subscribe("SERVICE", notices, states);
+        await handheld.StartAsync();
+        await WaitUntil(() => states.Contains("connected"), 10, "handheld realtime connected");
+        var opened = await Post("MAIN", "/api/native/v1/dining/services", new { tableId = "M3", pax = 2, offerId = "LAB-TASTING" });
+        var sid = opened.GetProperty("serviceId").GetString()!;
+        JsonElement Entry() => Get("/api/native/v1/dining/board", keys["SERVICE"]).GetAwaiter().GetResult().EnumerateArray()
+            .Single(e => e.GetProperty("service").GetProperty("id").GetString() == sid);
+        bool Changed(int count) => notices.Count(n => n.Type == "service.consumptions_changed" && n.AggregateId == sid) >= count;
+        var round = await Post("MAIN", $"/api/native/v1/dining/services/{sid}/commands/add-consumptions",
+            new { expectedVersion = opened.GetProperty("version").GetInt64(), lines = new object[] { new { productId = "wine", presentationId = "glass", quantity = 2 } } });
+        await WaitUntil(() => Changed(1), 15, "consumptions notice on the handheld after another's round");
+        var had = Entry().GetProperty("consumptions").EnumerateArray().ToArray();
+        Assert(had.Length == 1 && had[0].GetProperty("id").GetString() == round.GetProperty("consumptionIds")[0].GetString() && !had[0].GetProperty("voided").GetBoolean(),
+            "the re-read board shows the round");
+        var account = await Get($"/api/native/v1/checkout/services/{sid}", keys["MAIN"]);
+        _ = await Post("MAIN", $"/api/native/v1/checkout/services/{sid}/commands/void-charge", new { expectedVersion = account.GetProperty("version").GetInt64(),
+            chargeId = had[0].GetProperty("id").GetString(), reason = "rt-void" });
+        await WaitUntil(() => Changed(2), 15, "consumptions notice on the handheld after a void in checkout");
+        Assert(Entry().GetProperty("consumptions")[0].GetProperty("voided").GetBoolean(), "the re-read board shows the void");
+        await Task.Delay(700);
+        Assert(!notices.Any(n => OutboxPublisher.IsFinancial(n.Type)), "the handheld never receives account or payment notices");
     });
 }
 finally

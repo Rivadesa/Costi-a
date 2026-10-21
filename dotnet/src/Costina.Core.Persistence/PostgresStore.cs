@@ -267,6 +267,9 @@ public sealed partial class Unit(NpgsqlConnection connection, NpgsqlTransaction 
     private readonly BusinessScope scope = identity.Scope;
     // E3.2: actor real de la orden (user:<nombre>, device:<nombre>, cli:...) para las columnas updated_by de los datos maestros.
     public string Actor => identity.ActorId;
+    // C3b: clave de idempotencia de la orden en curso, para derivar de ella identificadores estables (SettlementAccount.DerivedLineId).
+    // Una lectura no tiene clave.
+    public string CommandKey => key.Length > 0 ? key : throw new InvalidOperationException("A read has no command key.");
 
     private NpgsqlCommand Command(string sql, (string Name, object Value)[] values)
     {

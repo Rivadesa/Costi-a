@@ -102,6 +102,14 @@ public static class Labels
         ("price_missing", "Ese producto no tiene precio vigente."),
         // E3.3.1: tope de cambios por orden de Vinos por copa (el puesto ya parte en ordenes de 300; con otro tope, sale esta frase).
         ("too_many_items", "Demasiados cambios para una sola orden: guárdalos por partes (filtra por familia o busca)."),
+        // C3b (diferidos de E3.3.1): secciones fijas del catalogo, Vinos por copa sin cambios y ordenes en bloque sin productos marcados.
+        ("reserved_category", "Cocina y Bodega y bebidas son secciones fijas del catálogo: no se crean con su código, no se cuelgan de otra categoría ni se desactivan; solo se les cambia el nombre."),
+        ("nothing_to_do", "No hay ningún cambio que guardar."),
+        ("product_ids_required", "Marca al menos un producto."),
+        // C3b: la ronda de «Añadir consumición» (add-consumptions). Ninguna se ha aplicado.
+        ("use_add_dish", "Ese producto pasa por cocina: pídelo como plato, no como consumición. No se ha añadido nada."),
+        ("too_many_lines", "Demasiadas líneas para una sola ronda (como mucho 30): envía el resto en otra. No se ha añadido nada."),
+        ("duplicate_consumption", "Esa orden ya se había usado en esta mesa con otras consumiciones. No se ha añadido nada: revisa lo que lleva la mesa."),
         // E3.2: imagenes de los articulos (el servidor las reconoce por sus bytes).
         ("image_invalid", "La imagen no es válida: solo se admiten JPEG, PNG o WebP (nunca SVG)."),
         ("image_too_large", "La imagen ocupa más de 2 MB: redúcela y vuelve a intentarlo."),

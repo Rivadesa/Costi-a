@@ -192,6 +192,44 @@ internal static class Program
             Equal("el-rapolao-2023", Catalog.Slug("El Rapolao 2023"));
             Equal("anada-cinco-x", Catalog.Slug("Añada · cinco (x)"));
         });
+        // C3b: la linea de la cuenta guarda tambien el comensal, su origen y la hora (campos aditivos). Una cuenta guardada antes del
+        // corte, sin esos campos, se restaura igual; un comensal fuera de rango o un origen desconocido no se apuntan.
+        Test("a charge keeps its guest, origin and time, and an older charge restores without them", () => {
+            var account = Account();
+            account.AddCharge("c1", "Vino de ensayo · Copa", 2, 950, Stamp, "wine", "glass", "general", guestPosition: 2, origin: ChargeOrigin.Consumption);
+            var line = account.View().Charges.Single(c => c.Id == "c1");
+            Equal<(int?, string?, DateTimeOffset?)>((2, "consumption", Time), (line.GuestPosition, line.Origin, line.At));
+            Equal(line, SettlementAccount.Restore(account.Snapshot()).View().Charges.Single(c => c.Id == "c1"));
+            var wire = new JsonSerializerOptions(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
+                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
+            var stored = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(account.Snapshot(), wire))!;
+            foreach (var charge in stored["charges"]!.AsArray()) foreach (var added in new[] { "guestPosition", "origin", "at" }) charge!.AsObject().Remove(added);
+            var older = SettlementAccount.Restore(stored.Deserialize<AccountSnapshot>(wire)!).View().Charges.Single(c => c.Id == "c1");
+            Equal(((int?)null, (string?)null, (DateTimeOffset?)null, 1900L), (older.GuestPosition, older.Origin, older.At, older.TotalCents));
+            Rule("invalid_guest", () => account.AddCharge("c2", "Agua", 1, 400, Stamp, guestPosition: 0, origin: ChargeOrigin.Consumption));
+            Rule("invalid_origin", () => account.AddCharge("c3", "Agua", 1, 400, Stamp, origin: "regalo"));
+            Equal(2, account.View().Charges.Count);
+            Rule("invalid_snapshot", () => SettlementAccount.Restore(account.Snapshot() with { Charges = [line with { GuestPosition = 0 }] }));
+        });
+        // C3b (diferido de D6.7): el identificador de una linea sale de la ORDEN (servicio, clave e indice). La idempotencia del servidor es
+        // por actor: la misma clave reenviada por otro actor deriva los mismos identificadores y la cuenta no admite el segundo cargo.
+        Test("a line id derived from its order is stable and the account never takes it twice", () => {
+            var id = SettlementAccount.DerivedLineId("service-1", "key-1", 0);
+            Equal(id, SettlementAccount.DerivedLineId("service-1", "key-1", 0));
+            True(System.Text.RegularExpressions.Regex.IsMatch(id, "^[0-9a-f]{32}$"), id);
+            foreach (var (service, key, index) in new[] { ("service-2", "key-1", 0), ("service-1", "key-2", 0), ("service-1", "key-1", 1), ("service-1", "key-10", 0) })
+                True(SettlementAccount.DerivedLineId(service, key, index) != id, $"{service}/{key}/{index}");
+            var account = Account(); var count = account.PendingEvents.Count;
+            account.AddCharge(id, "Agua mineral · Botella", 1, 400, Stamp, "water", "bottle", "general", origin: ChargeOrigin.Consumption);
+            Rule("duplicate_charge", () => account.AddCharge(id, "Agua mineral · Botella", 1, 400, new CommandStamp(Scope, "device:otro-nombre", Time),
+                "water", "bottle", "general", origin: ChargeOrigin.Consumption));
+            Equal((1, count + 1, 30400L), (account.View().Charges.Count(c => c.Id == id), account.PendingEvents.Count, account.TotalCents));
+        });
+        Test("the consumptions notice is operational, names the service and carries no data", () => {
+            var notice = SettlementAccount.ConsumptionsChanged("service-1", Stamp);
+            Equal(("service.consumptions_changed", "service-1", "operator-1", Time, 0), (notice.Type, notice.AggregateId, notice.ActorId, notice.At, notice.Data.Count));
+            True(!notice.Type.StartsWith("account.", StringComparison.Ordinal) && !notice.Type.StartsWith("payment.", StringComparison.Ordinal));
+        });
         // E3.2: imagenes de los articulos. Solo JPEG, PNG y WebP reconocidos por la firma de sus bytes (no por la extension ni por lo
         // que se declare), hasta 2 MB; el tipo declarado tiene que coincidir; la huella es el SHA-256 del contenido.
         Test("product images are recognised by their signature and carry their own fingerprint", () => {

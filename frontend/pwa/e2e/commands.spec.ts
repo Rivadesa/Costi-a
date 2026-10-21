@@ -1,21 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { asMain, checkDevice, checkScreen, command, deviceName, lane, MAIN, pairThroughTheUi, press, read, watch } from './support'
-
-// Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB), no lo que pinta la pantalla.
-const storedOrder = (page: Page) => page.evaluate(() => new Promise<string | null>(resolve => {
-  const open = indexedDB.open('costina')
-  open.onsuccess = () => { const get = open.result.transaction('pending').objectStore('pending').get('uncertain'); get.onsuccess = () => { open.result.close(); resolve(get.result ? String(get.result.description) : null) } }
-  open.onerror = () => resolve('error')
-}))
-// RESPUESTA PERDIDA de verdad: el servidor aplica la orden y la respuesta nunca llega. `lost` se resuelve cuando eso YA ocurrio:
-// la orden pendiente se ve ANTES del primer intento (por diseno), asi que sin esperar a `lost` el test podia retirar la ruta
-// con el manejador aun en route.fetch(), y Playwright daba la ruta por gestionada ("Route is already handled").
-async function loseResponses(page: Page, pattern: string): Promise<{ lost: Promise<void> }> {
-  let first: () => void = () => undefined
-  const lost = new Promise<void>(resolve => { first = resolve })
-  await page.route(pattern, async route => { try { await route.fetch(); await route.abort('connectionreset') } finally { first() } })
-  return { lost }
-}
+import { expect, test } from '@playwright/test'
+import { asMain, checkDevice, checkScreen, command, deviceName, lane, loseResponses, MAIN, pairThroughTheUi, press, read, storedOrder, watch } from './support'
 
 test('a waiter runs a table from the handheld; lost responses and network cuts never duplicate or lose a command', async ({ page, request, context }) => {
   test.setTimeout(240_000)
@@ -143,21 +127,28 @@ test('a waiter runs a table from the handheld; lost responses and network cuts n
   await expect(page.getByTestId('panel-carta')).toBeVisible()
   await checkScreen(page, 'Carta y menus')
   await press(page.getByTestId('back'))
-  // «Bodega y bebidas»: consumo a mayores desde sala, catalogo SIN precios y respuesta sin importes.
+  // «Bodega y bebidas» (C3b): un toque suma 1 a la ronda y «Enviar» es UNA orden. Catalogo SIN precios y respuesta sin importes. La
+  // historia entera (buscar, respuesta perdida, el otro comandero, la foto) esta en drinks.spec.ts.
   await press(page.getByTestId('entry-bodega'))
   await expect(page.getByTestId('panel-bodega')).toBeVisible()
-  await expect(page.locator('select[name=product]')).not.toContainText(/€|\d+[.,]\d{2}/)
+  await expect(page.getByTestId('chip-glass')).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 })   // la entrada: «Por copa»
+  await expect(page.getByTestId('drink-wine')).toBeVisible()
+  // Ningun importe («9,50»); un formato como «Botella 0.75 L» no es un importe.
+  await expect(page.getByTestId('panel-bodega')).not.toContainText(/€|\b\d+[.,]\d{2}\b(?!\s*c?l\b)/i)
   await checkScreen(page, 'Bodega y bebidas')
-  await page.selectOption('select[name=product]', 'water/bottle')   // E3: producto/presentacion
-  await press(page.getByTestId('do-add-consumption'))
+  await page.getByTestId('drinks-search').fill('agua')
+  await press(page.getByTestId('add-water-bottle'))                                          // una sola presentacion: «Añadir»
+  await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
+  await press(page.getByTestId('do-send-round'))
   // "pending" a cero ya era cierto ANTES del clic: no es senal de nada. La senal es el cargo en CAJA (nunca en el comandero).
   const waterCharges = async () => ((await (await asMain(request, `/checkout/services/${serviceId}`)).json()) as { data: { charges: Array<{ description: string }> } })
     .data.charges.filter(charge => /water|Agua/i.test(charge.description)).length
   await expect.poll(waterCharges, { timeout: 15_000 }).toBe(1)
+  await expect(page.getByTestId('round-empty')).toContainText('Ronda enviada')
   await expect(page.getByTestId('pending')).toHaveCount(0)
   await expect(page.getByTestId('command-notice')).toHaveCount(0)                           // confirmada, no rechazada
   expect(await waterCharges()).toBe(1)                                                      // un solo cargo
-  await checkScreen(page, 'after a consumption')
+  await checkScreen(page, 'after a round')
 
   expect(leaks, 'the PWA received financial data').toEqual([])
   expect(violations, 'CSP violations in the console').toEqual([])

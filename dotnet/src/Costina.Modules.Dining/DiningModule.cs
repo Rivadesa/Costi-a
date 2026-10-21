@@ -16,8 +16,9 @@ public sealed class DiningModule : IModule
     // E1b: esquema "dining" (services, occupancies, configuration de menus) y sus concesiones, embebidos en este ensamblado.
     public ModuleSchema Schema() => ModuleSchema.FromAssembly(typeof(DiningModule).Assembly, Name);
 
-    // open: abrir mesa; add-consumption: consumo a mayores desde sala sin importes (D3.6); cocina no hace ninguna de las dos.
-    public IReadOnlyList<string> SessionActions(string role) => new[] { "open", "add-consumption" }.Where(a => Affordances.Allows(role, a)).ToArray();
+    // open: abrir mesa; add-consumption: consumo a mayores desde sala sin importes (D3.6); add-consumptions (C3b): la ronda entera en
+    // una orden, la que usan «Bodega y bebidas» del comandero y «Añadir consumicion» de la mesa del puesto. Cocina no hace ninguna.
+    public IReadOnlyList<string> SessionActions(string role) => new[] { "open", "add-consumption", "add-consumptions" }.Where(a => Affordances.Allows(role, a)).ToArray();
 
     // E4a: las ofertas vigentes las publica el nucleo en /configuration.offers; el modulo mantiene 'menus' (id, name) una
     // version como alias para clientes con cache.
@@ -57,8 +58,13 @@ public sealed class DiningModule : IModule
         Post("/services", (HttpContext c) => Write<OpenRequest>(c, store, scope, DiningOperations.Open), new RouteAccess("main", "service"));
         // La matriz rol x accion que el middleware aplica es la MISMA que filtra las affordances: nada se anuncia que de 403.
         Post("/services/{id}/commands/{action}", (HttpContext c, string id, string action) =>
-            Write<DiningCommand>(c, store, scope, (u, i, r) => action == "add-consumption" ? DiningOperations.Consumption(u, i, id, r)
-                : action == "add-dish" ? DiningOperations.AddDish(u, i, id, r) : DiningOperations.Dining(u, i, id, action, r)),
+            Write<DiningCommand>(c, store, scope, (u, i, r) => action switch
+            {
+                "add-consumption" => DiningOperations.Consumption(u, i, id, r),
+                "add-consumptions" => DiningOperations.Consumptions(u, i, id, r),
+                "add-dish" => DiningOperations.AddDish(u, i, id, r),
+                _ => DiningOperations.Dining(u, i, id, action, r)
+            }),
             new RouteAccess("main", "service", "kitchen") { ActionPolicy = Affordances.Allows });
         Post("/occupancy/{id}/release", (HttpContext c, string id) =>
             Write<ReleaseCommand>(c, store, scope, (u, i, r) => DiningOperations.Release(u, i, id, r)), new RouteAccess("main"));

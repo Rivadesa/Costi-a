@@ -28,7 +28,8 @@ const UNACCENTED = ['aplicacion', 'aplico', 'revision', 'accion', 'estacion', 'c
 
 describe('words the views write as they are', () => {
   it('found something to check in every view (the scan itself works)', () => {
-    for (const [name, source] of files.filter(([name]) => name !== 'views/Icon.vue')) expect(shown(source).length, name).toBeGreaterThan(0)
+    // Icon y DrinkPhoto solo pintan un dibujo, una foto o unas iniciales: no escriben ningun texto propio.
+    for (const [name, source] of files.filter(([name]) => !['views/Icon.vue', 'views/DrinkPhoto.vue'].includes(name))) expect(shown(source).length, name).toBeGreaterThan(0)
     expect(files.map(([name]) => name)).toContain('views/TableCard.vue')
   })
   it('no checkout word, not even inside another word', () => {
@@ -41,11 +42,19 @@ describe('words the views write as they are', () => {
     expect(found).toEqual([])
   })
   it('never paints a code where a name goes (table, station, room or offer ids)', () => {
-    const found = files.flatMap(([name, source]) => [...template(source).matchAll(/\{\{\s*[\w.?]*\.(tableId|stationId|zoneId|offerId|station|companyId|locationId)\s*\}\}/g)].map(match => `${name}: ${match[0]}`))
+    const found = files.flatMap(([name, source]) => [...template(source).matchAll(/\{\{\s*[\w.?]*\.(tableId|stationId|zoneId|offerId|station|companyId|locationId|productId|presentationId|imageSha)\s*\}\}/g)].map(match => `${name}: ${match[0]}`))
     expect(found).toEqual([])
   })
   it('nothing the CSP of the engine refuses (inline styles) and no images: icons are inline SVG', () => {
-    const found = files.flatMap(([name, source]) => [...source.matchAll(/(?:\s|:|v-bind:)style=|<style|<img\b/g)].map(match => `${name}: ${match[0]}`))
+    // C3b: la UNICA imagen es la foto de una bebida (DrinkPhoto.vue), con su src ENLAZADO a la URL blob: que crea photos.ts con los
+    // bytes pedidos con el token (la CSP solo gana img-src blob:). Ninguna otra vista pinta imagenes, ni con una ruta escrita ni data:.
+    const found = files.flatMap(([name, source]) => [...source.matchAll(/(?:\s|:|v-bind:)style=|<style|<img\b/g)]
+      .filter(match => !(name === 'views/DrinkPhoto.vue' && match[0] === '<img')).map(match => `${name}: ${match[0]}`))
     expect(found).toEqual([])
+    const photo = files.find(([name]) => name === 'views/DrinkPhoto.vue')![1]
+    const images = [...template(photo).matchAll(/<img\b[^>]*>/g)].map(match => match[0])
+    expect(images).toHaveLength(1)
+    expect(images[0]).toMatch(/\s:src="url"/)
+    expect(images[0]).not.toMatch(/(?<!:)\bsrc=|data:|https?:/)
   })
 })

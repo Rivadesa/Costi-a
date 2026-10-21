@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
+import { deflateSync } from 'node:zlib'
 
 // C3a: lo comun de los specs E2E, que corren contra el MOTOR REAL en dos proyectos (escritorio y movil) con las MISMAS historias.
 // El "PC principal" se simula por API con un token main; el navegador solo es el dispositivo. Todo JSON que llega al navegador pasa
@@ -42,12 +43,18 @@ export function moneyKeys(value: unknown, path = '$'): string[] {
   return []
 }
 // Todo JSON de /api/ que recibe la pagina se inspecciona (ninguna clave de dinero) y la consola delata cualquier violacion de la CSP.
-export function watch(page: Page, leaks: string[], violations: string[]): void {
+// C3b: ademas, cada evento securitypolicyviolation de la pagina se escribe en la consola (las fotos van por blob:; nada mas debe entrar).
+// Devuelve la promesa del guion de arranque: quien la espera tiene el escucha puesto antes de la primera navegacion.
+export function watch(page: Page, leaks: string[], violations: string[]): Promise<void> {
   page.on('response', async response => {
     if (!response.url().includes('/api/')) return
     try { leaks.push(...moneyKeys(await response.json()).map(found => `${response.url()} ${found}`)) } catch { /* sin cuerpo JSON */ }
   })
   page.on('console', message => { if (/Content Security Policy|Refused to/i.test(message.text())) violations.push(message.text()) })
+  return page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', event =>
+      console.error(`Refused to load (securitypolicyviolation) ${event.violatedDirective} ${event.blockedURI}`))
+  }).then(() => undefined)
 }
 // Ni importes ni palabras de caja en lo que se ve en ESTA pantalla (el texto pintado de <main>, no el HTML).
 async function noMoneyWords(page: Page, where: string, rule = MONEY_WORDS): Promise<void> {
@@ -124,4 +131,89 @@ export async function pairThroughTheUi(page: Page, request: APIRequestContext, n
   await expect(page.getByTestId('home')).toBeVisible({ timeout: 15_000 })
   const devices = await (await asMain(request, '/auth/devices')).json() as Array<{ id: string; name: string }>
   return devices.find(d => d.name === name)!.id
+}
+
+// Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB), no lo que pinta la pantalla.
+export const storedOrder = (page: Page) => page.evaluate(() => new Promise<string | null>(resolve => {
+  const open = indexedDB.open('costina')
+  open.onsuccess = () => { const get = open.result.transaction('pending').objectStore('pending').get('uncertain'); get.onsuccess = () => { open.result.close(); resolve(get.result ? String(get.result.description) : null) } }
+  open.onerror = () => resolve('error')
+}))
+
+// RESPUESTA PERDIDA de verdad: el servidor aplica la orden y la respuesta nunca llega. `lost` se resuelve cuando eso YA ocurrio:
+// la orden pendiente se ve ANTES del primer intento (por diseno), asi que sin esperar a `lost` el test podia retirar la ruta
+// con el manejador aun en route.fetch(), y Playwright daba la ruta por gestionada ("Route is already handled").
+export async function loseResponses(page: Page, pattern: string): Promise<{ lost: Promise<void> }> {
+  let first: () => void = () => undefined
+  const lost = new Promise<void>(resolve => { first = resolve })
+  await page.route(pattern, async route => { try { await route.fetch(); await route.abort('connectionreset') } finally { first() } })
+  return { lost }
+}
+
+// El PC principal deja una mesa libre: omite lo pendiente, termina y libera (como finish_and_release de pwa_http.py).
+export async function release(request: APIRequestContext, serviceId: string): Promise<void> {
+  for (const course of (await read(request, serviceId)).data.courses)
+    if (course.state === 'Pending') await command(request, serviceId, 'skip', { courseId: course.id, reason: 'fin de la prueba' })
+  if ((await read(request, serviceId)).data.state === 'Open') await command(request, serviceId, 'start')
+  await command(request, serviceId, 'complete')
+  const board = await (await asMain(request, '/dining/board')).json() as Array<{ service: { id: string }; occupancyVersion: number }>
+  const entry = board.find(candidate => candidate.service.id === serviceId)!
+  const released = await asMain(request, `/dining/occupancy/${serviceId}/release`, { expectedVersion: entry.occupancyVersion, reason: 'fin de la prueba' })
+  expect(released.ok(), `release -> ${released.status()}`).toBeTruthy()
+}
+
+// ---- C3b: bodega y bebidas de prueba, por API como el PC principal (el laboratorio no trae ningun vino con «albar» ni fotos) ----
+export const catalogCommand = (request: APIRequestContext, action: string, data: Record<string, unknown>) => asMain(request, `/erp/catalog/commands/${action}`, data)
+export async function ensureCategory(request: APIRequestContext, id: string, name: string, parentId: string | null): Promise<void> {
+  const created = await catalogCommand(request, 'category-create', { id, name, ...(parentId ? { parentId } : {}) })
+  expect([200, 409], `category ${id} -> ${created.status()}`).toContain(created.status())
+}
+export type Drink = {
+  id: string; name: string; categoryId: string; reference?: string
+  presentations: Array<{ id: string; name: string; cents: number }>; glassCents?: number; image?: Buffer
+}
+// Idempotente: los dos proyectos (y las capturas) comparten el motor; lo que ya existe se deja como esta.
+export async function ensureDrink(request: APIRequestContext, drink: Drink): Promise<void> {
+  const sold = await (await asMain(request, '/catalog')).json() as Array<{ id: string; presentationId: string; imageSha?: string | null }>
+  const own = sold.filter(row => row.id === drink.id)
+  if (own.length >= drink.presentations.length + (drink.glassCents ? 1 : 0) && (!drink.image || own.some(row => row.imageSha))) return
+  const created = await catalogCommand(request, 'product-create', { id: drink.id, name: drink.name, categoryId: drink.categoryId, taxId: 'iva-21', ...(drink.reference ? { reference: drink.reference } : {}) })
+  expect([200, 409], `product ${drink.id} -> ${created.status()}`).toContain(created.status())
+  for (const [index, presentation] of drink.presentations.entries()) {
+    if (presentation.id !== 'unit') {
+      const made = await catalogCommand(request, 'presentation-create', { productId: drink.id, id: presentation.id, name: presentation.name, sort: index + 1 })
+      expect([200, 409], `presentation ${drink.id}/${presentation.id} -> ${made.status()}`).toContain(made.status())
+    }
+    expect((await catalogCommand(request, 'price-set', { tariffId: 'general', productId: drink.id, presentationId: presentation.id, priceCents: presentation.cents })).ok()).toBeTruthy()
+  }
+  if (drink.glassCents) expect((await catalogCommand(request, 'glass-sale-set', { items: [{ productId: drink.id, priceCents: drink.glassCents }] })).ok()).toBeTruthy()
+  if (drink.image) expect((await catalogCommand(request, 'product-image-set', { productId: drink.id, contentType: 'image/png', data: drink.image.toString('base64') })).ok()).toBeTruthy()
+}
+
+// Un PNG de verdad (el navegador lo tiene que DECODIFICAR para pintarlo): RGB de 8 bits, sin filtro, comprimido con zlib.
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
+const crc32 = (data: Buffer) => { let c = 0xFFFFFFFF; for (const byte of data) c = CRC[(c ^ byte) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0 }
+export function png(width: number, height: number, pixel: (x: number, y: number) => [number, number, number]): Buffer {
+  const raw = Buffer.alloc((width * 3 + 1) * height)
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) raw.set(pixel(x, y), y * (width * 3 + 1) + 1 + x * 3)
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4); length.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const check = Buffer.alloc(4); check.writeUInt32BE(crc32(body))
+    return Buffer.concat([length, body, check])
+  }
+  const header = Buffer.alloc(13); header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+// Una botella sencilla sobre blanco, como las fotos de producto de la tienda: capsula, cuello, hombros, cuerpo y etiqueta.
+export function bottlePng(rgb: [number, number, number]): Buffer {
+  const dark = rgb.map(value => Math.round(value * .55)) as [number, number, number]
+  return png(96, 128, (x, y) => {
+    const dx = Math.abs(x - 47.5)
+    const half = y < 12 ? -1 : y < 44 ? 6 : y < 58 ? 6 + (y - 44) * 13 / 14 : y < 118 ? 19 : y < 124 ? 19 - (y - 118) * 2 : -1
+    if (dx > half) return [255, 255, 255]
+    if (y < 24) return dark
+    if (y >= 74 && y < 102 && dx < 15) return [246, 241, 230]
+    return rgb
+  })
 }

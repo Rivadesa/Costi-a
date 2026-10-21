@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-10-20. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-10-21. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -95,6 +95,28 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, insta
   - **Revisión del 20-10:** el plano solo se pinta tras leer el tablero (nunca una mesa «Libre» sin saberlo); un menú de comida que deja de estar vigente a las 17:00 conserva su nombre y sus platos en las mesas abiertas con él; la sala elegida se conserva al volver de una ficha; en el móvil la ficha empieza justo bajo el enlace; icono de la pantalla de inicio con la «C» verde.
   - **Pruebas:** Playwright con un proyecto móvil (375 × 812, táctil) además del de escritorio, y selectores por `data-testid`. vitest 198, ClientChecks 201 y Playwright 12 contra el motor real.
   - Ver `docs/native/C3a-comandero-nuevo.md`, con capturas a 375 × 812, 820 × 1180 y 1180 × 820. Siguiente: C3b.
+- C3b — Bodega y bebidas: comandero y mesa del puesto (21-10-2026, sección 4.4 del plan aprobado `docs/plans/2026-10-15-menus-carta-y-bodega.md`, bajada en `docs/plans/2026-10-21-c3b-bodega-y-bebidas.md` y aprobada con «adelante con c3b»; versión `0.42.0-c3b`, sin cambio de esquema; el motor solo añade).
+  - **Comandero:** «Bodega y bebidas» nueva:
+    - buscador sin tildes por nombre, referencia, familia y región;
+    - «Por copa», familias con subfamilias y «En esta mesa»;
+    - una fila por vino con su foto y un botón por formato (Copa primero);
+    - sin precios.
+
+    Un toque suma 1 a la **ronda**, un borrador en memoria que nunca se guarda ni hace cola. «Enviar» es **una sola orden** (`add-consumptions`), con un solo efecto tras una respuesta perdida. «Lo que lleva la mesa» enseña lo ya enviado, sin importes, con «Anulado en Caja».
+  - **PC:** «Añadir consumición» en la ficha de la mesa del Comedor, con el mismo selector y sin contraseña en el nivel Puesto. Sin precios, también para el responsable. Caja busca con la misma regla.
+  - **Motor:**
+    - la ronda, todo o nada, con 422 y el índice de la línea mala, y `use_add_dish` para los platos de cocina;
+    - **defensa contra el doble cargo** (diferida de D6.7): el identificador de cada línea se deriva del servicio, la clave y la línea, y la misma orden reenviada por otro actor ya no cobra dos veces;
+    - la línea de la cuenta guarda comensal, origen y hora;
+    - `consumptions` en el tablero, sin dinero y leído en una sola consulta (apartado C3b de ADR-007);
+    - el aviso operativo `service.consumptions_changed`;
+    - la CSP con `img-src 'self' blob:` para las fotos.
+  - **Diferidos:** el puesto deja la orden como pendiente solo después de guardarla (D6.7), y tienen texto en castellano `reserved_category`, `nothing_to_do`, `product_ids_required` y los rechazos nuevos de la ronda (E3.3.1).
+  - **Revisión antes de subir:** «Enviar ronda» en verde claro sobre el botón grande de la ficha; la bandeja dice cuándo la ronda está sin confirmar y por qué no se envía; en el PC, «Añadir consumición» en la cabecera fija de la ficha y «Por copa» discontinuo; vitest rechaza lo que no conoce de la tabla común; Caja busca también por el nombre de la categoría.
+  - **Pruebas:** vitest 306, ClientChecks 263, dominio 86, las 14 suites HTTP, Realtime 13 y Playwright 14 (7 de escritorio y 7 de móvil) contra el motor real, más DesktopChecks. Una tabla de casos común al comandero y al puesto (`drinks-cases.json`).
+  - **Sin vuelta atrás:** tras guardar una cuenta con `0.42.0-c3b`, volver a `0.41.0-c3a` exige restaurar la copia previa (el motor anterior no lee las líneas nuevas); el instalador no impide bajar de versión.
+  - **Abierto:** varios tamaños de copa por vino («Copa 15 cl») esperan una decisión del promotor.
+  - Ver `docs/native/C3b-bodega-y-bebidas.md`, con capturas a 375 × 812 y 820 × 1180 y del puesto. Siguiente: E4e.
 - C2.1 — Pruebas y laboratorio aislados de la instalación real (15-10-2026, plan `docs/plans/2026-10-15-c2.1-pruebas-aisladas-de-la-instalacion.md` aprobado; versión `0.37.1-c2.1`, sin cambio de esquema ni pantallas): las suites HTTP y RealtimeChecks arrancaban el laboratorio sin `COSTINA_DATA`, con la raíz de la instalación real del PC (`C:\ProgramData\Costina`); solo el «acceso denegado» las mantenía fuera y, desde una consola de administrador, el `COSTINA_MODE=installation` real habría ganado (registros, copias, certificado y puertos reales; en `init-lab`, las credenciales del propietario). Ahora el motor exige al laboratorio una carpeta propia fuera de la de una instalación y rechaza una configuración de instalación antes de leer nada; cada suite y RealtimeChecks usan una carpeta temporal propia. `packaging_http.test_06g` lo prueba solo con carpetas temporales (en rojo con el motor de C2). Ver `docs/native/C2.1-pruebas-aisladas.md`.
 - B.2 — Conexión sencilla por la red del local (14-10-2026, ADR-014; versión `0.36.0-b2`, **esquema v8**): en el PC del promotor el móvil leía el QR y se quedaba en blanco (red de Windows en «Pública», raíz de la CA sin instalar en el móvil y `GET /ca.crt` con 404 por un permiso que faltaba). Ahora el responsable activa en Dispositivos la **conexión sencilla**: el QR lleva `http://IP:5089` y el móvil entra sin instalar nada. Es HTTP sin cifrar y queda como modo provisional hasta el certificado público con dominio propio. Va apagada por defecto, se activa en dos pasos con aviso permanente, queda auditada y se aplica sin reiniciar; solo atiende direcciones privadas, con regla de firewall solo en redes privadas o de dominio. Dispositivos avisa también si la red de Windows es pública, y `ca.crt` vuelve a servirse. Ver `docs/native/B.2-conexion-sencilla.md`.
 - E3.2 — Imágenes de los artículos y tarifa de cada sala (14-10-2026, plan `docs/plans/2026-10-14-e3.2-imagenes-y-tarifa-por-sala.md`; versión `0.35.0-e3.2`, **esquema v7**): foto de cada artículo guardada en la base (`core.product_images`, JPEG/PNG/WebP comprobados por sus bytes, hasta 2 MB, en copias y restauración), órdenes para poner y quitar, lectura para cualquier identidad, importación con columna `image` (el motor nunca descarga nada; la exportación de la tienda baja las fotos con `--images`), foto y miniaturas en Catálogo, y «Tarifa de la sala» en Configuración. Probado con la tienda real: 1.017 fotos de los 1.037 vinos. Ver `docs/native/E3.2-imagenes-y-tarifa-por-sala.md`.

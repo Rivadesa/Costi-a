@@ -7,13 +7,19 @@ namespace Costina.Modules.Dining;
 
 // E4a: la mesa se abre con una OFERTA del nucleo (offerId); menuId sigue aceptado una version como alias.
 public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null);
+// C3b: Lines = la RONDA de add-consumptions (campo nuevo y opcional: la ruta rechaza campos desconocidos y una orden de hoy vale igual).
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
-    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null,string? DishId=null);
+    string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null,string? DishId=null,
+    IReadOnlyList<ConsumptionLine>? Lines=null);
+// C3b: una linea de la ronda tal como llega. Todo es anulable para poder decir QUE falta y en QUE linea (422 con su indice).
+public sealed record ConsumptionLine(string? ProductId=null,string? PresentationId=null,int? Quantity=null,int? GuestPosition=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
 
 public static class DiningOperations
 {
+    // C3b: tope de una ronda (lineas) y de cada linea (cantidad). Una ronda mayor se manda en otra orden.
+    public const int MaxRoundLines=30, MaxLineQuantity=99;
     public static async Task<object> Open(Unit unit,ExecutionIdentity identity,OpenRequest request)
     {
         var table = await unit.ActiveTable(Required(request.TableId));   // E2: mesa de la organizacion del nucleo, activa
@@ -39,7 +45,8 @@ public static class DiningOperations
             long cents; string tariff;
             try { (cents,tariff) = await unit.PriceFor(zone.Active && zone.TariffId is not null ? zone.TariffId : Catalog.GeneralTariff,product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now)); }
             catch(RuleViolation e) when(e.Code=="price_missing") { throw new RuleViolation("offer_unpriced","Set the menu price in the catalog before opening tables with this offer."); }
-            account.AddCharge(Guid.NewGuid().ToString("N"),offer.Name+" · "+presentation.Name,request.Pax,cents,stamp,product.Id,presentation.Id,tariff);
+            account.AddCharge(Guid.NewGuid().ToString("N"),offer.Name+" · "+presentation.Name,request.Pax,cents,stamp,product.Id,presentation.Id,tariff,
+                origin:ChargeOrigin.Menu);
         }
         await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
@@ -123,10 +130,12 @@ public static class DiningOperations
         var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
         var account=await unit.Account(id);
         var chargeId=Guid.NewGuid().ToString("N");
-        account.Entity.AddCharge(chargeId,product.Name+" · "+presentation.Name,request.Quantity,cents,stamp,product.Id,presentation.Id,tariff);
+        // La linea del cobro conserva su texto con la presentacion (la demo la llama "Racion": offers_http lo fija); C3b: origen 'dish'.
+        account.Entity.AddCharge(chargeId,product.Name+" · "+presentation.Name,request.Quantity,cents,stamp,product.Id,presentation.Id,tariff,
+            request.GuestPosition,ChargeOrigin.Dish);
         var existing=entity.View().Courses.First(c=>c.Id==courseId).Preparations.Count(p=>p.Id.StartsWith(product.Id+"-"+presentation.Id+"-",StringComparison.Ordinal));
         var dishId=product.Id+"-"+presentation.Id+"-"+(existing+1);
-        entity.AddDish(courseId,new PreparationDefinition(dishId,product.Name+(presentation.Id==Catalog.DefaultPresentation ? "" : " · "+presentation.Name),product.StationId,request.Quantity,request.GuestPosition),stamp);
+        entity.AddDish(courseId,new PreparationDefinition(dishId,Catalog.LineText(product.Name,presentation),product.StationId,request.Quantity,request.GuestPosition),stamp);
         await unit.Save(account.Entity,account.Version);
         await unit.Save(entity,stored.Version);
         return new Versioned<DiningView>(stored.Version+1,entity.View());
@@ -134,22 +143,94 @@ public static class DiningOperations
     // Consumo a mayores desde un comandero (sala): contexto operativo = version del servicio que el camarero ve;
     // la cuenta (nucleo) se anexa bajo su propia version en la misma transaccion. La respuesta NO lleva importes:
     // el precio lo fija el catalogo del servidor y la cuenta se gestiona en el puesto principal (ADR-007).
+    // C3b: el identificador de la linea sale de la orden (servicio + clave + indice, SettlementAccount.DerivedLineId) y la cuenta no
+    // admite dos iguales: la misma orden reenviada por OTRO actor (la idempotencia del servidor es por actor) responde lo mismo sin
+    // volver a cobrar; el texto va sin la presentacion por defecto; la linea lleva origen 'consumption' y hora; y deja el aviso
+    // operativo service.consumptions_changed. No rechaza platos de cocina (eso es de add-consumptions), por compatibilidad.
     public static async Task<object> Consumption(Unit unit,ExecutionIdentity identity,string id,DiningCommand request)
     {
-        var dining=await unit.Dining(id); Version(dining.Version,request.ExpectedVersion);
-        if(dining.Entity.State==DiningState.Cancelled) throw new RuleViolation("service_finished","A cancelled service takes no consumptions.");
+        var dining=await unit.Dining(id);
         var account=await unit.Account(id);
+        var lineId=SettlementAccount.DerivedLineId(id,unit.CommandKey,0);
+        if(AlreadyApplied(account.Entity,[lineId],(_,line)=>line.ProductId==request.ProductId
+            && (request.PresentationId is null || line.PresentationId==request.PresentationId) && line.Quantity==request.Quantity) is { } applied)
+            return new { version=dining.Version,consumptionId=lineId,productId=applied[0].ProductId,presentationId=applied[0].PresentationId,quantity=applied[0].Quantity };
+        Version(dining.Version,request.ExpectedVersion);
+        if(dining.Entity.State==DiningState.Cancelled) throw new RuleViolation("service_finished","A cancelled service takes no consumptions.");
         // E3: vendible del catalogo del nucleo (producto + presentacion activos) al precio vigente de la tarifa de la sala de la
         // cuenta (o la general); el cargo congela importe, producto, presentacion y tarifa.
         var (product,presentation)=await unit.Sellable(Required(request.ProductId),request.PresentationId);
         var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
-        var chargeId=Guid.NewGuid().ToString("N");
-        account.Entity.AddCharge(chargeId,product.Name+" · "+presentation.Name,request.Quantity,cents,
-            new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow),product.Id,presentation.Id,tariff);
+        var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
+        account.Entity.AddCharge(lineId,Catalog.LineText(product.Name,presentation),request.Quantity,cents,stamp,product.Id,presentation.Id,tariff,
+            origin:ChargeOrigin.Consumption);
         await unit.Save(account.Entity,account.Version);
+        await unit.Events([SettlementAccount.ConsumptionsChanged(id,stamp)]);
         // D6.3: la referencia viaja como consumptionId. La ruta de sala no lleva vocabulario de caja (ADR-007): la guarda
         // de la PWA rechaza entera cualquier respuesta con una clave economica, y "charge" (o "tariff") lo es.
-        return new { version=dining.Version,consumptionId=chargeId,productId=product.Id,presentationId=presentation.Id,quantity=request.Quantity };
+        return new { version=dining.Version,consumptionId=lineId,productId=product.Id,presentationId=presentation.Id,quantity=request.Quantity };
+    }
+
+    // C3b: la RONDA en una sola orden (sala y principal): de 1 a 30 lineas, cantidades de 1 a 99, comensal opcional dentro de la mesa.
+    // Todo o nada en la transaccion de la orden; una linea mala da 422 con su indice (LineRejected) y no se apunta ninguna. Un producto
+    // con estacion de cocina o de pase se rechaza con use_add_dish: lo que se pide en Bebidas nunca se cobra sin que cocina lo vea.
+    // La version del servicio no se mueve (no se pisan las ordenes de otros camareros), pero se exige la leida (F01). Respuesta sin
+    // dinero: {version, consumptionIds}, en el orden de las lineas.
+    public static async Task<object> Consumptions(Unit unit,ExecutionIdentity identity,string id,DiningCommand request)
+    {
+        var lines=request.Lines is { Count: > 0 } given ? given : throw new ArgumentException("lines is required: at least one line.");
+        if(lines.Count>MaxRoundLines) throw new RuleViolation("too_many_lines",$"At most {MaxRoundLines} lines per round; send the rest in another.");
+        for(var i=0;i<lines.Count;i++) if(lines[i] is null) throw new LineRejected(i,"invalid_request","A line cannot be null.");
+        var dining=await unit.Dining(id);
+        var account=await unit.Account(id);
+        var ids=lines.Select((_,i)=>SettlementAccount.DerivedLineId(id,unit.CommandKey,i)).ToArray();
+        if(AlreadyApplied(account.Entity,ids,(i,line)=>line.ProductId==lines[i].ProductId && (lines[i].PresentationId is null || line.PresentationId==lines[i].PresentationId)
+            && line.Quantity==lines[i].Quantity && line.GuestPosition==lines[i].GuestPosition) is not null)
+            return new { version=dining.Version,consumptionIds=ids };
+        Version(dining.Version,request.ExpectedVersion);
+        if(dining.Entity.State==DiningState.Cancelled) throw new RuleViolation("service_finished","A cancelled service takes no consumptions.");
+        if(account.Entity.State==AccountState.Closed) throw new RuleViolation("account_closed","Closed accounts cannot be edited.");
+        var tariff=await unit.TariffForService(id); var today=DateOnly.FromDateTime(DateTime.Now);
+        var kinds=new Dictionary<string,StationKind>(StringComparer.Ordinal);
+        var sold=new List<(ProductDefinition Product,PresentationDefinition Presentation,long Cents,string Tariff)>();
+        for(var i=0;i<lines.Count;i++)
+        {
+            var line=lines[i];
+            try
+            {
+                var productId=Required(line.ProductId);
+                if(line.Quantity is not (>= 1 and <= MaxLineQuantity)) throw new ArgumentException($"quantity must be between 1 and {MaxLineQuantity}.");
+                if(line.GuestPosition is { } guest && (guest<1 || guest>dining.Entity.Pax)) throw new ArgumentException("guestPosition is outside this table.");
+                var (product,presentation)=await unit.Sellable(productId,line.PresentationId);
+                if(product.StationId is { } station)
+                {
+                    if(!kinds.TryGetValue(station,out var kind)) kinds[station]=kind=(await unit.Station(station)).Kind;
+                    if(kind is StationKind.Kitchen or StationKind.Pass) throw new RuleViolation("use_add_dish","This product goes through the kitchen: order it as a dish.");
+                }
+                var (cents,applied)=await unit.PriceFor(tariff,product.Id,presentation.Id,today);
+                sold.Add((product,presentation,cents,applied));
+            }
+            catch(Exception e) when(e is RuleViolation or ArgumentException or StoreNotFound) { throw LineRejected.From(i,e); }
+        }
+        var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
+        for(var i=0;i<lines.Count;i++)
+            account.Entity.AddCharge(ids[i],Catalog.LineText(sold[i].Product.Name,sold[i].Presentation),lines[i].Quantity!.Value,sold[i].Cents,stamp,
+                sold[i].Product.Id,sold[i].Presentation.Id,sold[i].Tariff,lines[i].GuestPosition,ChargeOrigin.Consumption);
+        await unit.Save(account.Entity,account.Version);
+        await unit.Events([SettlementAccount.ConsumptionsChanged(id,stamp)]);
+        return new { version=dining.Version,consumptionIds=ids };
+    }
+
+    // C3b: la orden con estos identificadores derivados ya esta en la cuenta? Si TODAS sus lineas estan y son las mismas (la misma orden
+    // reenviada por otro actor), devuelve esas lineas: se responde lo mismo y no se cobra otra vez. Si ninguna esta, null: se apunta.
+    // Si alguna esta pero no todas, o con otro contenido (la misma clave con otras lineas), se rechaza: nunca un segundo cargo.
+    private static IReadOnlyList<ChargeLine>? AlreadyApplied(SettlementAccount account,IReadOnlyList<string> ids,Func<int,ChargeLine,bool> same)
+    {
+        var existing=account.View().Charges.ToDictionary(c=>c.Id,StringComparer.Ordinal);
+        var found=ids.Select(i=>existing.GetValueOrDefault(i)).ToArray();
+        if(found.All(f=>f is null)) return null;
+        if(found.Select((f,i)=>f is not null && same(i,f)).All(ok=>ok)) return found.Select(f=>f!).ToArray();
+        throw new RuleViolation("duplicate_consumption","This command key was already used for other consumptions on this table.");
     }
     public static async Task<object> Release(Unit unit,ExecutionIdentity identity,string id,ReleaseCommand request)
     {

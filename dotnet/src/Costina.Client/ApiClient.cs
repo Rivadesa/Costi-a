@@ -4,10 +4,12 @@ using System.Text;
 using System.Text.Json;
 namespace Costina.Client;
 
-public sealed class ApiError(int status, string code) : Exception($"HTTP {status}: {code}")
+// C3b: Line = la linea que el servidor senala en un rechazo de la ronda (422 {error, line}, desde 0); null si no la dice.
+public sealed class ApiError(int status, string code, int? line = null) : Exception($"HTTP {status}: {code}")
 {
     public int Status { get; } = status;
     public string Code { get; } = code;
+    public int? Line { get; } = line;
 }
 public sealed record PendingCommand(string Key, string Path, string Body, string Description);
 
@@ -178,8 +180,12 @@ public sealed class ApiClient : IDisposable
                     _ => "Hay una orden anterior ilegible o inaccesible. Consúltala en el servidor o descártala conservando la evidencia antes de operar."
                 });
             if (Pending is not null) throw new InvalidOperationException("Resuelve primero la orden sin confirmar.");
-            Pending = new(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
-            store?.Save(Pending); // durable ANTES del primer intento: un cierre forzado no la pierde
+            var command = new PendingCommand(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
+            // Durable ANTES del primer intento: un cierre forzado no la pierde. C3b (diferido de D6.7): pasa a Pending SOLO despues de
+            // guardarse. Si el almacen falla, la excepcion sale de aqui sin Pending: nada se envia, ni ahora ni con RetryAsync, porque
+            // nunca se envia lo que no se pudo guardar (antes quedaba en memoria y "Reintentar" la mandaba sin estar guardada).
+            store?.Save(command);
+            Pending = command;
             return await Attempt();
         }
         finally { mutation.Release(); }
@@ -249,7 +255,7 @@ public sealed class ApiClient : IDisposable
             }
             if (earlier is not null) Resolve(command);
         }
-        if (!response.IsSuccessStatusCode) throw new ApiError(status, ErrorCode(text) ?? "request_failed");
+        if (!response.IsSuccessStatusCode) throw new ApiError(status, ErrorCode(text) ?? "request_failed", ErrorLine(text));
         var data = JsonSerializer.Deserialize<JsonElement>(text, Json);
         // Exito reconocible: un objeto que habla de ESTE comando, por el eco de su clave (todo el servidor la devuelve,
         // D3.4) o, para servidores anteriores, por la version o el identificador de servicio que devuelven los comandos de dominio.
@@ -286,6 +292,17 @@ public sealed class ApiClient : IDisposable
             using var json = JsonDocument.Parse(body);
             return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("error", out var error)
                 && error.ValueKind == JsonValueKind.String ? error.GetString() : null;
+        }
+        catch (JsonException) { return null; }
+    }
+    // C3b: indice (desde 0) de la linea rechazada de una ronda; cualquier otra forma, null (nunca se inventa una linea).
+    private static int? ErrorLine(string body)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("line", out var line)
+                && line.ValueKind == JsonValueKind.Number && line.TryGetInt32(out var index) && index >= 0 ? index : null;
         }
         catch (JsonException) { return null; }
     }

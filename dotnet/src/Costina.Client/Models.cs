@@ -86,8 +86,9 @@ public sealed record OfferDto(string Id, string Name, string Kind, string? Produ
 // PresentationId/CategoryName/TariffId son opcionales: un servidor anterior no los envia. E3.2: ImageSha = huella de la imagen
 // vigente del producto (null sin imagen o con un servidor anterior); los bytes se piden aparte (ApiClient.GetProductImageAsync).
 // E3.3: Section ('cocina' | 'bodega'), Family, Reference y Glass (es la copa; lo decide el servidor): un servidor anterior no los envia.
+// C3b: CategoryPath (de la raiz a la hoja, sin la seccion), para que Caja busque por los mismos campos que el selector de la mesa.
 public sealed record ProductChoice(string Id, string Name, string Presentation, long PriceCents, string? PresentationId = null, string? CategoryName = null, string? TariffId = null,
-    string? ImageSha = null, string? Section = null, string? Family = null, string? Reference = null, bool Glass = false)
+    string? ImageSha = null, string? Section = null, string? Family = null, string? Reference = null, bool Glass = false, string[]? CategoryPath = null)
 { public override string ToString() => (CategoryName is { Length: > 0 } ? CategoryName + " · " : "") + $"{Name} · {Presentation} · {Money.Format(PriceCents)}"; }
 // E3: catalogo completo (solo main): espejo de GET /erp/catalog. Precios con IVA incluido; ValidFrom como AAAA-MM-DD.
 public sealed record TaxDto(string Id, string Name, decimal Rate, bool Active)
@@ -145,7 +146,13 @@ public sealed record DiningDto(string Id, string TableId, int Pax, string State,
 public sealed record OccupancyDto(string Id, string TableId, string ServiceId, string State, DateTimeOffset? ReleasedAt,
     string[]? Actions = null)
 { public string StateLabel => Labels.Occupancy(State); }
-public sealed record BoardEntry(long Version, DiningDto Service, OccupancyDto Occupancy, long OccupancyVersion)
+// C3b: «Lo que lleva la mesa»: bebidas y extras ya enviados (tambien los de Caja), SIN importes ni totales (ADR-007, apartado C3b).
+// Presentation es null en la presentacion por defecto (no se escribe); GuestPosition null = toda la mesa; At null en una linea anterior
+// a C3b; Voided = anulado en Caja. ProductId/PresentationId null en una linea muy antigua, sin producto.
+public sealed record ConsumptionDto(string Id, string? ProductId, string? PresentationId, string Name, string? Presentation, int Quantity,
+    int? GuestPosition = null, DateTimeOffset? At = null, bool Voided = false);
+// C3b: Consumptions es opcional: un servidor anterior no lo envia.
+public sealed record BoardEntry(long Version, DiningDto Service, OccupancyDto Occupancy, long OccupancyVersion, ConsumptionDto[]? Consumptions = null)
 { public override string ToString() => $"{Service.TableId} · {Labels.Plural(Service.Pax, "persona", "personas")} · {Service.StateLabel}"; }
 public sealed record ChargeDto(string Id, string Description, int Quantity, long UnitPriceCents,
     bool Voided, string? VoidReason, long TotalCents)

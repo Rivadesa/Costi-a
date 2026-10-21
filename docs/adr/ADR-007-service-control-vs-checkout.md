@@ -65,3 +65,24 @@ Al añadir una consumición se guarda un snapshot del nombre y precio aplicados,
 - Los permisos financieros siguen siendo obligatorios, pero la separación no depende solo de permisos: también está reflejada en rutas, proyecciones y UI.
 - V1A incorpora un catálogo operativo mínimo. El PIM completo, stock, vinos/añadas y WooCommerce siguen pospuestos a V1C.
 - Cualquier nueva IA o desarrollador debe respetar esta frontera y no volver a añadir subtotal, pagos o cuenta a las proyecciones de servicio.
+
+## Apartado C3b (2026-10-21): «Lo que lleva la mesa» no es la cuenta provisional
+
+**Contexto.** En C3b el camarero pide bebidas y extras desde el comandero («Bodega y bebidas») y desde la ficha de la mesa del puesto principal («Añadir consumición»). Para repetir una ronda y para enterarse de lo que se anula en Caja necesita ver **qué lleva ya la mesa**. Esa lista sale de las líneas de la cuenta, y «Control de servicio» no debe mostrar la cuenta provisional.
+
+**Decisión.** El control de servicio **puede mostrar** «Lo que lleva la mesa»: las bebidas y los extras ya enviados (también los apuntados en Caja), con:
+- nombre del producto y formato («Copa», «Botella 0.75 L»; la presentación por defecto no se escribe);
+- cantidad;
+- comensal, o toda la mesa;
+- hora en que se apuntó;
+- «Anulado en Caja» cuando se anuló.
+
+**Sigue sin mostrar**: importes, precios unitarios, totales, subtotal, saldo, tarifa, pagos, estado de la cuenta ni acciones de cobro. Tampoco lleva la línea del menú ni los platos, que ya se ven en los pases. Por eso no es la cuenta provisional: es una lista operativa, como los pases, y los importes solo se ven en Caja, también para el responsable en el puesto principal.
+
+**Cómo se garantiza:**
+- es una **proyección propia** (`consumptions` en cada entrada de `GET /dining/board`), construida por una lectura del núcleo que solo extrae de la cuenta los campos sin dinero (`AccountLines`). Nunca se reutiliza `ChargeLine` ni `AccountView`, que llevan precio, total y tarifa;
+- ninguna clave nueva lleva vocabulario de caja: la guarda de la PWA (`money-guard.ts`) se sigue aplicando a cada respuesta y `pwa_http.py` lo comprueba con la misma regla;
+- el aviso de tiempo real `service.consumptions_changed` es operativo y no lleva datos: solo dice qué servicio cambió y cada equipo relee el tablero. Los avisos `account.*` y `payment.*` siguen llegando solo al principal;
+- el selector de bebidas no pinta precios en ningún terminal: en el puesto lee `GET /catalog` (sin importes), nunca `/checkout/catalog`.
+
+Lo que no cambia: cobrar, anular y cerrar siguen en Caja; las rutas económicas siguen bajo `/checkout/...` y solo para el principal.

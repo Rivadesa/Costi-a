@@ -373,6 +373,12 @@ app.Use(async (context,next)=>
         if(!allowed) { context.Response.StatusCode=403; await context.Response.WriteAsJsonAsync(new {error="forbidden"}); return; }
         await next();
     }
+    catch(LineRejected e)
+    {
+        // C3b: una linea mala de una orden con varias (la ronda): 422 con su codigo y su indice; no se aplica ninguna.
+        context.Response.StatusCode=422;
+        await context.Response.WriteAsJsonAsync(new {error=e.Code,line=e.Line});
+    }
     catch(Exception e) when(e is RuleViolation or StoreConflict or StoreNotFound or ArgumentException or JsonException or OverflowException or BadHttpRequestException)
     {
         context.Response.StatusCode=e is StoreNotFound ? 404 : e is RuleViolation or StoreConflict ? 409 : 422;

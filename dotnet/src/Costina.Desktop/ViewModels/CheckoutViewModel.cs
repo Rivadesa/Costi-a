@@ -64,12 +64,22 @@ public sealed partial class CheckoutViewModel(ShellViewModel shell) : Observable
     public const int MaxProductGroups = 24;
     partial void OnProductSearchChanged(string value) { if (!rendering) BuildProductGroups(); }
     partial void OnSelectedProductChanged(ProductChoice? value) { if (!rendering) BuildProductGroups(); }
-    private static bool MatchesProduct(ProductChoice p, string text) => text.Length == 0 || TextSearch.Contains(p.Name, text) || (p.Reference?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
-        || (p.Family is { } f && TextSearch.Contains(f, text)) || (p.CategoryName is { } c && TextSearch.Contains(c, text));
+    // C3b: la MISMA regla que el selector «Añadir consumicion» del Comedor y que el comandero (Costina.Client/CatalogSearch, con la tabla de
+    // casos comun): cada palabra escrita en el nombre, la referencia, la familia o la ruta de categorias, sin tildes ni mayusculas; con
+    // texto, primero lo que empieza por lo escrito. Caja sigue buscando desde la primera letra y, sin texto, lo lista todo en el orden
+    // del servidor. Solo en Caja, ademas, el nombre de su categoria (como antes de C3b): un producto colgado directamente de una seccion
+    // («Bodega y bebidas», «Cocina») trae la ruta vacia y, sin esto, «bebidas» ya no lo encontraria. La regla comun no cambia.
+    private static bool MatchesProduct(ProductChoice p, string[] words) => words.Length == 0
+        || CatalogSearch.Matches(words, [.. DrinksPicker.SearchFields(p.Name, p.Reference, p.Family, p.CategoryPath, p.CategoryName), CatalogSearch.Fold(p.CategoryName)]);
     private void BuildProductGroups()
     {
         var text = ProductSearch.Trim();
-        var groups = Products.Where(p => MatchesProduct(p, text)).GroupBy(p => p.Id).ToArray();
+        var words = CatalogSearch.Tokens(text);
+        var groups = Products.Where(p => MatchesProduct(p, words)).GroupBy(p => p.Id).ToArray();
+        if (words.Length > 0)
+            groups = groups.Select(g => (Group: g, Rank: CatalogSearch.Rank(words, g.First().Name, g.First().Reference)))
+                .OrderBy(e => e.Rank).ThenBy(e => e.Group, Comparer<IGrouping<string, ProductChoice>>.Create((a, b) => CatalogSearch.CompareByName(a.Key, a.First().Name, b.Key, b.First().Name)))
+                .Select(e => e.Group).ToArray();
         ProductGroups = groups.Take(MaxProductGroups).Select(g =>
         {
             var first = g.First();

@@ -27,7 +27,7 @@ const DEFINITIVE = new Set([403, 404, 409, 422])
 
 export type Outcome =
   | { kind: 'confirmed'; response: unknown }
-  | { kind: 'rejected'; status: number; code: string }
+  | { kind: 'rejected'; status: number; code: string; line?: number }   // C3b: line = indice (desde 0) de la linea mala de una ronda
   | { kind: 'unconfirmed'; reason: 'network' | 'server' | 'unverifiable' }
   | { kind: 'unauthorized' }
 
@@ -66,6 +66,12 @@ export const REJECTIONS: Record<string, string> = {
   wrong_station: 'Esta acción no corresponde a la estación de este dispositivo.',
   account_closed: 'Esta mesa ya está cerrada en Caja: avisa en el PC principal.',
   forbidden: 'Este dispositivo no tiene permiso para esa acción.',
+  // C3b: la ronda (add-consumptions). Con ninguna se ha aplicado nada: la ronda sigue en la bandeja.
+  use_add_dish: 'Ese producto pasa por cocina: pídelo como plato en «Carta y menús». No se ha añadido nada.',
+  too_many_lines: 'Demasiadas líneas para una sola ronda (como mucho 30): envía el resto en otra. No se ha añadido nada.',
+  duplicate_consumption: 'Esa orden ya se había usado en esta mesa con otras bebidas. No se ha añadido nada: revisa lo que lleva la mesa.',
+  product_unavailable: 'Ese producto ya no está a la venta. No se ha añadido nada.',
+  price_missing: 'Ese producto no se puede servir todavía: avisa en el PC principal. No se ha añadido nada.',
 }
 
 export class CommandRunner {
@@ -210,7 +216,9 @@ export class CommandRunner {
           return { kind: 'confirmed', response: earlier.response }
         }
         this.state.notice = REJECTIONS[code] ?? `El servidor rechazó la orden (${code}). No se ha aplicado.`
-        return { kind: 'rejected', status: response.status, code }
+        // C3b: la ronda (add-consumptions) dice que linea no vale: {error, line}. Solo un entero desde 0; cualquier otra cosa se ignora.
+        const line = (payload as { line?: unknown }).line
+        return Number.isInteger(line) && (line as number) >= 0 ? { kind: 'rejected', status: response.status, code, line: line as number } : { kind: 'rejected', status: response.status, code }
       }
       return this.keep(response.status >= 500 || response.status === 429 || INCONCLUSIVE.has(code) ? 'server' : 'unverifiable')
     }

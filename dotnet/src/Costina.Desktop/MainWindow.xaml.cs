@@ -39,7 +39,7 @@ public partial class MainWindow : Window
         };
         PlaceLoginCard();
         // Corte B: la vista sensible pedida se abre sola cuando el responsable ha entrado.
-        shell.ViewRequested += name => { if (FindName(name) is TabItem view) Tabs.SelectedItem = view; };
+        shell.ViewRequested += name => { if (FindName(name) is TabItem view) Select(view); };
         // Corte B (B3): cualquier teclado o raton cuenta como actividad; cada minuto se comprueba si el responsable lleva
         // 15 minutos sin tocar nada y, si es asi, se vuelve al nivel Puesto.
         InputManager.Current.PreProcessInput += (_, _) => shell.NoteActivity();
@@ -79,6 +79,14 @@ public partial class MainWindow : Window
         if (!shell.TabsEnabled) return;
         if (FindName(name) is not TabItem view) return;
         if (ShellViewModel.RequiresResponsible(name) && !shell.IsMain) { shell.RequestElevation(name); return; }
+        Select(view);
+    }
+    // C3b: salir del Comedor con una ronda sin enviar pide confirmacion en la propia ficha (la ronda es un borrador en memoria: se pierde).
+    // Solo presentacion: la pregunta y la ronda viven en DrinksViewModel.
+    private void Select(TabItem view)
+    {
+        if (!ReferenceEquals(view, ServiceTab) && ReferenceEquals(Tabs.SelectedItem, ServiceTab)
+            && shell.Service.Drinks.AskLeave("vas a «" + Costina.Client.Labels.View(view.Name) + "»", () => Tabs.SelectedItem = view)) return;
         Tabs.SelectedItem = view;
     }
     private void ElevateClick(object sender, RoutedEventArgs e) => shell.RequestElevation("HomeTab");

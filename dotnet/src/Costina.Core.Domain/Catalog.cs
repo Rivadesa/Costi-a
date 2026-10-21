@@ -34,6 +34,10 @@ public static class Catalog
     public static bool IsSection(string? id) => id is KitchenSection or CellarSection;
     public static string SectionName(string id) => id == KitchenSection ? "Cocina" : "Bodega y bebidas";
     public static bool IsGlass(string? presentationId) => presentationId is GlassPresentation or "glass";
+    // C3b: texto de lo vendido: el nombre del producto y, si no es la presentacion por defecto, su presentacion («Agua con gas», no
+    // «Agua con gas · Unidad»; «Albarino · Copa»). Lo usan los consumos de sala, Caja y el nombre del plato que ve cocina.
+    public static string LineText(string productName, PresentationDefinition presentation)
+        => presentation.Id == DefaultPresentation ? productName : productName + " · " + presentation.Name;
     // E3.3.1: LA copa de un vino entre sus presentaciones (null si no tiene ninguna): la activa primero; entre varias, 'copa'; despues,
     // por codigo. glass-sale-set reprecia o reactiva esta (solo crea 'copa' si no hay ninguna) y el puesto pinta la misma.
     public static PresentationDefinition? GlassOf(IEnumerable<PresentationDefinition> presentations) => presentations.Where(p => IsGlass(p.Id))
