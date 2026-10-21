@@ -734,6 +734,150 @@ await Check("vocabulary (shared cases): guests, restrictions, minutes and plural
         Expect(text==row.GetProperty("text").GetString(),"plural: "+text);
     }
     return Task.CompletedTask;});
+// C3b: tabla de casos COMUN del selector «Bodega y bebidas» y de la ronda. frontend/pwa/tests/drinks.test.ts recorre la MISMA contra
+// search.ts, drinks.ts y round.ts: si CatalogSearch, DrinksPicker o Round cambian y la PWA no (o al reves), falla una de las dos.
+// Un campo, una orden de ronda o un resultado que este lado no conoce es un fallo, nunca se salta.
+using var drinkCases=JsonDocument.Parse(File.ReadAllText(Path.Combine(sharedCases,"drinks-cases.json")));
+var drinksRoot=drinkCases.RootElement;
+var drinkProducts=DrinksPicker.Products(drinksRoot.GetProperty("catalog").Deserialize<CatalogItem[]>(ApiClient.Json)!);
+static string? TextOrNull(JsonElement value)=>value.ValueKind==JsonValueKind.Null?null:value.GetString();
+static void Only(JsonElement row,params string[] fields){
+    var unknown=row.EnumerateObject().Select(p=>p.Name).Where(name=>!fields.Contains(name)).ToArray();
+    if(unknown.Length>0) throw new Exception("unknown field in the shared cases: "+string.Join(",",unknown));
+}
+static void Same(object? actual,JsonElement expected,string what){
+    var got=JsonSerializer.SerializeToElement(actual,ApiClient.Json);
+    if(JsonElement.DeepEquals(got,expected)) return;
+    var readable=new JsonSerializerOptions(ApiClient.Json){Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};   // solo el mensaje
+    throw new Exception($"{what} = {JsonSerializer.Serialize(actual,readable)}, the shared case says {expected.GetRawText()}");
+}
+string[] Ids(IEnumerable<DrinkProduct>? products)=>products is null?null!:products.Select(p=>p.Id).ToArray();
+RoundItem ItemOf(JsonElement key){
+    var parts=key.GetString()!.Split('/');
+    var product=drinkProducts.FirstOrDefault(p=>p.Id==parts[0]); var button=product?.Buttons.FirstOrDefault(b=>b.PresentationId==parts[1]);
+    if(product is null||button is null) throw new Exception("item not in the shared catalogue: "+key.GetString());
+    return DrinksPicker.Item(product,button);
+}
+var drinkSections=new[]{"about","catalog","fold","products","families","subfamilies","inFamily","glass","search","consumptions","atThisTable","round"};
+await Check("drinks picker (shared cases): every section of the table is known here",()=>{ Only(drinksRoot,drinkSections); return Task.CompletedTask; });
+foreach(var row in drinksRoot.GetProperty("fold").EnumerateArray())
+    await Check("drinks picker (shared cases): fold «"+row.GetProperty("text").GetString()+"»",()=>{
+        Only(row,"text","folded"); Expect(CatalogSearch.Fold(row.GetProperty("text").GetString())==row.GetProperty("folded").GetString(),"fold = "+CatalogSearch.Fold(row.GetProperty("text").GetString()));
+        return Task.CompletedTask;});
+await Check("drinks picker (shared cases): one row per product of the bodega section, A to Z, the glass first and «Añadir» if only one",()=>{
+    var rows=drinksRoot.GetProperty("products").EnumerateArray().ToArray();
+    Same(Ids(drinkProducts),JsonSerializer.SerializeToElement(rows.Select(r=>r.GetProperty("id").GetString()).ToArray()),"products");
+    for(var i=0;i<rows.Length;i++)
+    {
+        Only(rows[i],"id","name","family","subfamily","detail","glass","buttons");
+        var p=drinkProducts[i];
+        Same(new{id=p.Id,name=p.Name,family=p.Family,subfamily=p.Subfamily,detail=p.Detail,glass=p.Glass,buttons=p.Buttons.Select(b=>new[]{b.PresentationId,b.Label})},rows[i],"product "+p.Id);
+    }
+    return Task.CompletedTask;});
+await Check("drinks picker (shared cases): family chips, A to Z, with «Otros» last",()=>{
+    Same(DrinksPicker.Families(drinkProducts).Select(f=>new{family=f.Family,label=f.Label,count=f.Count}),drinksRoot.GetProperty("families"),"families");
+    return Task.CompletedTask;});
+foreach(var row in drinksRoot.GetProperty("subfamilies").EnumerateArray())
+    await Check("drinks picker (shared cases): subfamilies: "+row.GetProperty("case").GetString(),()=>{
+        Only(row,"case","family","expect");
+        Same(DrinksPicker.Subfamilies(drinkProducts,TextOrNull(row.GetProperty("family"))).Select(s=>new object[]{s.Name,s.Count}),row.GetProperty("expect"),"subfamilies");
+        return Task.CompletedTask;});
+foreach(var row in drinksRoot.GetProperty("inFamily").EnumerateArray())
+    await Check("drinks picker (shared cases): in a family: "+row.GetProperty("case").GetString(),()=>{
+        Only(row,"case","family","subfamily","expect");
+        Same(Ids(DrinksPicker.InFamily(drinkProducts,TextOrNull(row.GetProperty("family")),TextOrNull(row.GetProperty("subfamily")))),row.GetProperty("expect"),"in family");
+        return Task.CompletedTask;});
+await Check("drinks picker (shared cases): «Por copa», the products the server marks with a glass",()=>{
+    Same(Ids(DrinksPicker.ByGlass(drinkProducts)),drinksRoot.GetProperty("glass"),"by glass");
+    return Task.CompletedTask;});
+foreach(var row in drinksRoot.GetProperty("search").EnumerateArray())
+    await Check("drinks picker (shared cases): search: "+row.GetProperty("case").GetString(),()=>{
+        Only(row,"case","query","expect","details");
+        var query=row.GetProperty("query").GetString();
+        var found=DrinksPicker.Search(drinkProducts,query);
+        Same(found is null?null:Ids(found),row.GetProperty("expect"),"search «"+query+"»");
+        Expect(CatalogSearch.IsSearching(query)==(row.GetProperty("expect").ValueKind!=JsonValueKind.Null),"searching «"+query+"»");
+        if(row.TryGetProperty("details",out var details)) Same(found!.Select(p=>DrinksPicker.Detail(p,query)),details,"details «"+query+"»");
+        return Task.CompletedTask;});
+await Check("drinks picker (shared cases): «En esta mesa», what the table already has, once, in order, if still sold in the bodega",()=>{
+    var repeats=DrinksPicker.AtThisTable(drinksRoot.GetProperty("consumptions").Deserialize<ConsumptionDto[]>(ApiClient.Json)!,drinkProducts);
+    foreach(var row in drinksRoot.GetProperty("atThisTable").EnumerateArray()) Only(row,"item","name","detail");
+    Same(repeats.Select(r=>new{item=r.ProductId+"/"+r.PresentationId,name=r.Name,detail=r.Detail}),drinksRoot.GetProperty("atThisTable"),"at this table");
+    var items=drinksRoot.GetProperty("atThisTable").EnumerateArray().Select(r=>ItemOf(r.GetProperty("item"))).ToArray();
+    Expect(repeats.Select(r=>DrinksPicker.Item(r.Product,r.Button)).SequenceEqual(items),"a repeat adds the same item as its button");
+    return Task.CompletedTask;});
+var roundFields=new Dictionary<string,string[]>(StringComparer.Ordinal){
+    ["add"]=["item","result"],["addMany"]=["count","result"],["increment"]=["line","result"],["decrement"]=["line","result"],["remove"]=["line","result"],
+    ["quantity"]=["line","value","result"],["guest"]=["line","value","result"],["canSend"]=["locked","result"],["begin"]=["version","table","result"],
+    ["settle"]=["kind","code","line"],["state"]=["lines","texts","units","summary","sendLabel","sending","conflict","problem","count","unitsOf"]};
+var settleKinds=new Dictionary<string,RoundOutcome>(StringComparer.Ordinal){
+    ["confirmed"]=RoundOutcome.Confirmed,["unconfirmed"]=RoundOutcome.Unconfirmed,["not_sent"]=RoundOutcome.NotSent,["rejected"]=RoundOutcome.Rejected};
+static string Added(RoundAdd result)=>result switch{RoundAdd.Added=>"added",RoundAdd.More=>"more",RoundAdd.Full=>"full",RoundAdd.Max=>"max",RoundAdd.Sending=>"sending",_=>result.ToString()};
+object? RoundState(Round round,string field)=>field switch{
+    "lines"=>round.Lines.Select(l=>$"{l.ProductId}/{l.PresentationId} × {l.Quantity} · {l.GuestLabel}").ToArray(),
+    "texts"=>round.Lines.Select(l=>l.Text).ToArray(),
+    "units"=>round.Units,"summary"=>round.Summary,"sendLabel"=>round.SendLabel,"sending"=>round.Sending,"conflict"=>round.Conflict,
+    "problem"=>round.Problem is null?null:new object?[]{round.Problem.Code,round.Problem.Line},
+    "count"=>round.Lines.Count,
+    _=>throw new Exception("unknown round state in the shared cases: "+field)};
+foreach(var row in drinksRoot.GetProperty("round").EnumerateArray())
+    await Check("round (shared cases): "+row.GetProperty("case").GetString(),()=>{
+        Only(row,"case","steps");
+        var round=new Round(); var index=0;
+        foreach(var step in row.GetProperty("steps").EnumerateArray())
+        {
+            var op=step.GetProperty("op").GetString()!; var at=$"step {index++} ({op})";
+            Expect(roundFields.TryGetValue(op,out var fields),"unknown round step in the shared cases: "+op);
+            Only(step,["op",..fields!]);
+            int Line()=>step.GetProperty("line").GetInt32();
+            object? result=null;
+            switch(op)
+            {
+                case "add": result=Added(round.Add(ItemOf(step.GetProperty("item")))); break;
+                case "addMany":
+                    for(var n=1;n<=step.GetProperty("count").GetInt32();n++) result=Added(round.Add(new RoundItem($"x{n}","unit",$"Producto {n}","Unidad")));
+                    break;
+                case "increment": result=round.Increment(Line()); break;
+                case "decrement": result=round.Decrement(Line()); break;
+                case "remove": result=round.Remove(Line()); break;
+                // En el puesto la cantidad es un int: un valor no entero nunca llega a la ronda (el campo no lo admite).
+                case "quantity": result=step.GetProperty("value").TryGetInt32(out var quantity)&&round.SetQuantity(Line(),quantity); break;
+                case "guest": result=round.SetGuest(Line(),step.GetProperty("value").ValueKind==JsonValueKind.Null?null:step.GetProperty("value").GetInt32()); break;
+                case "canSend": result=round.CanSend(step.GetProperty("locked").GetBoolean()); break;
+                case "begin":
+                    var sent=round.Begin(step.GetProperty("version").GetInt64(),step.GetProperty("table").GetString()!);
+                    result=sent is null?null:new{body=sent.Body,description=sent.Description};
+                    break;
+                case "settle":
+                    Expect(settleKinds.TryGetValue(step.GetProperty("kind").GetString()!,out var kind),"unknown settle kind in the shared cases: "+step.GetProperty("kind").GetString());
+                    round.Settle(kind,step.TryGetProperty("code",out var code)?code.GetString():null,step.TryGetProperty("line",out var line)&&line.ValueKind!=JsonValueKind.Null?line.GetInt32():null);
+                    break;
+                case "state":
+                    foreach(var field in step.EnumerateObject().Where(f=>f.Name!="op"))
+                    {
+                        if(field.Name!="unitsOf") { Same(RoundState(round,field.Name),field.Value,$"{at}: {field.Name}"); continue; }
+                        foreach(var pair in field.Value.EnumerateArray())
+                            Expect(round.UnitsOf(pair[0].GetString()!)==pair[1].GetInt32(),$"{at}: unitsOf {pair[0].GetString()} = {round.UnitsOf(pair[0].GetString()!)}");
+                    }
+                    break;
+            }
+            if(step.TryGetProperty("result",out var expected)) Same(result,expected,at);
+        }
+        return Task.CompletedTask;});
+await Check("round: the limits are the server ones and the draft knows no store (never persisted, never a queue)",()=>{
+    Expect(Round.MaxLines==30&&Round.MaxQuantity==99,"limits");
+    var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic;
+    var held=typeof(Round).GetFields(flags).Select(f=>f.FieldType).Concat(typeof(Round).GetProperties(flags).Select(p=>p.PropertyType)).ToArray();
+    Expect(held.All(t=>!typeof(IPendingStore).IsAssignableFrom(t)&&!typeof(ApiClient).IsAssignableFrom(t)&&!typeof(Stream).IsAssignableFrom(t)&&!typeof(FileSystemInfo).IsAssignableFrom(t)),
+        "the round holds a store, a client or a file: "+string.Join(",",held.Select(t=>t.Name)));
+    Expect(typeof(Round).GetConstructors().All(c=>c.GetParameters().Length==0),"the round is built from nothing");
+    return Task.CompletedTask;});
+await Check("drinks picker: words of the picker and the round, without checkout words",()=>{
+    var shown=new[]{Round.Send,Round.SendAgain,DrinksPicker.Add,DrinksPicker.OtherFamily,Labels.Rejection("use_add_dish"),Labels.Rejection("too_many_lines"),Labels.Rejection("duplicate_consumption")}
+        .Concat(drinkProducts.SelectMany(p=>p.Buttons.Select(b=>b.Label).Append(p.Detail))).ToArray();
+    var found=shown.Where(text=>System.Text.RegularExpressions.Regex.IsMatch(text,"€|precio|saldo|pago|cuenta",System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToArray();
+    Expect(found.Length==0,"checkout words: "+string.Join(" | ",found));
+    return Task.CompletedTask;});
 Directory.CreateDirectory("artifacts/desktop");
 await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;
