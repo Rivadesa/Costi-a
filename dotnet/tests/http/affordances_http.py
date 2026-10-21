@@ -76,9 +76,22 @@ class AffordanceChecks(unittest.TestCase):
         self.assertIn('release', row['occupancy']['actions'])
         h.ok('/dining/occupancy/' + self.sid + '/release',
              {'expectedVersion': row['occupancyVersion'], 'reason': 'affordance test'})
-        sid = h.open_table(row['service']['tableId'])
+        sid = type(self).reopened = h.open_table(row['service']['tableId'])
         response = h.mutate(sid, 'start')
         self.assertIsNone(response['data'].get('actions'))
         self.assertTrue(all(c.get('actions') is None for c in response['data']['courses']))
+
+    def test_06_round_is_a_session_action_of_main_and_service_only(self):
+        # C3b: la ronda (add-consumptions) se anuncia como accion de SESION a principal y sala, y la politica de la ruta, que es la
+        # misma funcion, la niega a cocina con 403 antes de mirar nada. Nunca aparece en las affordances de una mesa.
+        for role, expected in (('main', True), ('service', True), ('kitchen', False)):
+            self.assertEqual(expected, 'add-consumptions' in h.ok('/session', role=role)['actions'], role)
+        # La mesa reabierta en test_05 (en el ambito d1-tenant, compartido por varias suites, no quedan mesas libres).
+        sid = self.reopened
+        body = {'expectedVersion': h.dining(sid)['version'], 'lines': [{'productId': 'water', 'quantity': 1}]}
+        self.assertEqual(403, h.request('/dining/services/' + sid + '/commands/add-consumptions', body, role='kitchen')[0])
+        self.assertEqual(200, h.request('/dining/services/' + sid + '/commands/add-consumptions', body, role='service')[0])
+        for role in ('main', 'service', 'kitchen'):
+            self.assertNotIn('add-consumptions', collect(h.ok('/dining/services/' + sid, role=role)['data']), role)
 
 if __name__ == '__main__': unittest.main()

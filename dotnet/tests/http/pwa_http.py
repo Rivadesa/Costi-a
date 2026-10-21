@@ -29,6 +29,21 @@ def fetch(path, headers=None):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): return None
 
+def free_table():
+    occupied = {b['service']['tableId'] for b in h.ok('/dining/board')}
+    return next('M' + str(i) for i in range(1, 9) if 'M' + str(i) not in occupied)
+
+def open_table(table, offer='LAB-TASTING'):
+    return h.ok('/dining/services', {'tableId': table, 'pax': 2, 'offerId': offer})['serviceId']
+
+def finish_and_release(sid):
+    """Deja la mesa libre otra vez: el resto de las pruebas de este ambito (y las E2E) eligen sus mesas por carril."""
+    for course in h.dining(sid)['data']['courses']:
+        if course['state'] == 'Pending': h.mutate(sid, 'skip', courseId=course['id'], reason='pwa_http')
+    h.mutate(sid, 'start'); h.mutate(sid, 'complete')
+    entry = next(b for b in h.ok('/dining/board') if b['service']['id'] == sid)
+    h.ok('/dining/occupancy/' + sid + '/release', {'expectedVersion': entry['occupancyVersion'], 'reason': 'pwa_http'})
+
 def money_keys(value, path='$'):
     if isinstance(value, list):
         for i, item in enumerate(value): yield from money_keys(item, f'{path}[{i}]')
@@ -83,8 +98,11 @@ class Pwa(unittest.TestCase):
         csp = headers['Content-Security-Policy']
         for required in ("default-src 'none'", "script-src 'self'", "style-src 'self'", "connect-src 'self' wss://127.0.0.1:" + h.PORT, "frame-ancestors 'none'", "base-uri 'none'"):
             self.assertIn(required, csp)
-        for forbidden in ('unsafe-inline', 'unsafe-eval', 'http:', 'https:', '*'):
+        for forbidden in ('unsafe-inline', 'unsafe-eval', 'http:', 'https:', '*', 'data:'):
             self.assertNotIn(forbidden, csp)
+        # C3b: las fotos de los articulos se piden con el token y se pintan desde la memoria (URL blob:). Solo en img-src.
+        self.assertIn("img-src 'self' blob:;", csp)
+        self.assertEqual(1, csp.count('blob:'), csp)
         self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(headers['Referrer-Policy'], 'no-referrer')
         self.assertEqual(headers['Cache-Control'], 'no-cache')
@@ -126,5 +144,50 @@ class Pwa(unittest.TestCase):
         done = subprocess.run([npx, 'playwright', 'test'], cwd=PWA, env=env, text=True, capture_output=True, encoding='utf-8', errors='replace')
         print(done.stdout[-6000:])
         self.assertEqual(done.returncode, 0, done.stdout[-3000:] + done.stderr[-2000:])
+
+    def test_06_what_the_table_has_reaches_every_device_without_money(self):
+        # C3b: «Lo que lleva la mesa» en el tablero: bebidas y extras ya enviados (tambien los de Caja), con nombre, formato,
+        # cantidad, comensal, hora y anulado; sin importes, sin el menu y sin los platos. Pasa la guarda de dinero de la PWA.
+        sid = open_table(free_table())
+        status, body = h.request('/dining/services/' + sid + '/commands/add-consumptions',
+            {'expectedVersion': h.dining(sid)['version'], 'lines': [{'productId': 'water', 'quantity': 1}, {'productId': 'wine', 'presentationId': 'glass', 'quantity': 2, 'guestPosition': 2}]}, role='service')
+        self.assertEqual(200, status, body)
+        self.assertEqual(list(money_keys(json.loads(body))), [], 'add-consumptions')
+        water, wine = json.loads(body)['consumptionIds']
+        checkout = h.ok('/checkout/services/' + sid + '/commands/add-product', {'expectedVersion': h.account(sid)['version'], 'productId': 'water', 'quantity': 3})
+        cashier = checkout['data']['charges'][-1]['id']
+        h.ok('/checkout/services/' + sid + '/commands/void-charge', {'expectedVersion': h.account(sid)['version'], 'chargeId': water, 'reason': 'equivocado'})
+        for role in ('service', 'kitchen', 'main'):
+            status, body = h.request('/dining/board', role=role)
+            self.assertEqual(200, status, role)
+            self.assertEqual(list(money_keys(json.loads(body))), [], role)
+            entry = next(b for b in json.loads(body) if b['service']['id'] == sid)
+            had = entry['consumptions']
+            self.assertEqual([water, wine, cashier], [c['id'] for c in had], role)            # sin la linea del menu, en orden
+            for c in had: self.assertEqual({'id', 'productId', 'presentationId', 'name', 'presentation', 'quantity', 'guestPosition', 'at', 'voided'}, set(c), role)
+            self.assertEqual(('water', 'bottle', 'Agua mineral', 'Botella', 1, None, True), tuple(had[0][k] for k in ('productId', 'presentationId', 'name', 'presentation', 'quantity', 'guestPosition', 'voided')))
+            self.assertEqual(('wine', 'glass', 'Vino de ensayo', 'Copa', 2, 2, False), tuple(had[1][k] for k in ('productId', 'presentationId', 'name', 'presentation', 'quantity', 'guestPosition', 'voided')))
+            self.assertEqual((3, False), (had[2]['quantity'], had[2]['voided']))
+            self.assertTrue(all(c['at'] for c in had))
+        finish_and_release(sid)
+
+    def test_07_lines_written_before_c3b_are_classified_by_their_product(self):
+        # C3b: una linea guardada antes del corte no tiene origen: fuera el producto-menu y los platos que tienen su elaboracion;
+        # un plato apuntado por error como consumo SI se ve, para que alguien lo note. Se simula quitando los campos nuevos.
+        sid = open_table(free_table(), offer='LAB-CARTA')
+        h.mutate(sid, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit', quantity=2)
+        for product in ('croquetas', 'water'):
+            h.ok('/dining/services/' + sid + '/commands/add-consumption', {'expectedVersion': h.dining(sid)['version'], 'productId': product, 'quantity': 1}, role='service')
+        tasting = open_table(free_table())
+        h.ok('/dining/services/' + tasting + '/commands/add-consumption', {'expectedVersion': h.dining(tasting)['version'], 'productId': 'water', 'quantity': 1}, role='service')
+        for service in (sid, tasting):
+            h.sql("UPDATE core.accounts SET payload=jsonb_set(payload,'{charges}',(SELECT jsonb_agg(c-'origin'-'at'-'guestPosition') FROM jsonb_array_elements(payload->'charges') c)) "
+                  "WHERE tenant='d6-pwa' AND service_id='" + service + "'")
+        self.assertEqual('0', h.sql("SELECT count(*) FROM core.accounts a, jsonb_array_elements(a.payload->'charges') c WHERE a.tenant='d6-pwa' AND a.service_id IN ('" + sid + "','" + tasting + "') AND c ? 'origin'"))
+        board = {b['service']['id']: b for b in h.ok('/dining/board', role='service')}
+        self.assertEqual([('croquetas', 'Croquetas de la casa', None, None), ('water', 'Agua mineral', 'Botella', None)],
+                         [(c['productId'], c['name'], c['presentation'], c['at']) for c in board[sid]['consumptions']])
+        self.assertEqual(['water'], [c['productId'] for c in board[tasting]['consumptions']])
+        for service in (sid, tasting): finish_and_release(service)
 
 if __name__ == '__main__': unittest.main(verbosity=2)

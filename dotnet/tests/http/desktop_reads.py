@@ -91,7 +91,8 @@ class DesktopReadChecks(unittest.TestCase):
         finish_and_release(sid)
     def test_session_lists_active_modules_and_their_actions(self):
         # ADR-012: los clientes montan solo las superficies de los modulos activos; las acciones de sesion vienen por modulo.
-        for role,actions in (('main',['open','add-consumption']),('service',['open','add-consumption']),('kitchen',[])):
+        # C3b: add-consumptions (la ronda en una orden) es accion de sesion de principal y sala; cocina no apunta consumos.
+        for role,actions in (('main',['open','add-consumption','add-consumptions']),('service',['open','add-consumption','add-consumptions']),('kitchen',[])):
             data=h.ok('/session',role=role)
             self.assertEqual(['dining'],data['modules'],role); self.assertEqual(actions,data['actions'],role)
         self.assertIn('menus',h.ok('/configuration'))   # clave aportada por el modulo Dining a la configuracion del nucleo
