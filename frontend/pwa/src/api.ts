@@ -32,8 +32,6 @@ export interface CatalogItem {
   id: string; presentationId?: string; name: string; presentation: string; categoryId?: string | null; categoryName?: string | null
   imageSha?: string | null; section?: string | null; family?: string | null; categoryPath?: string[] | null; reference?: string | null; glass?: boolean
 }
-export const catalogKey = (item: CatalogItem): string => item.presentationId ? `${item.id}/${item.presentationId}` : item.id
-
 export type Fetch = typeof fetch
 
 export function newKey(): string {
@@ -64,7 +62,6 @@ export async function call<T>(fetcher: Fetch, path: string, options: { token?: s
 }
 
 export const getSession = (fetcher: Fetch, token: string) => call<Session>(fetcher, '/session', { token })
-export const getCatalog = (fetcher: Fetch, token: string) => call<CatalogItem[]>(fetcher, '/catalog', { token })
 
 // C3b: lectura CONDICIONAL del catalogo operativo (E3.3: GET /catalog con ETag). Con la lista anterior y su ETag se manda
 // If-None-Match A MANO: todo va con cache 'no-store' (la cache HTTP del navegador no interviene, y asi el 304 llega aqui tal cual).

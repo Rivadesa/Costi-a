@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { getCatalog, type CatalogItem, type Session } from '../api'
+import { computed, onUnmounted, provide, ref, watch } from 'vue'
+import type { Session } from '../api'
+import { settlementOf } from '../bodega'
+import { reconnections, useCatalog } from '../catalog'
 import { floorEmpty, floorRooms, floorSummary, floorView, Names, useConfiguration, type FloorTile } from '../configuration'
+import { drinkProducts } from '../drinks'
 import { plural } from '../labels'
 import { useOperations } from '../operations'
+import { PhotoCache, PHOTOS } from '../photos'
+import type { Settlement } from '../round'
 import FloorGrid from './FloorGrid.vue'
 import Icon from './Icon.vue'
 import OpenTable from './OpenTable.vue'
@@ -20,7 +25,24 @@ const emit = defineEmits<{ unauthorized: [] }>()
 const { state, runnerState, live, locked, now, age, stale, run, retry, reconcile, discard } = useOperations(props, () => emit('unauthorized'))
 const { configuration, reload } = useConfiguration(props, () => emit('unauthorized'))
 const can = (action: string) => props.session.actions.includes(action)
-const catalog = ref<CatalogItem[]>([])
+
+// C3b: «Bodega y bebidas». La ronda es una accion de sesion que anuncia el servidor (add-consumptions): sin ella no hay Bebidas ni se
+// lee el catalogo. El catalogo operativo (sin precios) se lee al montar y se revalida con ETag al abrir Bebidas, cada 5 minutos y tras
+// reconectar (catalog.ts); las fotos, en memoria por huella y solo las de las filas visibles (photos.ts).
+const canRound = computed(() => can('add-consumptions'))
+const { read: catalogRead, status: catalogStatus, refresh: refreshCatalog } = useCatalog(props, () => canRound.value, () => emit('unauthorized'))
+const products = computed(() => drinkProducts(catalogRead.value?.items ?? []))
+const reconnected = reconnections()
+watch(() => state.link, link => { if (reconnected(link)) void refreshCatalog() })
+const photos = new PhotoCache({ fetcher: fetch, token: () => props.token, createUrl: blob => URL.createObjectURL(blob), revokeUrl: url => URL.revokeObjectURL(url) })
+provide(PHOTOS, photos)
+onUnmounted(() => photos.clear())
+// La ronda sale por la orden incierta de siempre. Su resultado decide que pasa con el borrador (bodega.ts, settlementOf): si no hubo
+// resultado pero ESTA orden quedo guardada como la pendiente, es incierta, nunca «no enviada» (no se manda dos veces).
+async function sendRound(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
+  const outcome = await run(path, body, description)
+  return settlementOf(outcome, runnerState.pending, { path, body: JSON.stringify(body) })
+}
 
 const names = computed(() => new Names(configuration))
 const rooms = computed(() => floorRooms(configuration, state.entries))
@@ -69,11 +91,6 @@ async function open(pax: number, offerId: string): Promise<void> {
   const serviceId = outcome?.kind === 'confirmed' ? (outcome.response as { serviceId?: unknown } | null)?.serviceId : undefined
   if (typeof serviceId === 'string') selectedId.value = serviceId
 }
-
-onMounted(async () => {
-  try { if (can('add-consumption')) catalog.value = await getCatalog(fetch, props.token) }
-  catch { /* sin catalogo, «Bodega y bebidas» lo dice; la lectura del tablero ya informa de un servidor caido */ }
-})
 </script>
 
 <template>
@@ -81,8 +98,8 @@ onMounted(async () => {
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
 
     <TableCard v-if="selected" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
-      :configuration="configuration" :names="names" :catalog="catalog" :can-consume="can('add-consumption')" :locked="locked" :now="now"
-      @run="run" @back="selectedId = null" />
+      :configuration="configuration" :names="names" :products="products" :catalog-status="catalogStatus" :can-consume="canRound" :locked="locked" :now="now"
+      :send-round="sendRound" @run="run" @back="selectedId = null" @bodega="refreshCatalog" />
 
     <OpenTable v-else-if="openingTable" :key="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"
       :capacity="tableConfig?.capacity ?? 0" :offers="configuration.offers" :occupied="openingTile?.entry != null" :locked="locked"

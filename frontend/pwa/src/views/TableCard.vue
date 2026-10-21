@@ -1,26 +1,37 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import type { CatalogItem } from '../api'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, roundNames, roundProblem, VOIDED } from '../bodega'
+import type { CatalogStatus } from '../catalog'
 import { offerFor, type Configuration, type Names } from '../configuration'
+import type { DrinkProduct, RoundItem } from '../drinks'
 import { commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
 import { courseDetail, courseStep, isTileCode, restrictionAlarming, tileLabel, tileState } from '../floor'
 import type { IconName } from '../icons'
-import { courseLabel, courseStateLabel, currentCourse, guestLabel, offerKindLabel, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
+import { clockLabel, courseLabel, courseStateLabel, currentCourse, guestLabel, offerKindLabel, plural, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
+import { Round, type Settlement } from '../round'
 import type { BoardEntry, Course, GuestRestriction } from '../types'
 import DishPanel from './DishPanel.vue'
 import DrinksPanel from './DrinksPanel.vue'
 import Icon from './Icon.vue'
+import LineSheet from './LineSheet.vue'
+import RoundTray from './RoundTray.vue'
 
 // C3a: ficha de una mesa en el comandero, como la maqueta aprobada («1 · Mesa»). Arriba las restricciones, en rojo y ESCRITAS; dos
-// entradas grandes, «Carta y menús» (elegir y pedir platos, lo de hoy) y «Bodega y bebidas» (el consumo de hoy); los pases en corto; y
-// abajo UN boton grande con la primera accion que anuncia el servidor, en el orden del Comedor. Todo lo demas anunciado va en «Más
-// opciones». Ninguna regla de negocio: cada boton existe porque el servidor lo anuncia y cada orden sale de ESTA lectura (F01), por
-// la orden incierta de siempre (operations.ts). Lo unico local es el formato de lo tecleado (motivo, sustancia, cantidad).
+// entradas grandes, «Carta y menús» (elegir y pedir platos, lo de hoy) y «Bodega y bebidas» (C3b: buscador, Copa o Botella y la
+// ronda); los pases en corto; y abajo UN boton grande con la primera accion que anuncia el servidor, en el orden del Comedor. Todo
+// lo demas anunciado va en «Más opciones». Ninguna regla de negocio: cada boton existe porque el servidor lo anuncia y cada orden sale
+// de ESTA lectura (F01), por la orden incierta de siempre (operations.ts). Lo unico local es el formato de lo tecleado (motivo,
+// sustancia, cantidad).
+// C3b: «Bodega y bebidas» rehecha (DrinksPanel), la RONDA de esta mesa (un borrador en memoria, de la ficha: sigue al ir y volver de
+// Bebidas y se ve abajo tambien en la ficha) y «Lo que lleva la mesa», sin importes (ADR-007, apartado C3b). La ronda sale en UNA orden
+// add-consumptions por sendRound (la orden incierta de siempre) con la version de ESTA lectura (F01). Salir de la mesa con una ronda sin
+// enviar pide confirmacion: no se guarda en ningun sitio.
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
-  catalog: CatalogItem[]; canConsume: boolean; locked: boolean; now: number
+  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; now: number
+  sendRound: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
 }>()
-const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; back: [] }>()
+const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; back: []; bodega: [] }>()
 
 const service = computed(() => props.entry.service)
 const has = (action: string) => service.value.actions?.includes(action) === true
@@ -40,6 +51,60 @@ const info = computed(() => {
   return cut < 0 ? { head: text, tail: '' } : { head: text.slice(0, cut), tail: text.slice(cut) }
 })
 const PANEL_TITLES = { carta: 'Carta y menús', bodega: 'Bodega y bebidas' } as const
+// En Bebidas, como en la maqueta: «Mesa 4 · 4 personas» bajo el titulo, sin el estado de la mesa.
+const bodegaSub = computed(() => `${props.tableName} · ${plural(service.value.pax, 'persona', 'personas')}`)
+
+// ---- Bodega y bebidas: la ronda (borrador en memoria, round.ts) ----
+const round = reactive(new Round()) as Round
+const trayOpen = ref(false)
+const addMessage = ref('')
+const sent = ref('')
+const editing = ref<number | null>(null)
+const leaving = ref(false)
+const editLine = computed(() => editing.value === null ? null : round.lines[editing.value] ?? null)
+const roundMessage = computed(() => roundProblem(round.problem, round.lines) || addMessage.value)
+const imageOf = (productId: string) => props.products.find(product => product.id === productId)?.imageSha ?? null
+watch(() => round.lines.length, count => { if (count === 0) { trayOpen.value = false; editing.value = null } })
+// El aviso de un toque que no sumo (30 lineas, 99 de una) deja de valer en cuanto la ronda cambia.
+watch(() => [round.units, round.lines.length], () => { addMessage.value = '' })
+
+function openBodega(): void { panel.value = 'bodega'; emit('bodega') }   // el catalogo se revalida al abrir Bebidas (ETag)
+function addToRound(item: RoundItem): void {
+  const result = round.add(item)
+  addMessage.value = addProblem(result)
+  if (result === 'added' || result === 'more') sent.value = ''
+}
+async function sendRound(): Promise<void> {
+  addMessage.value = ''
+  const request = round.begin(props.entry.version, props.tableName)
+  if (request === null) return
+  const settlement = await props.sendRound(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
+  round.settle(settlement)
+  if (settlement.kind === 'confirmed') sent.value = ROUND_SENT
+  // La linea que el servidor rechaza se ensena: la lista de la ronda se abre.
+  if (settlement.kind === 'rejected' && settlement.line !== null && settlement.line !== undefined) trayOpen.value = true
+}
+function editDone(quantity: number, guestPosition: number | null): void {
+  const index = editing.value
+  editing.value = null
+  if (index === null) return
+  round.setQuantity(index, quantity)
+  round.setGuest(index, guestPosition)
+}
+function editRemove(): void {
+  const index = editing.value
+  editing.value = null
+  if (index !== null) round.remove(index)
+}
+// Volver a Mesas: con una ronda sin enviar, primero se pregunta (es un camino excepcional; la ronda no se guarda en ningun sitio).
+// Mientras la ronda va camino del servidor no hay nada que perder: lo que pase con ella se ve arriba (aviso u orden sin confirmar).
+function leave(): void { if (round.lines.length > 0 && !round.sending) leaving.value = true; else emit('back') }
+const stay = ref<HTMLButtonElement | null>(null)
+watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()) })
+function discardAndLeave(): void { leaving.value = false; round.clear(); emit('back') }
+
+// ---- Lo que lleva la mesa: bebidas y extras ya enviados (tambien los de Caja), sin importes ni totales ----
+const had = computed(() => props.entry.consumptions ?? [])
 
 // ---- Restricciones: siempre escritas; el rojo solo cuando alarman (alergia, grave, desconocida o sin revisar por cocina). ----
 const restrictions = computed<GuestRestriction[]>(() => service.value.restrictions ?? [])
@@ -110,17 +175,20 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
 </script>
 
 <template>
-  <article class="ficha stack" data-testid="detail">
+  <article class="ficha stack" :class="{ 'ficha-main': panel === 'ficha' }" data-testid="detail">
     <header class="appbar">
-      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
-      <button v-else type="button" class="back" data-testid="back" @click="panel = 'ficha'"><Icon name="back" :size="24" :stroke="2.2" />{{ tableName }}</button>
+      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="leave"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
+      <button v-else type="button" class="back" data-testid="back" @click="panel = 'ficha'"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">{{ tableName }}</span></button>
       <div class="appbar-t">
         <div class="appbar-title">
           <h2>{{ panel === 'ficha' ? tableName : PANEL_TITLES[panel] }}</h2>
-          <span class="pill" :class="tone" data-testid="detail-state">{{ tileLabel(state) }}</span>
+          <span v-if="panel !== 'bodega'" class="pill" :class="tone" data-testid="detail-state">{{ tileLabel(state) }}</span>
         </div>
-        <p v-if="roomAndOffer" class="appbar-sub">{{ roomAndOffer }}</p>
-        <p class="appbar-sub" data-testid="detail-info">{{ info.head }}<span v-if="info.tail" class="nw">{{ info.tail }}</span></p>
+        <p v-if="panel === 'bodega'" class="appbar-sub" data-testid="detail-info">{{ bodegaSub }}</p>
+        <template v-else>
+          <p v-if="roomAndOffer" class="appbar-sub">{{ roomAndOffer }}</p>
+          <p class="appbar-sub" data-testid="detail-info">{{ info.head }}<span v-if="info.tail" class="nw">{{ info.tail }}</span></p>
+        </template>
       </div>
     </header>
 
@@ -168,14 +236,14 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
           <span class="entry-tx"><span class="entry-t">Carta y menús</span><span class="entry-s">{{ dishesHint(service, offer?.name ?? '') || 'Platos de la mesa' }}</span></span>
           <span class="entry-go"><Icon name="right" :size="22" /></span>
         </button>
-        <button type="button" class="entry" data-testid="entry-bodega" @click="panel = 'bodega'">
+        <button type="button" class="entry" data-testid="entry-bodega" @click="openBodega">
           <span class="entry-ic"><Icon name="glass" :size="26" /></span>
           <span class="entry-tx"><span class="entry-t">Bodega y bebidas</span><span class="entry-s">Vinos, copas, cervezas, refrescos y cafés</span></span>
           <span class="entry-go"><Icon name="right" :size="22" /></span>
         </button>
       </div>
 
-      <section class="card" data-testid="courses">
+      <section class="card courses-card" data-testid="courses">
         <div class="card-h"><h3>{{ coursesTitle(service) }}</h3><span v-if="offer" class="muted sm">{{ [offer.name, offerKindLabel(offer.kind)].filter((part, index, all) => all.indexOf(part) === index).join(' · ') }}</span></div>
         <p v-if="service.courses.length === 0" class="muted">Esta mesa aún no tiene pases.</p>
         <ol class="cpass">
@@ -199,6 +267,25 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
         </ol>
       </section>
 
+      <!-- C3b: lo ya enviado de bebida y extras (tambien lo de Caja), con formato, cantidad, comensal, hora y «Anulado en Caja». Sin
+           importes ni totales: no es la cuenta provisional (ADR-007, apartado C3b). -->
+      <section v-if="entry.consumptions !== undefined" class="card had-card" data-testid="had">
+        <div class="card-h"><h3>{{ HAD_TITLE }}</h3><span class="muted sm">{{ HAD_SUB }}</span></div>
+        <p v-if="had.length === 0" class="muted sm" data-testid="had-empty">{{ HAD_EMPTY }}</p>
+        <ul v-else class="had">
+          <li v-for="line in had" :key="line.id" :class="{ voided: line.voided }" :data-testid="`had-${line.id}`">
+            <span class="had-q">{{ line.quantity }}×</span>
+            <span class="had-n">
+              <span class="had-name">{{ line.name }}</span>
+              <small v-if="hadDetail(line)">{{ hadDetail(line) }}</small>
+              <span v-if="line.voided" class="pill p-void" data-testid="had-voided">{{ VOIDED }}</span>
+            </span>
+            <span class="had-m">{{ line.at ? clockLabel(line.at) : '' }}</span>
+          </li>
+        </ul>
+        <p class="muted sm had-foot">{{ HAD_FOOT }}</p>
+      </section>
+
       <section class="actions" data-testid="actions">
         <details v-if="hasMore" class="more" :open="more" data-testid="more-options" @toggle="more = ($event.target as HTMLDetailsElement).open">
           <summary><Icon name="dots" :stroke="2.6" /><span>Más opciones</span><Icon :name="more ? 'up' : 'down'" /></summary>
@@ -216,6 +303,8 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
           </div>
         </details>
         <div class="bar">
+          <RoundTray v-if="canConsume && round.lines.length > 0" v-model:open="trayOpen" embedded :round="round" :locked="locked" :message="roundMessage"
+            :sent="sent" :bad-line="round.problem?.line ?? null" @send="sendRound" @edit="editing = $event" />
           <p v-if="problem" class="notice" role="alert" data-testid="action-problem"><Icon name="info" />{{ problem }}</p>
           <div v-if="reasonInBar" class="field">
             <label for="reason">{{ reasonText }}</label>
@@ -229,6 +318,28 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
     </template>
 
     <DishPanel v-else-if="panel === 'carta'" :entry="entry" :offer="offer" :table-name="tableName" :locked="locked" @run="send" />
-    <DrinksPanel v-else :entry="entry" :catalog="catalog" :can-consume="canConsume" :table-name="tableName" :locked="locked" @run="send" />
+    <template v-else>
+      <DrinksPanel :entry="entry" :products="products" :status="catalogStatus" :can-consume="canConsume" :round="round" @add="addToRound" />
+      <RoundTray v-if="canConsume" v-model:open="trayOpen" :round="round" :locked="locked" :message="roundMessage" :sent="sent"
+        :bad-line="round.problem?.line ?? null" @send="sendRound" @edit="editing = $event" />
+    </template>
+
+    <LineSheet v-if="editLine" :key="editing ?? -1" :line="editLine" :pax="service.pax" :restrictions="restrictions" :image-sha="imageOf(editLine.productId)"
+      @done="editDone" @remove="editRemove" @close="editing = null" />
+
+    <template v-if="leaving">
+      <div class="scrim" aria-hidden="true" @click="leaving = false"></div>
+      <section class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" data-testid="leave-sheet" @keydown.esc="leaving = false">
+        <div class="sheet-scroll">
+          <h3 id="leave-title" class="sh-title">¿Salir sin enviar la ronda?</h3>
+          <p class="leave-t">{{ leaveText(round.units) }}</p>
+          <p class="muted sm">{{ roundNames(round.lines) }}</p>
+        </div>
+        <div class="sheet-foot">
+          <button type="button" class="btn btn-caution" data-testid="leave-discard" @click="discardAndLeave">Salir sin enviar</button>
+          <button ref="stay" type="button" class="btn btn-primary" data-testid="leave-stay" @click="leaving = false">Seguir con la ronda</button>
+        </div>
+      </section>
+    </template>
   </article>
 </template>
