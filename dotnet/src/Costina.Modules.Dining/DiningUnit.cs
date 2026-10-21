@@ -4,7 +4,8 @@ using Costina.Modules.Dining.Domain;
 
 namespace Costina.Modules.Dining;
 
-public sealed record BoardRow(long Version, DiningView Service, OccupancyView Occupancy, long OccupancyVersion);
+// C3b: Consumptions = «Lo que lleva la mesa» (TableConsumptions), sin importes; campo nuevo al final: un cliente anterior lo ignora.
+public sealed record BoardRow(long Version, DiningView Service, OccupancyView Occupancy, long OccupancyVersion, IReadOnlyList<ConsumptionView>? Consumptions = null);
 public sealed record StoredDining(long Version, DiningService Entity);
 public sealed record StoredOccupancy(long Version, TableOccupancy Entity);
 
@@ -53,12 +54,15 @@ public static class DiningUnit
     public static async Task<IReadOnlyList<BoardRow>> Board(this Unit unit)
     {
         var ids = await unit.Rows("SELECT service_id FROM dining.occupancies WHERE " + Unit.ScopeWhere + " AND state='Occupied' ORDER BY table_id LIMIT 200", [], r => r.GetString(0));
+        // C3b: las lineas de las cuentas de TODAS las mesas en una sola consulta del nucleo, sin importes (cada ronda hace releer a todos).
+        var lines = await unit.AccountLinesOf(ids);
         var result = new List<BoardRow>();
         foreach (var id in ids)
         {
             var d = await unit.Dining(id); var o = await unit.Occupancy(id);
+            var view = d.Entity.View(true);
             // Affordances calculadas al leer; el servidor las filtra por rol antes de responder.
-            result.Add(new(d.Version, d.Entity.View(true), o.Entity.View(d.Entity), o.Version));
+            result.Add(new(d.Version, view, o.Entity.View(d.Entity), o.Version, TableConsumptions.Of(view, lines.GetValueOrDefault(id) ?? [])));
         }
         return result;
     }
