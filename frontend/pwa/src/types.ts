@@ -20,4 +20,12 @@ export interface Dining {
   courses: Course[]; actions?: string[]; restrictions?: GuestRestriction[]; restrictionsPendingAck?: boolean
 }
 export interface Occupancy { id: string; tableId: string; serviceId: string; state: 'Occupied' | 'Released'; releasedAt: string | null; actions?: string[] }
-export interface BoardEntry { version: number; service: Dining; occupancy: Occupancy; occupancyVersion: number }
+// C3b: «Lo que lleva la mesa»: bebidas y extras ya enviados (tambien los de Caja), SIN importes ni totales (ADR-007, apartado C3b).
+// presentation es null en la presentacion por defecto (no se escribe); guestPosition null = toda la mesa; at null en una linea
+// anterior a C3b; voided = anulado en Caja. productId/presentationId null en una linea muy antigua, sin producto.
+export interface TableConsumption {
+  id: string; productId: string | null; presentationId: string | null; name: string; presentation: string | null
+  quantity: number; guestPosition: number | null; at: string | null; voided: boolean
+}
+// C3b: consumptions es opcional: un servidor anterior no lo envia.
+export interface BoardEntry { version: number; service: Dining; occupancy: Occupancy; occupancyVersion: number; consumptions?: TableConsumption[] }
