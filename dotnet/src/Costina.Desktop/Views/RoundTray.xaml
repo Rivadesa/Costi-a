@@ -1,0 +1,100 @@
+<UserControl x:Class="Costina.Desktop.Views.RoundTray" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="clr-namespace:Costina.Desktop.ViewModels">
+ <!-- C3b (plan 2026-10-15, seccion 4.4; maqueta «2b · La ronda» y «5 · En el PC»): la bandeja de la RONDA. DataContext = DrinksViewModel.
+      Abajo, «Ronda · n sin enviar» con sus nombres, el boton de desplegar y «Enviar» (la UNICA orden de la bandeja, add-consumptions); al
+      desplegar, cada linea con «Para:» (toda la mesa o un comensal, con sus restricciones escritas) y − / + (en 1, la papelera quita).
+      Es un borrador en memoria: sus botones cambian la ronda, nunca mandan nada; «Enviar» se habilita solo sin una orden incierta.
+      Va dentro del selector «Añadir consumición» y, con algo dentro y el selector cerrado, tambien en la ficha, sobre la accion grande. -->
+ <Border x:Name="TrayFrame" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="10" Padding="12,10">
+  <StackPanel>
+   <!-- Ronda vacia (solo se ve en el selector): que hace un toque, o que la ultima se envio. -->
+   <TextBlock x:Name="RoundEmptyText" Text="{Binding EmptyRoundText}" Style="{StaticResource Body}" Visibility="{Binding HasLines, Converter={StaticResource NotBool2Vis}}"/>
+   <StackPanel Visibility="{Binding HasLines, Converter={StaticResource Bool2Vis}}">
+    <StackPanel Visibility="{Binding TrayOpen, Converter={StaticResource Bool2Vis}}" Margin="0,0,0,8">
+     <TextBlock Text="{x:Static vm:DrinksViewModel.RoundHint}" Style="{StaticResource Subtle}" Margin="0,0,0,6"/>
+     <ScrollViewer x:Name="RoundLineScroll" MaxHeight="164" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Padding="0,0,10,0">
+      <ItemsControl x:Name="RoundLineList" ItemsSource="{Binding RoundLines}" Focusable="False">
+       <ItemsControl.ItemTemplate>
+        <DataTemplate>
+         <Border Padding="8,5" Margin="0,0,0,5" CornerRadius="8" BorderThickness="1">
+          <Border.Style>
+           <Style TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Surface2}"/><Setter Property="BorderBrush" Value="Transparent"/>
+            <!-- La linea que el servidor rechazo: borde rojo (el motivo va escrito encima de «Enviar»). -->
+            <Style.Triggers><DataTrigger Binding="{Binding Bad}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Danger}"/><Setter Property="Background" Value="{StaticResource DangerSoft}"/></DataTrigger></Style.Triggers>
+           </Style>
+          </Border.Style>
+          <Grid>
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+           <TextBlock Text="{Binding Text}" FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/>
+           <!-- «Para:» a todo lo ancho: el nombre de un comensal lleva sus restricciones escritas y no debe cortarse. -->
+           <DockPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,4,0,0">
+            <TextBlock Text="Para:" Style="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox ItemsSource="{Binding DataContext.GuestChoices, RelativeSource={RelativeSource AncestorType=UserControl}}" SelectedValuePath="Key" DisplayMemberPath="Label"
+                      SelectedValue="{Binding GuestKey, Mode=TwoWay}" IsEnabled="{Binding Editable}" MinHeight="28" FontSize="12" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{Binding ForSpoken}"/>
+           </DockPanel>
+           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Command="{Binding DataContext.DecrementCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Style="{StaticResource StepButton}"
+                    IsEnabled="{Binding Editable}" AutomationProperties.Name="{Binding MinusSpoken}" ToolTip="{Binding MinusSpoken}">
+             <Path>
+              <Path.Style>
+               <Style TargetType="Path" BasedOn="{StaticResource IconSmall}">
+                <Setter Property="Data" Value="{StaticResource IconMinus}"/>
+                <Style.Triggers><DataTrigger Binding="{Binding MinusRemoves}" Value="True"><Setter Property="Data" Value="{StaticResource IconTrash}"/></DataTrigger></Style.Triggers>
+               </Style>
+              </Path.Style>
+             </Path>
+            </Button>
+            <TextBlock Text="{Binding QuantityText}" FontWeight="SemiBold" FontSize="15" MinWidth="30" TextAlignment="Center" VerticalAlignment="Center"/>
+            <Button Command="{Binding DataContext.IncrementCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Style="{StaticResource StepButton}"
+                    IsEnabled="{Binding CanPlus}" AutomationProperties.Name="{Binding PlusSpoken}" ToolTip="{Binding PlusSpoken}">
+             <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}"/>
+            </Button>
+           </StackPanel>
+          </Grid>
+         </Border>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </ScrollViewer>
+    </StackPanel>
+    <!-- El ultimo rechazo (con su linea) o un toque que no sumo; y por que no se puede enviar ahora. -->
+    <ContentControl x:Name="RoundProblemBar" Style="{StaticResource WarnBar}" Margin="0,0,0,8" Visibility="{Binding RoundMessage, Converter={StaticResource Text2Vis}}">
+     <TextBlock Text="{Binding RoundMessage}" TextWrapping="Wrap"/>
+    </ContentControl>
+    <ContentControl x:Name="RoundLockedBar" Style="{StaticResource InfoBar}" Margin="0,0,0,8" Visibility="{Binding LockedText, Converter={StaticResource Text2Vis}}">
+     <TextBlock Text="{Binding LockedText}" TextWrapping="Wrap"/>
+    </ContentControl>
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <StackPanel VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal">
+       <Ellipse Width="9" Height="9" Fill="{StaticResource Warn}" VerticalAlignment="Center" Margin="0,1,7,0"/>
+       <TextBlock x:Name="RoundSummaryText" Text="{Binding Summary}" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"/>
+      </StackPanel>
+      <TextBlock x:Name="RoundNamesText" Text="{Binding Names}" Style="{StaticResource Subtle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" Margin="0,2,0,0"/>
+     </StackPanel>
+     <Button x:Name="RoundToggleButton" Grid.Column="1" Style="{StaticResource Ghost}" Command="{Binding ToggleTrayCommand}" Margin="6,0,6,0" Padding="6" VerticalAlignment="Center"
+             AutomationProperties.Name="{Binding TrayToggleText}" ToolTip="{Binding TrayToggleText}">
+      <Path>
+       <Path.Style>
+        <Style TargetType="Path" BasedOn="{StaticResource Icon}">
+         <Setter Property="Data" Value="{StaticResource IconChevronUp}"/>
+         <Style.Triggers><DataTrigger Binding="{Binding TrayOpen}" Value="True"><Setter Property="Data" Value="{StaticResource IconChevronDown}"/></DataTrigger></Style.Triggers>
+        </Style>
+       </Path.Style>
+      </Path>
+     </Button>
+     <Button x:Name="SendRoundButton" Grid.Column="2" Style="{StaticResource Primary}" Command="{Binding SendCommand}" Content="{Binding SendText}" Margin="0" MinHeight="42" MaxWidth="210"
+             Padding="14,4,16,4" FontSize="14" VerticalAlignment="Center" ToolTip="Manda la ronda entera en una sola orden">
+      <Button.ContentTemplate>
+       <DataTemplate><StackPanel Orientation="Horizontal"><Path Style="{StaticResource Icon}" Data="{StaticResource IconSend}" Margin="0,0,8,0"/><TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center"/></StackPanel></DataTemplate>
+      </Button.ContentTemplate>
+     </Button>
+    </Grid>
+   </StackPanel>
+  </StackPanel>
+ </Border>
+</UserControl>

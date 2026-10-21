@@ -110,6 +110,14 @@ await Check("version conflict identified by key resolves rejection without auto-
     await Throws<ApiError>(async()=>{await client.SendAsync("dining/services/test/commands/start",new {expectedVersion=1},"Start");});Assert(client.Pending is null);
     Assert(methods.SequenceEqual(["POST","GET"]));   // D6.6: pregunta por la clave ANTES de darla por no aplicada, y no reenvia
 });
+// C3b: el rechazo de una ronda dice que linea (desde 0); sin linea, o con una que no es un indice, no se inventa ninguna.
+foreach(var (body,line) in new[]{("{\"error\":\"product_unavailable\",\"line\":1}",(int?)1),("{\"error\":\"use_add_dish\",\"line\":0}",0),("{\"error\":\"version_conflict\"}",null),
+    ("{\"error\":\"invalid_request\",\"line\":\"2\"}",null),("{\"error\":\"invalid_request\",\"line\":-1}",null),("{\"error\":\"invalid_request\",\"line\":1.5}",null)})
+    await Check("a round rejection carries the line the server names: "+body,async()=>{
+        using var client=Client(new Handler((r,_)=>Task.FromResult(r.Method==HttpMethod.Get?Lookup(r,false):Rejection(422,body,r))));
+        try{ await client.SendAsync("dining/services/x/commands/add-consumptions",new {expectedVersion=1},"Ronda"); throw new Exception("expected a rejection"); }
+        catch(ApiError e){ Expect(e.Status==422&&e.Line==line&&client.Pending is null,"line "+e.Line+" for "+body); }
+    });
 // D6.6: un rechazo habla de ESTE intento. Respuesta perdida -> puesto re-emparejado con otro rol -> el reintento recibe 403 con eco.
 await Check("a rejected retry whose key the server has is closed as APPLIED with the stored response",async()=>{
     var store=new MemoryStore(); var posts=0;

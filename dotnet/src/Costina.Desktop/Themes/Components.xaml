@@ -656,4 +656,75 @@
  <Style x:Key="NextLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}"><Setter Property="Margin" Value="0,10,0,4"/></Style>
  <!-- Contenido de un boton de alta pequeno (AddButton) con el mas delante: "+ Presentacion", "+ Pase", "+ Plato". -->
  <DataTemplate x:Key="PlusText"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconPlus}" Margin="0,0,5,0"/><TextBlock Text="{Binding}" VerticalAlignment="Center"/></StackPanel></DataTemplate>
+
+ <!-- ===== C3b (plan 2026-10-15, seccion 4.4): «Añadir consumicion» y la ronda, con el aspecto del comandero (maqueta, «5 · En el PC») ===== -->
+ <!-- Boton suave de acento («Añadir consumicion» en la cabecera de «Lo que lleva la mesa»): fondo verde claro, texto verde, con el mas. -->
+ <Style x:Key="SoftAccentButton" TargetType="Button" BasedOn="{StaticResource BarButton}">
+  <Style.Resources>
+   <SolidColorBrush x:Key="ButtonBackground" Color="#E2EFEC"/>
+   <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D3E8E1"/>
+   <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C3E0D6"/>
+   <SolidColorBrush x:Key="ButtonForeground" Color="#0C6B54"/>
+   <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#0C6B54"/>
+   <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#0A5A46"/>
+   <SolidColorBrush x:Key="ButtonBorderBrush" Color="#A8DCCB"/>
+   <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#6FC2A7"/>
+   <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#6FC2A7"/>
+  </Style.Resources>
+  <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+  <Setter Property="Foreground" Value="{DynamicResource ButtonForeground}"/>
+  <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorderBrush}"/>
+ </Style>
+ <!-- Boton de una presentacion de una bebida (Copa, Botella 0.75 L, Añadir): blanco con contorno y texto de acento, alto para pulsarlo
+      sin apuntar; al pasar el raton, verde claro. Un toque suma 1 a la ronda: no es una orden al servidor. -->
+ <Style x:Key="FormatButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Style.Resources>
+   <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF"/>
+   <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E2EFEC"/>
+   <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CFE6DE"/>
+   <SolidColorBrush x:Key="ButtonForeground" Color="#0C6B54"/>
+   <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#0C6B54"/>
+   <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#0A5A46"/>
+   <SolidColorBrush x:Key="ButtonBorderBrush" Color="#0E7A5F"/>
+   <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#0E7A5F"/>
+   <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#0A5A46"/>
+  </Style.Resources>
+  <Setter Property="Background" Value="{DynamicResource ButtonBackground}"/>
+  <Setter Property="Foreground" Value="{DynamicResource ButtonForeground}"/>
+  <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorderBrush}"/>
+  <Setter Property="Margin" Value="6,0,0,0"/><Setter Property="Padding" Value="10,2"/><Setter Property="MinWidth" Value="66"/><Setter Property="MinHeight" Value="44"/>
+  <Setter Property="VerticalAlignment" Value="Center"/>
+ </Style>
+ <!-- Ficha de acceso (Por copa, Tintos, Blancos...) y de subfamilia (la region): pastilla blanca con su cifra; la elegida (Ui.Current), con
+      fondo y borde de acento. Son botones que solo filtran lo que se ve. -->
+ <Style x:Key="ChipButton" TargetType="Button">
+  <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}"/>
+  <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="13"/><Setter Property="Cursor" Value="Hand"/>
+  <Setter Property="Margin" Value="0,0,8,0"/><Setter Property="Padding" Value="12,4"/><Setter Property="MinHeight" Value="34"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="Button">
+     <Border x:Name="Bd" CornerRadius="17" MinHeight="{TemplateBinding MinHeight}" Padding="{TemplateBinding Padding}" Background="{StaticResource Surface}"
+             BorderBrush="{StaticResource Stroke}" BorderThickness="1" SnapsToDevicePixels="True">
+      <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False"/>
+     </Border>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource StrokeStrong}"/></Trigger>
+      <Trigger Property="local:Ui.Current" Value="True">
+       <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+       <Setter Property="Foreground" Value="{StaticResource AccentText}"/><Setter Property="FontWeight" Value="SemiBold"/>
+      </Trigger>
+      <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource InkDisabled}"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+ <Style x:Key="SubChipButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
+  <Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="10,2"/><Setter Property="MinHeight" Value="28"/><Setter Property="Margin" Value="0,0,6,0"/>
+ </Style>
+ <!-- Boton cuadrado de un paso (menos / mas / quitar) en una linea de la ronda. -->
+ <Style x:Key="StepButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+  <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="Width" Value="32"/><Setter Property="MinHeight" Value="30"/><Setter Property="Height" Value="30"/>
+ </Style>
 </ResourceDictionary>
