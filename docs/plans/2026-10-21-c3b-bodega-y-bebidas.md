@@ -2,6 +2,12 @@
 
 Fecha: 2026-10-21. **Estado: APROBADO** por el promotor el 21-10, con «adelante con c3b»: es el permiso para hacer el corte, subirlo y mezclarlo.
 
+**Entregado el 21-10**: `docs/native/C3b-bodega-y-bebidas.md`, con sus capturas en `docs/native/images/c3b/`. Incluye todo el alcance de abajo. Dos detalles más:
+- una ronda sin confirmar sale de la bandeja, porque ya es la orden pendiente durable;
+- las E2E de la ronda usan la Mesa 1 en los dos proyectos de Playwright, una detrás de otra.
+
+Veinte decisiones pequeñas quedan para revisar con el promotor; están en «Decisiones y diferencias con la maqueta» del documento del corte. La pregunta de los varios tamaños de copa sigue abierta.
+
 Es el corte 4 del plan aprobado `docs/plans/2026-10-15-menus-carta-y-bodega.md` (sección 4.4). Aquí solo se baja a pasos. Se aplican tal cual las reglas de las secciones 1 («Consumos desde la mesa en el puesto principal»), 2 («más intuitivo»), 3 (vocabulario), 6 (diferimientos), 9 y 10 (decisiones del promotor). Lleva también lo que D6.7 y E3.3.1 dejaron para antes de C3b (traspasos del 19-10 y del 20-10).
 
 - **Base:** `develop` en `49e03b3` (`0.41.0-c3a`, esquema v8).

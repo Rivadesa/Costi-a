@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.41.0-c3a</Version>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting><Version>0.42.0-c3b</Version>
     <AssemblyName>Costina.Desktop</AssemblyName>
   </PropertyGroup>
   <ItemGroup>

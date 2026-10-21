@@ -462,6 +462,15 @@ Es la primera parte de C3 (plan del nuevo aspecto, apartado C3): el aspecto y el
 
 ### 4.4. C3b — Bodega y bebidas: comandero y mesa del puesto (`0.42.0-c3b`, sin cambio de esquema)
 
+**Entregado el 21-10**: `docs/native/C3b-bodega-y-bebidas.md`, con los pasos de `docs/plans/2026-10-21-c3b-bodega-y-bebidas.md`. Como aquí, con estas diferencias:
+- **Defensa contra el doble cargo** (diferida de D6.7): el identificador de cada línea de `add-consumptions` y de `add-consumption` se deriva del servicio, de la clave de la orden y de la línea. La cuenta no admite dos iguales: la misma orden reenviada por otro actor responde lo mismo sin cobrar, y la misma clave con otras líneas da `duplicate_consumption`.
+- **Una tabla de casos común** al comandero y al puesto, `dotnet/tests/fixtures/drinks-cases.json` (búsqueda, agrupación y ronda), que leen vitest y ClientChecks. Caja busca con la misma regla.
+- **Una ronda sin confirmar sale de la bandeja**, porque ya es la orden pendiente durable. Una rechazada o con `version_conflict` se queda.
+- **El catálogo del comandero** se lee también al montar el tablero. El del PC se lee entero cada vez que se abre el selector, sin `ETag`.
+- **Las E2E de la ronda** usan la Mesa 1 en los dos proyectos, una detrás de otra.
+- **Varios tamaños de copa** («Copa 15 cl») quedan como pregunta para el promotor. Mientras tanto sigue una copa por vino.
+- **Quedan para revisar con el promotor** veinte decisiones pequeñas del motor, del comandero y del PC, en el documento del corte. Por ejemplo: las restricciones también arriba en Bebidas, las familias de la A a la Z y la ronda plegada en el PC.
+
 Lleva también la petición del promotor del 15-10 de añadir una consumición desde la mesa abierta del puesto principal, sin ir a Caja (sección «Origen»). Usa la misma orden de ronda y la misma regla de una orden por gesto que el comandero, así que el motor no añade nada más por ella.
 
 **Motor (solo añade):**
