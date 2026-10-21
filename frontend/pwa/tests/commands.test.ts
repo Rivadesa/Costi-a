@@ -123,6 +123,20 @@ describe('durable uncertain command', () => {
     const closed = await said('account_closed')
     expect(closed).toContain('Caja'); expect(closed).not.toMatch(/€|precio|saldo|pago|cuenta/i)
   })
+  // C3b: la ronda (add-consumptions) rechaza con {error, line}: el indice (desde 0) de la linea mala llega a quien la envio, para
+  // senalarla en la bandeja. Solo un entero desde 0; cualquier otra cosa no es una linea.
+  it('a rejected round carries the index of the bad line the server names, and nothing that is not one', async () => {
+    const ROUND = ['/dining/services/s1/commands/add-consumptions', { expectedVersion: 4, lines: [{ productId: 'water', quantity: 1 }, { productId: 'lubina', quantity: 1 }] }, 'Ronda para Mesa 1'] as const
+    const rejected = runner(new MemoryStore(), [{ status: 422, body: { error: 'use_add_dish', line: 1 } }, { status: 200, body: { key: '$key', found: false } }])
+    expect(await rejected.run.send(...ROUND)).toEqual({ kind: 'rejected', status: 422, code: 'use_add_dish', line: 1 })
+    expect(rejected.state.notice).toContain('pídelo como plato')
+    for (const line of [-1, 1.5, '1', null]) {
+      const odd = runner(new MemoryStore(), [{ status: 422, body: { error: 'invalid_request', line } }, { status: 200, body: { key: '$key', found: false } }])
+      const outcome = await odd.run.send(...ROUND)
+      expect(outcome, String(line)).toEqual({ kind: 'rejected', status: 422, code: 'invalid_request' })
+      expect('line' in outcome, String(line)).toBe(false)
+    }
+  })
   it('a rejection speaks for THIS attempt only: if the server has the key, an earlier attempt WAS applied and it closes as applied', async () => {
     // Respuesta perdida -> el puesto se re-empareja con otro rol -> el reintento recibe 403 con eco... de una orden que SI se aplico.
     const store = new MemoryStore()

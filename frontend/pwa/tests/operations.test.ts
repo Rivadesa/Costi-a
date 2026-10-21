@@ -109,4 +109,27 @@ describe('D6.7 end to end through useOperations (no realtime, no Web Locks)', ()
       expect(posts()).toHaveLength(1)
     } finally { mounted.unmount() }
   })
+
+  // C3b: una orden APLICADA cuya respuesta trae una clave de dinero no se pinta (ADR-007), pero tampoco se da por «no enviada»: vuelve
+  // como confirmada, sin respuesta. Si volviera null, la ronda seguiria en la bandeja y el camarero la enviaria otra vez.
+  it('an applied command whose answer carries money comes back confirmed without its answer, never as not sent', async () => {
+    vi.stubGlobal('fetch', async (url: RequestInfo | URL, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>
+      requests.push({ method: init?.method ?? 'GET', url: String(url), key: headers['Idempotency-Key'] })
+      if (String(url).endsWith('/dining/board')) return new Response('[]', { status: 200 })
+      if (init?.method === 'POST') return new Response('{"version":5,"consumptionIds":["c1"],"totalCents":950}', { status: 200, headers: { 'Idempotency-Key': headers['Idempotency-Key'] } })
+      return new Response('{}', { status: 200 })
+    })
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      const outcome = await mounted.operations.run('/dining/services/s1/commands/add-consumptions',
+        { expectedVersion: 4, lines: [{ productId: 'wine', presentationId: 'glass', quantity: 2, guestPosition: null }] }, 'Ronda para Mesa 1: 2 × Vino · Copa')
+      expect(outcome).toEqual({ kind: 'confirmed', response: null })
+      expect(mounted.operations.runnerState.pending).toBeNull()
+      expect(mounted.operations.runnerState.notice).toContain('La orden SÍ se aplicó')
+      expect(await indexedDbPendingStore.load()).toEqual({ kind: 'absent' })
+      expect(posts()).toHaveLength(1)
+    } finally { mounted.unmount() }
+  })
 })
