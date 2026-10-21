@@ -1,5 +1,7 @@
 # Traspaso 2026-10-20: C3a mezclada (comandero nuevo); siguiente, C3b
 
+> **Ya no es el punto de entrada:** desde el 21-10 lo es `docs/handoff/2026-10-21-c3b-bodega-y-bebidas.md`. Este documento sigue valiendo para C3a, sus cinco decisiones para revisar y su guion con móvil e iPad.
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-19-d6.7-y-e3.3.1.md`. El anterior sigue valiendo para lo diferido a C3b, para las trampas y para el PC del promotor.
 
 Leer antes, en este orden:
