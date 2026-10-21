@@ -174,20 +174,22 @@ class Pwa(unittest.TestCase):
     def test_07_lines_written_before_c3b_are_classified_by_their_product(self):
         # C3b: una linea guardada antes del corte no tiene origen: fuera el producto-menu y los platos que tienen su elaboracion;
         # un plato apuntado por error como consumo SI se ve, para que alguien lo note. Se simula quitando los campos nuevos.
-        sid = open_table(free_table(), offer='LAB-CARTA')
-        h.mutate(sid, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit', quantity=2)
-        for product in ('croquetas', 'water'):
-            h.ok('/dining/services/' + sid + '/commands/add-consumption', {'expectedVersion': h.dining(sid)['version'], 'productId': product, 'quantity': 1}, role='service')
-        tasting = open_table(free_table())
-        h.ok('/dining/services/' + tasting + '/commands/add-consumption', {'expectedVersion': h.dining(tasting)['version'], 'productId': 'water', 'quantity': 1}, role='service')
-        for service in (sid, tasting):
+        # Una mesa cada vez: tras las E2E solo queda libre M1 en este ambito.
+        def older(service):
             h.sql("UPDATE core.accounts SET payload=jsonb_set(payload,'{charges}',(SELECT jsonb_agg(c-'origin'-'at'-'guestPosition') FROM jsonb_array_elements(payload->'charges') c)) "
                   "WHERE tenant='d6-pwa' AND service_id='" + service + "'")
-        self.assertEqual('0', h.sql("SELECT count(*) FROM core.accounts a, jsonb_array_elements(a.payload->'charges') c WHERE a.tenant='d6-pwa' AND a.service_id IN ('" + sid + "','" + tasting + "') AND c ? 'origin'"))
-        board = {b['service']['id']: b for b in h.ok('/dining/board', role='service')}
+            self.assertEqual('0', h.sql("SELECT count(*) FROM core.accounts a, jsonb_array_elements(a.payload->'charges') c WHERE a.tenant='d6-pwa' AND a.service_id='" + service + "' AND c ? 'origin'"))
+            return next(b for b in h.ok('/dining/board', role='service') if b['service']['id'] == service)['consumptions']
+        carte = open_table(free_table(), offer='LAB-CARTA')
+        h.mutate(carte, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit', quantity=2)
+        for product in ('croquetas', 'water'):
+            h.ok('/dining/services/' + carte + '/commands/add-consumption', {'expectedVersion': h.dining(carte)['version'], 'productId': product, 'quantity': 1}, role='service')
         self.assertEqual([('croquetas', 'Croquetas de la casa', None, None), ('water', 'Agua mineral', 'Botella', None)],
-                         [(c['productId'], c['name'], c['presentation'], c['at']) for c in board[sid]['consumptions']])
-        self.assertEqual(['water'], [c['productId'] for c in board[tasting]['consumptions']])
-        for service in (sid, tasting): finish_and_release(service)
+                         [(c['productId'], c['name'], c['presentation'], c['at']) for c in older(carte)])
+        finish_and_release(carte)
+        tasting = open_table(free_table())
+        h.ok('/dining/services/' + tasting + '/commands/add-consumption', {'expectedVersion': h.dining(tasting)['version'], 'productId': 'water', 'quantity': 1}, role='service')
+        self.assertEqual(['water'], [c['productId'] for c in older(tasting)])          # sin el producto-menu
+        finish_and_release(tasting)
 
 if __name__ == '__main__': unittest.main(verbosity=2)
