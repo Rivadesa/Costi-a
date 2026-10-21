@@ -66,6 +66,11 @@ export const REJECTIONS: Record<string, string> = {
   wrong_station: 'Esta acción no corresponde a la estación de este dispositivo.',
   account_closed: 'Esta mesa ya está cerrada en Caja: avisa en el PC principal.',
   forbidden: 'Este dispositivo no tiene permiso para esa acción.',
+  // C3b: la ronda (add-consumptions). Con ninguna se ha aplicado nada: la ronda sigue en la bandeja.
+  use_add_dish: 'Ese producto pasa por cocina: pídelo como plato en «Carta y menús». No se ha añadido nada.',
+  too_many_lines: 'Demasiadas líneas para una sola ronda (como mucho 30): envía el resto en otra. No se ha añadido nada.',
+  duplicate_consumption: 'Esa orden ya se había usado en esta mesa con otras bebidas. No se ha añadido nada: revisa lo que lleva la mesa.',
+  product_unavailable: 'Ese producto ya no está a la venta. No se ha añadido nada.',
 }
 
 export class CommandRunner {
