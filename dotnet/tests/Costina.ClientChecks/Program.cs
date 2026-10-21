@@ -85,6 +85,21 @@ await Check("transport failure is not confirmation",async()=>{
     using var client=Client(new Handler((_,_)=>throw new HttpRequestException("simulated")));
     await Throws<HttpRequestException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});Assert(client.Pending is not null);
 });
+// C3b (diferido de D6.7): la orden pasa a Pending SOLO despues de guardarse. Si el disco falla, no se envia, no queda en memoria para
+// "Reintentar" (se mandaria sin estar guardada) ni bloquea la siguiente orden como si estuviera incierta.
+await Check("a command the store could not save is never sent, kept or retried",async()=>{
+    var posts=0;
+    using var client=Client(new Handler((r,_)=>{posts++;return Task.FromResult(Rejection(200,"{\"version\":2}",r));}));
+    var store=new FailingStore();
+    client.AttachPendingStore(store);
+    await Throws<IOException>(async()=>{await client.SendAsync("dining/services/x/commands/add-consumptions",new {expectedVersion=1},"Ronda");});
+    Expect(client.Pending is null,"a command that could not be saved is not pending");
+    await Throws<InvalidOperationException>(async()=>{await client.RetryAsync();});
+    Expect(posts==0&&store.Saved==0,"nothing was sent nor stored: "+posts);
+    store.Fail=false;
+    await client.SendAsync("dining/services/x/commands/add-consumptions",new {expectedVersion=1},"Ronda");
+    Expect(posts==1&&store.Saved==1&&store.Stored is null&&client.Pending is null,"the next command is saved, sent once and closed");
+});
 await Check("malformed successful response retains command",async()=>{
     using var client=Client(new Handler((_,_)=>Task.FromResult(Response(200,"{}"))));
     await Throws<JsonException>(async()=>{await client.SendAsync("dining/services",new {pax=2},"Open");});Assert(client.Pending is not null);
@@ -722,6 +737,14 @@ await File.WriteAllTextAsync("artifacts/desktop/client-checks.json",JsonSerializ
 Console.WriteLine($"Client checks: {passed} passed; {failed} failed");return failed==0?0:1;
 sealed class Handler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> send):HttpMessageHandler {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>send(request,ct);
+}
+// C3b: un almacen cuyo disco falla al guardar (lleno, sin permisos): la orden no se guarda.
+sealed class FailingStore:IPendingStore {
+    public bool Fail=true; public int Saved; public PendingCommand? Stored;
+    public void Save(PendingCommand command){if(Fail) throw new IOException("disco lleno (simulado)");Saved++;Stored=command;}
+    public PendingLoad Load()=>Stored is null?new(PendingOutcome.Absent,null,null,""):new(PendingOutcome.Restored,Stored,Stored.Key,"");
+    public void Clear(string key){if(Stored?.Key==key)Stored=null;}
+    public void Discard(){Stored=null;}
 }
 sealed class MemoryStore:IPendingStore {
     public PendingCommand? Stored; public PendingLoad? Forced; public bool Discarded; public string? LastSavedKey;

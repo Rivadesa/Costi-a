@@ -178,8 +178,12 @@ public sealed class ApiClient : IDisposable
                     _ => "Hay una orden anterior ilegible o inaccesible. Consúltala en el servidor o descártala conservando la evidencia antes de operar."
                 });
             if (Pending is not null) throw new InvalidOperationException("Resuelve primero la orden sin confirmar.");
-            Pending = new(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
-            store?.Save(Pending); // durable ANTES del primer intento: un cierre forzado no la pierde
+            var command = new PendingCommand(Guid.NewGuid().ToString("N"), SafePath(path), JsonSerializer.Serialize(body, Json), description);
+            // Durable ANTES del primer intento: un cierre forzado no la pierde. C3b (diferido de D6.7): pasa a Pending SOLO despues de
+            // guardarse. Si el almacen falla, la excepcion sale de aqui sin Pending: nada se envia, ni ahora ni con RetryAsync, porque
+            // nunca se envia lo que no se pudo guardar (antes quedaba en memoria y "Reintentar" la mandaba sin estar guardada).
+            store?.Save(command);
+            Pending = command;
             return await Attempt();
         }
         finally { mutation.Release(); }
