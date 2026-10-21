@@ -1297,6 +1297,12 @@ internal static class Program
             throw new Exception("Picking a presentation only chooses it (nothing is sent): "+checkout.ChosenProductText);
         checkout.ProductSearch="zzz"; window.UpdateLayout();
         if(checkout.ProductGroups.Length!=0||checkout.ProductGroupsNote!="Ningún producto coincide con «zzz».") throw new Exception("A search without results says so: "+checkout.ProductGroupsNote);
+        // C3b: Caja busca con la MISMA regla que «Añadir consumición» y el comandero (CatalogSearch, tabla de casos comun drinks-cases.json):
+        // cada palabra en cualquier campo (antes, la frase entera en uno) y primero lo que empieza por lo escrito (antes, el orden del servidor).
+        checkout.ProductSearch="vino"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Vino de la casa","Albariño Pazo de Señoráns"])) throw new Exception("Caja ranks like the table picker: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
+        checkout.ProductSearch="pazo albar"; window.UpdateLayout();
+        if(!checkout.ProductGroups.Select(g=>g.Name).SequenceEqual(["Albariño Pazo de Señoráns"])) throw new Exception("Caja finds every written word, in any order: "+string.Join(" | ",checkout.ProductGroups.Select(g=>g.Name)));
         checkout.ProductSearch=""; window.UpdateLayout();
         var cajaTexts=Texts(checkoutView).ToArray();
         foreach(var text in new[]{"Mesa 4","Abierta","Pago parcial","Sala principal · 4 personas · Menú del día","91,00 €","40,00 €","51,00 €","Total","Pagado","Pendiente","Menú del día · Por persona",
