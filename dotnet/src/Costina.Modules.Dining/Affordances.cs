@@ -9,6 +9,8 @@ public static class Affordances
 {
     private static readonly string[] KitchenAllowed = ["preparation-start", "preparation-ready", "ready", "review-preparation"];
 
+    // C3b: add-consumptions (la ronda) es de principal y sala, como add-consumption: sala la tiene porque no esta en su lista de
+    // excluidas y cocina no, porque no esta en KitchenAllowed. Es accion de SESION (DiningModule.SessionActions), sin estacion.
     public static bool Allows(string role, string action) => role switch
     {
         "main" => true,

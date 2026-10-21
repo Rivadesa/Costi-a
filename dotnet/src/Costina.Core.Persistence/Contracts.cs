@@ -21,6 +21,19 @@ public sealed class StoreConflict(string code, string message) : Exception(messa
     public string Code { get; } = code;
 }
 public sealed class StoreNotFound() : Exception("Record not found in the authorized scope.");
+// C3b: una LINEA de una orden con varias (la ronda) no vale: 422 con su codigo y su indice (desde 0), {error, line}. La orden entera
+// se rechaza (todo o nada). Code es el de la causa: invalid_request, not_found o la regla (use_add_dish, price_missing...).
+public sealed class LineRejected(int line, string code, string message) : Exception(message)
+{
+    public int Line { get; } = line;
+    public string Code { get; } = code;
+    public static LineRejected From(int line, Exception cause) => new(line, cause switch
+    {
+        RuleViolation rule => rule.Code,
+        StoreNotFound => "not_found",
+        _ => "invalid_request"
+    }, cause.Message);
+}
 // Station: solo dispositivos emparejados. null = usuario con sesion (sin restriccion de estacion).
 public sealed record ExecutionIdentity(BusinessScope Scope, string ActorId, string? Station = null);
 

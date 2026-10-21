@@ -14,20 +14,26 @@ public static class CheckoutOperations
     {
         var stored=await unit.Account(id); Version(stored.Version,request.ExpectedVersion);
         var entity=stored.Entity; var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
+        // C3b: anadir o anular un consumo en Caja cambia «Lo que lleva la mesa»: aviso OPERATIVO del servicio (llega a sala), ademas
+        // de los account.* de siempre, que solo llegan al principal.
+        var consumptionsChanged=false;
         switch(action)
         {
             case "add-product":
             {
                 // E3: vendible del catalogo al precio vigente de la tarifa de la sala de la cuenta (o la general); origen congelado en el cargo.
+                // C3b: el texto sin la presentacion por defecto («Agua con gas», no «Agua con gas · Unidad») y el origen 'checkout'.
                 var (product,presentation)=await unit.Sellable(Required(request.ProductId),request.PresentationId);
                 var (cents,tariff)=await unit.PriceFor(await unit.TariffForService(id),product.Id,presentation.Id,DateOnly.FromDateTime(DateTime.Now));
-                entity.AddCharge(Guid.NewGuid().ToString("N"),product.Name+" · "+presentation.Name,request.Quantity,cents,stamp,product.Id,presentation.Id,tariff);
+                entity.AddCharge(Guid.NewGuid().ToString("N"),Catalog.LineText(product.Name,presentation),request.Quantity,cents,stamp,product.Id,presentation.Id,tariff,
+                    origin:ChargeOrigin.Checkout);
+                consumptionsChanged=true;
                 break;
             }
             case "payment":
                 if(request.Method is not ("cash" or "card" or "other")) throw new ArgumentException("Unsupported payment method.");
                 entity.RecordPayment(Required(request.PaymentId),request.Method,request.AmountCents,stamp); break;
-            case "void-charge": entity.VoidCharge(Required(request.ChargeId),Required(request.Reason),stamp); break;
+            case "void-charge": entity.VoidCharge(Required(request.ChargeId),Required(request.Reason),stamp); consumptionsChanged=true; break;
             case "close": entity.Close(stamp); break;
             case "reopen": entity.Reopen(Required(request.Reason),stamp); break;
             case "refund":
@@ -36,6 +42,7 @@ public static class CheckoutOperations
             default: throw new StoreNotFound();
         }
         await unit.Save(entity,stored.Version);
+        if(consumptionsChanged) await unit.Events([SettlementAccount.ConsumptionsChanged(entity.ServiceId,stamp)]);
         return new Versioned<AccountView>(stored.Version+1,entity.View());
     }
 }
