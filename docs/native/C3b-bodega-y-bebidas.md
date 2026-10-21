@@ -35,7 +35,7 @@ Lleva también lo que D6.7 y E3.3.1 dejaron para antes de C3b:
   - Mientras la ronda tenga algo, también se ve en la ficha de la mesa, encima del botón grande.
 - **«Enviar» es una sola orden**, aunque la ronda lleve 4 bebidas. Antes eran 4 órdenes, con la pantalla bloqueada entre una y otra.
   - Al confirmarse, la ronda se vacía y dice «Ronda enviada: ya sale en «Lo que lleva la mesa».».
-  - Si no llega la respuesta, la ronda pasa a ser la **orden sin confirmar** de siempre («Ronda para Mesa 4: 2 × Albariño · Copa, 1 × Agua»): se reintenta igual y se resuelve sola, con un solo efecto.
+  - Si no llega la respuesta, la ronda pasa a ser la **orden sin confirmar** de siempre («Ronda para Mesa 4: 2 × Albariño · Copa, 1 × Agua mineral · Botella»): se reintenta igual y se resuelve sola, con un solo efecto.
   - Mientras haya una orden sin confirmar, la ronda se puede seguir llenando, pero no enviar.
 - **Si la mesa cambió mientras tanto** (por ejemplo, cocina marcó un plato), la ronda **sigue en la bandeja**, la mesa se relee y el botón dice **«La mesa ha cambiado: enviar de nuevo»**.
 - **Si el servidor rechaza una línea**, la ronda sigue entera y la bandeja dice cuál y por qué («Línea 2, …: …»). No se añade nada.
@@ -92,7 +92,7 @@ D6.7 lo cerró en los clientes: una orden de otro actor queda bloqueada y nunca 
 - **Si la misma orden vuelve con otro actor**, el motor ve que sus líneas ya están en la cuenta, iguales, y **responde lo mismo sin cobrar nada más**. Lo mira antes que la versión de la mesa, así que responde igual aunque la mesa haya cambiado entretanto; la versión de la respuesta es la actual.
 - **Si esa clave trae otras líneas**, se rechaza con `409 duplicate_consumption` y no se apunta nada.
 
-**Lo que ya estaba protegido:** las demás órdenes de sala mueven la versión de la mesa, así que su reenvío con otro actor recibe `version_conflict`. «Añadir consumo» de Caja exige la versión de la cuenta, que también sube. Los consumos eran el único caso abierto: no mueven la versión de la mesa, para no pisar las órdenes de otros camareros.
+**Lo que ya estaba protegido:** las demás órdenes de sala mueven la versión de la mesa (o de la ocupación, al liberar), así que su reenvío con otro actor recibe `version_conflict`. Abrir otra vez una mesa ya abierta se rechaza porque está ocupada. «Añadir consumo» de Caja exige la versión de la cuenta, que también sube. Los consumos eran el único caso abierto: no mueven la versión de la mesa, para no pisar las órdenes de otros camareros.
 
 **La prueba** (`checkout_http.py`):
 - `test_06`: dos comanderos emparejados de verdad, con actores `device:<nombre>` distintos, mandan la misma ronda con la misma clave. Queda **un solo cargo** por línea. Un tercer actor con la misma clave y otras líneas recibe `duplicate_consumption`;
@@ -282,10 +282,18 @@ Con el motor de C3a, `test_06b` daba dos identificadores distintos, es decir, do
 
 - **vitest:** 302 pruebas en 16 ficheros (antes 198 en 12). `npm run build` (`vue-tsc` y Vite) en verde. Las nuevas:
   - `drinks.test.ts`: la tabla común (plegado, agrupación, familias, «Por copa», «En esta mesa», 22 búsquedas y 12 rondas guionizadas) y que la ronda no se guarda en ningún sitio;
-  - `bodega.test.ts`: textos sin palabras de caja, el resultado de cada envío y la línea rechazada;
-  - `catalog.test.ts`: 304, 200 por la guarda de dinero, relectura a los 5 minutos y al reconectar, y el 401;
-  - `photos.test.ts`: solo lo visible, una petición por foto, el tope de memoria con su URL liberada, los tipos admitidos y las iniciales;
-  - casos nuevos en `commands.test.ts` (el `line` de un 422), `operations.test.ts` (aplicada con dinero en la respuesta = confirmada) y `core.test.ts` (`readCatalog`);
+  - `bodega.test.ts`: «Por copa» y las familias, los botones de cada fila, el resultado de cada envío, la línea rechazada, la hoja con el punto Y la restricción escrita, y ninguna palabra de caja;
+  - `catalog.test.ts`:
+    - se lee al montar y se revalida al abrir Bebidas y cada 5 minutos; un 304 conserva la misma lista;
+    - dos lecturas a la vez son una, y sin la ronda anunciada no se lee nada;
+    - un fallo conserva lo leído; un 401 avisa; un cuerpo con dinero se rechaza;
+    - se relee al volver el tiempo real;
+  - `photos.test.ts`:
+    - con el token y sin la caché del navegador;
+    - una petición por foto;
+    - el tope de memoria, con su URL liberada;
+    - los tipos admitidos, los fallos pasajeros que se reintentan y las iniciales;
+  - casos nuevos en `commands.test.ts` (el `line` de un 422), `operations.test.ts` (aplicada con dinero en la respuesta = confirmada) y `core.test.ts` (`readCatalog`: `If-None-Match`, el 304 y cada 200 por la guarda de dinero);
   - `views.test.ts`: un solo `<img>`, en `DrinkPhoto.vue` y con `src` enlazado.
 - **ClientChecks:** 263 (antes 201). La tabla común, la búsqueda de Caja, `Round` sin almacén, la orden que no se pudo guardar nunca se envía, los rechazos en castellano y `ApiError.Line`.
 - **Dominio (D0):** 86 (antes 83):
