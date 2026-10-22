@@ -1,4 +1,5 @@
 import { newKey, type Fetch } from './api'
+import { currentDatabase } from './db'
 import { otherActorAdvice } from './labels'
 import { assertNoMoney } from './money-guard'
 import type { PendingCommand, PendingStore } from './pending'
@@ -237,5 +238,6 @@ export class CommandRunner {
 // (seria inocuo: misma clave y mismo actor, el servidor no duplica). NO protege el hueco: eso lo hace la reserva atomica
 // del almacen (reserve/clear/discard en una sola transaccion de IndexedDB, D6.7). Sin Web Locks (navegador antiguo, o http
 // sin contexto seguro, como la conexion sencilla de B.2) se ejecuta sin cerrojo y el hueco sigue protegido.
+// C3c: un cerrojo por base (por aplicacion): Sala y Cocina en el mismo origen no se esperan la una a la otra.
 export const tabLock = <T>(work: () => Promise<T>): Promise<T> =>
-  typeof navigator !== 'undefined' && 'locks' in navigator ? navigator.locks.request('costina-command', () => work()) as Promise<T> : work()
+  typeof navigator !== 'undefined' && 'locks' in navigator ? navigator.locks.request(`${currentDatabase()}-command`, () => work()) as Promise<T> : work()

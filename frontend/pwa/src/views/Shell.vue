@@ -1,40 +1,70 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { getSession, type Session } from './api'
-import { clearCredential, loadCredential, saveCredential, type Credential } from './credentials'
-import { deviceNameOf } from './labels'
-import { unpairDevice } from './pairing'
-import { indexedDbPendingStore } from './pending'
-import { NOT_READY_PREFIX, outcomeOf } from './startup'
-import { requestPersistence, type Persistence } from './storage'
-import Icon from './views/Icon.vue'
-import PairView from './views/PairView.vue'
-import HomeView from './views/HomeView.vue'
+import { getSession, type Session } from '../api'
+import { lookAround } from '../adoption'
+import { appFits, APPS, headerRole, type AppId } from '../apps'
+import { clearCredential, loadCredential, saveCredential, type Credential } from '../credentials'
+import { currentDatabase } from '../db'
+import { deviceNameOf } from '../labels'
+import { unpairDevice } from '../pairing'
+import { indexedDbPendingStore } from '../pending'
+import { NOT_READY_PREFIX, outcomeOf } from '../startup'
+import { requestPersistence, type Persistence } from '../storage'
+import AppIcon from './AppIcon.vue'
+import HomeView from './HomeView.vue'
+import Icon from './Icon.vue'
+import OtherApp from './OtherApp.vue'
+import PairView from './PairView.vue'
 
-// Estado de arranque: 'loading' -> 'unpaired' | 'ready' | 'offline' (emparejado pero sin servidor).
-const state = ref<'loading' | 'unpaired' | 'ready' | 'offline'>('loading')
+// C3c: el marco COMUN de Costina Sala y Costina Cocina, que recibe la aplicacion como dato (lo que era App.vue): arranque,
+// emparejamiento, desvincular, sin conexion y la cabecera con su icono y su nombre. Cada aplicacion pone su pantalla en el hueco.
+// Estado de arranque: 'loading' -> 'unpaired' | 'ready' | 'offline' (emparejado pero sin servidor) | 'other' (conectado como la
+// otra aplicacion, o con un papel que ninguna conoce: no se monta nada).
+const props = defineProps<{ app: AppId }>()
+const definition = computed(() => APPS[props.app])
+const state = ref<'loading' | 'unpaired' | 'ready' | 'offline' | 'other'>('loading')
 const credential = ref<Credential | null>(null)
 const session = ref<Session | null>(null)
+const other = ref<{ session: Session; credential: Credential; database: string } | null>(null)
 const notice = ref('')
 const pendingDescription = ref('')   // tambien sin conexion: lo no confirmado se ve SIEMPRE
 const persistence = ref<Persistence>('persisted')   // hasta saberlo no se alarma a nadie
 let persistenceAsked = false
+let lookedAround = false             // la base vieja y la de la otra aplicacion se miran una vez (otra si no se pudo decidir)
 let timer: number | undefined
-// A11: la cabecera dice QUE es este dispositivo y DONDE esta, con el nombre de la estacion (no su codigo). C3a: las palabras del puesto
-// (Labels.DeviceRoles) y el nombre del dispositivo sin el prefijo tecnico del actor. Un papel que no se conoce sale tal cual.
-const KINDS: Record<string, string> = { main: 'Principal (antiguo)', service: 'Comandero', kitchen: 'Pantalla de cocina' }
-const role = computed(() => session.value === null ? ''
-  : [KINDS[session.value.role] ?? session.value.role, session.value.stationName || session.value.station || ''].filter(part => part).join(' · '))
+// A11: la cabecera dice QUE es este dispositivo (la marca, con el nombre de la aplicacion) y DONDE esta (el NOMBRE de la estacion);
+// el `main` antiguo lo dice delante, como siempre. Un papel que no se conoce no llega aqui: no se monta.
+const role = computed(() => session.value === null ? '' : headerRole(props.app, session.value))
 
 async function refresh(): Promise<void> {
   // F8: ni IndexedDB que no abre ni un servidor que no esta listo dejan la pantalla en "Cargando…": se dice y se reintenta solo.
   try { if (!credential.value) credential.value = await loadCredential() }
   catch (error) { state.value = 'offline'; notice.value = outcomeOf(error, false).notice; return }
+  if (!credential.value && other.value) { state.value = 'other'; return }
+  if (!credential.value && !lookedAround) {
+    // C3c (adoption.ts): antes de pedir que se empareje, lo que ya hay en este origen: la credencial de antes, si es de esta
+    // aplicacion, se adopta; la de la otra aplicacion (o vieja de otro rol) hace que esta no monte nada. Sin servidor no se decide.
+    try {
+      const found = await lookAround(props.app, fetch)
+      lookedAround = true
+      if (found.kind === 'adopted') credential.value = found.credential
+      if (found.kind === 'other') { other.value = found; state.value = 'other'; return }
+    } catch (error) {
+      const outcome = outcomeOf(error, false)
+      state.value = 'offline'; notice.value = outcome.notice; return
+    }
+  }
   if (!credential.value) { state.value = 'unpaired'; return }
   const stored = await indexedDbPendingStore.load().catch(() => null)
   pendingDescription.value = stored?.kind === 'restored' ? stored.command.description : stored?.kind === 'unreadable' ? 'orden anterior ilegible' : ''
   try {
-    session.value = await getSession(fetch, credential.value.token)
+    const read = await getSession(fetch, credential.value.token)
+    if (!appFits(props.app, read.role)) {
+      // Una credencial de la otra aplicacion en esta base no deberia existir (adoptar y emparejar comprueban el rol): no se monta nada.
+      other.value = { session: read, credential: credential.value, database: currentDatabase() }
+      credential.value = null; session.value = null; state.value = 'other'; return
+    }
+    session.value = read
     state.value = 'ready'
     if (notice.value.startsWith(NOT_READY_PREFIX)) notice.value = ''
     // Ya emparejado: lo guardado en este dispositivo (credencial, orden sin confirmar) merece almacenamiento persistente.
@@ -58,19 +88,22 @@ async function paired(next: Credential): Promise<void> {
   await refresh()
 }
 
-// Desvincular (F9): primero en el servidor, despues en este navegador. Sin conexion no se olvida nada.
+// Desvincular (F9): primero en el servidor, despues en este navegador. Sin conexion no se olvida nada. Vale tambien para la credencial
+// de la otra aplicacion (se borra de SU base; la base no se borra nunca).
 async function unpair(): Promise<void> {
-  if (!credential.value) return
-  const outcome = await unpairDevice(fetch, credential.value.token)
+  const target = credential.value ? { token: credential.value.token, database: currentDatabase() }
+    : other.value ? { token: other.value.credential.token, database: other.value.database } : null
+  if (!target) return
+  const outcome = await unpairDevice(fetch, target.token)
   if (outcome === 'offline') {
     notice.value = 'Sin conexión con el servidor: el dispositivo NO se ha desvinculado. Vuelve a intentarlo con Wi-Fi, o quítalo desde el PC principal.'
     return
   }
-  await clearCredential()
-  credential.value = null; session.value = null
+  await clearCredential(target.database)
+  credential.value = null; session.value = null; other.value = null; lookedAround = false
   notice.value = outcome === 'unpaired' ? 'Dispositivo desvinculado: ha dejado de valer también en el servidor. Para volver a usarlo, conéctalo de nuevo desde el PC principal.'
     : 'Este dispositivo ya no estaba emparejado en el servidor.'
-  state.value = 'unpaired'
+  await refresh()
 }
 
 onMounted(async () => {
@@ -83,9 +116,9 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
 </script>
 
 <template>
-  <main class="app">
+  <main class="app" :data-app="app">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">C</span><h1>Costina</h1></div>
+      <div class="brand"><AppIcon :app="app" /><h1 data-testid="app-name">{{ definition.name }}</h1></div>
       <span v-if="session?.demo" class="demo" data-testid="demo">DEMOSTRACIÓN · DATOS FICTICIOS</span>
       <p v-if="state === 'ready' && session" class="who">
         <span class="who-role" data-testid="role">{{ role }}</span><span class="who-name" data-testid="actor">{{ deviceNameOf(session.actor) }}</span>
@@ -93,7 +126,8 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
     </header>
     <p v-if="notice" class="notice" role="status" data-testid="notice"><Icon name="info" />{{ notice }}</p>
     <p v-if="state === 'loading'" class="muted">Cargando…</p>
-    <PairView v-else-if="state === 'unpaired'" @paired="paired" />
+    <PairView v-else-if="state === 'unpaired'" :app="app" @paired="paired" />
+    <OtherApp v-else-if="state === 'other' && other" :app="app" :session="other.session" :database="other.database" @unpair="unpair" />
     <section v-else-if="state === 'offline'" class="pair-card offline" data-testid="offline">
       <h2><Icon name="wifiOff" :size="24" />Sin conexión con el servidor</h2>
       <!-- D6.7: sin conexion aun no se sabe si se puede reenviar (otra instalacion, otro nombre, ilegible): no se promete un reintento que quiza no ocurra. -->
@@ -104,6 +138,8 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
       <p>Este dispositivo está emparejado, pero el servidor no responde. Comprueba la Wi-Fi. No se muestra ningún dato hasta poder leerlo del servidor.</p>
       <button type="button" class="btn btn-primary btn-big" @click="refresh"><Icon name="refresh" />Reintentar</button>
     </section>
-    <HomeView v-else-if="session && credential" :session="session" :credential="credential" :persistence="persistence" @unpair="unpair" @refresh="refresh" />
+    <HomeView v-else-if="session && credential" :session="session" :persistence="persistence" @unpair="unpair">
+      <slot :session="session" :credential="credential" :unauthorized="refresh" />
+    </HomeView>
   </main>
 </template>

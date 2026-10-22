@@ -4,18 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#F3F4F6" />
-    <!-- Instalable en pantalla de inicio (D6.5). iOS ignora los iconos del manifiesto y los SVG: necesita su PNG de 180. -->
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Costina" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="application-name" content="Costina" />
+    <!-- C3c: /app/ es el ENRUTADOR, no una aplicacion: sin manifiesto ni metas de iOS, no se instala. Lleva cada dispositivo a
+         Costina Sala (/app/sala/) o a Costina Cocina (/app/cocina/), que son las instalables. -->
+    <meta name="application-name" content="Costiña" />
     <meta name="format-detection" content="telephone=no" />
-    <link rel="manifest" href="/app/manifest.webmanifest" />
     <link rel="icon" href="/app/icon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/app/icon-192.png" type="image/png" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/app/apple-touch-icon.png" sizes="180x180" />
-    <title>Costina</title>
+    <title>Costiña</title>
   </head>
   <body>
     <div id="app"></div>

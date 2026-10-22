@@ -279,6 +279,36 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .options-b { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
 .hint { font-size: 13.5px; color: var(--muted); }
 
+/* ---------- C3c: dos aplicaciones (maqueta 2026-10-22, «0 · Instalar») ---------- */
+/* El color de cada aplicacion solo va en su icono (dibujado dentro, app-icons.ts); los botones siguen con el acento de siempre. */
+.app-icon { flex: none; display: block; width: 34px; height: 34px; }
+.app-icon.ai-m { width: 52px; height: 52px; }
+.app-icon.ai-l { width: 76px; height: 76px; }
+.pair-card .hint { display: flex; gap: 6px; align-items: flex-start; }
+.pair-card .hint .icon { margin-top: 1px; }
+/* El codigo corto se lee y se teclea en dos grupos («K7M2Q 9XR4T»): letra ancha y espaciada. */
+.code-input { font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace; font-size: 20px; letter-spacing: .08em; }
+/* Enrutador: la aplicacion se elige con una tarjeta grande por aplicacion. */
+.choices { display: flex; flex-direction: column; gap: 10px; }
+.choice { min-height: 76px; width: 100%; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 14px; text-align: left; }
+.choice:hover { border-color: var(--accent); background: var(--surface2); }
+.choice-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.choice-t strong { font-size: 17px; }
+.choice-t span { font-size: 14px; color: var(--muted); }
+.choice > .icon { color: var(--muted); }
+/* iPhone y iPad en Safari: no se empareja; se explica como anadir el icono. */
+.add-home { text-align: left; }
+.add-home-brand { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 17px; }
+.add-home h2 { justify-content: center; text-align: center; text-wrap: balance; }
+.add-home-key { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: var(--touch); padding: 8px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.add-home-steps { display: flex; flex-direction: column; gap: 8px; }
+.add-home-steps li { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.step-n { flex: none; width: 28px; height: 28px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+/* La aplicacion equivocada no monta nada: lo dice, con el icono de la buena. */
+.other-app { align-items: center; text-align: center; padding: 28px 18px; }
+.other-app h2 { justify-content: center; text-wrap: balance; }
+.other-app .row { justify-content: center; }
+
 /* ---------- C3b: Bodega y bebidas, la ronda y lo que lleva la mesa (maqueta «2 · Bodega y bebidas», «2b · La ronda» y «1 · Mesa») ---------- */
 /* Sin precios en ningun sitio. El buscador queda arriba al desplazarse; la bandeja de la ronda, abajo (es una .bar). */
 .bodega { display: flex; flex-direction: column; gap: 10px; }

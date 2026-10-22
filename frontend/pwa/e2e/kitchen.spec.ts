@@ -1,12 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
-import { checkDevice, checkScreen, command, deviceContext, deviceName, lane, MAIN, openTable, pairThroughTheUi, post, press, read, watch } from './support'
+import { checkDevice, checkScreen, command, databaseOf, deviceContext, deviceName, lane, MAIN, openTable, pairThroughTheUi, post, press, read, storedToken, watch } from './support'
 
 // D6.4: pantalla de cocina por estacion contra el MOTOR REAL. C3a: con el aparato de cada proyecto (escritorio o movil tactil) y la
 // mesa de cocina de su carril (e2e/support.ts).
-const deviceToken = (page: Page) => page.evaluate(() => new Promise<string>(resolve => {
-  const open = indexedDB.open('costina')
-  open.onsuccess = () => { const get = open.result.transaction('device').objectStore('device').get('credential'); get.onsuccess = () => { open.result.close(); resolve(String(get.result?.token ?? '')) } }
-}))
+// C3c: la credencial de una tablet de cocina vive en la base de Costina Cocina.
+const deviceToken = (page: Page) => storedToken(page, databaseOf('cocina'))
 
 test('a station marks only its own work, the pass reviews and validates, and everything is enabled by the server alone', async ({ browser, request }) => {
   test.setTimeout(240_000)

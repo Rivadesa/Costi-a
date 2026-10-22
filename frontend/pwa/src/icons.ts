@@ -35,6 +35,8 @@ export const ICONS = {
   // C3b: el buscador de «Bodega y bebidas» y la papelera de la ronda.
   search: [circle(11, 11, 7), 'M20 20l-4-4'],
   trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13', 'M10 11v6', 'M14 11v6'],
+  // C3c: «Compartir» de Safari (cuadro con flecha hacia arriba), para explicar como anadir el icono en iPhone y iPad.
+  share: ['M12 15V3', 'M8 7l4-4 4 4', 'M8 10H5v11h14V10h-3'],
 } as const satisfies Record<string, readonly string[]>
 
 export type IconName = keyof typeof ICONS

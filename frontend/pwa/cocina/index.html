@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2F4A6D" />
+    <!-- C3c: Costina Cocina, instalable en pantalla de inicio con su nombre, su icono y su color (D6.5). iOS ignora los iconos del
+         manifiesto y los SVG: necesita su PNG de 180. El nombre corto del manifiesto es «Cocina»; aqui va el entero. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Costiña Cocina" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="application-name" content="Costiña Cocina" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="/app/cocina/manifest.webmanifest" />
+    <link rel="icon" href="/app/cocina/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/app/cocina/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/app/cocina/apple-touch-icon.png" sizes="180x180" />
+    <title>Costiña Cocina</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main-cocina.ts"></script>
+  </body>
+</html>

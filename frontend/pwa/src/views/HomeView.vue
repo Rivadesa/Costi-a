@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Session } from '../api'
-import type { Credential } from '../credentials'
 import { unpairWarning } from '../labels'
 import { indexedDbPendingStore } from '../pending'
 import { PERSISTENCE_HINT, type Persistence } from '../storage'
-import BoardView from './BoardView.vue'
 import Icon from './Icon.vue'
-import KitchenView from './KitchenView.vue'
 
-defineProps<{ session: Session; credential: Credential; persistence: Persistence }>()
-defineEmits<{ unpair: []; refresh: [] }>()
+// C3c: el marco comun de las dos aplicaciones ya emparejadas: su pantalla (en el hueco), el aviso de almacenamiento y «Opciones».
+defineProps<{ session: Session; persistence: Persistence }>()
+defineEmits<{ unpair: [] }>()
 const confirming = ref(false)   // desvincular en dos pasos (F9), sin window.confirm (CSP intacta)
 // D6.7: con una orden guardada se AVISA antes de desvincular (no se bloquea): despues solo se comprueba con el mismo nombre.
 const warning = ref('')
@@ -23,12 +21,9 @@ async function ask(): Promise<void> {
 <template>
   <section class="screen" data-testid="home">
     <!-- ADR-012: cada vista pertenece a un modulo y solo se monta si la instalacion lo tiene activo. -->
-    <template v-if="session.modules.includes('dining')">
-      <!-- Sala (y un dispositivo principal) ven el comandero. La proyeccion es la operativa: sin importes. -->
-      <BoardView v-if="session.role !== 'kitchen'" :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
-      <!-- Cocina ve SU pantalla por estacion (D6.4): misma lectura en vivo y misma orden incierta, sin importes. -->
-      <KitchenView v-else :token="credential.token" :session="session" @unauthorized="$emit('refresh')" />
-    </template>
+    <!-- C3c: la pantalla ya no se elige por rol: cada aplicacion pone la suya (Sala, el comandero; Cocina, su pantalla por estacion),
+         y el rol solo se COMPRUEBA antes de llegar aqui (Shell.vue, appFits). La proyeccion es la operativa: sin importes. -->
+    <slot v-if="session.modules.includes('dining')" />
     <p v-else class="notice neutral" data-testid="no-modules">Esta instalación no tiene activo ningún módulo con pantalla para este dispositivo.</p>
 
     <!-- D6.6: si el navegador puede borrar lo guardado (credencial, orden sin confirmar), se dice siempre a la vista. -->
