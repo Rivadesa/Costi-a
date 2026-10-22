@@ -390,7 +390,7 @@ Si el laboratorio tiene además https con la CA instalada en los dispositivos, r
 ## Límites y diferido
 
 - **iPhone y iPad de verdad no están en la CI**, que solo instala Chromium: se simulan con el agente de iOS y `navigator.standalone`. Lo de Safari, el icono por http, la vibración real y los iconos de la pantalla de inicio se comprueban con el guion.
-- **El riesgo principal que queda por medir:** si un icono de iPhone o iPad abierto por la conexión sencilla (http) no se abriera a pantalla completa, la aplicación lo tomaría por Safari y no dejaría emparejar. Es el paso 5 del guion. Si pasa, hace falta un arreglo antes de usar iPhone o iPad por http.
+- **El riesgo principal que queda por medir:** si un icono de iPhone o iPad abierto por la conexión sencilla (http) no se abriera a pantalla completa, la aplicación lo tomaría por Safari y no dejaría emparejar. Es el paso 6 del guion (y el 8 en el iPad). Si pasa, hace falta un arreglo antes de usar iPhone o iPad por http.
 - **Una orden sin confirmar que quedó sin credencial** (después de un 401 en C3b) no se adopta, porque no se sabe de qué aplicación era. Sigue en la base vieja, sin borrar, y ninguna de las dos aplicaciones la enseña.
 - **En Android, un dispositivo es una aplicación.** Para cambiarlo: «Desvincular» y emparejar de nuevo.
 - **«Costina» instalada en Android** (alcance `/app/`) puede quedarse con los enlaces de las aplicaciones nuevas hasta que se quite.
