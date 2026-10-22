@@ -65,7 +65,12 @@ test('a kitchen device shows its station and a denied request says so', async ({
   const kdsId = await pairThroughTheUi(page, request, deviceName('kds'), 'kitchen', 'cold')
   expect(new URL(page.url()).pathname).toBe('/app/cocina/')                         // el QR de cocina abre Costina Cocina
   await expect(page.getByTestId('app-name')).toHaveText('Costiña Cocina')
-  await expect(page.getByTestId('role')).toHaveText('Cocina fría')
+  // C3c, «Cocina, lo mínimo hasta C3d»: la cabecera dice «Costiña Cocina · Cocina fría» (la estacion, en grande junto a la marca) y
+  // el parrafo de ayuda ya no esta.
+  await expect(page.getByTestId('station-title')).toHaveText('Cocina fría')
+  await expect(page.getByTestId('app-header')).toContainText(/Costiña Cocina\s*·\s*Cocina fría/)
+  await expect(page.getByTestId('kitchen')).toBeVisible()
+  await expect(page.getByTestId('kitchen-hint')).toHaveCount(0)
   await checkScreen(page, 'kitchen home', true)
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
   await page.reload()
