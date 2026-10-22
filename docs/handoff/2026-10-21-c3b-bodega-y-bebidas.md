@@ -11,9 +11,15 @@ Leer antes, en este orden:
 
 ## Estado
 
-- **Rama**: `feat/c3b-bodega-y-bebidas`, sobre `develop` `49e03b3` (`0.41.0-c3a`). Versión **`0.42.0-c3b`**, esquema v8 sin cambios.
-- **Permiso**: el promotor aprobó C3b el 21-10 con «adelante con c3b», que incluye subirla y mezclarla. **Para E4e hay que volver a pedirlo.**
-- **Antes de seguir**, comprobar con `git fetch` y `git log origin/develop` que C3b ya está mezclada. La PR, la CI leída y el enlace del instalador quedan en la descripción de la PR. Allí van también las revisiones independientes que se hagan antes de mezclar, con sus hallazgos.
+- **`develop` = `81c4cd0`**: Merge PR #88, C3b mezclada el 21-10. Versión **`0.42.0-c3b`**, esquema v8 sin cambios. Sin PR abiertas el 22-10.
+- **CI leída en la PR #88**:
+  - dominio 86 en Linux y en Windows;
+  - vitest 306 y ClientChecks 263;
+  - las 14 suites HTTP y Playwright 14 (7 de escritorio y 7 de móvil);
+  - Realtime 13, servicio Windows 12/12 y escritorio en verde.
+- **Instalador de `develop` tras el merge**: run `39578879449`, artefacto `costina-windows-installer` (`Costina-Setup-0.42.0-c3b.exe`), 7/7 comprobaciones. Caduca el 26-10; después se regenera relanzando el flujo del instalador sobre `develop`.
+- **Permiso**: el promotor aprobó C3b el 21-10 con «adelante con c3b», que incluía subirla y mezclarla. **Para E4e hay que volver a pedirlo.**
+- **El 22-10 pidió «sube todo al repositorio para tenerlo disponible en cualquier sitio».** No quedaba nada solo en el PC de desarrollo: ni ramas sin subir ni cambios sin confirmar. Lo único local son los ajustes de `.claude/`, que no se suben, y el laboratorio `.lab/`, que se crea solo. Este traspaso se puso al día con el estado final.
 - **Qué trajo C3b:**
   - **Comandero:** «Bodega y bebidas» nueva:
     - buscador sin tildes por nombre, referencia, familia y región;
@@ -107,5 +113,5 @@ Soy Santi, promotor de Costiña / Hospitality OS (repo público Rivadesa/Costi-a
 Antes de nada, `git fetch` y el último docs/handoff, porque otra sesión puede haber avanzado. Lee primero, en este orden: docs/handoff/2026-10-21-c3b-bodega-y-bebidas.md (punto de entrada), docs/native/C3b-bodega-y-bebidas.md, docs/plans/2026-10-15-menus-carta-y-bodega.md (APROBADO; 4.5 para E4e, con sus secciones 5, 8, 9 y 10), docs/adr/ADR-007-service-control-vs-checkout.md (apartado C3b) y dotnet/AGENTS.md (sobre todo D3.5, D6.3, D6.7 y C3b).
 Reglas: un corte por PR desde `develop`; propón el alcance (plan) antes de codificar; me pides confirmación para push+PR y, aparte, para el merge (puedo darla por adelantado para un corte concreto); merge commit "Merge PR #N: ..." hecho en local y push; antes de cada push que toque dotnet/ o frontend/ corre `npm run build` y `COSTINA_E2E=1 sh tools/agent/local-tests.sh` entero, y `sh tools/agent/local-tests.sh desktop` (en un PC con una instalación real de Costina: puerto 5090, nunca como administrador, sin tocar sus servicios, puertos 5088/5089 ni carpetas); una sola batería a la vez; los tests de CI se LEEN en los logs; GitHub sin gh CLI (tools/agent/gh.sh, cuerpos JSON en fichero UTF-8, tools/agent/wait-ci.sh); cada corte trae doc en docs/native/ con capturas, párrafo en dotnet/AGENTS.md, docs/STATUS.md y versión en csproj Server/Desktop y frontend/pwa/package.json (+lock); commits convencionales sin acentos con la línea Co-Authored-By que indique la sesión; nunca cierres #26/#27/#28 ni toques #25; pantallas cuidadas con el tema Fluent de C1 y barra de menús clásica, y el sistema MÁS INTUITIVO; nunca metas credenciales en ninguna web; la importación en mi instalación la hago yo.
 Háblame siempre en castellano.
-Estado esperado: develop con C3b mezclada (0.42.0-c3b, esquema v8); si no lo está, la rama es feat/c3b-bodega-y-bebidas. Siguiente: E4e (alergias adaptadas antes de enviar y cocina por plato), sección 4.5 del plan aprobado. Cambia la regla D3.5 y lleva un ADR nuevo. Propón el plan del corte en pocas líneas y pídeme permiso para subir y mezclar; después sigue el orden del plan (C3c, E4f, E4c, E4g). Tengo pendiente decidir los varios tamaños de copa («Copa 15 cl»), que está en el documento de C3b.
+Estado: develop = 81c4cd0 con C3b mezclada (PR #88, 0.42.0-c3b, esquema v8), sin PR abiertas el 22-10. Siguiente: E4e (alergias adaptadas antes de enviar y cocina por plato), sección 4.5 del plan aprobado. Cambia la regla D3.5 y lleva un ADR nuevo. Propón el plan del corte en pocas líneas y pídeme permiso para subir y mezclar; después sigue el orden del plan (C3c, E4f, E4c, E4g). Tengo pendiente decidir los varios tamaños de copa («Copa 15 cl»), que está en el documento de C3b.
 ```
