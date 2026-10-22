@@ -165,17 +165,19 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
             : "";
     }
 
-    // Pura: la lista de Inicio. Solo los dispositivos activos (los quitados se ven en Dispositivos), comanderos primero; cada uno con su
-    // tipo, la estacion por su nombre (configuracion leida; sin nombre, su codigo) y la conexion con palabra.
+    // Pura: la lista de Inicio. Solo los dispositivos activos (los quitados se ven en Dispositivos), Costina Sala primero; cada uno con su
+    // tipo (C3c: la aplicacion), la estacion por su nombre (configuracion leida; sin nombre, su codigo) y la conexion con palabra. El
+    // orden es el de Dispositivos (DevicesViewModel.RebuildRows).
     public void ApplyDevices(DeviceRowDto[] devices)
     {
         var active = devices.Where(d => d.Active)
-            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => d.Name, StringComparer.Ordinal).ToArray();
+            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => Labels.DeviceRole(d.Role), StringComparer.Ordinal)
+            .ThenBy(d => d.Name, StringComparer.Ordinal).ToArray();
         var legacy = active.Count(d => d.Role == "main");
         DeviceRows = active.Take(DevicesShown).Select(d => new HomeDevice(d.Name, DeviceKind(d), d.StateLabel, d.Online ? "ok" : "off", d.Role == "kitchen")).ToArray();
         DevicesMore = active.Length > DevicesShown ? $"Y {Labels.Plural(active.Length - DevicesShown, "dispositivo más", "dispositivos más")} en Dispositivos." : "";
         DevicesSummary = active.Length == 0 ? "" : $"{active.Count(d => d.Online)} de {active.Length} con conexión";
-        DevicesEmpty = active.Length == 0 ? "Ningún dispositivo conectado todavía: conecta comanderos y pantallas de cocina con los botones de abajo." : "";
+        DevicesEmpty = active.Length == 0 ? $"Ningún dispositivo conectado todavía: conecta {DevicesViewModel.SalaName} y {DevicesViewModel.CocinaName} con los botones de abajo." : "";
         DevicesWarning = legacy == 0 ? ""
             : $"{Labels.Plural(legacy, "dispositivo antiguo con rol principal", "dispositivos antiguos con rol principal")}: conviene quitarlos y conectarlos de nuevo desde Dispositivos.";
     }
@@ -318,8 +320,8 @@ public sealed partial class HomeViewModel(ShellViewModel shell) : ObservableObje
         shell.Service.PickTileCommand.Execute(tile);
     }
 
-    // "Conectar comandero" / "Pantalla de cocina": Dispositivos con ese asistente (Devices.Request). Es un apartado del responsable: en el
-    // nivel Puesto pide antes la contrasena, como el menu.
+    // "Conectar Costina Sala" / "Conectar Costina Cocina" (C3c; antes "Conectar comandero" / "Pantalla de cocina"): Dispositivos con ese
+    // asistente (Devices.Request). Es un apartado del responsable: en el nivel Puesto pide antes la contrasena, como el menu.
     private bool CanConnectDevice() => shell.TabsEnabled;
     [RelayCommand(CanExecute = nameof(CanConnectDevice))]
     private void ConnectDevice(string? role)

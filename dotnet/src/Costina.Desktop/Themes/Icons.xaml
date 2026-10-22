@@ -65,4 +65,33 @@
  <Geometry x:Key="IconSend">M17.5,2.5 L2.5,8.75 l5.833,2.083 l2.083,5.833 Z M8.333,10.833 L17.5,2.5</Geometry>
  <Geometry x:Key="IconChevronDown">M5,7.5 l5,5 l5,-5</Geometry>
  <Geometry x:Key="IconChevronUp">M5,12.5 l5,-5 l5,5</Geometry>
+ <!-- C3c: los iconos de las dos aplicaciones, con el MISMO dibujo que frontend/pwa/src/app-icons.ts (unica fuente; caja de 96 x 96):
+      marco redondeado de su color, velo blanco al 7 % arriba y figuras blancas. Costina Sala: plato con campana sobre el verde de acento;
+      Costina Cocina: gorro de cocinero sobre azul pizarra. Trazos propios, sin imagenes. Si cambia el dibujo alli, cambia aqui. -->
+ <Geometry x:Key="AppIconGloss">M0,22 A22,22 0 0 1 22,0 H74 A22,22 0 0 1 96,22 V36 C66,26 30,26 0,42 Z</Geometry>
+ <DrawingImage x:Key="AppIconSala">
+  <DrawingImage.Drawing>
+   <DrawingGroup>
+    <GeometryDrawing Brush="#0E7A5F"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,96,96" RadiusX="22" RadiusY="22"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#12FFFFFF" Geometry="{StaticResource AppIconGloss}"/>
+    <GeometryDrawing Geometry="M38.5,27.5 c3.2,-3.8 6.3,-3.8 9.5,0 s6.3,3.8 9.5,0"><GeometryDrawing.Pen><Pen Brush="#FFFFFF" Thickness="4.4" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+    <GeometryDrawing Brush="#FFFFFF" Geometry="M20,64 A28,28 0 0 1 76,64 Z"/>
+    <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="14,67.5,68,7" RadiusX="3.5" RadiusY="3.5"/></GeometryDrawing.Geometry></GeometryDrawing>
+   </DrawingGroup>
+  </DrawingImage.Drawing>
+ </DrawingImage>
+ <DrawingImage x:Key="AppIconCocina">
+  <DrawingImage.Drawing>
+   <DrawingGroup>
+    <GeometryDrawing Brush="#2F4A6D"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,96,96" RadiusX="22" RadiusY="22"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#12FFFFFF" Geometry="{StaticResource AppIconGloss}"/>
+    <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><EllipseGeometry Center="33,45" RadiusX="13" RadiusY="13"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><EllipseGeometry Center="63,45" RadiusX="13" RadiusY="13"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><EllipseGeometry Center="48,36" RadiusX="16" RadiusY="16"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="27,42,42,15"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#FFFFFF" Geometry="M29,61 H67 V71 A4,4 0 0 1 63,75 H33 A4,4 0 0 1 29,71 Z"/>
+    <GeometryDrawing Geometry="M38.5,68 c3.2,-3.6 6.3,-3.6 9.5,0 s6.3,3.6 9.5,0"><GeometryDrawing.Pen><Pen Brush="#2F4A6D" Thickness="3.8" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+   </DrawingGroup>
+  </DrawingImage.Drawing>
+ </DrawingImage>
 </ResourceDictionary>

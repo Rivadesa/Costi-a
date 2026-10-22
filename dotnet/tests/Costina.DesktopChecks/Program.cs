@@ -272,6 +272,32 @@ internal static class Program
         Directory.CreateDirectory("artifacts/desktop");
         var qrEncoder=new PngBitmapEncoder();qrEncoder.Frames.Add(BitmapFrame.Create(qr));
         using(var qrFile=File.Create("artifacts/desktop/pairing-qr.png")) qrEncoder.Save(qrFile);
+        // C3c: el QR abre la aplicacion de la INTENCION del asistente (/app/sala/ o /app/cocina/; sin asistente, como arriba, el enrutador
+        // /app/), el codigo corto se ensena en dos grupos para teclearlo y, junto al QR, los dos caminos de instalacion: Android (el QR abre
+        // la aplicacion y se anade el icono) e iPhone y iPad (Safari no empareja: icono y codigo tecleado).
+        admin.Devices.BeginAssistant("service",new("sala-1","Sala 1","Room",0,true));
+        admin.Devices.Issued("pid-sala","K7M2Q9XR4T",DateTimeOffset.UtcNow.AddMinutes(5));
+        if(admin.Devices.AssistantTitle!="Conectar Costiña Sala · Sala 1"||admin.Devices.PairingUrl!="https://costina-server.local:5443/app/sala/#pair=K7M2Q9XR4T"||!admin.Devices.HasQr
+            ||admin.Devices.PairingCodeText!="K7M2Q 9XR4T"||!admin.Devices.ShortCodeShown)
+            throw new Exception("The Costiña Sala assistant's QR opens Costiña Sala and the short code is shown in two groups: "+admin.Devices.AssistantTitle+" / "+admin.Devices.PairingUrl+" / "+admin.Devices.PairingCodeText);
+        if(!admin.Devices.AndroidSteps.StartsWith("Lee el QR con la cámara",StringComparison.Ordinal)||!admin.Devices.AndroidSteps.Contains("«Añadir a pantalla de inicio»: queda el icono de Costiña Sala",StringComparison.Ordinal)
+            ||!admin.Devices.AppleSteps.Contains("Safari no empareja",StringComparison.Ordinal)||!admin.Devices.AppleSteps.Contains("(Compartir › Añadir a pantalla de inicio)",StringComparison.Ordinal)
+            ||!admin.Devices.AppleSteps.Contains("Abre el icono de Costiña Sala → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí",StringComparison.Ordinal))
+            throw new Exception("Next to the QR, the Android path (add the icon) and the iPhone/iPad path (Safari, icon, typed code): "+admin.Devices.AndroidSteps+" / "+admin.Devices.AppleSteps);
+        if(admin.Devices.QrInfo.Contains("No hay que instalar nada",StringComparison.Ordinal)) throw new Exception("The QR text no longer says nothing has to be installed: the icon is added.");
+        admin.Devices.CancelCommand.Execute(null);
+        if(admin.Devices.HasQr||admin.Devices.HasCode||admin.Devices.IntentApp is not null) throw new Exception("Closing the assistant leaves no code, no QR and no app.");
+        admin.Devices.BeginAssistant("kitchen",new("hot","Cocina caliente","Kitchen",2,true));
+        admin.Devices.Issued("pid-cocina","K7M2Q9XR4T",DateTimeOffset.UtcNow.AddMinutes(5));
+        if(admin.Devices.AssistantTitle!="Conectar Costiña Cocina · Cocina caliente"||admin.Devices.PairingUrl!="https://costina-server.local:5443/app/cocina/#pair=K7M2Q9XR4T"
+            ||admin.Devices.PairingCodeText!="K7M2Q 9XR4T"||!admin.Devices.AndroidSteps.Contains("queda el icono de Costiña Cocina",StringComparison.Ordinal)
+            ||!admin.Devices.AppleSteps.Contains("Abre el icono de Costiña Cocina",StringComparison.Ordinal))
+            throw new Exception("The Costiña Cocina assistant's QR opens Costiña Cocina: "+admin.Devices.AssistantTitle+" / "+admin.Devices.PairingUrl);
+        // Un motor anterior a C3c no lee el cuerpo y devuelve el codigo largo: se ensena y viaja tal cual, sin partirlo.
+        admin.Devices.Issued("pid-antiguo","AbC123_def-456",DateTimeOffset.UtcNow.AddMinutes(5));
+        if(admin.Devices.PairingCodeText!="AbC123_def-456"||admin.Devices.ShortCodeShown||admin.Devices.PairingUrl!="https://costina-server.local:5443/app/cocina/#pair=AbC123_def-456")
+            throw new Exception("An older engine's long code is shown and carried as it comes: "+admin.Devices.PairingCodeText+" / "+admin.Devices.PairingUrl);
+        admin.Devices.CancelCommand.Execute(null);
         admin.Devices.PairingCode="no valido!";
         if(admin.Devices.HasQr) throw new Exception("Anything that is not a pairing code never reaches a URL.");
         admin.Devices.PairingCode="";
@@ -288,7 +314,10 @@ internal static class Program
         if(!simple.Devices.SimpleOn||simple.Devices.SimpleOff||simple.Devices.HasNetworkWarning) throw new Exception("The simple connection is on and the network is private.");
         if(simple.Devices.DeviceAddress!="http://192.168.0.81:5089"||simple.Devices.PairingUrl!="http://192.168.0.81:5089/app/#pair=AbC123_def-456"||!simple.Devices.HasQr)
             throw new Exception("With the simple connection the QR carries the LAN IP of the server over http: "+simple.Devices.PairingUrl);
-        if(!simple.Devices.QrInfo.Contains("No hay que instalar nada",StringComparison.Ordinal)||!simple.Devices.SimpleText.Contains("sin cifrar",StringComparison.Ordinal)) throw new Exception("The screen says nothing has to be installed and that traffic is not encrypted.");
+        // C3c: ya no dice «No hay que instalar nada» (se anade el icono de la aplicacion): sin ningun certificado, y sin cifrar.
+        if(simple.Devices.QrInfo.Contains("instalar nada",StringComparison.OrdinalIgnoreCase)||!simple.Devices.QrInfo.Contains("no necesita ningún certificado",StringComparison.Ordinal)
+            ||simple.Devices.SimpleText.Contains("instalar nada",StringComparison.OrdinalIgnoreCase)||!simple.Devices.SimpleText.Contains("sin ningún certificado",StringComparison.Ordinal)
+            ||!simple.Devices.SimpleText.Contains("sin cifrar",StringComparison.Ordinal)) throw new Exception("The screen says no certificate is needed and that traffic is not encrypted: "+simple.Devices.QrInfo+" / "+simple.Devices.SimpleText);
         simple.Devices.DeviceAddress="http://costina-server.local:5089";
         if(simple.Devices.HasQr) throw new Exception("Over http only a private IPv4 is a device address, never a name (HSTS, resolution outside the venue).");
         simple.Devices.DeviceAddress="http://192.168.0.81:5089";
@@ -607,22 +636,36 @@ internal static class Program
         if(devicesView.FindName("ApproveStationBox") is not null||devicesView.FindName("RoomStationBox") is null) throw new Exception("No role list and no 'Principal' option: the assistant carries the intent.");
         if(!center.StartWaiterCommand.CanExecute(null)||!center.StartKitchenCommand.CanExecute(center.KitchenStations[1])||center.CreateRoomStationCommand.CanExecute(null)) throw new Exception("With a room station the waiter assistant starts and 'create Sala' is not offered.");
         // C2b: sin grupos, como en Inicio: cada fila dice su tipo y su estacion por su nombre; los quitados se cuentan en la cabecera y en la casilla.
-        if(center.Rows.Length!=2||center.Rows[0].Kind!="Comandero · Sala 1"||center.Rows[1].Kind!="Pantalla de cocina · Cocina fría"
-            ||center.Summary!="2 dispositivos activos: 1 comandero y 1 pantalla de cocina · 1 quitado"||center.RevokedToggleText!="Mostrar también los quitados (1)"||!center.HasRemoved)
-            throw new Exception("The list names kind and station of the active devices and hides the removed ones: "+center.Summary);
+        // C3c: el tipo de cada dispositivo es su aplicacion (Costiña Sala, Costiña Cocina); la lista se agrupa por ella (Group) y, bajo su
+        // grupo, la tarjeta dice la estacion por su nombre (Place).
+        if(center.Rows.Length!=2||center.Rows[0].Kind!="Costiña Sala · Sala 1"||center.Rows[1].Kind!="Costiña Cocina · Cocina fría"
+            ||center.Rows[0].Group!="Costiña Sala"||center.Rows[0].Place!="Sala 1"||center.Rows[1].Group!="Costiña Cocina"||center.Rows[1].Place!="Cocina fría"
+            ||center.Summary!="2 dispositivos activos: 1 en Costiña Sala y 1 en Costiña Cocina · 1 quitado"||center.RevokedToggleText!="Mostrar también los quitados (1)"||!center.HasRemoved)
+            throw new Exception("The list names app and station of the active devices and hides the removed ones: "+center.Summary+" / "+string.Join(" | ",center.Rows.Select(r=>r.Group+": "+r.Place)));
+        // C3c: Costiña Sala y Costiña Cocina, cada una con su desplegable de estaciones y un boton que la nombra.
+        if(center.WaiterConnectText!="Conectar Costiña Sala · Sala 1"||center.KitchenConnectText!="Conectar Costiña Cocina · Pase"||center.SelectedKitchenStation?.Id!="pase"
+            ||center.KitchenPurpose!="Una tablet fija en cada estación: Pase, Cocina fría y Cocina caliente.")
+            throw new Exception("Each app names its connect button after the chosen station: "+center.WaiterConnectText+" / "+center.KitchenConnectText+" / "+center.KitchenPurpose);
+        center.SelectedKitchenStation=center.KitchenStations[2];
+        if(center.KitchenConnectText!="Conectar Costiña Cocina · Cocina caliente") throw new Exception("Choosing another kitchen station renames the button: "+center.KitchenConnectText);
+        center.Render(stationsForDevices,[pendingOther],activeDevices);
+        if(center.SelectedKitchenStation?.Id!="hot") throw new Exception("A re-read keeps the chosen kitchen station.");
+        center.SelectedKitchenStation=center.KitchenStations[0];
         center.ShowRevoked=true;
-        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)||center.Rows[2].Kind!="Pantalla de cocina · Cocina caliente"||!center.Rows[2].Removed) throw new Exception("Removed devices appear on demand, stated in text.");
+        if(center.Rows.Length!=3||!center.Rows[2].Device.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)||center.Rows[2].Kind!="Costiña Cocina · Cocina caliente"||!center.Rows[2].Removed) throw new Exception("Removed devices appear on demand, stated in text.");
         if(!center.Rows[0].Text.Contains("· Conectado · aprobado por jefa el ")||!center.Rows[0].Approved.StartsWith("Aprobado por jefa el ",StringComparison.Ordinal)) throw new Exception("Device rows state presence in words and the approver without 'user:': "+center.Rows[0].Text);
         center.ShowRevoked=false;
         center.BeginAssistant("kitchen",center.KitchenStations[1]);
-        if(!center.HasAssistant||center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.StartWaiterCommand.CanExecute(null)) throw new Exception("One assistant at a time, with its intent in the title.");
+        if(!center.HasAssistant||center.AssistantTitle!="Conectar Costiña Cocina · Cocina fría"||center.StartWaiterCommand.CanExecute(null)||center.StartKitchenCommand.CanExecute(null))
+            throw new Exception("One assistant at a time, with its app and station in the title: "+center.AssistantTitle);
         center.Issued("pid-propia","AbC123_def-456",DateTimeOffset.UtcNow.AddMinutes(5));
         center.DeviceAddress="https://costina-server.local:5443";
-        if(!center.HasQr||center.PairingUrl!="https://costina-server.local:5443/app/#pair=AbC123_def-456") throw new Exception("The assistant shows the QR of the one-use code.");
+        if(!center.HasQr||center.PairingUrl!="https://costina-server.local:5443/app/cocina/#pair=AbC123_def-456") throw new Exception("The assistant shows the QR of the one-use code, opening its app: "+center.PairingUrl);
         center.Render(stationsForDevices,[pendingOther],activeDevices);
         if(center.HasRecognised||center.ApproveCommand.CanExecute(null)||!center.DenyCommand.CanExecute(null)) throw new Exception("A request that is not the assistant's own is never recognised nor approvable (only denied).");
         center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-fria",DateTimeOffset.Now)],activeDevices);
-        if(!center.HasRecognised||!center.ApproveCommand.CanExecute(null)||!center.RecognisedText.Contains("pantalla de cocina de Cocina fría")) throw new Exception("The assistant recognises its own request by pairingId and offers to approve it.");
+        if(!center.HasRecognised||!center.ApproveCommand.CanExecute(null)||!center.RecognisedText.StartsWith("«pantalla-fria» pide conectarse como Costiña Cocina · Cocina fría.",StringComparison.Ordinal))
+            throw new Exception("The assistant recognises its own request by pairingId and offers to approve it: "+center.RecognisedText);
         if(!center.HasDuplicateWarning) throw new Exception("A request named like an active device is flagged (F12).");
         center.Render(stationsForDevices,[pendingOther,new("pid-propia","pantalla-caliente",DateTimeOffset.Now)],activeDevices);
         if(center.HasDuplicateWarning||center.NewCodeCommand.CanExecute(null)) throw new Exception("A fresh name raises no warning; with a recognised request no new code is offered.");
@@ -1368,8 +1411,8 @@ internal static class Program
         service.Board=[terrace with {Service=terrace.Service with {Restrictions=[lactose]}}];
         if(home.Legend.Any(l=>l.Tone=="alert")||service.Tiles.Single(t=>t.Name=="Terraza 1") is not {Alert:"Restricción",AlertAlarming:false}) throw new Exception("A mild restriction alone paints no red border and the legend promises none: "+string.Join(",",home.Legend.Select(l=>l.Label)));
         service.Board=readBoard;
-        if(home.DevicesSummary!="4 de 5 con conexión"||!home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}").SequenceEqual(["tablet-sala-1: Comandero · Sala 1 · Conectado","tablet-terraza: Comandero · Terraza · Conectado",
-            "pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado","pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión","pantalla-pase: Pantalla de cocina · Pase · Conectado"])||!home.DeviceRows.Single(r=>r.Name=="pantalla-fria").Screen)
+        if(home.DevicesSummary!="4 de 5 con conexión"||!home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}").SequenceEqual(["tablet-sala-1: Costiña Sala · Sala 1 · Conectado","tablet-terraza: Costiña Sala · Terraza · Conectado",
+            "pantalla-caliente: Costiña Cocina · Cocina caliente · Conectado","pantalla-fria: Costiña Cocina · Cocina fría · Sin conexión","pantalla-pase: Costiña Cocina · Pase · Conectado"])||!home.DeviceRows.Single(r=>r.Name=="pantalla-fria").Screen)
             throw new Exception("The device list names kind and station, with presence in words: "+string.Join(" | ",home.DeviceRows.Select(r=>$"{r.Name}: {r.Kind} · {r.State}")));
         if(home.SimpleState!="Conexión sencilla activa · http://192.168.0.81:5089"||home.SimpleDot!="warn"||!home.SimpleNotice.Contains("sin cifrar",StringComparison.Ordinal)||home.NetworkNotice.Length!=0||!home.HasCertificateWarning)
             throw new Exception("Inicio states the simple connection and warns about it and the certificate: "+home.SimpleState);
@@ -1382,18 +1425,23 @@ internal static class Program
             if(!HomeNamed(name).IsVisible||!HomeNamed(name).IsEnabled) throw new Exception("The responsible sees "+name+" enabled from the start (GoToPage answered by the view, commands by their CanExecute).");
         foreach(var name in new[]{"KpiRow","FloorCard","HomeDevicesCard","CertificateBar","SimpleNoticeBar","BackupNote","ServerNote"})
             if(((FrameworkElement)homeView.FindName(name)).Visibility!=Visibility.Visible) throw new Exception(name+" is shown to the responsible.");
-        // "Conectar comandero": una sola estacion de sala, asi que el asistente de Dispositivos arranca y emite su codigo (la orden de siempre).
+        // "Conectar Costiña Sala": una sola estacion de sala, asi que el asistente de Dispositivos arranca y emite su codigo (la orden de siempre).
+        // C3c: el asistente pide el codigo CORTO ({typed:true}), lo ensena en dos grupos y su QR abre Costiña Sala por la conexion sencilla.
+        if(!Texts(HomeNamed("HomeConnectWaiterButton")).Contains("Conectar Costiña Sala")||!Texts(HomeNamed("HomeConnectKitchenButton")).Contains("Conectar Costiña Cocina"))
+            throw new Exception("Inicio offers one connect button per app, each with its full name.");
         var pairingsBefore=server.Count("POST","auth/pairings");
-        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (Inicio)");
-        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the waiter assistant opens in Dispositivos");
-        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.AssistantTitle!="Conectar comandero · Sala 1"||center.PairingCode!="Home12_abc-def"||center.ChoosingStation
-            ||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("'Conectar comandero' opens its assistant with a one-use code: "+center.AssistantTitle);
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar Costiña Sala (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the Costiña Sala assistant opens in Dispositivos");
+        if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.AssistantTitle!="Conectar Costiña Sala · Sala 1"||center.PairingCode!="K7M2Q9XR4T"||center.PairingCodeText!="K7M2Q 9XR4T"||center.ChoosingStation
+            ||server.Count("POST","auth/pairings")!=pairingsBefore+1||server.Requests.Last(r=>r.Method=="POST"&&r.Path=="auth/pairings").Body!="{\"typed\":true}"
+            ||center.PairingUrl!="http://192.168.0.81:5089/app/sala/#pair=K7M2Q9XR4T")
+            throw new Exception("'Conectar Costiña Sala' opens its assistant with a one-use short code and a QR of Costiña Sala: "+center.AssistantTitle+" / "+center.PairingUrl+" / "+server.Requests.Last(r=>r.Method=="POST").Body);
         center.CancelCommand.Execute(null); window.Shell.Status="";
         // Revision C2: el asistente pedido desde Inicio se consume al leer: si la lectura de Dispositivos falla, no se abre solo mas tarde (otra
         // visita o una actualizacion) ni emite un codigo que nadie ha pedido en ese momento; se vuelve a pulsar.
         ShowHome(); var postsBefore=server.Count("POST",""); var deviceReads=server.Count("GET","auth/devices");
         server.Failing["auth/devices"]=true;
-        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar comandero (lectura fallida)");
+        Press(HomeNamed("HomeConnectWaiterButton"),"Conectar Costiña Sala (lectura fallida)");
         Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"the devices read fails");
         server.Failing.Clear();
         if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore||window.Shell.Status.Length==0)
@@ -1404,19 +1452,25 @@ internal static class Program
         Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>deviceReads,"a later visit reads Dispositivos");
         if(center.HasAssistant||center.ChoosingStation||server.Count("POST","")!=postsBefore) throw new Exception("A request whose read failed never opens an assistant later nor issues a code.");
         window.Shell.Status="";
-        // "Pantalla de cocina": varias estaciones posibles, asi que el asistente se abre en su primer paso (elegir la estacion) sin emitir nada.
+        // "Conectar Costiña Cocina": varias estaciones posibles, asi que el asistente se abre en su primer paso (elegir la estacion) sin emitir
+        // nada. C3c: la estacion se elige en el desplegable de Costiña Cocina y su boton, que la nombra, arranca el asistente.
         ShowHome(); pairingsBefore=server.Count("POST","auth/pairings");
-        Press(HomeNamed("HomeConnectKitchenButton"),"Pantalla de cocina (Inicio)");
-        Wait(()=>!window.Shell.Busy&&center.ChoosingStation,"the kitchen screen assistant opens at choosing its station");
+        Press(HomeNamed("HomeConnectKitchenButton"),"Conectar Costiña Cocina (Inicio)");
+        Wait(()=>!window.Shell.Busy&&center.ChoosingStation,"the Costiña Cocina assistant opens at choosing its station");
         var devicesPanel=(FrameworkElement)window.FindName("DevicesView"); window.UpdateLayout();
         if(tabs.SelectedItem!=(TabItem)window.FindName("DevicesTab")||center.HasAssistant||center.ChoosingIntent!="kitchen"||server.Count("POST","auth/pairings")!=pairingsBefore
             ||((FrameworkElement)devicesPanel.FindName("ChooseStationBar")).Visibility!=Visibility.Visible||((FrameworkElement)devicesPanel.FindName("WaiterSection")).Visibility!=Visibility.Collapsed
-            ||((FrameworkElement)devicesPanel.FindName("KitchenSection")).Visibility!=Visibility.Visible||center.ChoosingText!="Pantalla de cocina: pulsa la estación donde va a estar la pantalla.")
+            ||((FrameworkElement)devicesPanel.FindName("KitchenSection")).Visibility!=Visibility.Visible
+            ||center.ChoosingText!="Conectar Costiña Cocina: elige la estación donde va a estar la tablet y pulsa «Conectar Costiña Cocina».")
             throw new Exception("With several kitchen stations the assistant opens at choosing one, with only that section shown: "+center.ChoosingText);
         RefuseRaw(window,"devices-choose"); Save(Shot(window),"devices-choose.png");
-        Press(Descendants<Button>((FrameworkElement)devicesPanel.FindName("KitchenButtons")).Single(b=>Texts(b).Contains("Cocina fría")),"Cocina fría");
+        ((ComboBox)devicesPanel.FindName("KitchenStationBox")).SelectedItem=center.KitchenStations.Single(s=>s.Name=="Cocina fría"); window.UpdateLayout();
+        var startKitchen=(Button)devicesPanel.FindName("StartKitchenButton");
+        if(center.SelectedKitchenStation?.Id!="cold"||!Texts(startKitchen).Contains("Conectar Costiña Cocina · Cocina fría")) throw new Exception("The kitchen station box drives the button's name: "+center.KitchenConnectText);
+        Press(startKitchen,"Conectar Costiña Cocina · Cocina fría");
         Wait(()=>!window.Shell.Busy&&center.HasAssistant,"choosing the station starts the assistant");
-        if(center.AssistantTitle!="Conectar pantalla de cocina · Cocina fría"||center.ChoosingStation||server.Count("POST","auth/pairings")!=pairingsBefore+1) throw new Exception("Choosing the station starts the usual assistant: "+center.AssistantTitle);
+        if(center.AssistantTitle!="Conectar Costiña Cocina · Cocina fría"||center.IntentStationId!="cold"||center.ChoosingStation||server.Count("POST","auth/pairings")!=pairingsBefore+1
+            ||center.PairingUrl!="http://192.168.0.81:5089/app/cocina/#pair=K7M2Q9XR4T") throw new Exception("Choosing the station starts the usual assistant, its QR opening Costiña Cocina: "+center.AssistantTitle+" / "+center.PairingUrl);
         center.CancelCommand.Execute(null); window.Shell.Status="";
         // Una mesa OCUPADA del mini plano: el Comedor con esa mesa leida por el camino de siempre (F01); una LIBRE: el formulario de abrir.
         ShowHome(); var readsBeforeTile=server.Requests.Length;
@@ -2739,7 +2793,11 @@ internal static class Program
             Wait(()=>!window.Shell.Busy&&server.Count("GET","auth/devices")>before,what); window.UpdateLayout();
         }
         string DeviceRowsText()=>string.Join(" | ",center.Rows.Select(r=>$"{r.Name}: {r.Kind} · {r.State} ({r.PresenceDot})"));
-        ListBoxItem DeviceCard(string id){ var row=center.Rows.Single(r=>r.Device.Id==id); deviceList.ScrollIntoView(row); window.UpdateLayout(); return (ListBoxItem)deviceList.ItemContainerGenerator.ContainerFromItem(row); }   // la lista virtualiza
+        // La lista virtualiza (sin grupos) y, desde C3c, agrupa por aplicacion: la tarjeta se busca entre los contenedores de la lista.
+        ListBoxItem DeviceCard(string id){ var row=center.Rows.Single(r=>r.Device.Id==id); deviceList.ScrollIntoView(row); window.UpdateLayout(); return Descendants<ListBoxItem>(deviceList).Single(i=>ReferenceEquals(i.DataContext,row)); }
+        // C3c: los grupos de la lista, en su orden, con cuantos dispositivos lleva cada uno; y sus cabeceras pintadas.
+        string DeviceGroupsText()=>string.Join(" | ",deviceList.Items.Groups?.OfType<System.Windows.Data.CollectionViewGroup>().Select(g=>$"{g.Name} ({g.ItemCount})")??[]);
+        string[] GroupHeaders()=>[..Descendants<TextBlock>(deviceList).Where(t=>t.Name=="GroupName"&&t.IsVisible).OrderBy(t=>t.TranslatePoint(new Point(0,0),deviceList).Y).Select(t=>t.Text)];
         void PickDevice(string id){ deviceList.SelectedItem=center.Rows.Single(r=>r.Device.Id==id); window.UpdateLayout(); }   // como pulsar la tarjeta
         void DevicesFit(string what)
         {
@@ -2754,43 +2812,97 @@ internal static class Program
             if(NestedScrolls(devicesPanel) is {Length:>0} nested) throw new Exception(what+" nests scroll viewers: "+string.Join(", ",nested));
             RefuseRaw(window,what);
         }
-        // Sin dispositivos (una instalacion recien hecha): la lista explica que falta y ofrece conectar un comandero en la estacion de sala
+        // Sin dispositivos (una instalacion recien hecha): la lista explica que falta y ofrece conectar Costiña Sala en la estacion de sala
         // elegida a la izquierda (lo dice el boton); ni casilla de quitados ni boton de quitar.
         server.Organization=wineOrganization; server.Devices=[]; server.Network=SimpleOn; window.Shell.Status="";
         OpenDevices("Dispositivos reads an installation without devices");
         if(center.Summary!="Aún no hay dispositivos: conecta el primero con el asistente de «Conectar un dispositivo»."||!center.ShowListEmpty||center.ListEmptyHeading!="Aún no hay dispositivos"
             ||!DeviceShows("DevicesEmpty")||DeviceShows("DeviceList")||DeviceShows("RemoveBar")||DeviceShows("ShowRevokedBox")||DeviceShows("LegacyBar")||center.OnlineText.Length!=0
-            ||!DeviceReady("EmptyConnectButton")||center.EmptyConnectText!="Conectar comandero · Sala 1"||!Painted(devicesPanel).Contains("Aún no hay dispositivos")
-            ||!Painted(devicesPanel).Contains(center.Summary))
-            throw new Exception("Without devices the list says what is missing and offers to connect a waiter in the chosen room station: "+center.Summary+" / "+center.ListEmptyHeading);
+            ||!DeviceReady("EmptyConnectButton")||center.EmptyConnectText!="Conectar Costiña Sala · Sala 1"||!Painted(devicesPanel).Contains("Aún no hay dispositivos")
+            ||!Painted(devicesPanel).Contains(center.Summary)||!center.ListEmptyText.Contains("con Costiña Sala",StringComparison.Ordinal))
+            throw new Exception("Without devices the list says what is missing and offers to connect Costiña Sala in the chosen room station: "+center.Summary+" / "+center.ListEmptyHeading);
+        // C3c: un bloque por aplicacion, con su nombre, para que sirve y su boton, que nombra la estacion de su desplegable.
+        if(center.SelectedKitchenStation is not {} kitchenChoice||center.KitchenConnectText!="Conectar Costiña Cocina · "+kitchenChoice.Name) throw new Exception("The Costiña Cocina button names its chosen station: "+center.KitchenConnectText);
+        foreach(var text in new[]{"Costiña Sala","El móvil de cada camarero. Elige su estación de sala.","Conectar Costiña Sala · Sala 1","Costiña Cocina",
+            "Una tablet fija en cada estación: Pase, Cocina fría y Cocina caliente.",center.KitchenConnectText})
+            if(!Painted(InDevices<FrameworkElement>("ConnectPane")).Contains(text)) throw new Exception("Each app has its block, with its name, its purpose and its connect button: missing '"+text+"'.");
+        if(!DeviceReady("StartWaiterButton")||!DeviceReady("StartKitchenButton")||!InDevices<ComboBox>("KitchenStationBox").IsVisible) throw new Exception("Both apps can be connected from their blocks.");
         DevicesFit("devices-empty"); Save(Shot(window),"devices-empty.png");
-        // El boton del vacio es el de siempre: el asistente del comandero en la estacion elegida, con su codigo de un uso (una sola vez).
+        // El boton del vacio es el de siempre: el asistente de Costiña Sala en la estacion elegida, con su codigo de un uso (una sola vez).
+        // C3c: el codigo es el corto, en dos grupos, y el QR (conexion sencilla) abre Costiña Sala; debajo, los dos caminos de instalacion.
         var pairingsBeforeEmpty=server.Count("POST","auth/pairings");
-        Press(InDevices<Button>("EmptyConnectButton"),"Conectar comandero (lista vacía)");
-        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the empty list opens the waiter assistant");
-        if(center.AssistantTitle!="Conectar comandero · Sala 1"||center.IntentStationId!="sala-1"||server.Count("POST","auth/pairings")!=pairingsBeforeEmpty+1||DeviceReady("EmptyConnectButton"))
-            throw new Exception("The empty list's button opens the usual waiter assistant for the chosen station, once: "+center.AssistantTitle);
-        DevicesFit("devices-assistant"); Save(Shot(window),"devices-assistant.png");
+        Press(InDevices<Button>("EmptyConnectButton"),"Conectar Costiña Sala (lista vacía)");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the empty list opens the Costiña Sala assistant");
+        if(center.AssistantTitle!="Conectar Costiña Sala · Sala 1"||center.IntentStationId!="sala-1"||server.Count("POST","auth/pairings")!=pairingsBeforeEmpty+1||DeviceReady("EmptyConnectButton"))
+            throw new Exception("The empty list's button opens the usual Costiña Sala assistant for the chosen station, once: "+center.AssistantTitle);
+        void AssistantPainted(string app,string url)
+        {
+            window.UpdateLayout(); window.Dispatcher.Invoke(()=>{},DispatcherPriority.ContextIdle); window.UpdateLayout();
+            // Al abrirse, el asistente se desplaza a la vista entero (Ui.RevealWhenShown): el QR y los dos caminos, sin desplazar a mano.
+            var connectScroll=Descendants<ScrollViewer>(InDevices<FrameworkElement>("ConnectPane")).First(s=>s.TemplatedParent is null);
+            var assistantPanel=InDevices<FrameworkElement>("AssistantPanel");
+            var assistantTop=assistantPanel.TranslatePoint(new Point(0,0),connectScroll).Y;
+            if(assistantTop<-0.5||assistantTop+assistantPanel.ActualHeight>connectScroll.ViewportHeight+0.5)
+                throw new Exception(app+": the open assistant is brought into view whole: top "+assistantTop+", height "+assistantPanel.ActualHeight+", viewport "+connectScroll.ViewportHeight);
+            if(server.Requests.Last(r=>r.Method=="POST"&&r.Path=="auth/pairings").Body!="{\"typed\":true}") throw new Exception("The assistant always asks for the short code.");
+            if(InDevices<TextBox>("PairingCodeBox") is not {IsVisible:true,Text:"K7M2Q 9XR4T"}||InDevices<TextBox>("PairingUrlBox") is not {IsVisible:true} urlBox||urlBox.Text!=url||center.PairingUrl!=url
+                ||!InDevices<Image>("PairingQrImage").IsVisible||!ReferenceEquals(InDevices<Image>("AssistantIcon").Source,window.FindResource(app=="Costiña Sala"?"AppIconSala":"AppIconCocina")))
+                throw new Exception(app+": the assistant paints its app's icon, the QR, the short code in two groups and the link: "+InDevices<TextBox>("PairingCodeBox").Text+" / "+center.PairingUrl);
+            foreach(var text in new[]{center.AssistantTitle,"Código para teclear","Enlace del QR","Android","iPhone y iPad",center.AndroidSteps,center.AppleSteps,center.QrInfo})
+                if(!Painted(InDevices<FrameworkElement>("AssistantPanel")).Contains(text)) throw new Exception(app+": the assistant paints '"+text+"'.");
+            if(!center.AppleSteps.Contains("Abre el icono de "+app,StringComparison.Ordinal)||!center.AndroidSteps.Contains("queda el icono de "+app,StringComparison.Ordinal)
+                ||Painted(devicesPanel).Any(t=>t.Contains("instalar nada",StringComparison.OrdinalIgnoreCase))) throw new Exception(app+": both install paths name the app's icon, and nothing says there is nothing to install.");
+            if(DeviceShows("WaiterSection")||DeviceShows("KitchenSection")) throw new Exception("While an assistant is open, the app blocks step aside.");
+        }
+        AssistantPainted("Costiña Sala","http://192.168.0.81:5089/app/sala/#pair=K7M2Q9XR4T");
+        DevicesFit("devices-sala"); Save(Shot(window),"devices-sala.png");
+        // Un motor anterior a C3c no lee el cuerpo y da el codigo largo: «Generar otro código» lo ensena y lo lleva en el QR tal cual.
+        server.LongCodesOnly=true;
+        var pairingsBeforeOld=server.Count("POST","auth/pairings");
+        Press(InDevices<Button>("NewCodeButton"),"Generar otro código (motor anterior)");
+        Wait(()=>!window.Shell.Busy&&server.Count("POST","auth/pairings")>pairingsBeforeOld,"another code is issued by an older engine"); window.UpdateLayout();
+        server.LongCodesOnly=false;
+        if(center.PairingCode!="Home12_abc-def"||center.ShortCodeShown||InDevices<TextBox>("PairingCodeBox").Text!="Home12_abc-def"||InDevices<TextBox>("PairingCodeBox").FontSize>=24
+            ||center.PairingUrl!="http://192.168.0.81:5089/app/sala/#pair=Home12_abc-def"||server.Requests.Last(r=>r.Method=="POST"&&r.Path=="auth/pairings").Body!="{\"typed\":true}")
+            throw new Exception("An older engine's long code is shown as it comes, smaller, and carried in the QR: "+center.PairingCode+" / "+center.PairingUrl);
+        DevicesFit("devices-sala-long-code");
         center.CancelCommand.Execute(null); window.Shell.Status="";
-        // Los dispositivos de Inicio: el resumen por tipo con el quitado, la conexion "4 de 5" como en Inicio y una tarjeta por dispositivo
-        // activo en el orden de Inicio, con su tipo y su estacion por su nombre, el punto y la palabra, y quien lo aprobo y cuando.
+        // Los dispositivos de Inicio: el resumen por aplicacion con el quitado, la conexion "4 de 5" como en Inicio y una tarjeta por dispositivo
+        // activo en el orden de Inicio, con su tipo y su estacion por su nombre, el punto y la palabra, y quien lo aprobo y cuando. C3c: la
+        // lista se agrupa por aplicacion (Costiña Sala, Costiña Cocina), con el icono de cada una, y la tarjeta dice la estacion.
         server.Devices=panelDevices;
         OpenDevices("Dispositivos reads the C2 devices");
         home.ApplyDevices(panelDevices);   // la lista de Inicio con los mismos dispositivos (pura), para comparar orden, tipos y estaciones
-        if(center.Summary!="5 dispositivos activos: 2 comanderos y 3 pantallas de cocina · 1 quitado"||center.OnlineText!="4 de 5 con conexión"||center.SelectedRow is not null
-            ||DeviceRowsText()!="tablet-sala-1: Comandero · Sala 1 · Conectado (ok) | tablet-terraza: Comandero · Terraza · Conectado (ok) | pantalla-caliente: Pantalla de cocina · Cocina caliente · Conectado (ok)"
-                +" | pantalla-fria: Pantalla de cocina · Cocina fría · Sin conexión (off) | pantalla-pase: Pantalla de cocina · Pase · Conectado (ok)"
+        if(center.Summary!="5 dispositivos activos: 2 en Costiña Sala y 3 en Costiña Cocina · 1 quitado"||center.OnlineText!="4 de 5 con conexión"||center.SelectedRow is not null
+            ||DeviceRowsText()!="tablet-sala-1: Costiña Sala · Sala 1 · Conectado (ok) | tablet-terraza: Costiña Sala · Terraza · Conectado (ok) | pantalla-caliente: Costiña Cocina · Cocina caliente · Conectado (ok)"
+                +" | pantalla-fria: Costiña Cocina · Cocina fría · Sin conexión (off) | pantalla-pase: Costiña Cocina · Pase · Conectado (ok)"
             ||!center.Rows.Select(r=>r.Name).SequenceEqual(home.DeviceRows.Select(r=>r.Name))||!center.Rows.Select(r=>r.Kind).SequenceEqual(home.DeviceRows.Select(r=>r.Kind)))
             throw new Exception("Dispositivos lists the devices of Inicio, in its order, with kind, station and presence in words: "+center.Summary+" / "+DeviceRowsText());
+        if(DeviceGroupsText()!="Costiña Sala (2) | Costiña Cocina (3)"||!GroupHeaders().SequenceEqual(["Costiña Sala","Costiña Cocina"])
+            ||Descendants<Image>(deviceList).Where(i=>i.IsVisible).OrderBy(i=>i.TranslatePoint(new Point(0,0),deviceList).Y).Select(i=>i.Source).ToArray() is not [var salaIcon,var cocinaIcon]
+            ||!ReferenceEquals(salaIcon,window.FindResource("AppIconSala"))||!ReferenceEquals(cocinaIcon,window.FindResource("AppIconCocina")))
+            throw new Exception("The list is grouped by app, Costiña Sala first, each header with its app's icon: "+DeviceGroupsText()+" / "+string.Join(", ",GroupHeaders()));
         var approvedSalaOne="Aprobado por jefa el "+panelDevices[0].CreatedAt.ToLocalTime().ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture);
-        if(!new HashSet<string>(Painted(DeviceCard("h1"))).SetEquals(["tablet-sala-1","Comandero · Sala 1",approvedSalaOne,"Conectado"]))
-            throw new Exception("A device card paints its name, kind and station, approver and date, and its connection in words: "+string.Join(" | ",Painted(DeviceCard("h1"))));
-        if(!new HashSet<string>(Painted(DeviceCard("h4"))).SetEquals(["pantalla-fria","Pantalla de cocina · Cocina fría","Aprobado por jefa el "+panelDevices[3].CreatedAt.ToLocalTime().ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture),"Sin conexión"])
+        if(!new HashSet<string>(Painted(DeviceCard("h1"))).SetEquals(["tablet-sala-1","Sala 1",approvedSalaOne,"Conectado"]))
+            throw new Exception("A device card paints its name, its station under its app, approver and date, and its connection in words: "+string.Join(" | ",Painted(DeviceCard("h1"))));
+        if(!new HashSet<string>(Painted(DeviceCard("h4"))).SetEquals(["pantalla-fria","Cocina fría","Aprobado por jefa el "+panelDevices[3].CreatedAt.ToLocalTime().ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture),"Sin conexión"])
             ||Descendants<System.Windows.Shapes.Ellipse>(DeviceCard("h4")).Single().Tag as string!="off"||Descendants<System.Windows.Shapes.Ellipse>(DeviceCard("h1")).Single().Tag as string!="ok")
             throw new Exception("The connection is a dot AND a word: "+string.Join(" | ",Painted(DeviceCard("h4"))));
         if(!DeviceShows("ShowRevokedBox")||InDevices<CheckBox>("ShowRevokedBox").Content as string!="Mostrar también los quitados (1)"||DeviceShows("LegacyBar")||DeviceShows("DevicesEmpty")
             ||!Painted(devicesPanel).Contains(center.Summary)||!Painted(devicesPanel).Contains("4 de 5 con conexión"))
             throw new Exception("The header says the summary, the list its connection count and the removed one is offered on demand.");
+        // C3c: Costiña Cocina en la Cocina caliente, con la lista agrupada a la derecha (la captura devices-cocina.png). La estacion se elige
+        // en su desplegable; el boton la nombra; el QR abre Costiña Cocina. Cerrar el asistente no cambia la lista ni la eleccion.
+        InDevices<ComboBox>("KitchenStationBox").SelectedItem=center.KitchenStations.Single(s=>s.Id=="hot"); window.UpdateLayout();
+        var pairingsBeforeKitchen=server.Count("POST","auth/pairings");
+        Press(InDevices<Button>("StartKitchenButton"),"Conectar Costiña Cocina · Cocina caliente");
+        Wait(()=>!window.Shell.Busy&&center.HasAssistant,"the Costiña Cocina assistant opens");
+        if(center.AssistantTitle!="Conectar Costiña Cocina · Cocina caliente"||center.IntentRole!="kitchen"||center.IntentStationId!="hot"||server.Count("POST","auth/pairings")!=pairingsBeforeKitchen+1)
+            throw new Exception("The Costiña Cocina button opens its assistant for the chosen station, once: "+center.AssistantTitle);
+        AssistantPainted("Costiña Cocina","http://192.168.0.81:5089/app/cocina/#pair=K7M2Q9XR4T");
+        DevicesFit("devices-cocina"); Save(Shot(window),"devices-cocina.png");
+        center.CancelCommand.Execute(null); window.Shell.Status=""; window.UpdateLayout();
+        if(center.SelectedRow is not null||center.SelectedKitchenStation?.Id!="hot"||DeviceGroupsText()!="Costiña Sala (2) | Costiña Cocina (3)") throw new Exception("Closing the assistant leaves the list and the choice as they were.");
         // Sin nada elegido, el boton de quitar dice que elegir; elegir una tarjeta no lee ni envia nada y el boton nombra lo que quitaria.
         if(!DeviceShows("RemoveButton")||InDevices<Button>("RemoveButton").IsEnabled||center.RemoveText!="Elige un dispositivo para quitarlo") throw new Exception("With nothing chosen the remove button says what to pick: "+center.RemoveText);
         DevicesFit("devices-unselected");
@@ -2812,7 +2924,7 @@ internal static class Program
         Press(InDevices<Button>("ConfirmRemoveButton"),"Sí, quitar");
         Wait(()=>!window.Shell.Busy&&server.Count("POST","auth/devices/")>revokesBefore,"the removal is sent"); window.UpdateLayout();
         if(server.Requests.Last(r=>r.Method=="POST") is not {Path:"auth/devices/h2/revoke",Body:"{}"}||server.Count("POST","auth/devices/")!=revokesBefore+1||center.Rows.Any(r=>r.Device.Id=="h2")
-            ||center.SelectedRow is not null||center.Summary!="4 dispositivos activos: 1 comandero y 3 pantallas de cocina · 2 quitados"||center.RevokedToggleText!="Mostrar también los quitados (2)")
+            ||center.SelectedRow is not null||center.Summary!="4 dispositivos activos: 1 en Costiña Sala y 3 en Costiña Cocina · 2 quitados"||center.RevokedToggleText!="Mostrar también los quitados (2)")
             throw new Exception("'Sí, quitar' sends the usual revoke of the chosen device and the re-read hides it: "+server.Requests.Last(r=>r.Method=="POST").Path+" / "+center.Summary);
         // Los quitados, a peticion: atenuados, con "Quitado el ..." en palabras y el punto gris; uno elegido no se puede quitar otra vez.
         InDevices<CheckBox>("ShowRevokedBox").IsChecked=true; window.UpdateLayout();
@@ -2830,8 +2942,13 @@ internal static class Program
             ||center.Summary!="Ningún dispositivo activo · 6 quitados") throw new Exception("With every device removed the list explains how to see them: "+center.ListEmptyText+" / "+center.Summary);
         // Un dispositivo antiguo con rol principal: su tipo en palabras ("Principal (antiguo)", nunca "Responsable") y un aviso para cambiarlo.
         center.Render(wineOrganization.Stations,[],[..panelDevices,new("h7","pc-viejo","main","","user:jefa",DateTimeOffset.Now.AddDays(-30),null)]); window.UpdateLayout();
-        if(center.Rows.Last().Kind!="Principal (antiguo)"||!DeviceShows("LegacyBar")||!center.LegacyWarning.StartsWith("1 dispositivo antiguo con rol principal: conviene quitarlo",StringComparison.Ordinal)
-            ||center.Summary!="6 dispositivos activos: 2 comanderos, 3 pantallas de cocina y 1 principal (antiguo) · 1 quitado") throw new Exception("A legacy main device is named and warned about: "+center.Summary);
+        // C3c: va en su propio grupo, despues de las dos aplicaciones, sin icono de aplicacion y «Sin estación asignada» en su tarjeta; el aviso
+        // dice con que conectarlo de nuevo.
+        if(center.Rows.Last().Kind!="Principal (antiguo)"||!DeviceShows("LegacyBar")||!center.LegacyWarning.StartsWith("1 dispositivo antiguo con rol principal: conviene quitarlo y conectarlo de nuevo con Costiña Sala o Costiña Cocina",StringComparison.Ordinal)
+            ||center.Summary!="6 dispositivos activos: 2 en Costiña Sala, 3 en Costiña Cocina y 1 principal (antiguo) · 1 quitado"
+            ||DeviceGroupsText()!="Costiña Sala (2) | Costiña Cocina (3) | Principal (antiguo) (1)"||!GroupHeaders().SequenceEqual(["Costiña Sala","Costiña Cocina","Principal (antiguo)"])
+            ||!Painted(DeviceCard("h7")).Contains(Costina.Desktop.ViewModels.DevicesViewModel.NoStation)||Descendants<Image>(deviceList).Count(i=>i.IsVisible)!=2)
+            throw new Exception("A legacy main device is named, grouped apart and warned about: "+center.Summary+" / "+DeviceGroupsText());
         DevicesFit("devices-legacy"); Save(Shot(window),"devices-legacy.png");
         // Sin leer (al salir de un nivel): nada se supone; ni resumen ni boton de conectar.
         center.Clear(); window.UpdateLayout();
@@ -2840,6 +2957,12 @@ internal static class Program
         server.Devices=panelDevices;
         OpenDevices("Dispositivos reads the C2 devices for the capture");
         PickDevice("h1");
+        // C3c: la captura, desde arriba: la tarjeta de conectar (que el asistente desplazo) y la lista con la cabecera de su primer grupo.
+        var deviceScroll=Descendants<ScrollViewer>(deviceList).First();
+        foreach(var scroll in new[]{Descendants<ScrollViewer>(InDevices<FrameworkElement>("ConnectPane")).First(s=>s.TemplatedParent is null),deviceScroll}) scroll.ScrollToTop();
+        window.UpdateLayout();
+        if(Descendants<TextBlock>(deviceList).Where(t=>t.Name=="GroupName").Select(t=>t.TranslatePoint(new Point(0,0),deviceScroll).Y).Count(y=>y>=-0.5&&y<deviceScroll.ViewportHeight)!=2)
+            throw new Exception("The capture shows both group headers in view.");
         DevicesFit("devices");
         tabs.SelectedItem=(TabItem)window.FindName("ServiceTab"); window.UpdateLayout();
         window.Shell.Api.Dispose(); window.Shell.Api=null;
@@ -2873,12 +2996,12 @@ internal static class Program
                 throw new Exception("Salas paints both rooms, the chosen room's tables and its ficha in words: missing '"+missingRooms+"'.");
             // C2b: Dispositivos pinta el resumen, los dispositivos de Inicio con su tipo y estacion por su nombre y su conexion en palabras, y el
             // boton de quitar con el nombre del elegido.
-            if(tab=="DevicesTab"&&new[]{"Dispositivos","5 dispositivos activos: 2 comanderos y 3 pantallas de cocina · 1 quitado","Dispositivos conectados","4 de 5 con conexión","tablet-sala-1","Comandero · Sala 1",
-                "Comandero · Terraza","Pantalla de cocina · Cocina fría","Sin conexión","Conectado","Mostrar también los quitados (1)","Quitar «tablet-sala-1»","Conectar un dispositivo"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingDevices)
+            if(tab=="DevicesTab"&&new[]{"Dispositivos","5 dispositivos activos: 2 en Costiña Sala y 3 en Costiña Cocina · 1 quitado","Dispositivos conectados","4 de 5 con conexión","tablet-sala-1","Sala 1",
+                "Terraza","Cocina fría","Costiña Sala","Costiña Cocina","Conectar Costiña Sala · Sala 1","Sin conexión","Conectado","Mostrar también los quitados (1)","Quitar «tablet-sala-1»","Conectar un dispositivo"}.FirstOrDefault(t=>!Painted(window).Contains(t)) is {} missingDevices)
                 throw new Exception("Dispositivos paints the summary, the devices of Inicio in words and the remove button of the chosen one: missing '"+missingDevices+"'.");
             // C2: Inicio pinta sus cuatro cifras con su palabra, la alergia por revisar con su mesa, el mini plano y los dispositivos.
             if(tab=="HomeTab"&&new[]{"Mesas ocupadas","de 12","Comensales","19","Pases en cocina","1 listo para servir","Alergias por revisar","Mesa 4 · ALERGIA frutos secos (grave)","Sala ahora",
-                "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Pantalla de cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
+                "Alergia","por revisar","Anaphylaxis (Critical)","4 de 5 con conexión","Costiña Cocina · Cocina fría","Sin conexión","Conexión sencilla activa · http://192.168.0.81:5089","Conectar Costiña Sala","Conectar Costiña Cocina"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingHome)
                 throw new Exception("Inicio paints its figures, the allergy to review, the plan and the devices in words: missing '"+missingHome+"'.");
             var shot=Shot(window);
             // C1: sin Mica la ventana pinta un fondo OPACO #F3F4F6 (con Mica la captura sale con huecos transparentes): se mira el
@@ -3190,6 +3313,7 @@ internal static class Program
         public Costina.Client.DiagnosticsDto? Diagnostics { get; set; }
         public Costina.Client.DeviceRowDto[] Devices { get; set; }=[];
         public Costina.Client.NetworkDto? Network { get; set; }
+        public bool LongCodesOnly { get; set; }   // C3c: un motor anterior, que siempre da el codigo largo
         public System.Collections.Concurrent.ConcurrentDictionary<string,(string Type,byte[] Content)> Images { get; }=new();
         // Revision C2: lecturas que fallan (503) mientras la ruta este aqui, para comprobar lo que queda tras una lectura fallida.
         public System.Collections.Concurrent.ConcurrentDictionary<string,bool> Failing { get; }=new();
@@ -3234,7 +3358,11 @@ internal static class Program
                         :new(account.ServiceId+"-cuenta",account.ServiceId,"Open",0,0,0,0,"Unpaid",[],[],["add-product","payment"],[])),Costina.Client.ApiClient.Json));
                 return Json(404,"{\"error\":\"not_found\"}");
             }
-            if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",code="Home12_abc-def",expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
+            // C3c: como el motor, {typed:true} da el codigo CORTO y cualquier otro cuerpo el largo; un motor anterior (LongCodesOnly) no lee el
+            // cuerpo y da siempre el largo.
+            if(path=="auth/pairings") return Json(200,JsonSerializer.Serialize(new{pairingId="pid-home",
+                code=!LongCodesOnly&&JsonSerializer.Deserialize<JsonElement>(body is {Length:>0}?body:"{}") is {ValueKind:JsonValueKind.Object} issue&&issue.TryGetProperty("typed",out var typed)&&typed.ValueKind==JsonValueKind.True?"K7M2Q9XR4T":"Home12_abc-def",
+                expiresAt=DateTimeOffset.UtcNow.AddMinutes(5)}));
             // C2b: quitar un dispositivo se aplica en memoria, como el motor: queda con su fecha de quitado y sin conexion (nada se borra).
             if(path.StartsWith("auth/devices/",StringComparison.Ordinal)&&path.EndsWith("/revoke",StringComparison.Ordinal))
             {

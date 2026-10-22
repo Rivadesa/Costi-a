@@ -13,15 +13,26 @@ namespace Costina.Desktop.ViewModels;
 // solicitudes cada 2 s mientras vive el codigo y solo aprueba la suya (las ajenas solo se deniegan). No hay desplegable de rol
 // ni opcion "Principal" (el servidor la veta: A1) y la coherencia rol x tipo de estacion la comprueba el servidor (A2): aqui
 // solo se ofrece lo que encaja. El QR lleva SOLO el codigo de un uso, en el fragmento: nunca un token ni una credencial (D6.5).
+// C3c (plan 2026-10-22, seccion 4.1): los dos asistentes son «Conectar Costiña Sala · <estacion>» (el movil de cada camarero) y
+// «Conectar Costiña Cocina · <estacion>» (la tablet fija de cada estacion), cada uno con su desplegable de estaciones. El QR abre la
+// aplicacion de la intencion del asistente (PairingLink.Build con AppFor(IntentRole): /app/sala/ o /app/cocina/), que se conoce antes
+// de emitir el codigo. El asistente pide SIEMPRE el codigo corto ({typed:true}), que se ensena en dos grupos junto al QR para teclearlo
+// en el icono de un iPhone o un iPad; un motor anterior no lee el cuerpo y devuelve el largo: se ensena el que llegue, tal cual. Junto
+// al QR, los dos caminos: Android (el QR abre la aplicacion, se empareja alli y se anade el icono) e iPhone y iPad (Safari no empareja:
+// se anade el icono, se abre y se teclea el codigo). La lista agrupa los dispositivos por aplicacion.
 public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableObject
 {
     // Fila de la lista: el dispositivo, su tipo con la estacion por su nombre y si es este mismo PC (corte B).
     // C2b: la fila de Inicio en tarjeta (icono, nombre, tipo y estacion; a la derecha, el punto y la palabra de la conexion) y una tercera
     // linea con quien lo aprobo y cuando. Text es la fila entera en una linea (nombre accesible de la tarjeta).
-    public sealed class DeviceRow(DeviceRowDto device, string kind, bool isThisPc)
+    // C3c: la lista se agrupa por aplicacion (Group: «Costiña Sala», «Costiña Cocina», el principal antiguo o un tipo desconocido tal
+    // cual) y, bajo su grupo, la tarjeta dice solo la estacion por su nombre (Place); Kind sigue entero en Text y en Inicio.
+    public sealed class DeviceRow(DeviceRowDto device, string kind, string place, bool isThisPc)
     {
         public DeviceRowDto Device { get; } = device;
         public string Kind { get; } = kind;
+        public string Group => Labels.DeviceRole(Device.Role);
+        public string Place { get; } = place;
         public bool IsThisPc { get; } = isThisPc;
         public string Name => Device.Name;
         public string State => Device.StateLabel;
@@ -30,7 +41,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         public string Text => (IsThisPc ? "Este PC · " : "") + $"{Device.Name} · {Kind} · {Device.StateLabel} · " + char.ToLowerInvariant(Approved[0]) + Approved[1..];
         // C1 (revision): punto de presencia junto al texto (que ya lo dice con palabras): verde con conexion, gris sin ella o quitado.
         public string PresenceDot => Device.Active && Device.Online ? "ok" : "off";
-        public bool Screen => Device.Role == "kitchen";   // icono de pantalla; comandero (y cualquier otro), el de tablet
+        public bool Screen => Device.Role == "kitchen";   // icono de pantalla; Costina Sala (y cualquier otro), el de movil
         public bool Removed => !Device.Active;
     }
 
@@ -44,9 +55,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
 
     // Lo leido
     [ObservableProperty] private StationDto[] stations = [];
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsRoomStation), nameof(ChoosingText))] private StationDto[] roomStations = [];   // sala o barra: donde va un comandero
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ChoosingText))] private StationDto[] kitchenStations = [];                       // cocina, pase o barra: donde va una pantalla
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowEmptyConnect), nameof(EmptyConnectText))] private StationDto? selectedRoomStation;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsRoomStation), nameof(ChoosingText))] private StationDto[] roomStations = [];   // sala o barra: donde va Costina Sala
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(NeedsKitchenStation), nameof(ChoosingText), nameof(KitchenPurpose))] private StationDto[] kitchenStations = [];   // cocina, pase o barra: Costina Cocina
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowEmptyConnect), nameof(EmptyConnectText), nameof(WaiterConnectText))] private StationDto? selectedRoomStation;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(KitchenConnectText))] private StationDto? selectedKitchenStation;
     [ObservableProperty] private PairingPendingDto[] pending = [];
     [ObservableProperty] private PairingPendingDto? selectedPending;
     [ObservableProperty] private DeviceRowDto[] devices = [];
@@ -54,7 +66,16 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(RemoveText))] private DeviceRow? selectedRow;
     [ObservableProperty] private bool showRevoked;
     public bool NeedsRoomStation => RoomStations.Length == 0;
+    public bool NeedsKitchenStation => KitchenStations.Length == 0;
 
+    // C3c: las dos aplicaciones de los dispositivos, con su nombre y su boton, que dice la estacion elegida en su desplegable.
+    public static readonly string SalaName = Labels.DeviceRole("service"), CocinaName = Labels.DeviceRole("kitchen");
+    public string WaiterConnectText => ConnectText(SalaName, SelectedRoomStation);
+    public string KitchenConnectText => ConnectText(CocinaName, SelectedKitchenStation);
+    private static string ConnectText(string app, StationDto? station) => "Conectar " + app + (station is null ? "" : " · " + station.Name);
+    public string KitchenPurpose => KitchenStations.Length == 0 ? "Una tablet fija en cada estación de cocina, pase o barra."
+        : "Una tablet fija en cada estación: " + Listed([.. KitchenStations.Select(s => s.Name)]) + ".";
+    private static string Listed(string[] items) => items.Length <= 1 ? string.Concat(items) : string.Join(", ", items[..^1]) + " y " + items[^1];
     // C2b: cabecera de pagina, cabecera de la lista y vacio explicado (patron comun de las vistas de gestion). Sin leer, nada se supone.
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowEmptyConnect))] private bool devicesRead;
     [ObservableProperty] private string summary = "";
@@ -67,7 +88,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [ObservableProperty] private string listEmptyText = "Los dispositivos aparecerán aquí al leerlos del servidor.";
     // El boton del vacio abre el asistente de siempre (StartWaiter) con la estacion de sala elegida a la izquierda, que dice su nombre.
     public bool ShowEmptyConnect => DevicesRead && SelectedRoomStation is not null;
-    public string EmptyConnectText => SelectedRoomStation is { } station ? "Conectar comandero · " + station.Name : "";
+    public string EmptyConnectText => SelectedRoomStation is not null ? WaiterConnectText : "";
     // El boton de quitar dice a quien quita; sin nada elegido, que elegir.
     public string RemoveText => SelectedRow is not { } row ? "Elige un dispositivo para quitarlo"
         : row.Device.Active ? $"Quitar «{row.Name}»" : $"«{row.Name}» ya está quitado";
@@ -75,17 +96,29 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // Asistente en curso (intencion ligada al pairingId emitido)
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAssistant), nameof(ShowWaiterSection), nameof(ShowKitchenSection))] private string assistantTitle = "";
     [ObservableProperty] private string assistantText = "";
-    [ObservableProperty] private string intentRole = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IntentAppName), nameof(AndroidSteps), nameof(AppleSteps))] private string intentRole = "";
     [ObservableProperty] private string intentStationId = "";
     [ObservableProperty] private string intentStationName = "";
     [ObservableProperty] private string pairingId = "";
-    [ObservableProperty] private string pairingCode = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PairingCodeText), nameof(ShortCodeShown), nameof(HasCode))] private string pairingCode = "";
+    // C3c: el codigo como se teclea: el corto en dos grupos («K7M2Q 9XR4T»); el largo de un motor anterior, tal cual (PairingLink).
+    public string PairingCodeText => PairingLink.DisplayCode(PairingCode);
+    public bool ShortCodeShown => PairingLink.IsShortCode(PairingCode);
+    public bool HasCode => PairingCode.Length > 0;
+    // C3c: la aplicacion del asistente abierto, la que abre su QR (sin intencion conocida, ninguna: el enlace va al enrutador /app/).
+    public PwaApp? IntentApp => PairingLink.AppFor(IntentRole);
+    public string IntentAppName => IntentApp is null ? "la aplicación" : Labels.DeviceRole(IntentRole);
+    // C3c: los dos caminos de instalacion junto al QR, con las palabras de los botones de la PWA. Android: el QR abre la aplicacion, que
+    // empareja alli mismo, y despues se anade su icono. iPhone y iPad: la camara abre Safari, que NO empareja (lo que guarda Safari no lo
+    // ve el icono): se anade el icono, se abre y se teclea el codigo corto.
+    public string AndroidSteps => $"Lee el QR con la cámara → «Solicitar emparejamiento» → «Aprobar» aquí. Después, en el menú de Chrome, «Añadir a pantalla de inicio»: queda el icono de {IntentAppName}.";
+    public string AppleSteps => $"Lee el QR: Safari no empareja y explica cómo añadir el icono (Compartir › Añadir a pantalla de inicio). Abre el icono de {IntentAppName} → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí.";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasRecognised))] [NotifyPropertyChangedFor(nameof(RecognisedText))] private PairingPendingDto? recognised;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDuplicateWarning))] private string duplicateWarning = "";
     public bool HasAssistant => AssistantTitle.Length > 0;
     public bool HasRecognised => Recognised is not null;
 
-    // C2: Inicio pide abrir un asistente concreto ("Conectar comandero" / "Pantalla de cocina"). La peticion se guarda y se atiende en la
+    // C2: Inicio pide abrir un asistente concreto ("Conectar Costina Sala" / "Conectar Costina Cocina"). La peticion se guarda y se atiende en la
     // siguiente lectura de esta vista (al abrirla): con UNA sola estacion posible el asistente arranca y emite su codigo; con varias (o
     // ninguna) se abre en su primer paso, elegir la estacion, con la otra seccion recogida. La estacion la elige siempre el responsable.
     private string? requestedIntent;
@@ -97,18 +130,18 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     public bool ShowKitchenSection => !HasAssistant && ChoosingIntent != "service";
     public string ChoosingText => ChoosingIntent switch
     {
-        "service" when NeedsRoomStation => "Conectar comandero: no hay ninguna estación de sala donde ponerlo. Crea la estación «Sala» y conéctalo después.",
-        "service" => "Conectar comandero: elige la estación de sala a la que va a pertenecer y pulsa «Conectar comandero».",
-        "kitchen" when KitchenStations.Length == 0 => "Pantalla de cocina: no hay ninguna estación de cocina, pase o barra activa. Créala en Salas, mesas y estaciones.",
-        "kitchen" => "Pantalla de cocina: pulsa la estación donde va a estar la pantalla.",
+        "service" when NeedsRoomStation => $"Conectar {SalaName}: no hay ninguna estación de sala donde ponerla. Crea la estación «Sala» y conecta el móvil después.",
+        "service" => $"Conectar {SalaName}: elige la estación de sala del móvil y pulsa «Conectar {SalaName}».",
+        "kitchen" when NeedsKitchenStation => $"Conectar {CocinaName}: no hay ninguna estación de cocina, pase o barra activa. Créala en Salas, mesas y estaciones.",
+        "kitchen" => $"Conectar {CocinaName}: elige la estación donde va a estar la tablet y pulsa «Conectar {CocinaName}».",
         _ => ""
     };
     internal void Request(string? role) => requestedIntent = role;   // null = olvidar la peticion (se cancelo la entrada del responsable)
     public bool HasDuplicateWarning => DuplicateWarning.Length > 0;
-    public string IntentLabel => IntentRole == "service" ? $"comandero en {IntentStationName}" : $"pantalla de cocina de {IntentStationName}";
-    public string RecognisedText => Recognised is null ? "" : $"«{Recognised.DeviceName}» pide ser {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
+    public string IntentLabel => $"{IntentAppName} · {IntentStationName}";
+    public string RecognisedText => Recognised is null ? "" : $"«{Recognised.DeviceName}» pide conectarse como {IntentLabel}. Comprueba que es el dispositivo que tienes delante y aprueba.";
 
-    // QR del enlace https://EQUIPO:PUERTO/app/#pair=CODIGO (D6.5)
+    // QR del enlace https://EQUIPO:PUERTO/app/<aplicacion>/#pair=CODIGO (D6.5; C3c: la aplicacion del asistente)
     private const string QrIdle = "Al generar el código aparece aquí su QR: el dispositivo lo lee con la cámara y abre la aplicación con el código ya puesto.";
     [ObservableProperty] private string deviceAddress = "";
     [ObservableProperty] private string pairingUrl = "";
@@ -144,7 +177,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         rendering = true;
         try
         {
-            Stations = []; knownStations = []; stationNames = Names.Empty; RoomStations = []; KitchenStations = []; SelectedRoomStation = null; Pending = []; SelectedPending = null;
+            Stations = []; knownStations = []; stationNames = Names.Empty; RoomStations = []; KitchenStations = []; SelectedRoomStation = null; SelectedKitchenStation = null;
+            Pending = []; SelectedPending = null;
             Devices = []; DevicesRead = false; Rows = []; SelectedRow = null; RemovalCandidate = null; RebuildRows();
             AssistantTitle = ""; AssistantText = ""; IntentRole = ""; IntentStationId = ""; IntentStationName = ""; PairingId = ""; PairingCode = "";
             Recognised = null; DuplicateWarning = ""; codeExpiresAt = null; addressSuggested = false; DeviceAddress = ""; PairingQr = null; PairingUrl = ""; QrInfo = QrIdle;
@@ -199,6 +233,8 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
             RoomStations = Stations.Where(s => s.Kind is "Room" or "Bar").ToArray();
             KitchenStations = Stations.Where(s => s.Kind is "Kitchen" or "Pass" or "Bar").ToArray();
             if (SelectedRoomStation is null || RoomStations.All(s => s.Id != SelectedRoomStation.Id)) SelectedRoomStation = RoomStations.FirstOrDefault();
+            // C3c: la estacion de Costina Cocina se elige en su desplegable, como la de sala, con la misma regla.
+            if (SelectedKitchenStation is null || KitchenStations.All(s => s.Id != SelectedKitchenStation.Id)) SelectedKitchenStation = KitchenStations.FirstOrDefault();
             ExpireCode();
             var previous = SelectedPending?.PairingId;
             Pending = pendingRows; SelectedPending = pendingRows.FirstOrDefault(p => p.PairingId == previous) ?? pendingRows.FirstOrDefault();
@@ -214,29 +250,34 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         Sync();
     }
 
-    // C2b: la lista sin grupos, como la de Inicio: cada tarjeta dice su tipo y su estacion por su nombre (configuracion leida; sin nombre,
-    // su codigo; un tipo desconocido, tal cual). Orden, el de Inicio: comanderos, pantallas de cocina y el resto; dentro, por nombre. La
-    // eleccion se conserva por id (las filas son clases: una fila nueva siempre avisa a la lista).
+    // C2b: cada tarjeta dice su tipo y su estacion por su nombre (configuracion leida; sin nombre, su codigo; un tipo desconocido, tal
+    // cual), como la lista de Inicio. Orden, el de Inicio: Costina Sala, Costina Cocina y el resto; dentro, por nombre. La eleccion se
+    // conserva por id (las filas son clases: una fila nueva siempre avisa a la lista). C3c: la vista agrupa las filas por aplicacion
+    // (DeviceRow.Group) en ese mismo orden; bajo su grupo, la tarjeta dice la estacion (Place).
+    public const string NoStation = "Sin estación asignada";   // como la cabecera de Costina Cocina (frontend/pwa/src/apps.ts, NO_STATION)
     private void RebuildRows()
     {
         var me = shell.Session?.Actor;   // "device:<nombre>" cuando este PC trabaja como puesto (corte B)
         string Kind(DeviceRowDto d) => d.Role is "service" or "kitchen" && d.Station.Length > 0
             ? Labels.DeviceRole(d.Role) + " · " + stationNames.Station(d.Station)
             : Labels.DeviceRole(d.Role);
+        string Place(DeviceRowDto d) => d.Station.Length > 0 ? stationNames.Station(d.Station) : NoStation;
         var selected = SelectedRow?.Device.Id;
         Rows = Devices.Where(d => ShowRevoked || d.Active)
-            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal)
-            .Select(d => new DeviceRow(d, Kind(d), me is not null && me == "device:" + d.Name)).ToArray();
+            .OrderBy(d => d.Role switch { "service" => 0, "kitchen" => 1, _ => 2 }).ThenBy(d => Labels.DeviceRole(d.Role), StringComparer.Ordinal)
+            .ThenBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal)
+            .Select(d => new DeviceRow(d, Kind(d), Place(d), me is not null && me == "device:" + d.Name)).ToArray();
         SelectedRow = Rows.FirstOrDefault(r => r.Device.Id == selected);
         if (RemovalCandidate is { } candidate && Rows.All(r => r.Device.Id != candidate.Device.Id)) RemovalCandidate = null;
         var active = Devices.Where(d => d.Active).ToArray();
         var removed = Devices.Length - active.Length;
         int service = active.Count(d => d.Role == "service"), kitchen = active.Count(d => d.Role == "kitchen"), legacy = active.Count(d => d.Role == "main");
         var other = active.Length - service - kitchen - legacy;
-        string[] kinds = [.. new[] { (service, "comandero", "comanderos"), (kitchen, "pantalla de cocina", "pantallas de cocina"),
-                (legacy, "principal (antiguo)", "principales (antiguos)"), (other, "de otro tipo", "de otro tipo") }
-            .Where(k => k.Item1 > 0).Select(k => Labels.Plural(k.Item1, k.Item2, k.Item3))];
-        var kindsText = kinds.Length <= 1 ? string.Concat(kinds) : string.Join(", ", kinds[..^1]) + " y " + kinds[^1];
+        static string Count(int n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string[] kinds = [.. new[] { (service, Count(service) + " en " + SalaName), (kitchen, Count(kitchen) + " en " + CocinaName),
+                (legacy, Labels.Plural(legacy, "principal (antiguo)", "principales (antiguos)")), (other, Count(other) + " de otro tipo") }
+            .Where(k => k.Item1 > 0).Select(k => k.Item2)];
+        var kindsText = Listed(kinds);
         var removedText = removed == 0 ? "" : Labels.Plural(removed, "quitado", "quitados");
         Summary = !DevicesRead ? ""
             : Devices.Length == 0 ? "Aún no hay dispositivos: conecta el primero con el asistente de «Conectar un dispositivo»."
@@ -246,11 +287,11 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         HasRemoved = removed > 0;
         RevokedToggleText = $"Mostrar también los quitados ({removed.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
         LegacyWarning = legacy == 0 ? ""
-            : legacy == 1 ? "1 dispositivo antiguo con rol principal: conviene quitarlo y conectarlo de nuevo como comandero o pantalla de cocina."
-            : $"{legacy} dispositivos antiguos con rol principal: conviene quitarlos y conectarlos de nuevo como comanderos o pantallas de cocina.";
+            : legacy == 1 ? $"1 dispositivo antiguo con rol principal: conviene quitarlo y conectarlo de nuevo con {SalaName} o {CocinaName}."
+            : $"{legacy} dispositivos antiguos con rol principal: conviene quitarlos y conectarlos de nuevo con {SalaName} o {CocinaName}.";
         ShowListEmpty = Rows.Length == 0;
         (ListEmptyHeading, ListEmptyText) = !DevicesRead ? ("Sin leer todavía", "Los dispositivos aparecerán aquí al leerlos del servidor.")
-            : Devices.Length == 0 ? ("Aún no hay dispositivos", "Conecta las tablets y los móviles de sala (comanderos) y las pantallas de cocina con el asistente: cada uno, con un código de un solo uso.")
+            : Devices.Length == 0 ? ("Aún no hay dispositivos", $"Conecta el móvil de cada camarero con {SalaName} y la tablet de cada estación con {CocinaName}: cada uno, con un código de un solo uso.")
             : ("Ningún dispositivo activo", removed == 1 ? "El único dispositivo está quitado: marca «Mostrar también los quitados» para verlo."
                 : $"Los {removed.ToString(System.Globalization.CultureInfo.InvariantCulture)} dispositivos están quitados: marca «Mostrar también los quitados» para verlos.");
     }
@@ -258,6 +299,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     partial void OnSelectedRowChanged(DeviceRow? value) { if (!rendering) Sync(); }
     partial void OnSelectedPendingChanged(PairingPendingDto? value) { if (!rendering) Sync(); }
     partial void OnSelectedRoomStationChanged(StationDto? value) { if (!rendering) Sync(); }
+    partial void OnSelectedKitchenStationChanged(StationDto? value) { if (!rendering) Sync(); }
 
     // ---- Direccion con la que los DISPOSITIVOS llegan al servidor (https://NOMBRE:PUERTO, la del certificado de D5.3) ----
     // Se propone la de este cliente si ya habla por la LAN; por loopback, la que el servidor anuncia en su diagnostico (A7) o la
@@ -312,7 +354,7 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         SimpleOnIn(network) && network!.SuggestedIp is { } ip ? PairingLink.SimpleAddress(ip, network.LanHttp.Port!.Value) : null;
     public static string SimpleConnectionText(NetworkDto? network) => !SimpleAvailableIn(network) ? ""
         : SimpleOnIn(network) ? (SimpleAddress(network) is { } address
-            ? $"Conexión sencilla activa: móviles y tablets entran por {address} con solo leer el QR, sin instalar nada. El tráfico viaja sin cifrar por la red del local: úsala solo con el Wi-Fi del personal, nunca con el de los clientes."
+            ? $"Conexión sencilla activa: móviles y tablets entran por {address} con solo leer el QR, sin ningún certificado. El tráfico viaja sin cifrar por la red del local: úsala solo con el Wi-Fi del personal, nunca con el de los clientes."
             : "Conexión sencilla activa, pero no se encuentra la IP de este servidor en la red del local: comprueba que está conectado por cable o Wi-Fi.")
         : "Para conectar móviles y tablets sin instalar ningún certificado, activa la conexión sencilla: entran por la IP de este PC con solo leer el QR.";
     public static string NetworkWarningText(NetworkDto? network)
@@ -368,7 +410,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
 
     partial void OnPairingCodeChanged(string value) => RefreshQr();
     partial void OnDeviceAddressChanged(string value) => RefreshQr();
+    partial void OnIntentRoleChanged(string value) => RefreshQr();
 
+    // C3c: el QR abre la aplicacion del asistente (IntentApp). El texto ya no dice «No hay que instalar nada»: en los dos caminos se
+    // anade el icono de la aplicacion (AndroidSteps y AppleSteps, junto al QR); aqui solo lo que depende de la direccion.
     private void RefreshQr()
     {
         if (rendering) return;
@@ -376,11 +421,11 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
         try
         {
             var address = PairingLink.ParseDeviceAddress(DeviceAddress, SimpleOn);
-            var url = PairingLink.Build(address, PairingCode);
+            var url = PairingLink.Build(address, PairingCode, IntentApp);
             PairingQr = QrImage.Render(url); PairingUrl = url;
             QrInfo = address.Scheme == "http"
-                ? "Apunta la cámara del dispositivo a este QR y abre el enlace en el navegador (Chrome o Safari): la aplicación se abre con el código ya puesto. No hay que instalar nada (conexión sencilla)."
-                : "Apunta la cámara del dispositivo a este QR: abre la aplicación con el código ya puesto (el dispositivo debe tener instalado el certificado de este servidor).";
+                ? "Conexión sencilla: el dispositivo no necesita ningún certificado. En Android, el icono abre una pestaña del navegador con su nombre."
+                : "El dispositivo tiene que tener instalado el certificado de este servidor.";
             Remember(address);
         }
         catch (ArgumentException e)
@@ -437,16 +482,18 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanStartWaiter))]
     private Task StartWaiter() => Start("service", SelectedRoomStation!);
 
-    [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task StartKitchen(StationDto station) => Start("kitchen", station);
+    // C3c: como Costina Sala, con la estacion elegida en su desplegable (antes, un boton por estacion).
+    private bool CanStartKitchen() => CanStart() && SelectedKitchenStation is not null;
+    [RelayCommand(CanExecute = nameof(CanStartKitchen))]
+    private Task StartKitchen() => Start("kitchen", SelectedKitchenStation!);
 
-    // Sin ninguna estacion de sala no hay donde poner un comandero: se crea "Sala" (tipo sala, auditada al responsable, E2).
+    // Sin ninguna estacion de sala no hay donde poner Costina Sala: se crea "Sala" (tipo sala, auditada al responsable, E2).
     private bool CanCreateRoomStation() => shell.Writable && shell.IsMain && NeedsRoomStation;
     [RelayCommand(CanExecute = nameof(CanCreateRoomStation))]
     private Task CreateRoomStation() => shell.Run(async () =>
     {
         await shell.Api!.SendAsync("organization/commands/station-create", new { id = "sala", name = "Sala", kind = "room", sort = 1 }, "Crear estación Sala");
-        shell.Status = "Estación «Sala» creada (Configuración › Salas, mesas y estaciones). Ya puedes conectar comanderos.";
+        shell.Status = $"Estación «Sala» creada (Configuración › Salas, mesas y estaciones). Ya puedes conectar {SalaName}.";
         await LoadAsync();
     });
 
@@ -462,9 +509,11 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     [RelayCommand(CanExecute = nameof(CanNewCode))]
     private Task NewCode() => shell.Run(async () => { await IssueCode(); await LoadAsync(); });
 
+    // C3c: el asistente pide SIEMPRE el codigo corto ({typed:true}); el QR lleva ese mismo codigo. Un motor anterior no lee el cuerpo y
+    // devuelve el largo: se ensena y se usa el que llegue.
     private async Task IssueCode()
     {
-        var issued = await shell.Api!.PostRawAsync("auth/pairings", new { });
+        var issued = await shell.Api!.PostRawAsync("auth/pairings", new { typed = true });
         Issued(issued.GetProperty("pairingId").GetString()!, issued.GetProperty("code").GetString()!, issued.GetProperty("expiresAt").GetDateTimeOffset());
         StartPolling();
     }
@@ -474,14 +523,14 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     {
         IntentRole = role; IntentStationId = station.Id; IntentStationName = station.Name; ChoosingIntent = "";   // C2: el paso de elegir estacion termina aqui
         PairingId = ""; PairingCode = ""; codeExpiresAt = null; Recognised = null; DuplicateWarning = "";
-        AssistantTitle = role == "service" ? $"Conectar comandero · {station.Name}" : $"Conectar pantalla de cocina · {station.Name}";
+        AssistantTitle = ConnectText(IntentAppName, station);
         AssistantText = "Generando el código…";
         Sync();
     }
     public void Issued(string issuedPairingId, string code, DateTimeOffset expiresAt)
     {
         PairingId = issuedPairingId; codeExpiresAt = expiresAt; PairingCode = code;
-        AssistantText = $"Lee el QR con la cámara del dispositivo (o teclea el código), escribe su nombre y pulsa «Solicitar». La solicitud aparecerá aquí sola. El código caduca a las {expiresAt.ToLocalTime():HH:mm:ss} y sirve una vez.";
+        AssistantText = $"Su solicitud aparece aquí sola: compruébala y apruébala. El código sirve una vez y caduca a las {expiresAt.ToLocalTime():HH:mm:ss}.";
         Sync();
     }
 

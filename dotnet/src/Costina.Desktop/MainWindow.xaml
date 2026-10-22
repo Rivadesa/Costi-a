@@ -58,7 +58,7 @@
     </MenuItem>
     <MenuItem Header="C_onfiguración" x:Name="ConfigurationMenu" IsEnabled="{Binding TabsEnabled}" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}">
      <MenuItem Header="Salas, mesas y estaciones" Tag="OrganizationTab" Click="ShowView"/>
-     <MenuItem Header="Dispositivos: comanderos y pantallas de cocina" Tag="DevicesTab" Click="ShowView"/>
+     <MenuItem Header="Dispositivos: Costiña Sala y Costiña Cocina" Tag="DevicesTab" Click="ShowView"/>
      <Separator/>
      <MenuItem Header="Usuarios y permisos" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
      <MenuItem Header="Módulos de la instalación" IsEnabled="False" ToolTip="Próximamente" ToolTipService.ShowOnDisabled="True"/>
@@ -313,7 +313,7 @@
               <TextBlock Text="Emparejar este PC como puesto adicional" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
               <Grid>
                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition Width="150"/></Grid.ColumnDefinitions>
-               <TextBox x:Name="PairCode" ToolTip="Código de un solo uso generado en el PC principal (Dispositivos › Conectar comandero)"/>
+               <TextBox x:Name="PairCode" ToolTip="Código de un solo uso generado en el PC principal (Dispositivos › Conectar Costiña Sala)"/>
                <TextBox Grid.Column="2" Text="{Binding PairName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nombre de este puesto (p. ej. pc-barra)"/>
               </Grid>
               <WrapPanel Margin="0,4,0,0">
@@ -356,7 +356,7 @@
        <Border><StackPanel><DockPanel><Border DockPanel.Dock="Right" Style="{StaticResource ChipAccent}"><TextBlock Text="Listo"/></Border><TextBlock Text="Salas, mesas y estaciones" FontWeight="SemiBold" TextWrapping="Wrap"/></DockPanel>
         <TextBlock Text="La organización del local." Style="{StaticResource Subtle}" Margin="0,4,0,0"/></StackPanel></Border>
        <Border><StackPanel><DockPanel><Border DockPanel.Dock="Right" Style="{StaticResource ChipAccent}"><TextBlock Text="Listo"/></Border><TextBlock Text="Dispositivos" FontWeight="SemiBold"/></DockPanel>
-        <TextBlock Text="Comanderos y pantallas de cocina con un QR." Style="{StaticResource Subtle}" Margin="0,4,0,0"/></StackPanel></Border>
+        <TextBlock Text="Costiña Sala y Costiña Cocina con un QR." Style="{StaticResource Subtle}" Margin="0,4,0,0"/></StackPanel></Border>
        <Border><StackPanel><DockPanel><Border DockPanel.Dock="Right" Style="{StaticResource StateChip}"><TextBlock Text="Próximamente"/></Border><TextBlock Text="Reservas" FontWeight="SemiBold"/></DockPanel>
         <TextBlock Text="Libro de reservas del restaurante y las villas." Style="{StaticResource Subtle}" Margin="0,4,0,0"/></StackPanel></Border>
        <Border><StackPanel><DockPanel><Border DockPanel.Dock="Right" Style="{StaticResource StateChip}"><TextBlock Text="Próximamente"/></Border><TextBlock Text="Fiscalidad" FontWeight="SemiBold"/></DockPanel>

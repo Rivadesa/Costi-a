@@ -171,10 +171,11 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
     // C2b: lo que hace cada tipo de estacion (ayuda bajo el desplegable Tipo; un tipo que no se conoce sale tal cual).
     public string StationKindHelp => StationKind?.ToLowerInvariant() switch
     {
-        "kitchen" => "Cocina: prepara los platos que la llevan; sus elaboraciones salen en su pantalla de cocina.",
+        // C3c: los dispositivos con los nombres de sus aplicaciones (antes «pantalla de cocina» y «comanderos»).
+        "kitchen" => "Cocina: prepara los platos que la llevan; sus elaboraciones salen en su tablet de Costiña Cocina.",
         "pass" => "Pase: aquí se validan los pases y se revisan los cambios de restricciones antes de servir.",
-        "bar" => "Barra: prepara bebidas y lo que se pide en barra; admite pantallas de cocina y comanderos.",
-        "room" => "Sala: la de los comanderos que toman las comandas en una zona del local.",
+        "bar" => "Barra: prepara bebidas y lo que se pide en barra; admite tablets de Costiña Cocina y móviles de Costiña Sala.",
+        "room" => "Sala: la de los móviles de Costiña Sala que toman las comandas en una zona del local.",
         null or "" => "",
         var other => "Tipo «" + other + "» del servidor."
     };
@@ -379,7 +380,7 @@ public sealed partial class OrganizationViewModel(ShellViewModel shell) : Observ
         var station = NewStation ? null : SelectedStation;
         ShowStationListEmpty = StationItems.Length == 0;
         (StationListHeading, StationListText) = none ? ("Sin leer todavía", "Las estaciones aparecerán aquí al leer la organización del servidor.")
-            : ("Aún no hay estaciones", "Crea la primera: una cocina, una barra o la sala de los comanderos.");
+            : ("Aún no hay estaciones", "Crea la primera: una cocina, una barra o la sala de los móviles de Costiña Sala.");
         HasStationContext = NewStation || station is not null;
         (StationEmptyHeading, StationEmptyText) = none ? ("Sin leer todavía", "Las estaciones aparecerán aquí al leer la organización del servidor.")
             : ("Elige una estación", "Pulsa una estación para ver sus datos, su tipo y qué puestos admite.");
