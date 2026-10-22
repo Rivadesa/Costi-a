@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Costiña Sala y Cocina</title>
+<meta name="description" content="Maqueta de las dos aplicaciones de Costiña: Costiña Sala para el móvil de cada camarero y Costiña Cocina para la tableta fija de cada estación, con el flujo completo de un pase.">
+<script>
+/* Marca cualquier error de script en el documento para la comprobación sin ventana. */
+window.addEventListener('error', function (e) { document.documentElement.setAttribute('data-error', String(e.message || e)); });
+</script>
+<style>
+:root{
+  --bg:#F3F4F6; --chrome:#FBFBFC; --surface:#FFFFFF; --surface2:#F5F6F8; --border:#E2E5E9; --text:#1A1D21; --muted:#5A616B;
+  --accent:#0E7A5F; --accentHover:#0B684F; --accentSoft:#E2EFEC; --accentLine:#A8DCCB; --accentText:#0C6B54;
+  --ok:#1E8E5A; --okText:#17744A; --okSoft:#DDF1E6; --okLine:#A9D9C0;
+  --warnSoft:#FDF1DE; --warnLine:#EBC88C; --warnText:#8A4B0A;
+  --dangerSoft:#FDECEA; --dangerLine:#F4C7C2; --dangerText:#A3231A;
+  --infoSoft:#E6EEFB; --infoText:#1D4C9C;
+  /* Costiña Cocina: azul pizarra, solo en el icono, la franja de la cabecera y la marca. Los botones, con el acento. */
+  --k:#2F4A6D; --kSoft:#E4EAF2; --kLine:#B7C4D6; --kText:#2F4A6D;
+  /* Tiempo de una comanda: neutro, ámbar desde 15 min y ámbar oscuro desde 25; nunca rojo ni negro */
+  --tWarnBg:#FFF2C4; --tWarnText:#6B5000; --tWarnLine:#E6CB6E; --tLateBg:#8A5300; --tLateText:#FFFFFF;
+  --scrim:rgba(16,18,22,.42); --toastBg:#1A1D21; --toastText:#FFFFFF; --toastIcon:#6FD6A3;
+  --bezel:#121417;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,Roboto,'Helvetica Neue',sans-serif;font-size:14px;line-height:1.4}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.appicon{display:block;flex:none}
+
+/* ---------- Página ---------- */
+.page{max-width:1440px;margin:0 auto;padding:20px 16px 48px}
+.head{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px 20px}
+.brand2{display:flex;gap:6px;flex:none}
+.head-t{flex:1 1 420px;min-width:0}
+.head h1{margin:0;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:26px;font-weight:600;letter-spacing:-.01em}
+.lede{margin:4px 0 0;color:var(--muted);max-width:900px}
+.controls{display:flex;align-items:center;gap:6px}
+.ctl-l{font-size:12px;color:var(--muted);margin-right:4px}
+.ctl{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)}
+.ctl button{border:0;background:transparent;color:var(--muted);padding:0 12px;min-height:34px;border-radius:8px;font-size:13px}
+.ctl button[aria-pressed="true"]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tabs-top{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 12px}
+.tabs-top a{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 15px;border-radius:19px;border:1px solid var(--border);background:var(--surface);font-size:13.5px;color:var(--text);text-decoration:none}
+.tabs-top a .tdot{width:9px;height:9px;border-radius:5px;flex:none}
+.tdot.s{background:var(--accent)} .tdot.k{background:var(--k)} .tdot.p{background:#8A9099}
+.tabs-top a[aria-current="page"]{border-color:var(--accent);background:var(--accentSoft);color:var(--accentText);font-weight:600}
+.tabs-top a.kt[aria-current="page"]{border-color:var(--k);background:var(--kSoft);color:var(--kText)}
+.notes{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:20px}
+@media (max-width:860px){.notes{grid-template-columns:minmax(0,1fr)}}
+.notes h2{margin:0 0 6px;font-size:16px;font-weight:600}
+.notes ul{margin:0;padding-left:18px}
+.notes li{margin:4px 0}
+.build{margin:10px 0 0;font-size:12.5px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px}
+.vocab h2{margin:0 0 6px;font-size:16px;font-weight:600}
+.vocab dl{margin:0;display:flex;flex-direction:column;gap:6px}
+.vocab dt{font-weight:700}
+.vocab dd{margin:0;color:var(--muted);font-size:13px}
+.was{display:inline-block;font-size:11.5px;font-weight:600;color:var(--warnText);background:var(--warnSoft);padding:0 7px;border-radius:8px;margin-left:2px}
+.stage{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:40px;margin-top:22px;zoom:var(--scale,1)}
+.stage.col{flex-direction:column;align-items:center;flex-wrap:nowrap;gap:34px}
+.srow{display:flex;flex-wrap:nowrap;justify-content:center;align-items:flex-start;gap:40px}
+.device{position:relative;margin:0;display:flex;flex-direction:column;align-items:center;gap:10px}
+.device figcaption{font-size:13px;color:var(--muted);font-weight:600}
+.mini .device figcaption{font-size:calc(13px / var(--mz,.5))}
+.bezel{background:var(--bezel);padding:12px;border-radius:52px;box-shadow:0 24px 60px rgba(15,20,30,.18),inset 0 0 0 2px #2A2E34}
+.tabletL .bezel{padding:18px;border-radius:40px}
+.pc .bezel{padding:0;border-radius:12px;background:#C9CED5;box-shadow:0 24px 60px rgba(15,20,30,.16),0 0 0 1px #C3C8CE}
+.foot{margin:28px auto 0;max-width:860px;text-align:center;color:var(--muted);font-size:12.5px}
+.ptoast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100;display:flex;gap:10px;align-items:center;max-width:min(560px,calc(100% - 32px));padding:12px 16px;border-radius:14px;background:var(--toastBg);color:var(--toastText);font-size:14.5px;box-shadow:0 10px 26px rgba(0,0,0,.25)}
+.ptoast[hidden]{display:none}
+.ptoast svg{flex:none;color:var(--toastIcon)}
+
+/* ---------- Pantalla del dispositivo ---------- */
+.screen{position:relative;overflow:hidden;background:var(--bg);color:var(--text);display:flex;flex-direction:column;font-size:16px;line-height:1.35}
+.phone .screen{width:375px;height:812px;border-radius:40px}
+.tabletL .screen{width:1180px;height:820px;border-radius:22px}
+.pc .screen{width:1280px;height:800px;border-radius:11px;font-size:14px;line-height:1.4}
+.sb{flex:none;position:relative;height:50px;display:flex;align-items:center;padding:0 28px 0 34px;background:var(--chrome);font-size:15px;font-weight:600}
+.sb-r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.island{position:absolute;left:50%;top:11px;width:116px;height:33px;margin-left:-58px;border-radius:17px;background:#0B0C0E}
+.sb-date{margin-left:8px;font-weight:400;color:var(--muted)}
+.sb.sb-t{height:28px;padding:0 22px;font-size:13px}
+.home{position:absolute;left:50%;bottom:8px;width:128px;height:5px;margin-left:-64px;border-radius:3px;background:var(--text);opacity:.8;z-index:50;pointer-events:none}
+.body{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 14px 22px;scrollbar-width:thin}
+.muted{color:var(--muted)}
+.sm{font-size:13px}
+.net{flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--okText);font-weight:600;padding:4px 9px;border-radius:12px;background:var(--surface2);border:1px solid var(--border)}
+.dot-ok{width:8px;height:8px;border-radius:4px;background:var(--ok)}
+
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:4px 11px;border-radius:11px;white-space:nowrap;flex:none;line-height:1.35}
+.p-next{background:var(--accentSoft);color:var(--accentText)}
+.p-kitchen{background:var(--warnSoft);color:var(--warnText)}
+.p-info{background:var(--infoSoft);color:var(--infoText)}
+.p-void{background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+.p-ready{background:var(--okText);color:#FFFFFF}
+
+.btn{min-height:48px;padding:0 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:600;font-size:15.5px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#FFFFFF}
+.btn-primary:hover{background:var(--accentHover)}
+.btn-big{min-height:58px;font-size:17px;width:100%;border-radius:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 12px 12px}
+.card-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;margin:0 2px 8px}
+.card-h h3{margin:0;font-size:16px;font-weight:700}
+.sec-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;margin:14px 2px 8px}
+.sec-h h3{margin:0;font-size:16px;font-weight:700}
+.sec-h span{font-size:13px;color:var(--muted)}
+.sub-h{margin:10px 4px 6px;font-size:14px;font-weight:700;color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:10px}
+
+/* ---------- Costiña Sala: cabecera, Mis mesas y tarjetas ---------- */
+.sa-top{flex:none;display:flex;align-items:center;gap:10px;padding:2px 14px 10px;background:var(--chrome);border-bottom:1px solid var(--border)}
+.sa-id{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.sa-id b{font-size:17px}
+.sa-id small{font-size:13px;color:var(--muted)}
+.pg-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;margin:2px 2px 10px}
+.pg-h h2{margin:0;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:27px;font-weight:600;line-height:1.15}
+.pg-h span{font-size:14px;color:var(--muted)}
+.seg2{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--surface2);border:1px solid var(--border)}
+.seg2 button{flex:1;min-height:48px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:16px;font-weight:600}
+.seg2 button[aria-selected="true"]{background:var(--surface);color:var(--accentText);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.hint-l{margin:8px 4px 0;font-size:13.5px;color:var(--muted)}
+.rtabs{display:flex;gap:8px;overflow-x:auto;margin:10px 0 0;padding-bottom:2px;scrollbar-width:none}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tile{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:6px;min-height:148px;padding:12px 12px 12px 14px;border-radius:16px;border:1px solid var(--border);background:var(--surface);text-align:left;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.tile > .pill,.tile > .abadge{align-self:flex-start}
+.tile-h{display:flex;align-items:baseline;gap:6px}
+.tile-h b{flex:1;font-size:19px;font-weight:700;line-height:1.2}
+.tile-min{display:inline-flex;align-items:center;gap:3px;font-size:13px;color:var(--muted);white-space:nowrap}
+.tile-min svg{position:relative;top:2px}
+.tile small{font-size:13px;color:var(--muted);line-height:1.3}
+.tile .tile-what{color:var(--okText);font-weight:700;font-size:14px}
+.tile.free{border:1.5px dashed #C9CED4;background:transparent;box-shadow:none;min-height:110px}
+.tile-open{margin-top:auto;display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--accentText);font-size:14.5px}
+.tile.alarm{border-color:var(--dangerLine)}
+/* Lista para servir: la tarjeta entera en verde (tonos --ok, como la pastilla de hoy). Con una alergia que alarma, el borde rojo manda. */
+.tile.ready{border:2px solid var(--okText);background:var(--okSoft);box-shadow:0 0 0 3px rgba(30,142,90,.14)}
+.tile.ready .tile-h b{color:var(--okText)}
+.tile.ready.alarm{border:2.5px solid var(--dangerText);box-shadow:none}
+.prog{display:flex;align-items:center;gap:3px;margin-top:auto}
+.prog i{flex:1;height:5px;border-radius:3px;background:#E1E4E8}
+.prog i.f{background:var(--accent)}
+.prog i.k{background:#C68A22}
+.prog i.r{background:#6CC2A0}
+.prog span{margin-left:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.abadge{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;padding:4px 9px;border-radius:9px;background:var(--dangerSoft);color:var(--dangerText)}
+
+/* Aviso de pase listo: ocupa su sitio debajo de la cabecera, no tapa nada */
+.banner{flex:none;margin:8px 10px 2px;background:var(--accent);color:#FFFFFF;border-radius:18px;padding:12px;box-shadow:0 6px 16px rgba(8,60,46,.22);display:flex;flex-direction:column;gap:10px}
+.bn-h{display:flex;gap:12px;align-items:flex-start}
+.bn-ic{width:42px;height:42px;border-radius:21px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex:none}
+.bn-t{flex:1;min-width:0}
+.bn-t b{display:block;font-size:20px;line-height:1.2}
+.bn-t span{display:block;font-size:17px;font-weight:600;line-height:1.25}
+.bn-t small{display:block;font-size:13.5px;opacity:.92;margin-top:2px}
+.bn-serve{min-height:54px;border:0;border-radius:13px;background:#FFFFFF;color:var(--accentText);font-weight:700;font-size:17px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.bn-row{display:flex;gap:8px}
+.bn-x{flex:1;min-height:48px;padding:0 12px;border:1.5px solid rgba(255,255,255,.65);border-radius:13px;background:transparent;color:#FFFFFF;font-weight:600;font-size:15.5px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+
+/* Ficha de la mesa (C3b) */
+.ab{flex:none;display:flex;align-items:center;gap:6px;padding:2px 12px 10px 4px;background:var(--chrome)}
+.ab.line{border-bottom:1px solid var(--border)}
+.back{flex:none;min-width:48px;height:48px;border:0;background:transparent;color:var(--accentText);font-weight:600;display:flex;align-items:center;justify-content:center;gap:2px;border-radius:10px;padding:0 6px}
+.ab-t{flex:1;min-width:0}
+.ab-title{display:flex;align-items:center;gap:8px;min-width:0}
+.ab-name{font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:22px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ab-sub{font-size:13.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.alert{background:var(--dangerSoft);border:1px solid var(--dangerLine);border-radius:14px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;color:var(--dangerText)}
+.alert-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14.5px}
+.alert-h svg{flex:none}
+.alert-edit{margin:-14px -8px -14px auto;min-height:48px;padding:0 10px;border:0;background:transparent;color:var(--dangerText);font-weight:600;text-decoration:underline;font-size:14px;border-radius:10px}
+.achips{display:flex;flex-wrap:wrap;gap:6px}
+.achip{font-size:13.5px;color:var(--text);background:var(--surface);border:1px solid var(--border);padding:5px 10px;border-radius:10px}
+.achip.strong{color:var(--dangerText);border-color:var(--dangerLine);font-weight:700}
+.alert-f{font-size:13px}
+.entries2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.entry2{min-height:60px;display:flex;align-items:center;gap:9px;padding:8px 8px 8px 10px;border-radius:14px;border:1px solid var(--border);background:var(--surface);text-align:left;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.entry2 .eic{width:36px;height:36px;border-radius:10px;background:var(--accentSoft);color:var(--accentText);display:flex;align-items:center;justify-content:center;flex:none}
+.entry2 b{display:block;font-size:15.5px;line-height:1.2}
+.srvd{display:flex;flex-wrap:wrap;gap:6px 14px;padding:9px 12px;border-radius:12px;background:var(--surface2);font-size:14px;font-weight:600;margin-bottom:8px}
+.srvd span{display:inline-flex;align-items:center;gap:5px}
+.srvd svg{color:var(--accent)}
+.srvd small{font-weight:400;color:var(--muted);font-size:13px}
+.pass{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:11px 12px;margin-top:8px}
+.pass.s-next{border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+.pass.s-ready{border:2px solid var(--okText);background:var(--okSoft)}
+.pass-h{display:flex;align-items:center;gap:10px}
+.pass-t{flex:1;min-width:0}
+.pass-t b{display:block;font-size:16.5px}
+.pass-t small{color:var(--muted);font-size:13px}
+.pdot{width:30px;height:30px;border-radius:15px;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.pdot.next{background:var(--surface);color:var(--accentText);border:2px solid var(--accent)}
+.pdot.ready{background:var(--okText);color:#FFFFFF}
+.pdot.pend{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.dl{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dish-l{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:var(--surface2)}
+.pass.s-ready .dish-l{background:var(--surface)}
+.dn{flex:1;min-width:0;font-weight:600;font-size:16px}
+.dn small{display:block;font-weight:400;color:var(--muted);font-size:13px}
+.qty{font-weight:700;font-size:18px;white-space:nowrap}
+.dish-l.adapted{flex-direction:column;align-items:stretch;gap:3px;background:var(--dangerSoft);border:1.5px solid var(--dangerText)}
+.ad-why{display:flex;align-items:flex-start;gap:6px;color:var(--dangerText);font-size:14px}
+.ad-why svg{flex:none;margin-top:2px}
+.ad-by{font-size:12.5px;color:var(--muted);padding-left:22px}
+.review{display:flex;gap:6px;align-items:flex-start;margin-top:8px;font-size:13px;color:var(--muted)}
+.review svg{flex:none;color:var(--okText);margin-top:1px}
+.pend-l{margin:6px 0 0 40px;font-size:14px;color:var(--muted)}
+.pend-l b{color:var(--text)}
+.bar{flex:none;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px 28px;display:flex;flex-direction:column;gap:8px}
+.bar-note{font-size:13.5px;color:var(--muted);text-align:center}
+.bar-note b{color:var(--text)}
+.bar-note.done-note{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--okText);font-weight:600}
+.bar-note.done-note svg{flex:none}
+.bar-note.done-note b{color:var(--okText)}
+.toast{position:absolute;left:14px;right:14px;bottom:128px;z-index:30;display:flex;gap:10px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--toastBg);color:var(--toastText);font-size:14.5px;box-shadow:0 10px 26px rgba(0,0,0,.25)}
+.toast svg{flex:none;color:var(--toastIcon)}
+.tabletL .toast{left:50%;right:auto;bottom:28px;width:600px;margin-left:-300px;font-size:17px;padding:16px 20px}
+
+/* Bodega (C3b) */
+.searchbar{flex:none;padding:6px 14px 4px;background:var(--chrome)}
+.search{display:flex;align-items:center;gap:10px;height:52px;padding:0 6px 0 14px;border-radius:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted)}
+.search svg{flex:none}
+.search input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;color:var(--text);font-size:16.5px}
+.search input::placeholder{color:var(--muted)}
+.types{flex:none;display:flex;gap:8px;overflow-x:auto;padding:10px 14px 12px;background:var(--chrome);border-bottom:1px solid var(--border);scrollbar-width:none}
+.chip{flex:none;min-height:48px;padding:0 15px;border-radius:24px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip .cnt{color:var(--muted);font-size:13px}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accentSoft);color:var(--accentText);font-weight:600}
+.res-h{margin:2px 2px 10px;font-size:14.5px;color:var(--muted)}
+.res-h b{color:var(--text)}
+.plist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.prow{display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+.thumb{--tint:#888888;flex:none;width:44px;height:58px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--tint) 13%,var(--surface))}
+.thumb svg{width:30px;height:44px}
+.pinfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pname{font-weight:600;font-size:15.5px;line-height:1.25}
+.pmeta{font-size:13px;color:var(--muted);line-height:1.3}
+.pbtns{display:flex;gap:6px;flex:none}
+.fmt{min-height:52px;min-width:66px;padding:0 8px;border-radius:12px;border:1.5px solid var(--accent);background:var(--surface);color:var(--accentText);font-weight:700;font-size:15px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;gap:2px}
+.tray{flex:none;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 18px rgba(0,0,0,.07);padding:10px 14px 28px}
+.tray-row{display:flex;align-items:center;gap:10px}
+.tray-sum{flex:1;min-width:0;min-height:52px;display:flex;align-items:center;gap:10px;border:0;background:transparent;text-align:left;padding:0 4px 0 2px;color:var(--text);border-radius:12px}
+.tray-sum > svg{flex:none;color:var(--muted)}
+.tray-txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.tray-txt b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tray-txt small{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unsent{display:inline-block;width:9px;height:9px;border-radius:5px;background:var(--warnText);margin-right:7px;vertical-align:1px}
+.btn-send{min-height:54px;padding:0 20px;font-size:17px;border-radius:14px}
+
+/* Vibración (dibujo junto al móvil) */
+.vib{position:absolute;top:190px;color:var(--accent);display:flex;flex-direction:column;gap:2px;pointer-events:none}
+.vib.l{left:-30px}
+.vib.r{right:-30px;transform:scaleX(-1)}
+.vib-tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--accentText);background:var(--accentSoft);padding:4px 10px;border-radius:10px}
+.side-note{width:300px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-top:30px}
+.side-note h3{margin:0 0 10px;font-size:16px}
+.lim{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:13.5px}
+.lim li{display:flex;gap:8px;align-items:flex-start}
+.lim li svg{flex:none;margin-top:1px}
+.lim li.ok svg{color:var(--ok)}
+.lim li.no svg{color:var(--text)}
+.lim li.no{color:var(--text)}
+
+/* ---------- Costiña Cocina: tableta fija ---------- */
+.ko-top{flex:none;display:flex;align-items:center;gap:16px;height:70px;padding:0 20px;background:var(--surface);border-top:4px solid var(--k);border-bottom:1px solid var(--border)}
+.ko-app{display:flex;align-items:center;gap:10px}
+.ko-app b{font-size:16px;color:var(--kText)}
+.ko-st{font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:28px;font-weight:700;padding-left:16px;border-left:1px solid var(--border);line-height:1.1}
+.ko-r{margin-left:auto;display:flex;align-items:center;gap:16px}
+.ko-count{font-size:17px;color:var(--muted)}
+.ko-count b{color:var(--text)}
+.ko-clock{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.ko-body{flex:1;min-height:0;padding:16px 16px;overflow:hidden}
+.tickets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.tk{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.tk-h{padding:12px 14px 10px;border-bottom:1px solid var(--border)}
+.tk-name{display:block;font-size:24px;font-weight:700;line-height:1.2}
+.tk-s2{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font-size:16px;color:var(--muted)}
+.tk-t{display:flex;align-items:flex-start;gap:8px}
+.tk-t b{flex:1;min-width:0;font-size:24px;line-height:1.2}
+.tk-s{font-size:16px;color:var(--muted);margin-top:3px}
+.tmr{display:inline-flex;align-items:center;gap:5px;font-size:18px;font-weight:700;padding:4px 10px;border-radius:10px;white-space:nowrap;flex:none}
+.tmr.ok{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.tmr.warn{background:var(--tWarnBg);color:var(--tWarnText);border:1px solid var(--tWarnLine)}
+.tmr.late{background:var(--tLateBg);color:var(--tLateText);border:1px solid var(--tLateBg)}
+.tk-b{padding:10px 8px 10px;display:flex;flex-direction:column;gap:8px}
+.dg{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:10px 8px 10px 12px;border-radius:12px;background:var(--surface2)}
+.dg.solo{grid-template-columns:minmax(0,1fr)}
+.dg-n b{display:block;font-size:22px;line-height:1.2}
+.dg-qr{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;margin-top:2px}
+.dg-q{font-size:28px;font-weight:800;line-height:1.1}
+.dg-x{font-size:16px;font-weight:700;color:var(--dangerText)}
+.listo{min-width:92px;min-height:64px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);color:var(--accentText);font-weight:800;font-size:19px}
+.listo:hover{background:var(--accentSoft)}
+.dg.done{background:transparent;border:1px dashed var(--border);opacity:.75}
+.dg.done .dg-q{font-size:22px}
+.dg-ok{display:inline-flex;align-items:center;gap:5px;color:var(--okText);font-weight:700;font-size:17px;padding-right:6px}
+.dg-al{grid-column:1 / -1;display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--dangerSoft);border:2px solid var(--dangerText);color:var(--dangerText);font-size:18px;font-weight:700;line-height:1.3}
+.dg-al svg{flex:none;margin-top:2px}
+.also{display:flex;align-items:center;gap:6px;font-size:16px;color:var(--muted);padding:2px 4px}
+.tk-f{padding:0 8px 10px}
+.todo{width:100%;min-height:64px;border:0;border-radius:12px;background:var(--accent);color:#FFFFFF;font-weight:800;font-size:21px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.todo:hover{background:var(--accentHover)}
+.done-band{flex:none;display:flex;align-items:center;gap:10px;padding:10px 20px 12px;background:var(--chrome);border-top:1px solid var(--border)}
+.db-l{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--muted);font-size:16px;flex:none;white-space:nowrap}
+.db-l svg{color:var(--ok)}
+.hrow{flex:0 1 420px;min-width:0;display:flex;align-items:center;gap:10px;min-height:56px;padding:6px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:16px;color:var(--muted)}
+.hrow .hr-ic{color:var(--ok);flex:none;display:flex}
+.hr-t{flex:1;min-width:0}
+.hr-t b{color:var(--text)}
+.db-more,.db-empty{flex:none;font-size:16px;color:var(--muted)}
+.empty-k{padding:40px;text-align:center;color:var(--muted);font-size:18px}
+
+/* Pase */
+.pase-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;padding:14px 16px}
+.pcards{min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;align-content:start;scrollbar-width:thin}
+.pcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.pcard{background:var(--surface);border:1px solid var(--border);border-radius:16px;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow:hidden}
+.pcard.all{border:2px solid var(--ok);box-shadow:0 0 0 4px var(--okSoft)}
+.pc-h{padding:12px 14px 8px}
+.pc-st{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 14px 10px}
+.schip{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:0 12px;border-radius:18px;font-size:16px;font-weight:700;background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+.schip.ok{background:var(--okSoft);border-color:var(--okLine);color:var(--okText)}
+.pd-l{list-style:none;margin:0;padding:8px 14px 10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.pd{display:flex;align-items:center;gap:10px;min-height:40px}
+.pd-s{width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center}
+.pd.ok .pd-s{color:var(--ok)}
+.todo-dot{display:block;width:20px;height:20px;border-radius:10px;border:2.5px solid #A9B0B9}
+.pd-n{flex:1;min-width:0;font-size:22px;line-height:1.2}
+.pd-n b{font-weight:700}
+.pd-q{font-size:28px;font-weight:800;white-space:nowrap}
+.pd-x{font-size:16px;font-weight:700;color:var(--dangerText);white-space:nowrap}
+.pd-at{display:block;font-size:16px;color:var(--muted)}
+.pd-st{flex:none;font-size:16px;font-weight:600;color:var(--text)}
+.pd.ok .pd-st{color:var(--okText)}
+.pd-al{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;margin-left:36px;border-radius:10px;background:var(--dangerSoft);border:2px solid var(--dangerText);color:var(--dangerText);font-size:18px;font-weight:700;line-height:1.3}
+.pd-al svg{flex:none;margin-top:2px}
+.pc-next{margin:0;padding:8px 14px;border-top:1px solid var(--border);font-size:16px;color:var(--muted)}
+.pc-next b{color:var(--text)}
+.pc-f{padding:4px 14px 14px}
+.pc-miss{margin:0;padding:6px 2px 0;display:flex;align-items:center;gap:8px;font-size:18px;font-weight:600;color:var(--muted)}
+.pc-miss svg{flex:none}
+.pase-go{width:100%;min-height:68px;border:0;border-radius:14px;background:var(--accent);color:#FFFFFF;font-weight:800;font-size:20px;display:inline-flex;align-items:center;justify-content:center;gap:10px}
+.pase-go:hover{background:var(--accentHover)}
+.pside{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.side-h{display:flex;align-items:center;gap:8px;margin:0 2px 6px;font-size:18px;font-weight:700}
+.side-h .cnt{min-width:28px;height:28px;padding:0 8px;border-radius:14px;background:var(--surface);border:1px solid var(--border);font-size:15px;display:inline-flex;align-items:center;justify-content:center}
+.rv-c{background:var(--surface);border:2px solid var(--dangerText);border-radius:16px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:7px}
+.rv-t{display:flex;align-items:center;gap:8px}
+.rv-t b{flex:1;min-width:0;font-size:22px;line-height:1.2}
+.rv-al{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--dangerSoft);color:var(--dangerText);font-size:18px;font-weight:700;line-height:1.3}
+.rv-al svg{flex:none;margin-top:2px}
+.rv-q{margin:0;font-size:16px;color:var(--muted)}
+.rv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.rv-row{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--border)}
+.rv-d small{display:block;font-size:16px;color:var(--muted);line-height:1.2}
+.rv-d b{display:block;font-size:18px;line-height:1.2}
+.rv-b{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rv-btn{min-height:64px;padding:0 6px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);color:var(--accentText);font-weight:800;font-size:16px;line-height:1.15}
+.rv-btn:hover{background:var(--accentSoft)}
+.rv-dec{width:100%;min-height:64px;padding:6px 10px;border-radius:12px;border:1px solid var(--okLine);background:var(--okSoft);color:var(--okText);font-weight:700;font-size:16px;line-height:1.2;text-align:left;display:flex;align-items:center;gap:6px}
+.rv-dec svg{flex:none}
+.rv-dec.ad{background:var(--dangerSoft);border-color:var(--dangerLine);color:var(--dangerText)}
+.rv-all{width:100%;min-height:64px;border:0;border-radius:12px;background:var(--accent);color:#FFFFFF;font-weight:800;font-size:18px}
+.rv-all:hover{background:var(--accentHover)}
+.wt-r{display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--border);font-size:17px;color:var(--muted)}
+.wt-r svg{color:var(--ok);flex:none}
+.wt-r span{flex:1;min-width:0}
+.wt-r b{color:var(--text)}
+.wt-r.new{border:2px solid var(--ok)}
+.side-hint{margin:8px 4px 0;font-size:16px;color:var(--muted)}
+
+/* ---------- PC: Dispositivos (aspecto de C2) ---------- */
+.d-menu{flex:none;height:40px;display:flex;align-items:center;gap:2px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--border);font-size:14px}
+.d-menu > span{padding:6px 10px;border-radius:6px}
+.d-role{margin-left:auto;display:flex;align-items:center;gap:8px}
+.d-badge{display:flex;align-items:center;gap:7px;padding:3px 12px 3px 4px;border-radius:16px;background:var(--surface2);border:1px solid var(--border);font-weight:600;font-size:13px}
+.d-badge i{width:24px;height:24px;border-radius:12px;background:var(--accent);color:#FFFFFF;display:flex;align-items:center;justify-content:center}
+.d-btn{min-height:32px;padding:0 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px;color:var(--text)}
+.d-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
+.d-side{display:flex;flex-direction:column;padding:14px 10px 12px;background:var(--surface2);border-right:1px solid var(--border);min-height:0}
+.d-nav-s{font-size:12.5px;color:var(--muted);font-weight:600;margin:14px 10px 6px}
+.d-nav-s:first-child{margin-top:4px}
+.d-nav{position:relative;display:flex;align-items:center;gap:12px;min-height:38px;padding:0 12px;border:0;border-radius:8px;background:transparent;font-size:14.5px;color:var(--text);text-align:left;width:100%}
+.d-nav svg{flex:none}
+.d-nav.on{background:var(--accentSoft);color:var(--accentText);font-weight:600}
+.d-nav.on::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent)}
+.d-nav.off{color:#9AA0A8}
+.d-main{padding:20px 24px 16px 26px;min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.d-h1{margin:0;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:26px;font-weight:600;line-height:1.2}
+.d-sub{color:var(--muted);font-size:13.5px}
+.d-cols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px;align-items:start}
+.d-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px}
+.d-card h2{margin:0;font-size:18px;font-weight:600}
+.d-warn{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-radius:10px;background:var(--warnSoft);border:1px solid var(--warnLine);color:var(--warnText);font-size:13px}
+.d-warn svg{flex:none;margin-top:1px}
+.d-app{display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 12px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:12px}
+.d-app-t b{display:block;font-size:15.5px}
+.d-app-t small{display:block;font-size:13px;color:var(--muted)}
+.d-row{grid-column:1 / -1;display:flex;gap:8px;align-items:center;margin-top:6px}
+.d-sel{min-height:38px;min-width:160px;display:inline-flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px 0 12px;border:1px solid var(--border);border-radius:7px;background:var(--surface);font-size:14px}
+.d-sel svg{color:var(--muted)}
+.d-primary{min-height:38px;padding:0 16px;border-radius:7px;border:0;background:var(--accent);color:#FFFFFF;font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;gap:8px}
+.d-primary.on{box-shadow:0 0 0 3px var(--accentLine)}
+.d-qr{grid-column:1 / -1;display:flex;gap:16px;padding:12px 14px;margin-top:8px;border:1.5px solid var(--accentLine);border-radius:12px;background:var(--accentSoft)}
+.d-qr-c{flex:none;align-self:flex-start;background:#FFFFFF;border-radius:10px;padding:6px;border:1px solid var(--border)}
+.d-qr-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;font-size:13.5px}
+.d-qr-t > b{font-size:15px}
+.d-code{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px}
+.d-code span{font-size:13px;color:var(--muted)}
+.d-code b{font-family:Consolas,'Cascadia Mono',monospace;font-size:24px;letter-spacing:.08em;color:var(--text)}
+.d-steps{display:grid;grid-template-columns:94px minmax(0,1fr);gap:2px 8px;font-size:13px;line-height:1.35}
+.d-steps b{font-size:13px}
+.d-qr-t .lnk{font-size:12.5px;color:var(--muted)}
+.d-qr-t .lnk code{font-family:Consolas,'Cascadia Mono',monospace;font-size:12px;color:var(--text)}
+.d-link{border:0;background:transparent;padding:0;color:var(--accentText);font-weight:600;font-size:12.5px;text-decoration:underline}
+.d-list{display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.d-grp{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);margin:8px 0 4px}
+.d-grp:first-child{margin-top:0}
+.d-dev{display:flex;align-items:center;gap:8px;font-size:14px;min-height:30px}
+.d-dev i{width:8px;height:8px;border-radius:4px;background:var(--ok);flex:none}
+.d-dev i.wait{background:transparent;border:2px solid var(--muted)}
+.d-dev small{color:var(--muted);font-size:13px}
+.d-status{flex:none;height:26px;display:flex;align-items:center;gap:20px;padding:0 12px;font-size:12.5px;color:var(--muted);background:var(--surface2);border-top:1px solid var(--border);white-space:nowrap}
+.d-status i{display:inline-block;width:8px;height:8px;border-radius:4px;background:var(--ok);margin-right:6px}
+.d-status .ver{margin-left:auto}
+
+/* ---------- Pantallas de inicio ---------- */
+.hs{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.hs.ph{background:linear-gradient(170deg,#DCEDE7 0%,#EEF2F0 46%,#EDF0F4 100%)}
+.hs.tb{background:linear-gradient(160deg,#E1E8F1 0%,#EEF0F3 50%,#E6EDEA 100%)}
+.hs-clock{padding:34px 26px 8px;color:#1F2A26}
+.hs-clock b{display:block;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:58px;font-weight:300;line-height:1}
+.hs-clock span{font-size:16px}
+.hs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px 8px;padding:22px 16px}
+.tb .hs-grid{grid-template-columns:repeat(7,1fr);gap:34px 10px;padding:40px 70px}
+.app{display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;color:#1F2A26;text-align:center}
+.tb .app{font-size:16px;gap:10px}
+.app .gic{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;color:#3F4650;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tb .app .gic{width:84px;height:84px;border-radius:20px}
+.app .ico{border-radius:15px;box-shadow:0 2px 6px rgba(0,0,0,.18);overflow:hidden;display:block}
+.tb .app .ico{border-radius:20px}
+.app.mine span:last-child{font-weight:700}
+.dock{position:absolute;left:14px;right:14px;bottom:26px;display:flex;justify-content:space-around;padding:12px 8px;border-radius:26px;background:rgba(255,255,255,.55)}
+.tb .dock{left:300px;right:300px;bottom:22px;border-radius:30px}
+.mini{zoom:var(--mz,.5)}
+.icons-card{width:330px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:14px;margin-top:28px}
+.icons-card h3{margin:0;font-size:16px}
+.ic-row{display:flex;gap:14px;align-items:center}
+.ic-row b{display:block;font-size:16px}
+.ic-row small{display:block;font-size:13px;color:var(--muted)}
+.icons-card p{margin:0;font-size:13px;color:var(--muted)}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+
+/* iPhone: Safari no empareja; el icono sí, con el código corto */
+.sf-top{flex:none;padding:4px 14px 10px;background:var(--chrome);border-bottom:1px solid var(--border)}
+.sf-url{display:flex;align-items:center;justify-content:center;gap:8px;height:40px;border-radius:12px;background:#E9EBEE;font-size:15px}
+.sf-url small{font-size:13px;color:var(--muted)}
+.sf-page{padding:18px 18px 22px}
+.sf-brand{display:flex;flex-direction:column;align-items:center;gap:8px;margin:4px 0 12px}
+.sf-brand b{font-size:19px}
+.sf-page h2{margin:0 0 6px;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:23px;font-weight:600;line-height:1.2;text-align:center}
+.sf-page > p{margin:0 0 14px;font-size:15px;color:var(--muted);text-align:center}
+.sf-key{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:0 0 12px;border-radius:14px;background:var(--accentSoft);color:var(--accentText);font-size:16.5px;font-weight:700;text-align:center}
+.sf-key svg{flex:none}
+.sf-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.sf-steps li{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--border);font-size:15px}
+.sf-n{width:26px;height:26px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.sf-bot{flex:none;height:78px;padding:6px 26px 30px;display:flex;justify-content:space-between;align-items:center;background:var(--chrome);border-top:1px solid var(--border);color:#1D6FD8}
+.pf-p{margin:0 2px 14px;font-size:15px;color:var(--muted)}
+.pf-l{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;font-size:14px;font-weight:600}
+.pf-in{display:flex;align-items:center;height:54px;padding:0 14px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);font-size:17px;font-weight:400}
+.pf-in.code{font-family:Consolas,'Cascadia Mono',monospace;font-size:25px;font-weight:700;letter-spacing:.08em;border-color:var(--accent)}
+.pf-in.ph{color:#8A9099}
+.pf-hint{margin:-4px 2px 14px;font-size:13.5px;color:var(--muted)}
+.wa{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 160px;text-align:center}
+.wa h2{margin:0;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;font-size:34px;font-weight:600;line-height:1.25}
+.wa p{margin:0;font-size:26px;color:var(--muted)}
+.wa .btn{min-height:64px;padding:0 32px;font-size:21px}
+.wa .wa-f{font-size:18px}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="head">
+    <div class="brand2" aria-hidden="true" id="brand"></div>
+    <div class="head-t">
+      <h1>Costiña Sala y Costiña Cocina</h1>
+      <p class="lede">Propuesta de dos aplicaciones del mismo motor: <b>Costiña Sala</b> para el móvil de cada camarero y <b>Costiña Cocina</b> para la tableta fija de cada estación (Cocina caliente, Cocina fría y Pase). Las pestañas siguen una mesa de principio a fin: instalar, ver mis mesas, enviar el pase, la estación, el pase, el aviso al camarero y Servido. Móvil 375 × 812 y tableta 1180 × 820 en horizontal, solo tema claro. Ni Costiña Sala ni Costiña Cocina enseñan importes.</p>
+    </div>
+    <div class="controls"><span class="ctl-l">Tamaño</span>
+      <div class="ctl" role="group" aria-label="Tamaño de los dispositivos">
+        <button type="button" data-act="scale:fit" aria-pressed="true">Ajustar</button>
+        <button type="button" data-act="scale:100" aria-pressed="false">100 %</button>
+        <button type="button" data-act="scale:75" aria-pressed="false">75 %</button>
+        <button type="button" data-act="scale:50" aria-pressed="false">50 %</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs-top" id="tabs" aria-label="Pantallas de la maqueta"></nav>
+
+  <section class="notes">
+    <div id="note" aria-live="polite"></div>
+    <aside class="vocab" aria-label="Palabras">
+      <h2>Palabras</h2>
+      <dl>
+        <div><dt>Costiña Sala</dt><dd>La aplicación del camarero, en su móvil. <span class="was">Antes «Comandero»</span></dd></div>
+        <div><dt>Costiña Cocina</dt><dd>La de las tabletas fijas: una por estación (Cocina caliente, Cocina fría, Pase). <span class="was">Antes «Pantalla de cocina»</span></dd></div>
+        <div><dt>Mis mesas</dt><dd>Las que abriste tú y las abiertas desde los otros móviles de tu sala.</dd></div>
+        <div><dt>Listo</dt><dd>En una estación: «mi parte de esta comanda está hecha». No avisa a nadie.</dd></div>
+        <div><dt>Hecho · esperando al pase</dt><dd>En una estación: sus comandas terminadas que el pase aún no ha validado.</dd></div>
+        <div><dt>Validar pase: listo para servir</dt><dd>El pase da la mesa por buena. Ese toque es el que avisa al camarero.</dd></div>
+        <div><dt>Esperando al camarero</dt><dd>En el pase: lo validado y sin servir, con «listo hace 2 min».</dd></div>
+        <div><dt>Listo para servir · Servido</dt><dd>Lo que ve el camarero, y lo que pulsa al llevarlo a la mesa.</dd></div>
+        <div><dt>Visto</dt><dd>En la banda de Costiña Sala: la quita de este móvil sin servir.</dd></div>
+        <div><dt>Adaptado: …</dt><dd>Lo que decidió cocina con una alergia.</dd></div>
+        <div><dt>Por revisar en el pase</dt><dd>En Costiña Cocina: una alergia que el pase aún no ha decidido.</dd></div>
+        <div><dt>Por revisar en cocina</dt><dd>En Costiña Sala: lo mismo, visto por el camarero.</dd></div>
+      </dl>
+    </aside>
+  </section>
+
+  <div class="stage" id="stage"></div>
+
+  <p class="foot">Maqueta con datos de ejemplo, no es la aplicación. Responden «Mis mesas / Todas» y las pestañas de sala, los «Listo» de la estación, la revisión del pase («No le afecta», «Adaptado…», «No le afecta a nada más»), «Validar pase: listo para servir» y, en la banda, «Servido · Principal», «Ver mesa» y «Visto»; el resto de botones solo enseña un aviso. Estudio sobre develop c32f53d (versión 0.42.0-c3b), 22 de octubre.</p>
+</div>
+<div class="ptoast" id="ptoast" role="status" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- utilidades ---------- */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+const IC = {
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  right: '<path d="M9 6l6 6-6 6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
+  send: '<path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="M10 13 21 3"/>',
+  fork: '<path d="M7 3v8"/><path d="M4 3v5a3 3 0 0 0 6 0V3"/><path d="M7 11v10"/><path d="M18 3c-2 1.5-3 4-3 7h3v11"/>',
+  glass: '<path d="M7 3h10v4a5 5 0 0 1-10 0z"/><path d="M12 12v8"/><path d="M8 21h8"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
+  qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18v2M18 14h2"/>',
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
+  card: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
+  doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h4"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  mobile: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+  cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  box: '<path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  msg: '<path d="M4 5h16v11H9l-5 4z"/>',
+  cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+  img: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/>',
+  share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M7 10H5v11h14V10h-2"/>',
+  book: '<path d="M4 5c3-1 6-1 8 1 2-2 5-2 8-1v14c-3-1-6-1-8 1-2-2-5-2-8-1z"/><path d="M12 6v14"/>',
+  tabs: '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>'
+};
+const ic = (n, s = 20, w = 1.9) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
+
+const SB_ICONS = '<svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"/><rect x="10" y="3" width="3" height="9" rx="1" fill="currentColor"/><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor"/></svg>'
+  + '<svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M8 11.5 5.6 8.9a3.4 3.4 0 0 1 4.8 0z" fill="currentColor"/><path d="M3.4 6.7a6.6 6.6 0 0 1 9.2 0" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M1 4.2a10 10 0 0 1 14 0" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>'
+  + '<svg width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="17" height="9" rx="2" fill="currentColor"/><path d="M25 4.5v4" stroke="currentColor" stroke-opacity=".45" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+/* ---------- iconos de las dos aplicaciones ----------
+   Misma familia: marco redondeado, dibujo blanco y la tilde de Costiña. Sala: campana de servir sobre verde.
+   Cocina: gorro de cocina sobre azul pizarra. El color de cada aplicación solo va en el icono, la franja de la cabecera y la marca. */
+const SALA_INNER = '<rect width="96" height="96" rx="22" fill="#0E7A5F"/><path d="M0 22A22 22 0 0 1 22 0h52a22 22 0 0 1 22 22v14C66 26 30 26 0 42z" fill="#FFFFFF" fill-opacity=".07"/>'
+  + '<path d="M38.5 27.5c3.2-3.8 6.3-3.8 9.5 0s6.3 3.8 9.5 0" fill="none" stroke="#FFFFFF" stroke-width="4.4" stroke-linecap="round"/>'
+  + '<path d="M20 64a28 28 0 0 1 56 0z" fill="#FFFFFF"/><rect x="14" y="67.5" width="68" height="7" rx="3.5" fill="#FFFFFF"/>';
+const COCINA_INNER = '<rect width="96" height="96" rx="22" fill="#2F4A6D"/><path d="M0 22A22 22 0 0 1 22 0h52a22 22 0 0 1 22 22v14C66 26 30 26 0 42z" fill="#FFFFFF" fill-opacity=".07"/>'
+  + '<circle cx="33" cy="45" r="13"/><circle cx="63" cy="45" r="13"/><circle cx="48" cy="36" r="16"/>'.replace(/\/>/g, ' fill="#FFFFFF"/>')
+  + '<rect x="27" y="42" width="42" height="15" fill="#FFFFFF"/>'
+  + '<path d="M29 61h38v10a4 4 0 0 1-4 4H33a4 4 0 0 1-4-4z" fill="#FFFFFF"/>'
+  + '<path d="M38.5 68c3.2-3.6 6.3-3.6 9.5 0s6.3 3.6 9.5 0" fill="none" stroke="#2F4A6D" stroke-width="3.8" stroke-linecap="round"/>';
+const iconSala = (s = 60) => `<svg class="appicon" width="${s}" height="${s}" viewBox="0 0 96 96" role="img" aria-label="Icono de Costiña Sala">${SALA_INNER}</svg>`;
+const iconCocina = (s = 60) => `<svg class="appicon" width="${s}" height="${s}" viewBox="0 0 96 96" role="img" aria-label="Icono de Costiña Cocina">${COCINA_INNER}</svg>`;
+
+/* ---------- marcos ---------- */
+const sbPhone = (t) => `<div class="sb"><span>${t}</span><span class="island" aria-hidden="true"></span><span class="sb-r" aria-hidden="true">${SB_ICONS}</span></div>`;
+const sbTab = (t) => `<div class="sb sb-t"><span>${t}</span><span class="sb-date">jue 22 oct</span><span class="sb-r" aria-hidden="true">${SB_ICONS}</span></div>`;
+const phone = (cap, inner, extra = '') => `<figure class="device phone"><figcaption>${cap}</figcaption><div class="bezel"><div class="screen" role="region" aria-label="${esc(cap)}">${inner}<span class="home" aria-hidden="true"></span></div></div>${extra}</figure>`;
+const tabletL = (cap, inner, cls = '') => `<figure class="device tabletL ${cls}"><figcaption>${cap}</figcaption><div class="bezel"><div class="screen" role="region" aria-label="${esc(cap)}">${inner}</div></div></figure>`;
+const net = '<span class="net" title="Conectado al servidor"><span class="dot-ok"></span>En línea</span>';
+const toastHtml = () => (S.toast ? `<div class="toast" role="status">${ic('check', 20, 2.4)}<span>${S.toast}</span></div>` : '');
+
+/* ---------- Costiña Sala: datos de las mesas ----------
+   Este móvil es «móvil de Ana», emparejado a la estación de sala «Sala 1».
+   by: desde dónde se abrió la mesa ('me' = este móvil; si no, la estación). Es «mía» si la abrí yo o se abrió desde Sala 1.
+   prog: [pases servidos, pases del menú, estado del siguiente: k = en cocina, r = listo para servir]. */
+const T = (n, o) => Object.assign({ n }, o);
+const DEG = 'Menú degustación Costiña', DIA = 'Menú del día', CARTA = 'Carta';
+const SALA1_2107 = [
+  T('Mesa 1', { by: 'Sala 1', min: '5 min', pax: 2, of: DEG, st: 'kitchen', prog: [3, 7, 'k'] }),
+  T('Mesa 2', { st: 'free', cap: 4 }),
+  T('Mesa 3', { by: 'Sala 1', min: '12 min', pax: 4, of: CARTA, st: 'eat', prog: [1, 3] }),
+  T('Mesa 4', { by: 'Sala 1', min: '9 min', pax: 4, of: DIA, st: 'eat', prog: [2, 4], badge: 'Alergia', go: 'go:mesa' }),
+  T('Mesa 5', { by: 'Sala 1', min: '4 min', pax: 2, of: DIA, st: 'kitchen', prog: [1, 4, 'k'] }),
+  T('Mesa 6', { by: 'Sala 1', pax: 2, of: DIA, st: 'seated', prog: [0, 4], badge: 'Alergia · por revisar' }),
+  T('Mesa 7', { by: 'Sala 1', min: '1 min', pax: 3, of: DIA, st: 'ready', what: 'Primero', prog: [1, 4, 'r'] }),
+  T('Mesa 8', { st: 'free', cap: 2 })
+];
+const TERRAZA_2107 = [
+  T('Mesa 9', { by: 'me', pax: 2, of: DEG, st: 'seated', prog: [0, 7] }),
+  T('Mesa 10', { by: 'Terraza', min: '9 min', pax: 6, of: CARTA, st: 'kitchen', prog: [1, 3, 'k'] }),
+  T('Mesa 11', { by: 'Terraza', pax: 3, of: CARTA, st: 'seated', prog: [0, 3] }),
+  T('Mesa 12', { st: 'free', cap: 4 })
+];
+const SALA1_2119 = [
+  T('Mesa 1', { by: 'Sala 1', min: '17 min', pax: 2, of: DEG, st: 'kitchen', prog: [3, 7, 'k'] }),
+  T('Mesa 2', { st: 'free', cap: 4 }),
+  T('Mesa 3', { by: 'Sala 1', min: '24 min', pax: 4, of: CARTA, st: 'eat', prog: [1, 3] }),
+  T('Mesa 4', { by: 'Sala 1', min: '0 min', pax: 4, of: DIA, st: 'ready', what: 'Principal', prog: [2, 4, 'r'], badge: 'Alergia', go: 'go:servido' }),
+  T('Mesa 5', { by: 'Sala 1', min: '3 min', pax: 2, of: DIA, st: 'eat', prog: [2, 4] }),
+  T('Mesa 6', { by: 'Sala 1', pax: 2, of: DIA, st: 'seated', prog: [0, 4], badge: 'Alergia · por revisar' }),
+  T('Mesa 7', { by: 'Sala 1', min: '11 min', pax: 3, of: DIA, st: 'eat', prog: [2, 4] }),
+  T('Mesa 8', { st: 'free', cap: 2 })
+];
+const TERRAZA_2119 = [
+  T('Mesa 9', { by: 'me', min: '9 min', pax: 2, of: DEG, st: 'kitchen', prog: [0, 7, 'k'] }),
+  T('Mesa 10', { by: 'Terraza', min: '2 min', pax: 6, of: CARTA, st: 'ready', what: 'Segundos', prog: [1, 3, 'r'] }),
+  T('Mesa 11', { by: 'Terraza', min: '7 min', pax: 3, of: CARTA, st: 'kitchen', prog: [0, 3, 'k'] }),
+  T('Mesa 12', { st: 'free', cap: 4 })
+];
+const isMine = (t) => t.st !== 'free' && (t.by === 'me' || t.by === 'Sala 1');
+
+const STL = { seated: ['Sentados', 'p-info'], kitchen: ['En cocina', 'p-kitchen'], ready: ['Listo para servir', 'p-ready'], eat: ['Comiendo', 'p-info'], paused: ['En pausa', 'p-void'] };
+function prog(p) {
+  const [d, t, c] = p;
+  let h = '';
+  for (let i = 0; i < t; i++) h += `<i class="${i < d ? 'f' : (i === d && c ? c : '')}"></i>`;
+  return `<span class="prog" aria-label="${d} de ${t} pases servidos">${h}<span>${d} de ${t}</span></span>`;
+}
+function tile(t) {
+  if (t.st === 'free') return `<button type="button" class="tile free" data-act="noop"><span class="tile-h"><b>${t.n}</b></span><small>Libre · ${t.cap} plazas</small><span class="tile-open">${ic('plus', 18, 2.4)}Abrir mesa</span></button>`;
+  const [lab, cls] = STL[t.st];
+  const cl = ['tile', t.badge ? 'alarm' : '', t.st === 'ready' ? 'ready' : ''].filter(Boolean).join(' ');
+  return `<button type="button" class="${cl}" data-act="${t.go || 'noop'}" aria-label="${t.n}, ${lab}${t.badge ? ', ' + t.badge : ''}">`
+    + `<span class="tile-h"><b>${t.n}</b>${t.min ? `<span class="tile-min">${ic('clock', 15, 2)}${t.min}</span>` : ''}</span>`
+    + `<small>${t.pax} personas · ${t.of}</small>`
+    + `<span class="pill ${cls}">${lab}</span>${t.what ? `<small class="tile-what">${t.what}</small>` : ''}${prog(t.prog)}`
+    + `${t.badge ? `<span class="abadge">${ic('alert', 15, 2.3)}${t.badge}</span>` : ''}</button>`;
+}
+function salaTop(sub = 'Sala 1 · móvil de Ana') {
+  return `<header class="sa-top">${iconSala(38)}<span class="sa-id"><b>Costiña Sala</b><small>${sub}</small></span>${net}</header>`;
+}
+/* La banda va en su sitio, debajo de la cabecera: se queda hasta «Servido» o «Visto», así que no puede tapar volver, el buscador ni «Enviar». */
+function bannerHtml() {
+  if (!S.bn) return '';
+  return `<div class="banner" role="alert" aria-label="Mesa 4 · Principal listo para servir"><div class="bn-h"><span class="bn-ic">${ic('bell', 22, 2.2)}</span><span class="bn-t"><b>Mesa 4 · Principal</b><span>listo para servir</span><small>El pase lo validó a las 21:19</small></span></div>`
+    + `<button type="button" class="bn-serve" data-act="serve">${ic('check', 22, 2.6)}Servido · Principal</button>`
+    + `<div class="bn-row"><button type="button" class="bn-x" data-act="go:servido">Ver mesa${ic('right', 18, 2.4)}</button><button type="button" class="bn-x" data-act="visto">Visto</button></div></div>`;
+}
+const count = (list) => { const open = list.filter((t) => t.st !== 'free'); return { open: open.length, pax: open.reduce((a, t) => a + t.pax, 0), free: list.length - open.length }; };
+const abiertas = (n) => `${n} ${n === 1 ? 'abierta' : 'abiertas'}`;
+function scrMesas(o) {
+  const mine = S.mode !== 'all';
+  // Servido desde la banda: la Mesa 4 vuelve a «Comiendo».
+  const fix = (list) => list.map((t) => (t.n === 'Mesa 4' && t.st === 'ready' && S.m4 === 'served' ? Object.assign({}, t, { st: 'eat', what: '', prog: [3, 4], go: 'go:servido' }) : t));
+  const rooms = [{ id: 'sala1', name: 'Sala 1', tiles: fix(o.sala1) }, { id: 'terraza', name: 'Terraza', tiles: o.terraza }];
+  const all = rooms.reduce((a, r) => a.concat(r.tiles), []);
+  let body = '';
+  if (mine) {
+    // «Mis mesas»: por la sala de cada mesa, arriba las listas para servir; las libres, de todas las salas, al final.
+    const rank = (t) => (t.st === 'ready' ? 0 : 1);
+    const own = all.filter(isMine);
+    const c = count(own);
+    body += `<div class="pg-h"><h2>Mis mesas</h2><span>${abiertas(c.open)} · ${c.pax} personas</span></div>`;
+    body += seg(true) + '<p class="hint-l">Las que abriste tú y las abiertas desde los otros móviles de Sala 1. Arriba, las listas para servir; las libres, al final.</p>';
+    rooms.forEach((r) => {
+      const ts = r.tiles.filter(isMine).sort((a, b) => rank(a) - rank(b));
+      if (ts.length) body += `<div class="sec-h"><h3>${r.name}</h3><span>${abiertas(ts.length)}</span></div><div class="tiles">${ts.map(tile).join('')}</div>`;
+    });
+    const free = all.filter((t) => t.st === 'free');
+    body += `<div class="sec-h"><h3>Mesas libres</h3><span>${free.length} libres</span></div>`;
+    rooms.forEach((r) => {
+      const ts = r.tiles.filter((t) => t.st === 'free');
+      if (ts.length) body += `<div class="sub-h">${r.name}</div><div class="tiles">${ts.map(tile).join('')}</div>`;
+    });
+  } else {
+    // «Todas»: el plano de hoy, con sus pestañas de sala.
+    const c = count(all);
+    body += `<div class="pg-h"><h2>Todas las mesas</h2><span>${abiertas(c.open)} · ${c.pax} personas</span></div>` + seg(false);
+    const tabs = [['all', `Todas las salas · ${all.length}`]].concat(rooms.map((r) => [r.id, `${r.name} · ${r.tiles.length}`]));
+    body += `<div class="rtabs" role="group" aria-label="Salas">${tabs.map(([id, l]) => `<button type="button" class="chip" aria-pressed="${(S.room || 'all') === id}" data-act="room:${id}">${l}</button>`).join('')}</div>`;
+    rooms.filter((r) => !S.room || S.room === r.id).forEach((r) => {
+      const rc = count(r.tiles);
+      body += `<div class="sec-h"><h3>${r.name}</h3><span>${abiertas(rc.open)} · ${rc.free} ${rc.free === 1 ? 'libre' : 'libres'}</span></div><div class="tiles">${r.tiles.map(tile).join('')}</div>`;
+    });
+  }
+  return `${sbPhone(o.clock)}${salaTop()}${o.banner ? bannerHtml() : ''}<div class="body"><div class="scroll"${o.end ? ' data-scroll="end"' : ''}>${body}</div></div>`;
+}
+const seg = (mine) => `<div class="seg2" role="tablist" aria-label="Qué mesas ver"><button type="button" role="tab" aria-selected="${mine}" data-act="mode:mine">Mis mesas</button><button type="button" role="tab" aria-selected="${!mine}" data-act="mode:all">Todas</button></div>`;
+
+/* ---------- Costiña Sala: ficha de la Mesa 4 ---------- */
+const ALLERGY = `<section class="alert" aria-label="Restricciones de los comensales"><div class="alert-h">${ic('alert', 18, 2.2)}<span>Restricciones de los comensales</span><button type="button" class="alert-edit" data-act="noop">Cambiar</button></div>`
+  + '<div class="achips"><span class="achip strong">Comensal 2 · ALERGIA frutos secos (grave)</span><span class="achip">Comensal 3 · Intolerancia lactosa (leve)</span></div>'
+  + '<div class="alert-f">Cocina revisó todo su menú antes de enviar: el comensal 2 lleva adaptadas la merluza y la tarta; lo demás no le afecta.</div></section>';
+const ENTRIES = `<div class="entries2"><button type="button" class="entry2" data-act="noop"><span class="eic">${ic('fork', 22, 2)}</span><span><b>Carta y menús</b></span></button>`
+  + `<button type="button" class="entry2" data-act="noop"><span class="eic">${ic('glass', 22, 2)}</span><span><b>Bodega y bebidas</b></span></button></div>`;
+const PRINCIPAL = { n: 3, name: 'Principal', dish: 'Merluza á galega', note: 'sin almendra' };
+const POSTRE = { n: 4, name: 'Postre', dish: 'Tarta de Santiago', note: 'sin almendra, con bizcocho de limón' };
+function passBlock(p, mode) {
+  const pill = mode === 'next' ? '<span class="pill p-next">Siguiente</span>' : mode === 'ready' ? '<span class="pill p-ready">Listo para servir</span>' : '<span class="pill p-void">Sin enviar</span>';
+  const cls = mode === 'next' ? ' s-next' : mode === 'ready' ? ' s-ready' : '';
+  const dot = mode === 'ready' ? `<span class="pdot ready">${ic('bell', 16, 2.4)}</span>` : `<span class="pdot ${mode === 'next' ? 'next' : 'pend'}">${p.n}</span>`;
+  const when = mode === 'ready' ? 'En el pase desde las 21:19' : 'Revisado por cocina';
+  if (mode === 'pending') return `<div class="pass"><div class="pass-h">${dot}<span class="pass-t"><b>${p.name}</b><small>${when}</small></span>${pill}</div><p class="pend-l"><b>${p.dish}&nbsp;×&nbsp;4</b> (1 adaptada)</p></div>`;
+  return `<div class="pass${cls}"><div class="pass-h">${dot}<span class="pass-t"><b>${p.name}</b><small>${when}</small></span>${pill}</div>
+    <ul class="dl"><li class="dish-l"><span class="dn">${p.dish}<small>1 adaptada</small></span><span class="qty">×&nbsp;4</span></li>
+    <li class="dish-l adapted"><span class="ad-why">${ic('alert', 16, 2.3)}<span>${p.dish} · Comensal 2 · ALERGIA frutos secos (grave) · <b>Adaptado: ${p.note}</b></span></span><span class="ad-by">Lo escribió cocina antes de enviar</span></li></ul>
+    <div class="review">${ic('check', 16, 2.4)}<span>Comensal 3 · Intolerancia lactosa (leve): no le afecta</span></div></div>`;
+}
+function scrMesa(st, clock) {
+  const served = st === 'served' ? [['Entrante', '20:41'], ['Primero', '20:58'], ['Principal', '21:21']] : [['Entrante', '20:41'], ['Primero', '20:58']];
+  const pill = st === 'ready' ? '<span class="pill p-ready">Listo para servir</span>' : '<span class="pill p-info">Comiendo</span>';
+  const passes = st === 'next' ? passBlock(PRINCIPAL, 'next') + passBlock(POSTRE, 'pending')
+    : st === 'ready' ? passBlock(PRINCIPAL, 'ready') + passBlock(POSTRE, 'pending')
+    : passBlock(POSTRE, 'next');
+  const bar = st === 'next'
+    ? `<div class="bar"><div class="bar-note">Cada estación lo recibe en su tableta al momento.</div><button type="button" class="btn btn-primary btn-big" data-act="noop">${ic('send', 22, 2)}Enviar siguiente pase · Principal</button></div>`
+    : st === 'ready'
+      ? `<div class="bar"><div class="bar-note"><b>Principal listo</b> en el pase desde las 21:19.</div><button type="button" class="btn btn-primary btn-big" data-act="noop">${ic('check', 24, 2.6)}Servido · Principal</button></div>`
+      : `<div class="bar"><div class="bar-note done-note">${ic('check', 18, 2.6)}<span><b>Principal servido</b> a las 21:21. El postre ya puede salir.</span></div><button type="button" class="btn btn-primary btn-big" data-act="noop">${ic('send', 22, 2)}Enviar siguiente pase · Postre</button></div>`;
+  return `${sbPhone(clock)}<header class="ab"><button type="button" class="back" data-act="go:mesas" aria-label="Volver a Mis mesas">${ic('back', 24, 2.2)}</button><div class="ab-t"><div class="ab-title"><span class="ab-name">Mesa 4</span>${pill}</div><div class="ab-sub">Sala 1 · Menú del día · 4 personas</div></div>${net}</header>
+  <div class="body"><div class="scroll"><div class="stack">${ALLERGY}${ENTRIES}
+    <section class="card"><div class="card-h"><h3>Pases · ${served.length} de 4 servidos</h3><span class="muted sm">Todos comen lo mismo</span></div>
+    <div class="srvd">${served.map(([n, t]) => `<span>${ic('check', 15, 2.8)}${n} <small>${t}</small></span>`).join('')}</div>${passes}</section>
+  </div></div></div>${bar}`;
+}
+
+/* ---------- Costiña Sala: bodega de la Mesa 3, con la banda debajo de la cabecera ---------- */
+const TINT = { tinto: '#7A2236', blanco: '#B09528', espumoso: '#4D6B3C', vermut: '#8E3B1E' };
+function bottle(type) {
+  const c = TINT[type];
+  const foil = type === 'espumoso' ? '<path d="M17 3h6v10h-6z" fill="#C9A44A"/>' : '';
+  return `<svg viewBox="0 0 40 56" aria-hidden="true"><path d="M17 3h6v10c0 3 6 5 6 12v25a3 3 0 0 1-3 3H14a3 3 0 0 1-3-3V25c0-7 6-9 6-12z" fill="${c}"/>${foil}<rect x="13" y="31" width="14" height="13" rx="1.5" fill="#FFFFFF" fill-opacity=".9"/><path d="M16 36h8M17 39.5h6" stroke="${c}" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+}
+const WINES = [
+  ['Pazo de Señoráns Albariño 2023', 'blanco', 'Blancos › Rías Baixas'],
+  ['Guímaro Mencía 2022', 'tinto', 'Tintos › Ribeira Sacra'],
+  ['Viña Costeira 2023', 'blanco', 'Blancos › Ribeiro'],
+  ['Guitián Godello 2023', 'blanco', 'Blancos › Valdeorras'],
+  ['Pétalos del Bierzo 2022', 'tinto', 'Tintos › Bierzo'],
+  ['Gramona Imperial Brut 2018', 'espumoso', 'Espumosos › Corpinnat'],
+  ['La Bota nº 132 Vermut Rojo', 'vermut', 'Vermut']
+];
+function scrBodega() {
+  const chips = [['Por copa', 22, true], ['Tintos', 452], ['Blancos', 337], ['Espumosos', 86], ['Cervezas', 24]]
+    .map(([l, n, on]) => `<button type="button" class="chip" aria-pressed="${!!on}" data-act="noop">${l} <span class="cnt">${n}</span></button>`).join('');
+  // Una presentación solo tiene nombre («Copa», «Botella»): nada de tamaños inventados.
+  const rows = WINES.map(([name, t, meta]) => `<li class="prow"><span class="thumb" style="--tint:${TINT[t]}">${bottle(t)}</span><span class="pinfo"><span class="pname">${name}</span><span class="pmeta">${meta}</span></span><span class="pbtns"><button type="button" class="fmt" data-act="noop">Copa</button><button type="button" class="fmt" data-act="noop">Botella</button></span></li>`).join('');
+  return `${sbPhone('21:19')}<header class="ab line"><button type="button" class="back" data-act="noop" aria-label="Volver a Mesa 3">${ic('back', 24, 2.2)}</button><div class="ab-t"><div class="ab-title"><span class="ab-name">Bodega y bebidas</span></div><div class="ab-sub">Mesa 3 · 4 personas</div></div>${net}</header>
+  ${bannerHtml()}
+  <div class="searchbar"><label class="search">${ic('search', 22, 2)}<input type="search" placeholder="Buscar vino, bebida o referencia" aria-label="Buscar en la bodega"></label></div>
+  <div class="types">${chips}</div>
+  <div class="body"><div class="scroll"><div class="res-h"><b>Por copa</b> · 22 vinos</div><ul class="plist">${rows}</ul></div></div>
+  <div class="tray"><div class="tray-row"><button type="button" class="tray-sum" data-act="noop"><span class="tray-txt"><b><span class="unsent" aria-hidden="true"></span>Ronda · 2 sin enviar</b><small>Guímaro Mencía 2022 · Copa, Pazo de Señoráns…</small></span>${ic('up', 22)}</button><button type="button" class="btn btn-primary btn-send" data-act="noop">${ic('send', 20, 2)}Enviar</button></div></div>`;
+}
+const VIB = '<svg width="22" height="64" viewBox="0 0 22 64" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M17 14c-5 5-5 31 0 36"/><path d="M9 6c-8 9-8 43 0 52"/></svg>';
+
+/* ---------- Costiña Cocina: estación «Cocina caliente» (21:14) ----------
+   Una comanda por mesa y pase, de la más antigua a la más nueva, solo con lo de esta estación. */
+const KTICKETS = [
+  { id: 'm10', mesa: 'Mesa 10', pase: 'Segundos', pax: 6, min: 16, also: 'Cocina fría', groups: [{ name: 'Raxo con patatas', q: 2 }, { name: 'Chuletón de vaca gallega', q: 1 }] },
+  { id: 'm1', mesa: 'Mesa 1', pase: 'Segundo', pax: 2, min: 12, groups: [{ name: 'Rodaballo salvaje', q: 2 }] },
+  { id: 'm4', mesa: 'Mesa 4', pase: 'Principal', pax: 4, min: 6, groups: [
+    { name: 'Merluza á galega', q: 4, adapt: [{ guest: 2, restr: 'ALERGIA frutos secos (grave)', note: 'sin almendra' }] }] },
+  { id: 'm11', mesa: 'Mesa 11', pase: 'Primeros', pax: 3, min: 2, groups: [
+    { name: 'Croquetas de lacón', q: 2, done: true }, { name: 'Pimientos de Padrón', q: 1 }, { name: 'Pulpo á feira', q: 1 }] }
+];
+/* «Hecho · esperando al pase»: comandas de esta estación terminadas que el pase aún no ha validado. Sin hora: el motor no la guarda. */
+const KDONE = [{ mesa: 'Mesa 9', pase: 'Aperitivo', what: 'Zamburiñas a la plancha × 2' }];
+/* Tiempo desde que se envió: neutro, ámbar desde 15 min, ámbar oscuro con letra blanca desde 25. Siempre escrito. */
+const tmr = (m) => `<span class="tmr ${m >= 25 ? 'late' : m >= 15 ? 'warn' : 'ok'}">${ic('clock', 18, 2.4)}Lleva ${m} min</span>`;
+function koTop(station, clock, right) {
+  return `<header class="ko-top"><span class="ko-app">${iconCocina(42)}<b>Costiña Cocina</b></span><span class="ko-st">${station}</span><span class="ko-r">${right}<span class="ko-clock">${clock}</span>${net}</span></header>`;
+}
+const alLine = (cls, a) => `<span class="${cls}">${ic('alert', 20, 2.4)}<span>Comensal ${a.guest} · ${a.restr} · Adaptado: ${a.note}</span></span>`;
+function group(t, g, i, multi) {
+  const head = `<span class="dg-n"><b>${g.name}</b><span class="dg-qr"><span class="dg-q">×&nbsp;${g.q}</span>${g.adapt ? `<span class="dg-x">(${g.adapt.length} adaptada)</span>` : ''}</span></span>`;
+  const al = (g.adapt || []).map((a) => alLine('dg-al', a)).join('');
+  if (g.done) return `<div class="dg done">${head}<span class="dg-ok">${ic('check', 20, 2.8)}Lista</span>${al}</div>`;
+  // «Listo» por plato solo con dos platos distintos o más en la comanda; si no, basta el grande.
+  if (!multi) return `<div class="dg solo">${head}${al}</div>`;
+  const btn = `<button type="button" class="listo" data-act="g:${t.id}:${i}" aria-label="Listo: ${esc(g.name)} × ${g.q}, ${t.mesa}">Listo</button>`;
+  return `<div class="dg">${head}${btn}${al}</div>`;
+}
+function ticket(t) {
+  const multi = new Set(t.groups.map((g) => g.name)).size > 1;
+  return `<article class="tk" aria-label="${t.mesa} · ${t.pase} · ${t.pax} personas · Lleva ${t.min} min"><header class="tk-h"><b class="tk-name">${t.mesa} · ${t.pase}</b><div class="tk-s2"><span>${t.pax} personas</span>${tmr(t.min)}</div></header>
+    <div class="tk-b">${t.groups.map((g, i) => group(t, g, i, multi)).join('')}${t.also ? `<div class="also">${ic('right', 18, 2.2)}También en: ${t.also}</div>` : ''}</div>
+    <div class="tk-f"><button type="button" class="todo" data-act="all:${t.id}" aria-label="Listo: ${t.mesa} · ${t.pase}">${ic('check', 24, 2.8)}Listo</button></div></article>`;
+}
+function scrStation() {
+  const act = S.kt.filter((t) => !t.hecho);
+  const n = act.length;
+  const hrow = (h) => `<div class="hrow"><span class="hr-ic">${ic('check', 20, 2.8)}</span><span class="hr-t"><b>${h.mesa} · ${h.pase}</b> · ${h.what}</span></div>`;
+  const rows = S.kdone.slice(0, 3).map(hrow).join('') + (S.kdone.length > 3 ? `<span class="db-more">y ${S.kdone.length - 3} más</span>` : '');
+  return `${sbTab('21:14')}${koTop('Cocina caliente', '21:14', `<span class="ko-count"><b>${n}</b> ${n === 1 ? 'comanda' : 'comandas'}</span>`)}
+  <div class="ko-body">${n ? `<div class="tickets">${act.map(ticket).join('')}</div>` : '<div class="empty-k">No hay comandas. Las nuevas aparecen aquí solas.</div>'}</div>
+  <div class="done-band"><span class="db-l">${ic('check', 20, 2.8)}Hecho · esperando al pase</span>${rows || '<span class="db-empty">Nada</span>'}</div>${toastHtml()}`;
+}
+
+/* ---------- Costiña Cocina: pase (21:19) ---------- */
+const PCARDS = [
+  { id: 'p1', mesa: 'Mesa 1', pase: 'Segundo', pax: 2, min: 17, next: 'Principal',
+    dishes: [{ name: 'Rodaballo salvaje', q: 2, st: 'Cocina caliente', done: false }] },
+  { id: 'p4', mesa: 'Mesa 4', pase: 'Principal', pax: 4, min: 11, next: 'Postre',
+    dishes: [{ name: 'Merluza á galega', q: 4, st: 'Cocina caliente', done: true, adapt: [{ guest: 2, restr: 'ALERGIA frutos secos (grave)', note: 'sin almendra' }] }] },
+  { id: 'p9', mesa: 'Mesa 9', pase: 'Aperitivo', pax: 2, min: 9, next: 'Entrante',
+    dishes: [{ name: 'Zamburiñas a la plancha', q: 2, st: 'Cocina caliente', done: true }, { name: 'Ostras de Arcade', q: 2, st: 'Cocina fría', done: true }, { name: 'Salpicón de marisco', q: 2, st: 'Cocina fría', done: false }] },
+  { id: 'p11', mesa: 'Mesa 11', pase: 'Primeros', pax: 3, min: 7, next: 'Segundos',
+    dishes: [{ name: 'Croquetas de lacón', q: 2, st: 'Cocina caliente', done: true }, { name: 'Pimientos de Padrón', q: 1, st: 'Cocina caliente', done: false }, { name: 'Pulpo á feira', q: 1, st: 'Cocina caliente', done: false }] }
+];
+const PWAIT = [{ mesa: 'Mesa 10', pase: 'Segundos', ago: 'hace 2 min' }];
+/* «Por revisar»: el motor marca al comensal, no el plato, así que salen todos sus platos de los pases sin enviar. */
+const REVIEW = { mesa: 'Mesa 6', guest: 1, restr: 'ALERGIA marisco (grave)', items: [
+  { pase: 'Entrante', name: 'Empanada de zamburiñas', ad: 'empanada de bacalao, sin zamburiñas' },
+  { pase: 'Primero', name: 'Pulpo á feira con cachelos', ad: 'cachelos con pimentón, sin pulpo' },
+  { pase: 'Principal', name: 'Merluza á galega', ad: 'merluza sin almejas' },
+  { pase: 'Postre', name: 'Tarta de Santiago', ad: 'cambiada por flan de huevo' }] };
+function pcard(c) {
+  const stations = Array.from(new Set(c.dishes.map((d) => d.st)));
+  const progress = stations.map((s) => { const ds = c.dishes.filter((d) => d.st === s); return { s, d: ds.filter((d) => d.done).length, t: ds.length }; });
+  const done = progress.every((p) => p.d === p.t);
+  const chips = progress.map((p) => (p.d === p.t ? `<span class="schip ok">${ic('check', 18, 3)}${p.s}: lista</span>` : `<span class="schip">${p.s}: ${p.d} de ${p.t}</span>`)).join('');
+  const many = stations.length > 1;
+  const dishes = c.dishes.map((d) => `<li class="pd${d.done ? ' ok' : ''}"><span class="pd-s">${d.done ? ic('check', 22, 3) : '<i class="todo-dot" aria-hidden="true"></i>'}</span><span class="pd-n"><b>${d.name}</b> <span class="pd-q">×&nbsp;${d.q}</span>${d.adapt ? ` <span class="pd-x">(${d.adapt.length} adaptada)</span>` : ''}${many ? `<span class="pd-at">${d.st}</span>` : ''}</span><span class="pd-st">${d.done ? 'Lista' : 'Por empezar'}</span></li>`
+    + (d.adapt || []).map((a) => `<li class="pd-al">${ic('alert', 20, 2.4)}<span>Comensal ${a.guest} · ${a.restr} · Adaptado: ${a.note}</span></li>`).join('')).join('');
+  const missing = progress.filter((p) => p.d < p.t).map((p) => p.s).join(' y ');
+  // Mientras no se puede validar, en lugar del botón, qué falta. El botón sale solo cuando el servidor anuncia «Validar».
+  const foot = done
+    ? `<button type="button" class="pase-go" data-act="pase:${c.id}">${ic('bell', 24, 2.2)}Validar pase: listo para servir</button>`
+    : `<p class="pc-miss">${ic('clock', 20, 2.2)}Falta ${missing}</p>`;
+  return `<article class="pcard${done ? ' all' : ''}" aria-label="${c.mesa} · ${c.pase}"><header class="pc-h"><b class="tk-name">${c.mesa} · ${c.pase}</b><div class="tk-s2"><span>${c.pax} personas</span>${tmr(c.min)}</div></header>
+    <div class="pc-st">${chips}</div><ul class="pd-l">${dishes}</ul><p class="pc-next">Siguiente: <b>${c.next}</b> (sin enviar)</p><div class="pc-f">${foot}</div></article>`;
+}
+function reviewCard() {
+  const r = S.review;
+  if (!r) return '<section><h3 class="side-h">Por revisar antes de enviar <span class="cnt">0</span></h3><p class="side-hint">Nada por revisar.</p></section>';
+  const left = r.items.filter((it) => !it.dec).length;
+  const rows = r.items.map((it, i) => `<li class="rv-row"><span class="rv-d"><small>${it.pase}</small><b>${it.name}</b></span>`
+    + (it.dec
+      ? `<button type="button" class="rv-dec${it.dec === 'ad' ? ' ad' : ''}" data-act="rv:${i}:reset" aria-label="Cambiar la decisión de ${esc(it.name)}">${it.dec === 'ad' ? `Adaptado: ${it.ad}` : `${ic('check', 18, 2.8)}No le afecta`}</button>`
+      : `<span class="rv-b"><button type="button" class="rv-btn" data-act="rv:${i}:no">No le afecta</button><button type="button" class="rv-btn" data-act="rv:${i}:ad">Adaptado…</button></span>`)
+    + '</li>').join('');
+  const go = left
+    ? '<button type="button" class="rv-all" data-act="rvsave">No le afecta a nada más</button>'
+    : '<button type="button" class="rv-all" data-act="rvsave">Guardar</button>';
+  return `<section><h3 class="side-h">Por revisar antes de enviar <span class="cnt">1</span></h3>
+    <article class="rv-c" aria-label="${r.mesa} · Comensal ${r.guest}"><div class="rv-t"><b>${r.mesa} · Comensal ${r.guest}</b><span class="pill p-void">Sin enviar</span></div>
+    <div class="rv-al">${ic('alert', 20, 2.4)}<span>${r.restr}</span></div>
+    <p class="rv-q">Todos sus platos sin enviar, en una orden.</p>
+    <ul class="rv-list">${rows}</ul>${go}</article></section>`;
+}
+function scrPase() {
+  const cards = S.pcards;
+  const waiting = `<section><h3 class="side-h">Esperando al camarero <span class="cnt">${S.waiting.length}</span></h3><div class="stack">${S.waiting.map((w) => `<div class="wt-r${w.fresh ? ' new' : ''}">${ic('check', 22, 2.8)}<span><b>${w.mesa} · ${w.pase}</b> · listo ${w.ago}</span></div>`).join('')}</div><p class="side-hint">Se van solas cuando el camarero pulsa «Servido».</p></section>`;
+  return `${sbTab('21:19')}${koTop('Pase', '21:19', `<span class="ko-count"><b>${cards.length}</b> comandas · <b>${S.review ? 1 : 0}</b> por revisar</span>`)}
+  <div class="pase-body"><div class="pcards">${[0, 1].map((k) => `<div class="pcol">${cards.filter((c, i) => i % 2 === k).map(pcard).join('')}</div>`).join('')}</div><aside class="pside">${reviewCard()}${waiting}</aside></div>${toastHtml()}`;
+}
+
+/* ---------- PC: Dispositivos ---------- */
+function qrSvg(seed, size) {
+  const N = 25;
+  let s = seed;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  const finder = (x, y) => (x < 8 && y < 8) || (x > N - 9 && y < 8) || (x < 8 && y > N - 9);
+  const center = (x, y) => x >= 9 && x <= 15 && y >= 9 && y <= 15;
+  let d = '';
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (finder(x, y) || center(x, y)) continue;
+    if (rnd() < 0.48) d += `M${x} ${y}h1v1h-1z`;
+  }
+  [[0, 0], [N - 7, 0], [0, N - 7]].forEach(([fx, fy]) => {
+    d += `M${fx} ${fy}h7v7h-7zM${fx + 1} ${fy + 1}v5h5v-5zM${fx + 2} ${fy + 2}h3v3h-3z`;
+  });
+  return `<svg width="${size}" height="${size}" viewBox="-1 -1 27 27" role="img" aria-label="Código QR de ejemplo"><rect x="-1" y="-1" width="27" height="27" fill="#FFFFFF"/><path d="${d}" fill="#1A1D21" fill-rule="evenodd"/><svg x="9.4" y="9.4" width="6.2" height="6.2" viewBox="0 0 96 96">${COCINA_INNER}</svg></svg>`;
+}
+function scrPC() {
+  const menu = ['Archivo', 'Comedor', 'Caja', 'Configuración', 'ERP', 'Fiscalidad', 'Ayuda'].map((m) => `<span>${m}</span>`).join('');
+  const NAV = [['s', 'Servicio'], ['home', 'Inicio'], ['fork', 'Comedor y cocina'], ['card', 'Cuenta / Caja'], ['s', 'Gestión'], ['tag', 'Catálogo y tarifas'], ['doc', 'Oferta: cartas y menús'], ['grid', 'Salas, mesas y estaciones'], ['mobile', 'Dispositivos', 'on'], ['s', 'Próximamente'], ['cal', 'Reservas', 'off'], ['box', 'Stock y compras', 'off'], ['receipt', 'Fiscalidad', 'off']];
+  const nav = NAV.map(([i, l, f]) => (i === 's' ? `<div class="d-nav-s">${l}</div>` : `<button type="button" class="d-nav ${f || ''}" data-act="noop">${ic(i, 20, 1.8)}${l}</button>`)).join('');
+  return `<div class="d-menu">${menu}<span class="d-role"><span class="d-badge"><i>${ic('lock', 14, 2.2)}</i>Responsable · jefa</span><button type="button" class="d-btn" data-act="noop">Salir del modo responsable</button></span></div>
+  <div class="d-body"><nav class="d-side">${nav}<div style="flex:1"></div><button type="button" class="d-nav" data-act="noop">${ic('sidebar', 20, 1.8)}Plegar la barra</button></nav>
+  <main class="d-main"><div><h1 class="d-h1">Dispositivos</h1><div class="d-sub">Costiña Sala en el móvil de cada camarero y Costiña Cocina en la tableta de cada estación: se conectan con un QR o con un código corto, de un solo uso.</div></div>
+  <div class="d-cols">
+    <section class="d-card"><h2>Conectar un dispositivo</h2>
+      <div class="d-warn">${ic('alert', 18, 2)}<span>Conexión sencilla activa: entran por http://192.168.0.81:5089 con solo leer el QR. Úsala solo con el Wi-Fi del personal.</span></div>
+      <div class="d-app">${iconSala(44)}<span class="d-app-t"><b>Costiña Sala</b><small>El móvil de cada camarero. Elige su estación de sala.</small></span>
+        <div class="d-row"><span class="d-sel">Sala 1${ic('down', 16, 2)}</span><button type="button" class="d-primary" data-act="noop">${ic('qr', 18, 2)}Conectar Costiña Sala · Sala 1</button></div></div>
+      <div class="d-app">${iconCocina(44)}<span class="d-app-t"><b>Costiña Cocina</b><small>Una tableta fija por estación: Pase, Cocina fría y Cocina caliente.</small></span>
+        <div class="d-row"><span class="d-sel">Cocina caliente${ic('down', 16, 2)}</span><button type="button" class="d-primary on" data-act="noop">${ic('qr', 18, 2)}Conectar Costiña Cocina · Cocina caliente</button></div>
+        <div class="d-qr"><span class="d-qr-c">${qrSvg(20261022, 150)}</span><div class="d-qr-t"><b>Conectar Costiña Cocina · Cocina caliente</b>
+          <div class="d-code"><span>Código para teclear</span><b>K7M2Q 9XR4T</b></div>
+          <div class="d-steps"><b>Android</b><span>Lee el QR → «Solicitar emparejamiento» → «Aprobar» aquí → «Añadir a pantalla de inicio».</span>
+            <b>iPhone y iPad</b><span>Lee el QR: Safari explica cómo añadir el icono y no empareja. Abre el icono → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí.</span></div>
+          <span class="lnk">Abre <code>http://192.168.0.81:5089/app/cocina/</code> · caduca en 4:41 · <button type="button" class="d-link" data-act="noop">Generar otro código</button></span></div></div></div>
+    </section>
+    <section class="d-card"><h2>Dispositivos conectados</h2><div class="d-sub">Activos: 2 en Costiña Sala y 2 en Costiña Cocina; los 4 con conexión ahora.</div>
+      <div class="d-list">
+        <div class="d-grp">${iconSala(22)}Costiña Sala</div>
+        <div class="d-dev"><i></i>móvil de Ana <small>· Sala 1 · Conectado</small></div>
+        <div class="d-dev"><i></i>móvil de Brais <small>· Terraza · Conectado</small></div>
+        <div class="d-grp">${iconCocina(22)}Costiña Cocina</div>
+        <div class="d-dev"><i></i>tablet del pase <small>· Pase · Conectada</small></div>
+        <div class="d-dev"><i></i>tablet de la fría <small>· Cocina fría · Conectada</small></div>
+        <div class="d-dev"><i class="wait"></i>Cocina caliente <small>· esperando su solicitud…</small></div>
+      </div>
+    </section>
+  </div></main></div>
+  <div class="d-status"><span><i></i>Servidor conectado</span><span><i></i>Tiempo real activo</span><span>Responsable: jefa</span><span class="ver">Costiña 0.43.0-c3c</span></div>`;
+}
+
+/* ---------- pantallas de inicio y de emparejar ---------- */
+const gapp = (name, glyph, bg) => `<span class="app"><span class="gic" style="background:${bg}">${ic(glyph, 28, 1.8)}</span><span>${name}</span></span>`;
+function homePhone() {
+  const apps = [gapp('Teléfono', 'phone', '#E3ECF8'), gapp('Mensajes', 'msg', '#E4F1EA'), gapp('Cámara', 'cam', '#ECEDEF'), gapp('Navegador', 'globe', '#E6EEFB'),
+    gapp('Ajustes', 'gear', '#ECEDEF'), gapp('Fotos', 'img', '#F6E9EF'), gapp('Reloj', 'clock', '#EDEAF6'), `<span class="app mine"><span class="ico">${iconSala(60)}</span><span>Costiña Sala</span></span>`];
+  return `${sbPhone('21:05')}<div class="hs ph"><div class="hs-clock"><b>21:05</b><span>jueves, 22 de octubre</span></div><div class="hs-grid">${apps.join('')}</div>
+    <div class="dock">${gapp('', 'phone', '#E3ECF8')}${gapp('', 'msg', '#E4F1EA')}${gapp('', 'globe', '#E6EEFB')}${gapp('', 'cam', '#ECEDEF')}</div></div>`;
+}
+function homeTablet() {
+  const apps = [gapp('Ajustes', 'gear', '#ECEDEF'), gapp('Cámara', 'cam', '#ECEDEF'), gapp('Navegador', 'globe', '#E6EEFB'), gapp('Reloj', 'clock', '#EDEAF6'),
+    `<span class="app mine"><span class="ico">${iconCocina(84)}</span><span>Costiña Cocina</span></span>`];
+  return `${sbTab('21:05')}<div class="hs tb"><div class="hs-clock" style="padding:40px 70px 0"><b>21:05</b><span>jueves, 22 de octubre · Cocina caliente</span></div><div class="hs-grid">${apps.join('')}</div>
+    <div class="dock">${gapp('', 'globe', '#E6EEFB')}${gapp('', 'cam', '#ECEDEF')}${gapp('', 'gear', '#ECEDEF')}</div></div>`;
+}
+/* iPhone y iPad: la cámara abre Safari, y Safari no empareja (el icono no ve lo que guarda Safari): solo explica cómo añadir el icono. */
+function scrSafari() {
+  return `${sbPhone('21:05')}<div class="sf-top"><span class="sf-url"><small>No es seguro</small>192.168.0.81</span></div>
+  <div class="body"><div class="scroll sf-page"><div class="sf-brand">${iconSala(72)}<b>Costiña Sala</b></div>
+    <h2>Añádela a la pantalla de inicio</h2><p>En iPhone y iPad se usa desde su icono. Aquí, en Safari, no se empareja.</p>
+    <p class="sf-key">${ic('share', 20, 2.2)}<span>Compartir › Añadir a pantalla de inicio</span></p>
+    <ol class="sf-steps"><li><span class="sf-n">1</span><span>Toca <b>Compartir</b>, abajo.</span></li><li><span class="sf-n">2</span><span>Elige <b>Añadir a pantalla de inicio</b>.</span></li><li><span class="sf-n">3</span><span>Abre el icono <b>Costiña Sala</b> y teclea el código corto que enseña el PC.</span></li></ol>
+  </div></div><div class="sf-bot" aria-hidden="true">${ic('back', 24, 2)}${ic('right', 24, 2)}${ic('share', 24, 2)}${ic('book', 24, 2)}${ic('tabs', 24, 2)}</div>`;
+}
+/* Desde el icono: el código corto y el nombre. El nombre es solo un ejemplo: antes de aprobar el dispositivo no sabe su estación. */
+function scrPairIcon() {
+  return `${sbPhone('21:06')}<header class="sa-top">${iconSala(38)}<span class="sa-id"><b>Costiña Sala</b><small>Sin conectar</small></span></header>
+  <div class="body"><div class="scroll"><div class="pg-h"><h2>Conectar este móvil</h2></div>
+    <p class="pf-p">Teclea el código corto que enseña el PC en «Conectar Costiña Sala».</p>
+    <div class="pf-l">Código del PC<span class="pf-in code">P3H7W ZK9NE</span></div>
+    <div class="pf-l">Nombre de este móvil<span class="pf-in ph">móvil de Ana</span></div>
+    <p class="pf-hint">Uno distinto en cada móvil: con él se sabe qué mesas son tuyas.</p>
+    <button type="button" class="btn btn-primary btn-big" data-act="noop">Solicitar emparejamiento</button>
+    <p class="pf-hint" style="margin-top:12px">Después, en el PC: «Aprobar».</p>
+  </div></div>`;
+}
+/* La aplicación equivocada no monta nada y lo dice. */
+function scrWrongApp() {
+  return `${sbTab('21:05')}<header class="sa-top">${iconSala(38)}<span class="sa-id"><b>Costiña Sala</b></span></header>
+  <div class="wa">${iconCocina(96)}<h2>Este dispositivo está conectado como Costiña Cocina · Pase.</h2><p>Ábrelo con el icono de Costiña Cocina.</p><button type="button" class="btn" data-act="noop">Desvincular</button><p class="wa-f">«Desvincular» lo desconecta del PC; después se puede emparejar con un código de Costiña Sala.</p></div>`;
+}
+
+/* ---------- pestañas ---------- */
+const TABS = [
+  ['instalar', '0 · Instalar', 'p'], ['mesas', '1 · Sala · Mis mesas', 's'], ['mesa', '2 · Sala · Mesa', 's'], ['estacion', '3 · Cocina · estación', 'k'],
+  ['pase', '4 · Cocina · pase', 'k'], ['aviso', '5 · Sala · aviso', 's'], ['servido', '6 · Sala · servido', 's']
+];
+const NOTES = {
+  instalar: { t: '0 · Instalar: dos aplicaciones, cada una con su QR', li: [
+    'Dos aplicaciones con su nombre, su icono y su color: <b>Costiña Sala</b> (verde, campana de servir) para el móvil de cada camarero y <b>Costiña Cocina</b> (azul pizarra, gorro de cocina) para la tableta fija de cada estación. El color solo va en el icono, en la franja de la cabecera y en la marca; dentro, los botones siguen con el verde de siempre.',
+    'En el PC, <b>Dispositivos</b> tiene un botón por aplicación: «Conectar Costiña Sala · Sala 1» y «Conectar Costiña Cocina · Cocina caliente». Cada QR abre su aplicación. La estación llega cuando el PC aprueba, no antes. Junto al QR, el código corto en dos grupos: «K7M2Q 9XR4T».',
+    'Android: leer el QR → «Solicitar emparejamiento» → «Aprobar» en el PC → «Añadir a pantalla de inicio».',
+    'iPhone y iPad: el QR abre Safari, que no empareja y solo explica «Compartir › Añadir a pantalla de inicio». Se abre el icono, se teclea el código corto → «Solicitar emparejamiento» → «Aprobar» en el PC.',
+    'El nombre se escribe al emparejar («móvil de Ana» es solo el ejemplo del campo): tiene que ser distinto en cada dispositivo, porque decide «Mis mesas».',
+    'Si alguien abre la aplicación equivocada, no monta nada y lo dice: «Este dispositivo está conectado como Costiña Cocina · Pase. Ábrelo con el icono de Costiña Cocina», con «Desvincular».',
+    'Límite: con la conexión sencilla (http por la IP del PC), Android no instala una aplicación de verdad: cada icono abre una pestaña del navegador con su nombre. El icono a pantalla completa llega con el certificado público. En iPhone y iPad se empareja desde el icono, con el código corto.'],
+    build: 'Para hacerlo: C3c (0.43.0-c3c). Dos entradas en el mismo motor (/app/sala/ y /app/cocina/), cada una con su manifiesto, su icono y sus datos guardados aparte; el QR lleva la aplicación del botón pulsado y el motor solo añade el código corto. Hoy hay una sola aplicación, «Costina», que cambia de pantalla según el rol tras emparejar.' },
+  mesas: { t: '1 · Sala · Mis mesas: primero lo tuyo', li: [
+    'Al abrir Costiña Sala salen <b>Mis mesas</b>: las que abriste tú y las abiertas desde los otros móviles de tu estación de sala (este es el «móvil de Ana», en Sala 1). <b>Todas</b> es el plano de hoy, con sus pestañas de sala.',
+    'En Costiña, con una sola estación de sala, Mis mesas son todas las ocupadas. Se distinguen de Todas cuando hay varias estaciones de sala, como aquí Sala 1 y Terraza.',
+    'Se agrupan por la sala de cada mesa: la Mesa 9 la abriste tú y sale bajo «Terraza» (el segundo móvil enseña el final de la lista). No hay «mi sala» ni «otras salas»: el motor no sabe de qué sala es cada estación.',
+    'Arriba, las listas para servir, con la tarjeta entera en verde (Mesa 7); si la mesa tiene una alergia, el borde sigue rojo. Las libres, de todas las salas, van al final: abrir una sigue siendo de 3 toques.',
+    'Las tarjetas son las de ahora: Libre, Sentados, En cocina, <b>Listo para servir</b>, Comiendo y En pausa, con los minutos, el avance de los pases y la alergia en rojo y escrita.',
+    'Una mesa libre abre la hoja de abrir mesa (personas, menú propuesto y alergias); una ocupada abre su ficha. Toca la Mesa 4.'],
+    build: 'Para hacerlo: E4e guarda quién abrió cada mesa y desde qué estación, sin cambio de esquema (va en la instantánea de la mesa), y C3e lo pinta. Unir cada estación con su sala queda diferido.' },
+  mesa: { t: '2 · Sala · Mesa: enviar el siguiente pase con un botón', li: [
+    'La ficha de C3b: alergias arriba en rojo, <b>Carta y menús</b>, <b>Bodega y bebidas</b> y los pases del menú. Los ya servidos se recogen en una línea.',
+    'Menú cerrado: todos comen lo mismo. Los platos van agrupados («Merluza á galega × 4», 1 adaptada) y la adaptada va aparte, en rojo, con el texto que escribió cocina.',
+    'Un solo botón grande: <b>Enviar siguiente pase · Principal</b>. Cada estación lo recibe en su tableta en el acto, solo con su parte.',
+    'Si cocina aún no ha decidido una alergia de ese pase, el botón grande no desaparece: se queda desactivado con «Esperando la revisión de cocina», y la ficha dice «Por revisar en cocina».',
+    'Al abrir la mesa ya se anotaron personas, menú propuesto y alergias; con la mesa «Sentados», el mismo botón envía el primer pase.'],
+    build: 'Para hacerlo: C3e (ficha y botón grande) y E4e (abrir con alergias, revisión antes de enviar y enviar desde «Sentados»).' },
+  estacion: { t: '3 · Cocina · estación: solo lo mío, agrupado, con un «Listo» grande', li: [
+    'Tableta fija de <b>Cocina caliente</b>: solo sus platos. Lo de otras estaciones no se pinta; basta «También en: Cocina fría».',
+    'Una comanda por mesa y pase, de la más antigua a la más nueva: «Mesa 4 · Principal · 4 personas · Lleva 6 min».',
+    'Platos iguales juntos, en una sola tarjeta de plato: «Merluza á galega × 4 (1 adaptada)». Debajo, en rojo, la adaptada: quién, la alergia y «Adaptado: …» con el texto de cocina. No hay líneas por comensal salvo las de alergias.',
+    'Un toque: el <b>Listo</b> grande de la comanda, una sola orden. Con dos platos distintos o más (Mesa 10, Mesa 11), cada plato lleva también su «Listo». Lo terminado baja a <b>Hecho · esperando al pase</b> y se va cuando el pase valida. Pruébalo.',
+    '«Listo» no se puede deshacer: el motor no lo permite. Si se toca por error, el pase no valida sin ver el plato.',
+    'El tiempo, siempre escrito («Lleva 16 min»): neutro al principio, ámbar desde 15 min y ámbar oscuro con letra blanca desde 25. Nunca rojo: el rojo queda para las alergias.',
+    'Si llega una alergia con el pase ya enviado, sus platos salen con «Por revisar en el pase», en ámbar, hasta que el pase decida. «Listo» de una estación no avisa a sala: solo lo ve el pase.'],
+    build: 'Para hacerlo: C3d, con las órdenes de grupo de E4e («Listo» en una sola orden; hoy es una por comensal y plato), y cambiar la regla de D6.4 «la estación ve el pase entero». Los umbrales del tiempo los decide el dueño. Sin franja de totales ni «Deshacer»: quedan diferidos.' },
+  pase: { t: '4 · Cocina · pase: la mesa entera, la revisión y el aviso a sala', li: [
+    'Una tarjeta por mesa y pase, con la mesa entera. Arriba, cómo va cada estación, con su nombre entero: «Cocina caliente: lista · Cocina fría: 1 de 2».',
+    'Cada plato con su estado de hoy, «Lista» o «Por empezar», y la alergia en rojo con su adaptación. Debajo, «Siguiente: Postre (sin enviar)», solo para mirar: el ritmo lo marca el camarero.',
+    'Cuando todas terminan, la tarjeta se pone verde y sale <b>Validar pase: listo para servir</b>. Ese toque es el que avisa al camarero. Antes, en lugar del botón, dice qué falta: «Falta Cocina fría» o «Falta revisar la alergia». Pruébalo en la Mesa 4.',
+    'Después, la comanda pasa a <b>Esperando al camarero</b> («listo hace 2 min») hasta que pulse «Servido». Nunca dice «Sala avisada»: el servidor no sabe si el aviso llegó al móvil.',
+    '<b>Por revisar</b>, siempre arriba: alergias de pases que aún no han salido. El motor marca al comensal y no sabe qué lleva cada plato, así que salen todos sus platos sin enviar, cada uno con «No le afecta» o «Adaptado…». «No le afecta a nada más» da esa decisión al resto, y todo se guarda en una sola orden. Hasta entonces, el camarero ve «Por revisar en cocina». Pruébalo.',
+    'Solo el pase avisa a sala: una estación que termina no avisa a nadie, para que el camarero no vaya antes de tiempo.'],
+    build: 'Para hacerlo: C3d, sobre E4e (revisión antes de enviar, con una orden por comensal). Validar ya existe y solo en el pase. Sin hora por estación: el motor no la guarda (diferido).' },
+  aviso: { t: '5 · Sala · aviso: «Mesa 4 · Principal listo para servir»', li: [
+    'El camarero está en otra pantalla (aquí, la bodega de la Mesa 3) y le sale una banda grande debajo de la cabecera, esté en la pantalla que esté de Costiña Sala. No tapa nada: ni volver, ni el buscador, ni «Enviar».',
+    'Sale cuando el servidor deja servir ese pase, no solo porque esté listo: si entra una alergia nueva después de validar, la banda espera a que cocina la revise.',
+    'Solo de <b>Mis mesas</b> desde C3e (en C3c, de todas las mesas), una vez por pase; si cocina rehace el pase, avisa otra vez.',
+    '<b>Servido · Principal</b> desde la propia banda (un toque, una orden), <b>Ver mesa</b> abre la Mesa 4 y <b>Visto</b> la quita de este móvil sin servir. Si no, sigue ahí hasta que se sirve.',
+    'En la lista, la Mesa 4 se pinta de verde; su alergia mantiene el borde rojo.',
+    'Android vibra, si se ha tocado la pantalla desde que se abrió la aplicación; el iPhone no vibra. En la sala no suena nada.',
+    'Con la aplicación cerrada o la pantalla bloqueada no llega nada; al volver a ella, el aviso sale al momento. Avisar con la aplicación cerrada necesita el certificado público y las notificaciones del sistema.'],
+    build: 'Para hacerlo: C3c, sin tocar el motor. La aplicación compara cada lectura del servidor con la anterior y avisa cuando un pase de una mesa suya pasa a anunciar «Servido» (el aviso en tiempo real no lleva datos, a propósito).' },
+  servido: { t: '6 · Sala · servido: y el siguiente pase, listo para enviar', li: [
+    'En la ficha, el botón grande es <b>Servido · Principal</b> (también está en la banda).',
+    'Al pulsarlo, la mesa sale de «Esperando al camarero» en el pase y la banda desaparece.',
+    'El botón pasa a <b>Enviar siguiente pase · Postre</b>, con la tarta del comensal 2 ya adaptada por cocina.',
+    'Y vuelta a empezar: enviar → estaciones → pase → aviso → servido.'],
+    build: 'Para hacerlo: «Marcar servido» y «Enviar siguiente pase» ya existen. C3c pone «Servido» en la banda y C3e deja «Servido · Principal» como único botón grande de la ficha.' }
+};
+
+const STAGES = {
+  instalar: () => `<div class="srow">${`<figure class="device pc"><figcaption>PC del comedor · Dispositivos</figcaption><div class="bezel"><div class="screen" role="region" aria-label="PC del comedor">${scrPC()}</div></div></figure>`}</div>
+    <div class="srow">
+      <div class="mini" style="--mz:.72">${phone('Móvil del camarero (Android) · pantalla de inicio', homePhone())}</div>
+      <div class="mini" style="--mz:.5">${tabletL('Tableta fija de Cocina caliente · pantalla de inicio', homeTablet())}</div>
+      <aside class="icons-card"><h3>Los dos iconos</h3>
+        <div class="ic-row">${iconSala(88)}<span><b>Costiña Sala</b><small><span class="swatch" style="background:#0E7A5F"></span>Verde · campana de servir</small><small>Nombre corto: «Costiña Sala»</small></span></div>
+        <div class="ic-row">${iconCocina(88)}<span><b>Costiña Cocina</b><small><span class="swatch" style="background:#2F4A6D"></span>Azul pizarra · gorro de cocina</small><small>Nombre corto: «Cocina»</small></span></div>
+        <p>Misma familia: marco, dibujo blanco y la tilde de Costiña. El color de cada una solo va en el icono, en la franja de la cabecera y en la marca; dentro, los botones siguen con el verde de siempre.</p></aside>
+    </div>
+    <div class="srow">
+      <div class="mini" style="--mz:.6">${phone('iPhone · el QR abre Safari, que no empareja', scrSafari())}</div>
+      <div class="mini" style="--mz:.6">${phone('iPhone · desde el icono, con el código corto', scrPairIcon())}</div>
+      <div class="mini" style="--mz:.5">${tabletL('Tableta del Pase · abre Costiña Sala por error', scrWrongApp())}</div>
+    </div>`,
+  mesas: () => phone('Móvil del camarero · Costiña Sala · 21:07', scrMesas({ clock: '21:07', sala1: SALA1_2107, terraza: TERRAZA_2107 }))
+    + phone('El mismo, al bajar: Terraza y las libres', scrMesas({ clock: '21:07', sala1: SALA1_2107, terraza: TERRAZA_2107, end: true })),
+  mesa: () => phone('Móvil del camarero · Mesa 4 · 21:08', scrMesa('next', '21:08')),
+  estacion: () => tabletL('Tableta fija de Cocina caliente · Costiña Cocina · 21:14', scrStation()),
+  pase: () => tabletL('Tableta fija del Pase · Costiña Cocina · 21:19', scrPase()),
+  aviso: () => phone('En otra pantalla: bodega de la Mesa 3 · 21:19', scrBodega(), `<span class="vib l">${VIB}</span><span class="vib r">${VIB}</span><span class="vib-tag">${ic('mobile', 15, 2.2)}Vibra en Android</span>`)
+    + phone('Mis mesas: la Mesa 4, en verde', scrMesas({ clock: '21:19', sala1: SALA1_2119, terraza: TERRAZA_2119, banner: true }))
+    + `<aside class="side-note"><h3>Cuándo llega el aviso</h3><ul class="lim">
+        <li class="ok">${ic('check', 18, 2.6)}<span><b>Android, aplicación abierta:</b> banda grande y vibración, en cualquier pantalla. Solo vibra si se ha tocado la pantalla desde que se abrió la aplicación (lo normal al trabajar con ella).</span></li>
+        <li class="ok">${ic('check', 18, 2.6)}<span><b>iPhone, aplicación abierta:</b> banda grande; el iPhone no vibra.</span></li>
+        <li class="ok">${ic('check', 18, 2.6)}<span><b>Al volver a la aplicación:</b> si el pase sigue listo, la banda sale al momento.</span></li>
+        <li class="no">${ic('x', 18, 2.6)}<span><b>Aplicación cerrada o pantalla bloqueada:</b> no llega nada. Hace falta el certificado público del local y las notificaciones del sistema; en iPhone, además, la aplicación instalada en la pantalla de inicio.</span></li>
+        <li class="no">${ic('x', 18, 2.6)}<span><b>En la sala no suena nada:</b> el móvil solo vibra.</span></li>
+        <li class="ok">${ic('check', 18, 2.6)}<span>Solo de <b>Mis mesas</b> desde C3e (en C3c, de todas las mesas), una vez por pase, y otra vez si cocina rehace el pase. Sigue arriba hasta «Servido» o «Visto».</span></li></ul></aside>`,
+  servido: () => phone('Al tocar «Ver mesa» · 21:20', scrMesa('ready', '21:20')) + phone('Después de «Servido» · 21:21', scrMesa('served', '21:21'))
+};
+const WIDTH = { instalar: 1300, mesas: 860, mesa: 420, estacion: 1236, pase: 1236, aviso: 1240, servido: 860 };
+const IN_TABLET = { estacion: true, pase: true };
+
+/* ---------- estado ---------- */
+let S;
+let toastTimer = 0;
+function fresh() {
+  return { mode: 'mine', room: '', kt: clone(KTICKETS), kdone: clone(KDONE), pcards: clone(PCARDS), waiting: clone(PWAIT), review: clone(REVIEW), toast: null, bn: true, m4: '' };
+}
+const current = () => { const h = location.hash.replace('#', ''); return NOTES[h] ? h : 'mesas'; };
+function toast(text) {
+  S.toast = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 3600);
+}
+
+function render() {
+  const tab = current();
+  document.querySelectorAll('#tabs a').forEach((a) => { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  const N = NOTES[tab];
+  document.getElementById('note').innerHTML = `<h2>${N.t}</h2><ul>${N.li.map((l) => `<li>${l}</li>`).join('')}</ul><p class="build">${N.build}</p>`;
+  const st = document.getElementById('stage');
+  st.className = tab === 'instalar' ? 'stage col' : 'stage';
+  st.innerHTML = STAGES[tab]();
+  st.querySelectorAll('[data-scroll="end"]').forEach((e) => { e.scrollTop = e.scrollHeight; });
+  // En las tabletas, el aviso sale dentro de la pantalla; en el resto, abajo de la página (dos móviles a la vez).
+  const pt = document.getElementById('ptoast');
+  const outside = S.toast && !IN_TABLET[tab];
+  pt.hidden = !outside;
+  pt.innerHTML = outside ? `${ic('check', 20, 2.4)}<span>${S.toast}</span>` : '';
+  applyScale();
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b || b.disabled) return;
+  const [act, x, y] = b.dataset.act.split(':');
+  switch (act) {
+    case 'scale': scaleMode = x; applyScale(); return;
+    case 'go': location.hash = x; return;
+    case 'mode': S.mode = x; break;
+    case 'room': S.room = x === 'all' ? '' : x; break;
+    case 'visto': S.bn = false; break;
+    case 'serve': S.bn = false; S.m4 = 'served'; toast('Mesa 4 · Principal: servido. Sale de «Esperando al camarero» en el pase.'); break;
+    case 'g': {
+      const t = S.kt.find((k) => k.id === x);
+      t.groups[+y].done = true;
+      if (t.groups.every((g) => g.done)) finish(t);
+      break;
+    }
+    case 'all': finish(S.kt.find((k) => k.id === x)); break;
+    case 'pase': {
+      const i = S.pcards.findIndex((c) => c.id === x);
+      const c = S.pcards[i];
+      S.pcards.splice(i, 1);
+      S.waiting.unshift({ mesa: c.mesa, pase: c.pase, ago: 'ahora', fresh: true });
+      toast(`${c.mesa} · ${c.pase}: listo para servir`);
+      break;
+    }
+    case 'rv': {
+      const it = S.review.items[+x];
+      if (y === 'reset') it.dec = '';
+      else {
+        it.dec = y;
+        if (y === 'ad') toast('«Adaptado…» abre una hoja con atajos («Sin …», «Cambiado por …») y deja la nota a la vista.');
+      }
+      break;
+    }
+    case 'rvsave': {
+      const r = S.review;
+      r.items.forEach((it) => { if (!it.dec) it.dec = 'no'; });
+      const ad = r.items.filter((it) => it.dec === 'ad').length;
+      S.review = null;
+      toast(`${r.mesa} · Comensal ${r.guest}: guardado en una sola orden (${ad} ${ad === 1 ? 'plato adaptado' : 'platos adaptados'}). El Entrante ya puede salir.`);
+      break;
+    }
+    case 'noop': toast('Solo de muestra en esta maqueta.'); break;
+    default: return;
+  }
+  render();
+});
+function finish(t) {
+  t.groups.forEach((g) => { g.done = true; });
+  t.hecho = true;
+  S.kdone.unshift({ mesa: t.mesa, pase: t.pase, what: t.groups.map((g) => `${g.name} × ${g.q}`).join(', ') });
+  toast(`${t.mesa} · ${t.pase}: hecho. El pase lo ve al momento.`);
+}
+
+/* ---------- tamaño ---------- */
+let scaleMode = 'fit';
+function applyScale() {
+  const tab = current();
+  let s;
+  if (scaleMode === 'fit') {
+    const avail = Math.min(document.documentElement.clientWidth, 1440) - 32;
+    s = Math.min(1, avail / WIDTH[tab]);
+  } else {
+    s = Number(scaleMode) / 100;
+  }
+  document.getElementById('stage').style.setProperty('--scale', s.toFixed(3));
+  document.querySelectorAll('[data-act^="scale:"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.act === 'scale:' + scaleMode)));
+}
+window.addEventListener('resize', () => { if (scaleMode === 'fit') applyScale(); });
+
+/* ---------- inicio ---------- */
+document.getElementById('brand').innerHTML = iconSala(40) + iconCocina(40);
+document.getElementById('tabs').innerHTML = TABS.map(([id, label, kind]) => `<a href="#${id}" data-tab="${id}" class="${kind === 'k' ? 'kt' : ''}"><span class="tdot ${kind}" aria-hidden="true"></span>${label}</a>`).join('');
+window.addEventListener('hashchange', () => { S = fresh(); render(); });
+S = fresh();
+render();
+document.documentElement.setAttribute('data-ready', 'true');
+})();
+</script>
+</body>
+</html>
