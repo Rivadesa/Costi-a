@@ -111,8 +111,10 @@ public sealed partial class DevicesViewModel(ShellViewModel shell) : ObservableO
     // C3c: los dos caminos de instalacion junto al QR, con las palabras de los botones de la PWA. Android: el QR abre la aplicacion, que
     // empareja alli mismo, y despues se anade su icono. iPhone y iPad: la camara abre Safari, que NO empareja (lo que guarda Safari no lo
     // ve el icono): se anade el icono, se abre y se teclea el codigo corto.
-    public string AndroidSteps => $"Lee el QR con la cámara → «Solicitar emparejamiento» → «Aprobar» aquí. Después, en el menú de Chrome, «Añadir a pantalla de inicio»: queda el icono de {IntentAppName}.";
-    public string AppleSteps => $"Lee el QR: Safari no empareja y explica cómo añadir el icono (Compartir › Añadir a pantalla de inicio). Abre el icono de {IntentAppName} → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí.";
+    // Revision C3c: en Android el icono sale del navegador que abrio el QR (en un Samsung puede ser Samsung Internet): es donde quedo la
+    // credencial. En iOS 26 Compartir puede estar dentro de «•••», y la hoja trae «Abrir como app web», que tiene que quedar activado.
+    public string AndroidSteps => $"Lee el QR con la cámara → «Solicitar emparejamiento» → «Aprobar» aquí. Después, en el menú del navegador que abrió el QR (Chrome o Samsung Internet), «Añadir a pantalla de inicio»: queda el icono de {IntentAppName}.";
+    public string AppleSteps => $"Lee el QR: Safari no empareja y explica cómo añadir el icono (Compartir, o ••• › Compartir › Añadir a pantalla de inicio, con «Abrir como app web» activado). Abre el icono de {IntentAppName} → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí.";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasRecognised))] [NotifyPropertyChangedFor(nameof(RecognisedText))] private PairingPendingDto? recognised;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDuplicateWarning))] private string duplicateWarning = "";
     public bool HasAssistant => AssistantTitle.Length > 0;

@@ -172,6 +172,9 @@ describe('persistent storage request (D6.6)', () => {
     const { requestPersistence, PERSISTENCE_HINT } = await import('../src/storage')
     expect(await requestPersistence({ persist: async () => { throw new Error('must not ask over http') } }, false)).toBe('plain-http')
     expect(PERSISTENCE_HINT['plain-http']).toMatch(/sin cifrar/)
+    // C3c (revision): en los dos caminos se anade el icono de la aplicacion; dentro de ese icono no se dice que no se puede instalar.
+    expect(PERSISTENCE_HINT['plain-http']).not.toMatch(/no deja instalar/)
+    expect(PERSISTENCE_HINT['plain-http']).toMatch(/ábrela siempre desde su icono/)
   })
 })
 

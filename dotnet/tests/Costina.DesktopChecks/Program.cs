@@ -280,8 +280,11 @@ internal static class Program
         if(admin.Devices.AssistantTitle!="Conectar Costiña Sala · Sala 1"||admin.Devices.PairingUrl!="https://costina-server.local:5443/app/sala/#pair=K7M2Q9XR4T"||!admin.Devices.HasQr
             ||admin.Devices.PairingCodeText!="K7M2Q 9XR4T"||!admin.Devices.ShortCodeShown)
             throw new Exception("The Costiña Sala assistant's QR opens Costiña Sala and the short code is shown in two groups: "+admin.Devices.AssistantTitle+" / "+admin.Devices.PairingUrl+" / "+admin.Devices.PairingCodeText);
+        // Revision C3c: en Android el icono sale del navegador que abrio el QR (en un Samsung, Samsung Internet), que es donde quedo la
+        // credencial; en iOS 26 Compartir puede estar tras «•••» y la hoja trae «Abrir como app web», que tiene que quedar activado.
         if(!admin.Devices.AndroidSteps.StartsWith("Lee el QR con la cámara",StringComparison.Ordinal)||!admin.Devices.AndroidSteps.Contains("«Añadir a pantalla de inicio»: queda el icono de Costiña Sala",StringComparison.Ordinal)
-            ||!admin.Devices.AppleSteps.Contains("Safari no empareja",StringComparison.Ordinal)||!admin.Devices.AppleSteps.Contains("(Compartir › Añadir a pantalla de inicio)",StringComparison.Ordinal)
+            ||!admin.Devices.AndroidSteps.Contains("en el menú del navegador que abrió el QR (Chrome o Samsung Internet)",StringComparison.Ordinal)
+            ||!admin.Devices.AppleSteps.Contains("Safari no empareja",StringComparison.Ordinal)||!admin.Devices.AppleSteps.Contains("(Compartir, o ••• › Compartir › Añadir a pantalla de inicio, con «Abrir como app web» activado)",StringComparison.Ordinal)
             ||!admin.Devices.AppleSteps.Contains("Abre el icono de Costiña Sala → teclea el código → «Solicitar emparejamiento» → «Aprobar» aquí",StringComparison.Ordinal))
             throw new Exception("Next to the QR, the Android path (add the icon) and the iPhone/iPad path (Safari, icon, typed code): "+admin.Devices.AndroidSteps+" / "+admin.Devices.AppleSteps);
         if(admin.Devices.QrInfo.Contains("No hay que instalar nada",StringComparison.Ordinal)) throw new Exception("The QR text no longer says nothing has to be installed: the icon is added.");

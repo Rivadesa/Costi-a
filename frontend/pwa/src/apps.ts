@@ -74,9 +74,11 @@ export function mismatchMessage(app: AppId, role: string, unpaired: UnpairOutcom
 // que guarda Safari, D6.5). Emparejar en Safari dejaria en el servidor un dispositivo aprobado que el icono no puede usar: fuera del
 // icono se explica como anadirlo. iPadOS se presenta como un Mac; se reconoce por la pantalla tactil.
 export interface Browser { userAgent: string; maxTouchPoints: number; standalone: unknown; displayStandalone: boolean }
+// Revision C3c: tambien dentro del icono. Ahi la camara no sirve (abriria Safari, no el icono): el codigo se teclea.
+export const isIos = (browser: Browser): boolean =>
+  /iPhone|iPad|iPod/.test(browser.userAgent) || (/Macintosh/.test(browser.userAgent) && browser.maxTouchPoints > 1)
 export function pairingPlace(browser: Browser): 'here' | 'add-to-home' {
-  const ios = /iPhone|iPad|iPod/.test(browser.userAgent) || (/Macintosh/.test(browser.userAgent) && browser.maxTouchPoints > 1)
-  if (!ios) return 'here'
+  if (!isIos(browser)) return 'here'
   return browser.standalone === true || browser.displayStandalone ? 'here' : 'add-to-home'
 }
 export function currentBrowser(): Browser {

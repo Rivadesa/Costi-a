@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appFits, appForRole, APPS, connectedAs, headerRole, kindOf, mismatchMessage, pairingPlace, type Browser } from '../src/apps'
+import { appFits, appForRole, APPS, connectedAs, headerRole, isIos, kindOf, mismatchMessage, pairingPlace, type Browser } from '../src/apps'
 import { typedCode } from '../src/pairing'
 
 // C3c: dos aplicaciones, Costina Sala y Costina Cocina. Que aplicacion monta que credencial es USO, no seguridad (el servidor filtra
@@ -70,6 +70,13 @@ describe('where pairing happens: iPhone and iPad pair from the icon, never in Sa
     expect(pairingPlace(browser(ANDROID))).toBe('here')
     expect(pairingPlace(browser(IPAD, { maxTouchPoints: 0, standalone: undefined }))).toBe('here')   // un Mac de verdad
     expect(pairingPlace(browser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0', { maxTouchPoints: 0 }))).toBe('here')
+  })
+  it('isIos: iPhone and iPad, in Safari or in the icon, where the camera always opens Safari (the icon pairs by typing the code)', () => {
+    expect(isIos(browser(IPHONE, { standalone: true }))).toBe(true)
+    expect(isIos(browser(IPHONE, { standalone: false }))).toBe(true)
+    expect(isIos(browser(IPAD, { displayStandalone: true }))).toBe(true)
+    expect(isIos(browser(ANDROID))).toBe(false)
+    expect(isIos(browser(IPAD, { maxTouchPoints: 0 }))).toBe(false)                              // un Mac de verdad
   })
 })
 

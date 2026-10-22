@@ -9,7 +9,8 @@ import { outcomeOf, UNPAIRED_NOTICE } from './startup'
 // este dispositivo, sin DOM y sin crear ninguna base:
 //  - con #pair= (un QR o un enlace de antes): pregunta si es para la sala o para la cocina y pasa el codigo a la elegida;
 //  - con una credencial en costina-sala o costina-cocina (en Android comparten origen con /app/): a esa aplicacion, sin preguntar al
-//    servidor (asi tambien sin red: la aplicacion dira que no hay conexion);
+//    servidor. Revision C3c: el enrutador NO abre sin red. No tiene service worker (y no puede tenerlo: uno de alcance /app/ cubriria
+//    las dos aplicaciones), asi que su pagina viene siempre del servidor; sin red solo abren los iconos de cada aplicacion (https);
 //  - con la credencial de la base vieja `costina`: lee /session y va a la aplicacion de su rol, que la adopta (adoption.ts). Un
 //    acceso directo viejo a /app/ sigue llegando a su aplicacion. Un 401 la borra (la unica senal, corte A);
 //  - sin nada: explica como conectar el dispositivo desde el PC.

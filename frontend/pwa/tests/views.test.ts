@@ -60,6 +60,14 @@ describe('words the views write as they are', () => {
     expect(images[0]).toMatch(/\s:src="url"/)
     expect(images[0]).not.toMatch(/(?<!:)\bsrc=|data:|https?:/)
   })
+  it('the pairing code field is made for typing a code on a phone: capitals, no autocorrect, no spelling (C3c revision)', () => {
+    // En iOS, spellcheck="false" no para la autocorreccion: al pulsar el espacio tras un grupo de solo letras la cambiaria por una
+    // palabra del diccionario, y el fallo gastaria un intento del freno. El PC lo ensena en mayusculas («K7M2Q 9XR4T»).
+    const pair = files.find(([name]) => name === 'views/PairView.vue')![1]
+    const input = template(pair).match(/<input id="pair-code"[^>]*>/)?.[0] ?? ''
+    for (const attribute of ['autocomplete="off"', 'autocorrect="off"', 'autocapitalize="characters"', 'spellcheck="false"'])
+      expect(input, attribute).toContain(` ${attribute}`)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])

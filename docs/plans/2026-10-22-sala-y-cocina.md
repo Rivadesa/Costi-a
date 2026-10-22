@@ -375,6 +375,7 @@ Una PR por corte. Las versiones siguen a `0.42.0-c3b`.
 - **Pruebas:** el iPhone se simula en Chromium (agente de iOS y `navigator.standalone`), porque la CI solo instala Chromium. `install.test.ts` ejecuta los dos service workers en un navegador de mentira. `pwa_http` admite 401 o 404 para el manifiesto retirado de `/app/`. Las cifras y las pruebas en rojo están en el documento del corte.
 - **Para revisar con el promotor:** doce decisiones pequeñas, en «Decisiones y diferencias con la maqueta» del documento del corte.
 - **Queda el guion físico** con un Android, un iPhone y un iPad en un laboratorio (documento del corte). Su riesgo principal: que un icono de iPhone o iPad abierto por la conexión sencilla (http) no se abra a pantalla completa.
+- **Revisión antes de mezclar:** la orden sin confirmar de antes se mueve sin duplicarse y se recoge al arrancar; la que quedó sin credencial se enseña al emparejar y la toma la aplicación que se empareja (antes era un límite). Dentro del icono de iPhone y iPad no se manda a la cámara; la página de Safari cubre la barra compacta y «Abrir como app web» de iOS 26. Un icono «Costina» de antes ya no abre sin red por https, porque el enrutador no tiene service worker: en iPhone y iPad también conviene cambiarlo.
 
 **PWA: dos entradas de la misma compilación**
 - **Vite multipágina**, con `base: '/app/'` de siempre:

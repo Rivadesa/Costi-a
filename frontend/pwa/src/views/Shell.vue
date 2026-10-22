@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getSession, type Session } from '../api'
-import { lookAround } from '../adoption'
+import { lookAround, reconcileLegacy } from '../adoption'
 import { appFits, APPS, headerRole, type AppId } from '../apps'
 import { clearCredential, loadCredential, saveCredential, type Credential } from '../credentials'
 import { currentDatabase } from '../db'
@@ -31,6 +31,7 @@ const pendingDescription = ref('')   // tambien sin conexion: lo no confirmado s
 const persistence = ref<Persistence>('persisted')   // hasta saberlo no se alarma a nadie
 let persistenceAsked = false
 let lookedAround = false             // la base vieja y la de la otra aplicacion se miran una vez (otra si no se pudo decidir)
+let reconciled = false               // revision C3c: lo que quede en la base vieja, una vez con la credencial puesta (otra si fallo)
 let timer: number | undefined
 // A11: la cabecera dice QUE es este dispositivo (la marca, con el nombre de la aplicacion) y DONDE esta (el NOMBRE de la estacion);
 // el `main` antiguo lo dice delante, como siempre. Un papel que no se conoce no llega aqui: no se monta.
@@ -57,6 +58,11 @@ async function refresh(): Promise<void> {
     }
   }
   if (!credential.value) { state.value = 'unpaired'; return }
+  if (!reconciled) {
+    // Revision C3c (adoption.ts): ANTES de montar la pantalla, cuya primera lectura del hueco manda (operations.ts, restore), la
+    // orden que quede en la base vieja de este dispositivo pasa a la suya. Si falla no se decide nada: se reintenta en la siguiente.
+    try { await reconcileLegacy(currentDatabase(), credential.value); reconciled = true } catch { /* sigue en la base vieja */ }
+  }
   const stored = await indexedDbPendingStore.load().catch(() => null)
   pendingDescription.value = stored?.kind === 'restored' ? stored.command.description : stored?.kind === 'unreadable' ? 'orden anterior ilegible' : ''
   try {
@@ -85,7 +91,7 @@ async function refresh(): Promise<void> {
 
 async function paired(next: Credential): Promise<void> {
   await saveCredential(next)
-  credential.value = next; notice.value = ''
+  credential.value = next; notice.value = ''; reconciled = false
   history.replaceState(null, '', location.pathname)   // el codigo del fragmento ya no debe quedar a la vista
   await refresh()
 }
@@ -102,7 +108,7 @@ async function unpair(): Promise<void> {
     return
   }
   await clearCredential(target.database)
-  credential.value = null; session.value = null; other.value = null; lookedAround = false
+  credential.value = null; session.value = null; other.value = null; lookedAround = false; reconciled = false
   notice.value = outcome === 'unpaired' ? 'Dispositivo desvinculado: ha dejado de valer también en el servidor. Para volver a usarlo, conéctalo de nuevo desde el PC principal.'
     : 'Este dispositivo ya no estaba emparejado en el servidor.'
   await refresh()

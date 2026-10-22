@@ -40,6 +40,7 @@ test('a code approved for the other app saves nothing, leaves no orphan device o
   await watch(page, leaks, violations)
   const code = await issueCode(request)
   await page.goto(`/app/sala/#pair=${code}`)
+  await expect(page.getByTestId('pair')).toContainText('lee el QR con la cámara')               // fuera de iOS, la camara abre la aplicacion
   const name = deviceName('wrong-app')
   await page.fill('input[name=deviceName]', name)
   await press(page.getByTestId('do-pair'))
@@ -65,6 +66,11 @@ test('iPhone and iPad: Safari does not pair and explains how to add the icon; th
   await expect(safari.getByTestId('add-to-home')).toContainText('Añádela a la pantalla de inicio')
   await expect(safari.getByTestId('add-to-home')).toContainText('Compartir › Añadir a pantalla de inicio')
   await expect(safari.getByTestId('add-to-home')).toContainText('Abre el icono Costiña Sala y teclea el código corto que enseña el PC.')
+  // Revision C3c: Safari de iOS 26 esconde Compartir tras «•••» en su barra compacta, y su hoja trae «Abrir como app web»: desactivado,
+  // el icono abriria Safari otra vez y no se podria emparejar.
+  await expect(safari.getByTestId('add-to-home')).toContainText('Si no lo ves, toca ••• y después Compartir.')
+  await expect(safari.getByTestId('add-to-home')).toContainText('Si aparece Abrir como app web, déjalo activado.')
+  await expect(safari.getByTestId('add-to-home-again')).toHaveText('Si al abrir el icono vuelve a salir esta página, quita el icono y añádelo otra vez con «Abrir como app web» activado.')
   await expect(safari.getByTestId('do-pair')).toHaveCount(0)
   await expect(safari.locator('input[name=code]')).toHaveCount(0)
   await expect.poll(() => new URL(safari.url()).hash).toBe('')
@@ -76,6 +82,9 @@ test('iPhone and iPad: Safari does not pair and explains how to add the icon; th
   await watch(icon, leaks, violations)
   await icon.goto('/app/sala/')
   await expect(icon.getByTestId('pair')).toBeVisible()
+  // Dentro del icono no se manda a la camara (abriria Safari otra vez): se teclea el codigo que el PC ensena junto al QR.
+  await expect(icon.getByTestId('pair')).toContainText('pulsa «Conectar Costiña Sala» y teclea aquí el «Código para teclear» que sale junto al QR.')
+  await expect(icon.getByTestId('pair')).not.toContainText('lee el QR')
   await checkScreen(icon, 'icon on iPhone')
   const name = deviceName('iphone')
   await icon.fill('input[name=code]', `${code.slice(0, 5)} ${code.slice(5)}`.toLowerCase())
@@ -127,6 +136,47 @@ test('a device paired before C3c reaches its app through /app/, which adopts its
   expect(await storedOrder(page, 'costina')).toBeNull()                               // salio de la vieja por su clave: nadie mas la reenvia
   expect(await storedToken(page, 'costina')).toBe(token)                              // la base vieja no se borra
   expect(await stored(page, databaseOf('cocina'), 'device', 'credential')).toBe('absent')   // ni se crea la de la otra
+  expect(leaks).toEqual([]); expect(violations).toEqual([])
+})
+
+test('an order C3b left WITHOUT a credential is shown before pairing, and the app that pairs takes it and retries it with the same key', async ({ page, request }) => {
+  // Revision C3c (D6.7: una orden incierta siempre se ve). Tras un 401 en C3b la credencial se borro y la orden se quedo en `costina`:
+  // nada dice de que aplicacion era. La pantalla de emparejar la ensena, con su nombre ya puesto, y la aplicacion que se empareja la toma.
+  const leaks: string[] = [], violations: string[] = []
+  await watch(page, leaks, violations)
+  const name = deviceName('orphan')
+  const installationId = (await (await asMain(request, '/session')).json() as { installationId: string }).installationId
+  const order = { key: `c3c-${name}`, path: '/dining/services/no-existe/commands/pause', body: '{"expectedVersion":1,"reason":"prueba"}',
+    description: 'Pausar servicio · Mesa sin credencial', createdAt: new Date().toISOString(), installationId, actor: `device:${name}` }
+  await page.goto('/app/')
+  await expect(page.getByTestId('router-none')).toBeVisible()
+  await page.evaluate(order => new Promise<void>((resolve, reject) => {
+    const open = indexedDB.open('costina', 2)
+    open.onupgradeneeded = () => { open.result.createObjectStore('device'); open.result.createObjectStore('pending') }
+    open.onsuccess = () => {
+      const transaction = open.result.transaction('pending', 'readwrite')
+      transaction.objectStore('pending').put(order, 'uncertain')
+      transaction.oncomplete = () => { open.result.close(); resolve() }
+      transaction.onerror = () => reject(transaction.error)
+    }
+  }), order)
+
+  const retried: string[] = []
+  page.on('request', sent => { if (sent.method() === 'POST' && sent.url().endsWith('/commands/pause')) retried.push(sent.headers()['idempotency-key'] ?? '') })
+  await press(page.getByTestId('route-sala'))                                          // «Si ya tienes el código, abre la aplicación»
+  await expect(page).toHaveURL(/\/app\/sala\/$/)
+  await expect(page.getByTestId('pair-pending')).toContainText(`ORDEN SIN CONFIRMAR`)
+  await expect(page.getByTestId('pair-pending')).toContainText(order.description)
+  await expect(page.locator('input[name=deviceName]')).toHaveValue(name)              // el nombre de la orden: asi se puede reintentar
+  await checkScreen(page, 'order without a credential, before pairing')
+  expect(await storedOrder(page, 'costina')).toBe(order.description)                  // mirarla no la mueve
+  await page.fill('input[name=code]', await issueCode(request))
+  await press(page.getByTestId('do-pair'))
+  expect((await asMain(request, `/auth/pairings/${await pendingPairing(request, name)}/approve`, { role: 'service', station: 'sala-1' })).ok()).toBeTruthy()
+  await expect(page.getByTestId('actor')).toHaveText(name, { timeout: 15_000 })
+  await expect.poll(() => retried, { timeout: 20_000 }).toContain(order.key)
+  await expect.poll(() => storedOrder(page, databaseOf('sala')), { timeout: 20_000 }).toBeNull()
+  expect(await storedOrder(page, 'costina')).toBeNull()                               // salio de la vieja por su clave: nadie mas la reenvia
   expect(leaks).toEqual([]); expect(violations).toEqual([])
 })
 

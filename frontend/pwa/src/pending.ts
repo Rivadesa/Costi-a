@@ -75,13 +75,16 @@ export const indexedDbPendingStore: PendingStore = pendingStoreIn(currentDatabas
 // registro crudo, legible o no: uno ilegible tambien bloquea hasta conciliarlo o descartarlo, y nunca se destruye sin decision.
 export const peekPendingRecord = (database: string): Promise<unknown> => peek<unknown>(database, STORES.pending, store => store.get(KEY))
 // Ocupa el hueco VACIO de `database` con ese registro, comprobando y escribiendo en UNA transaccion (D6.7, como reserve). Devuelve
-// false si el hueco ya tenia algo: entonces no escribe nada.
+// true si el registro queda en el hueco: lo escribe, o ya estaba (revision C3c: la MISMA orden, por su clave, copiada por un traslado
+// que se corto antes de soltarla de la vieja; asi repetirlo lo termina sin duplicarla). Con otra cosa en el hueco devuelve false y no
+// escribe nada. Sin clave legible no hay «la misma»: dos registros ilegibles sin clave nunca se dan por iguales.
 export const adoptPendingRecord = (record: unknown, database: string): Promise<boolean> => transact<boolean>(STORES.pending, (store, done) => {
   const read = store.get(KEY)
   read.onsuccess = () => {
-    const free = parsePending(read.result).kind === 'absent'
-    if (free) store.put(record, KEY)
-    done(free)
+    const current = parsePending(read.result)
+    if (current.kind === 'absent') { store.put(record, KEY); done(true); return }
+    const key = keyOf(parsePending(record))
+    done(typeof key === 'string' && keyOf(current) === key)
   }
 }, database)
 // Y lo quita de la base de origen solo si sigue siendo ESE registro (por su clave, en la misma transaccion que borra).

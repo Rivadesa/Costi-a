@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { lookAround } from '../src/adoption'
+import { lookAround, orphanOrder, reconcileLegacy } from '../src/adoption'
 import { type Fetch } from '../src/api'
 import { APPS } from '../src/apps'
 import { loadCredential, peekCredential, saveCredential } from '../src/credentials'
@@ -103,6 +103,23 @@ describe('adopting what C3b stored (lookAround)', () => {
     expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-own') })
     expect(await peekPendingRecord(LEGACY_DATABASE)).toEqual(order('k-old'))
   })
+  it('an adoption cut short after copying the order is finished on the next start, never duplicated (D6.7)', async () => {
+    // Revision C3c: la orden ya estaba copiada en su base (se cerro la pestana antes de guardar la credencial y de soltar la vieja).
+    await saveCredential(credential('dev.old.s'), LEGACY_DATABASE)
+    await putPending(LEGACY_DATABASE, order('k-serve'))
+    await putPending(SALA, order('k-serve'))
+    expect((await lookAround('sala', answering(() => json(200, session('service'))))).kind).toBe('adopted')
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-serve') })
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toBeUndefined()                     // la misma orden por su clave: sale de la vieja
+  })
+  it('two unreadable orders without a key are never taken for the same one: the old one stays', async () => {
+    await saveCredential(credential('dev.old.s'), LEGACY_DATABASE)
+    await putPending(LEGACY_DATABASE, { path: 'sin clave vieja' })
+    await putPending(SALA, { path: 'sin clave propia' })
+    await lookAround('sala', answering(() => json(200, session('service'))))
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toEqual({ path: 'sin clave vieja' })
+    expect(await peekPendingRecord(SALA)).toEqual({ path: 'sin clave propia' })
+  })
   it('an unreadable old order moves as it is: it still blocks until it is reconciled or discarded', async () => {
     await saveCredential(credential('dev.old.s'), LEGACY_DATABASE)
     const unreadable = { key: 'k-bad', path: 'sin barra', body: '{' }
@@ -119,6 +136,58 @@ describe('adopting what C3b stored (lookAround)', () => {
     // Revocada en el servidor: se borra de SU base (el 401 es la unica senal) y Sala ya puede emparejar.
     expect(await lookAround('sala', answering(() => json(401, { error: 'unauthorized' })))).toEqual({ kind: 'none' })
     expect(await peekCredential(COCINA)).toBeNull()
+  })
+})
+
+describe('what is left in the old base once the app has its own credential (reconcileLegacy, C3c revision)', () => {
+  const OWN = credential('dev.old.s')
+  it('the credential was saved but the old order not released yet: the next start releases it, never a second copy', async () => {
+    await saveCredential(OWN, LEGACY_DATABASE); await putPending(LEGACY_DATABASE, order('k-serve'))
+    await saveCredential(OWN, SALA); await putPending(SALA, order('k-serve'))
+    await reconcileLegacy(SALA, OWN)
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toBeUndefined()
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-serve') })
+    expect(await peekCredential(LEGACY_DATABASE)).toEqual(OWN)                            // la base vieja y su credencial no se borran
+  })
+  it('an order a C3b tab still open saved with the same credential after the adoption moves to the app slot', async () => {
+    await saveCredential(OWN, LEGACY_DATABASE); await putPending(LEGACY_DATABASE, order('k-late'))
+    await saveCredential(OWN, SALA)
+    await reconcileLegacy(SALA, OWN)
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-late') })
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toBeUndefined()
+  })
+  it('with ANOTHER credential in the old base nothing moves: the order is that credential\'s (the other app adopts it)', async () => {
+    await saveCredential(credential('dev.kds.s'), LEGACY_DATABASE); await putPending(LEGACY_DATABASE, order('k-ready'))
+    await saveCredential(OWN, SALA)
+    await reconcileLegacy(SALA, OWN)
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toEqual(order('k-ready'))
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'absent' })
+  })
+  it('never replaces an order already in the app slot, and never creates the old base', async () => {
+    await saveCredential(OWN, SALA); await putPending(SALA, order('k-own'))
+    await reconcileLegacy(SALA, OWN)
+    expect(await names()).toEqual([SALA])
+    await saveCredential(OWN, LEGACY_DATABASE); await putPending(LEGACY_DATABASE, order('k-old'))
+    await reconcileLegacy(SALA, OWN)
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-own') })
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toEqual(order('k-old'))
+  })
+  it('an order left WITHOUT a credential (a 401 in C3b) is shown before pairing and taken by the app that pairs (D6.7: always seen)', async () => {
+    await putPending(LEGACY_DATABASE, order('k-left'))
+    expect(await orphanOrder()).toEqual({ kind: 'restored', command: order('k-left') })
+    expect(await lookAround('sala', offline)).toEqual({ kind: 'none' })                  // nada que preguntar: se empareja
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toEqual(order('k-left'))            // mirar no la mueve: la toma quien se empareja
+    await saveCredential(OWN, SALA)
+    await reconcileLegacy(SALA, OWN)
+    expect(await pendingStoreIn(() => SALA).load()).toEqual({ kind: 'restored', command: order('k-left') })
+    expect(await peekPendingRecord(LEGACY_DATABASE)).toBeUndefined()
+    expect(await orphanOrder()).toEqual({ kind: 'absent' })
+  })
+  it('an old order WITH its credential is not an orphan: the adoption decides whose it is', async () => {
+    expect(await orphanOrder()).toEqual({ kind: 'absent' })
+    expect(await names()).toEqual([])                                                    // mirar no crea la base vieja
+    await saveCredential(credential('dev.kds.s'), LEGACY_DATABASE); await putPending(LEGACY_DATABASE, order('k-ready'))
+    expect(await orphanOrder()).toEqual({ kind: 'absent' })
   })
 })
 

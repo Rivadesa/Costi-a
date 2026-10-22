@@ -162,23 +162,29 @@ export async function pairByApi(request: APIRequestContext, name: string, role: 
 }
 
 // Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB de SU aplicacion), no lo que pinta la pantalla. Sin crear la base: si no
-// existe, 'absent'.
+// existe, 'absent'. Revision C3c: cualquier otro fallo al abrirla o al leer es 'error', nunca «no hay nada».
 export const stored = (page: Page, database: string, store: 'device' | 'pending', key: string) => page.evaluate(([database, store, key]) => new Promise<unknown>(resolve => {
+  let absent = false
   const open = indexedDB.open(database)
-  open.onupgradeneeded = () => { open.transaction?.abort() }
+  open.onupgradeneeded = () => { absent = true; open.transaction?.abort() }
   open.onsuccess = () => {
-    if (!open.result.objectStoreNames.contains(store)) { open.result.close(); resolve(undefined); return }
-    const get = open.result.transaction(store).objectStore(store).get(key); get.onsuccess = () => { open.result.close(); resolve(get.result) }
+    if (!open.result.objectStoreNames.contains(store)) { open.result.close(); resolve('error'); return }
+    const get = open.result.transaction(store).objectStore(store).get(key)
+    get.onsuccess = () => { open.result.close(); resolve(get.result) }
+    get.onerror = () => { open.result.close(); resolve('error') }
   }
-  open.onerror = () => resolve('absent')
+  open.onerror = () => resolve(absent ? 'absent' : 'error')
 }), [database, store, key] as const)
+// null y '' quieren decir «la base existe y ese hueco esta vacio». Una base que no existe o que no se pudo leer sale como '<absent>' o
+// '<error>': asi un toBeNull() o un toBe('') nunca pasan por un fallo o por mirar la base equivocada.
+const unread = (value: unknown) => value === 'absent' || value === 'error' ? `<${value}>` : null
 export const storedOrder = async (page: Page, database = databaseOf('sala')) => {
-  const order = await stored(page, database, 'pending', 'uncertain') as { description?: unknown } | undefined | 'absent'
-  return order && order !== 'absent' ? String(order.description) : null
+  const order = await stored(page, database, 'pending', 'uncertain') as { description?: unknown } | undefined
+  return unread(order) ?? (order ? String(order.description) : null)
 }
 export const storedToken = async (page: Page, database: string) => {
-  const credential = await stored(page, database, 'device', 'credential') as { token?: unknown } | undefined | 'absent'
-  return credential && credential !== 'absent' ? String(credential.token ?? '') : ''
+  const credential = await stored(page, database, 'device', 'credential') as { token?: unknown } | undefined
+  return unread(credential) ?? (credential ? String(credential.token ?? '') : '')
 }
 
 // RESPUESTA PERDIDA de verdad: el servidor aplica la orden y la respuesta nunca llega. `lost` se resuelve cuando eso YA ocurrio:

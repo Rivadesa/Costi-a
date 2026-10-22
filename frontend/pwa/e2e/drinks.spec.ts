@@ -95,6 +95,7 @@ test('Bodega y bebidas: a round is ONE command, applied once after a lost answer
     const pending = page.getByTestId('pending')
     await expect(pending).toContainText('ORDEN SIN CONFIRMAR', { timeout: 15_000 })
     await expect(pending).toContainText(`Ronda para ${TABLE.name}: 2 × ${ALBARINO.name} · Copa, 1 × Agua mineral · Botella (Comensal 2)`)
+    expect(await storedOrder(page)).toContain(`Ronda para ${TABLE.name}`)                 // guardada de verdad en su base: el null de abajo cuenta
     // La bandeja vacia no invita a pedirla otra vez: dice que la ronda es la orden de arriba y que no se repita.
     await expect(page.getByTestId('round-empty')).toHaveText('La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.')
     expect(await drinkLines(request, serviceId)).toEqual([[ALBARINO.id, 'copa', 2, null], ['water', 'bottle', 1, 2]])   // el servidor SI la aplico
