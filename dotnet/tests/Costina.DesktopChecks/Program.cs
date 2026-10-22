@@ -2845,8 +2845,20 @@ internal static class Program
             var connectScroll=Descendants<ScrollViewer>(InDevices<FrameworkElement>("ConnectPane")).First(s=>s.TemplatedParent is null);
             var assistantPanel=InDevices<FrameworkElement>("AssistantPanel");
             var assistantTop=assistantPanel.TranslatePoint(new Point(0,0),connectScroll).Y;
-            if(assistantTop<-0.5||assistantTop+assistantPanel.ActualHeight>connectScroll.ViewportHeight+0.5)
-                throw new Exception(app+": the open assistant is brought into view whole: top "+assistantTop+", height "+assistantPanel.ActualHeight+", viewport "+connectScroll.ViewportHeight);
+            // Si cabe, entero. En una pantalla mas baja (la de la CI es mas pequena que la de referencia) no cabe: entonces se ve desde
+            // arriba, con el QR y el codigo corto a la vista sin desplazar; lo demas (los pasos de Android e iPhone) queda debajo.
+            if(assistantPanel.ActualHeight<=connectScroll.ViewportHeight+0.5)
+            {
+                if(assistantTop<-0.5||assistantTop+assistantPanel.ActualHeight>connectScroll.ViewportHeight+0.5)
+                    throw new Exception(app+": the open assistant is brought into view whole: top "+assistantTop+", height "+assistantPanel.ActualHeight+", viewport "+connectScroll.ViewportHeight);
+            }
+            else
+            {
+                var qrBottom=InDevices<Image>("PairingQrImage").TranslatePoint(new Point(0,InDevices<Image>("PairingQrImage").ActualHeight),connectScroll).Y;
+                var codeBottom=InDevices<TextBox>("PairingCodeBox").TranslatePoint(new Point(0,InDevices<TextBox>("PairingCodeBox").ActualHeight),connectScroll).Y;
+                if(assistantTop<-0.5||assistantTop>0.5||qrBottom>connectScroll.ViewportHeight+0.5||codeBottom>connectScroll.ViewportHeight+0.5)
+                    throw new Exception(app+": an assistant taller than the view is shown from its top with the QR and the short code in view: top "+assistantTop+", QR bottom "+qrBottom+", code bottom "+codeBottom+", viewport "+connectScroll.ViewportHeight);
+            }
             if(server.Requests.Last(r=>r.Method=="POST"&&r.Path=="auth/pairings").Body!="{\"typed\":true}") throw new Exception("The assistant always asks for the short code.");
             if(InDevices<TextBox>("PairingCodeBox") is not {IsVisible:true,Text:"K7M2Q 9XR4T"}||InDevices<TextBox>("PairingUrlBox") is not {IsVisible:true} urlBox||urlBox.Text!=url||center.PairingUrl!=url
                 ||!InDevices<Image>("PairingQrImage").IsVisible||!ReferenceEquals(InDevices<Image>("AssistantIcon").Source,window.FindResource(app=="Costiña Sala"?"AppIconSala":"AppIconCocina")))
