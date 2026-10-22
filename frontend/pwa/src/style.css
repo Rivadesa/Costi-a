@@ -307,6 +307,8 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .add-home-key { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: var(--touch); padding: 8px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .add-home-steps { display: flex; flex-direction: column; gap: 8px; }
 .add-home-steps li { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+/* Salida de emergencia (apps.ts, pairingScreen): al pie de los pasos y con aspecto de enlace, nunca de boton principal. */
+.add-home .way-out { width: 100%; padding: 8px 12px; font-size: 15px; text-decoration: underline; text-underline-offset: 3px; text-wrap: balance; }
 .step-n { flex: none; width: 28px; height: 28px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
 /* Costina Cocina: la estacion en grande junto a la marca («Costiña Cocina · Cocina caliente»), separada por una raya. */
 .station-t { min-width: 0; padding-left: 12px; border-left: 1px solid var(--border-strong); font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }

@@ -99,6 +99,67 @@ test('iPhone and iPad: Safari does not pair and explains how to add the icon; th
   expect(leaks).toEqual([]); expect(violations).toEqual([])
 })
 
+test('iPhone and iPad: if the icon does not open as an app, Safari pairs as a way out, below the add-to-home steps, and keeps working', async ({ browser, request }) => {
+  // Salida de emergencia: sin verificar en un iPhone de verdad si el icono abierto por la conexion sencilla (http) va a pantalla
+  // completa. Si no fuera, el icono abriria Safari (sin codigo en la direccion) y sin esta salida el iPhone no se emparejaria nunca.
+  const leaks: string[] = [], violations: string[] = []
+  const safari = await iphone(browser, false)
+  await watch(safari, leaks, violations)
+  await safari.goto('/app/sala/')
+  // 1) Lo principal siguen siendo los pasos del icono; debajo, y no como boton principal, la salida. Aun sin formulario.
+  const steps = safari.getByTestId('add-to-home')
+  await expect(steps.locator('h2')).toHaveText('Añádela a la pantalla de inicio')
+  await expect(steps).toContainText('Compartir › Añadir a pantalla de inicio')
+  const way = steps.getByTestId('pair-in-safari')
+  await expect(way).toHaveText('¿El icono no se abre como aplicación? Emparejar aquí, en Safari')
+  await expect(way).not.toHaveClass(/btn-primary/)
+  const [list, link] = [await steps.locator('ol').boundingBox(), await way.boundingBox()]
+  expect(link!.y, 'the way out goes below the steps').toBeGreaterThan(list!.y + list!.height)
+  await expect(safari.locator('input[name=code]')).toHaveCount(0)
+  await expect(safari.getByTestId('do-pair')).toHaveCount(0)
+  await checkScreen(safari, 'safari on iPhone, with the way out')
+
+  // 2) La salida ensena el formulario de siempre, con el aviso delante; «Volver» devuelve los pasos del icono.
+  await way.tap()
+  await expect(safari.getByTestId('add-to-home')).toHaveCount(0)
+  await expect(safari.getByTestId('pair-in-safari-notice')).toHaveText('Costiña funcionará en esta pestaña de Safari. Si después usas el icono, tendrás que emparejarlo de nuevo desde el icono.')
+  await expect(safari.getByTestId('pair')).toContainText('teclea aquí el «Código para teclear» que sale junto al QR.')
+  await expect(safari.getByTestId('pair')).not.toContainText('lee el QR')
+  await checkScreen(safari, 'pairing in Safari on iPhone')
+  await safari.getByTestId('pair-in-safari-back').tap()
+  await expect(safari.getByTestId('add-to-home')).toBeVisible()
+  await expect(safari.locator('input[name=code]')).toHaveCount(0)
+  await safari.getByTestId('pair-in-safari').tap()
+
+  // 3) Se empareja de verdad con el codigo corto tecleado en dos grupos, y sigue funcionando en esta pestana tras recargar.
+  const code = await issueCode(request)
+  const name = deviceName('safari')
+  await safari.fill('input[name=code]', `${code.slice(0, 5)} ${code.slice(5)}`.toLowerCase())
+  await safari.fill('input[name=deviceName]', name)
+  await safari.getByTestId('do-pair').tap()
+  expect((await asMain(request, `/auth/pairings/${await pendingPairing(request, name)}/approve`, { role: 'service', station: 'sala-1' })).ok()).toBeTruthy()
+  await expect(safari.getByTestId('home')).toBeVisible({ timeout: 15_000 })
+  await expect(safari.getByTestId('actor')).toHaveText(name)
+  await expect(safari.getByTestId('role')).toHaveText('Sala 1')
+  await checkScreen(safari, 'paired in Safari on iPhone')
+  await safari.reload()
+  await expect(safari.getByTestId('actor')).toHaveText(name)
+  expect(await storedToken(safari, databaseOf('sala'))).not.toBe('')
+  await safari.context().close()
+
+  // 4) Si Safari se abrio desde el QR, al elegir la salida el codigo del QR ya esta puesto (antes, nunca: la direccion queda limpia).
+  const fromQr = await iphone(browser, false)
+  await watch(fromQr, leaks, violations)
+  const second = await issueCode(request)
+  await fromQr.goto(`/app/sala/#pair=${second}`)
+  await expect(fromQr.getByTestId('add-to-home')).toBeVisible()
+  await expect.poll(() => new URL(fromQr.url()).hash).toBe('')
+  await fromQr.getByTestId('pair-in-safari').tap()
+  await expect(fromQr.locator('input[name=code]')).toHaveValue(second)
+  await fromQr.context().close()
+  expect(leaks).toEqual([]); expect(violations).toEqual([])
+})
+
 test('a device paired before C3c reaches its app through /app/, which adopts its credential and its pending order', async ({ page, request }) => {
   const leaks: string[] = [], violations: string[] = []
   await watch(page, leaks, violations)

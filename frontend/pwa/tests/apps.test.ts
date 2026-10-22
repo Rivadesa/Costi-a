@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appFits, appForRole, APPS, connectedAs, headerRole, isIos, kindOf, mismatchMessage, pairingPlace, type Browser } from '../src/apps'
+import { appFits, appForRole, APPS, connectedAs, headerRole, isIos, kindOf, mismatchMessage, pairingPlace, pairingScreen, type Browser } from '../src/apps'
 import { typedCode } from '../src/pairing'
 
 // C3c: dos aplicaciones, Costina Sala y Costina Cocina. Que aplicacion monta que credencial es USO, no seguridad (el servidor filtra
@@ -52,7 +52,7 @@ describe('pairing with a code of the other app (C3c)', () => {
   })
 })
 
-describe('where pairing happens: iPhone and iPad pair from the icon, never in Safari', () => {
+describe('where pairing happens: iPhone and iPad pair from the icon, and in Safari only as a way out', () => {
   const browser = (userAgent: string, more: Partial<Browser> = {}): Browser => ({ userAgent, maxTouchPoints: 5, standalone: undefined, displayStandalone: false, ...more })
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
   const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'   // iPadOS se presenta como un Mac
@@ -70,6 +70,18 @@ describe('where pairing happens: iPhone and iPad pair from the icon, never in Sa
     expect(pairingPlace(browser(ANDROID))).toBe('here')
     expect(pairingPlace(browser(IPAD, { maxTouchPoints: 0, standalone: undefined }))).toBe('here')   // un Mac de verdad
     expect(pairingPlace(browser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0', { maxTouchPoints: 0 }))).toBe('here')
+  })
+  // Salida de emergencia: sin verificar si el icono abierto por http va a pantalla completa; si no, sin ella no se emparejaria nunca.
+  it('the way out in Safari: the add-to-home steps come first, and the form only once Safari pairing is chosen', () => {
+    for (const safari of [browser(IPHONE, { standalone: false }), browser(IPAD, { standalone: false }), browser(IPHONE)]) {
+      expect(pairingScreen(pairingPlace(safari), false)).toBe('add-to-home')
+      expect(pairingScreen(pairingPlace(safari), true)).toBe('form-in-safari')
+    }
+  })
+  it('the way out never changes the normal paths: the icon, Android and a desktop always get the usual form', () => {
+    const elsewhere = [browser(IPHONE, { standalone: true }), browser(IPAD, { displayStandalone: true }), browser(ANDROID),
+      browser(IPAD, { maxTouchPoints: 0 }), browser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0', { maxTouchPoints: 0 })]
+    for (const other of elsewhere) for (const chosen of [false, true]) expect(pairingScreen(pairingPlace(other), chosen)).toBe('form')
   })
   it('isIos: iPhone and iPad, in Safari or in the icon, where the camera always opens Safari (the icon pairs by typing the code)', () => {
     expect(isIos(browser(IPHONE, { standalone: true }))).toBe(true)

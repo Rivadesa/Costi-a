@@ -72,7 +72,8 @@ export function mismatchMessage(app: AppId, role: string, unpaired: UnpairOutcom
 
 // iPhone y iPad: la camara abre el enlace en Safari, nunca en el icono, y el icono de la pantalla de inicio guarda aparte (no ve lo
 // que guarda Safari, D6.5). Emparejar en Safari dejaria en el servidor un dispositivo aprobado que el icono no puede usar: fuera del
-// icono se explica como anadirlo. iPadOS se presenta como un Mac; se reconoce por la pantalla tactil.
+// icono se explica como anadirlo (y solo como salida de emergencia se empareja en Safari, pairingScreen). iPadOS se presenta como un
+// Mac; se reconoce por la pantalla tactil.
 export interface Browser { userAgent: string; maxTouchPoints: number; standalone: unknown; displayStandalone: boolean }
 // Revision C3c: tambien dentro del icono. Ahi la camara no sirve (abriria Safari, no el icono): el codigo se teclea.
 export const isIos = (browser: Browser): boolean =>
@@ -80,6 +81,16 @@ export const isIos = (browser: Browser): boolean =>
 export function pairingPlace(browser: Browser): 'here' | 'add-to-home' {
   if (!isIos(browser)) return 'here'
   return browser.standalone === true || browser.displayStandalone ? 'here' : 'add-to-home'
+}
+// Salida de emergencia en Safari (C3c): no esta comprobado en un iPhone de verdad que el icono abierto por la conexion sencilla
+// (http) vaya a pantalla completa. Si no fuera, el icono abriria Safari y, sin esta salida, el iPhone o el iPad no se emparejarian
+// nunca. Por eso, DEBAJO de los pasos del icono (que siguen siendo lo principal), un enlace secundario deja emparejar aqui, en
+// Safari, con el mismo formulario. Lo emparejado vive en esa pestana; si despues el icono si abre como aplicacion, guarda aparte y
+// hay que emparejarlo otra vez. Fuera de Safari en iOS ('here') la salida no existe: nada cambia en Android, el PC ni el icono.
+export type PairingScreen = 'add-to-home' | 'form' | 'form-in-safari'
+export function pairingScreen(place: 'here' | 'add-to-home', pairInSafari: boolean): PairingScreen {
+  if (place === 'here') return 'form'
+  return pairInSafari ? 'form-in-safari' : 'add-to-home'
 }
 export function currentBrowser(): Browser {
   const nav = globalThis.navigator as (Navigator & { standalone?: unknown }) | undefined
