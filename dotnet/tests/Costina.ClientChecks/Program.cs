@@ -64,6 +64,25 @@ foreach(var sample in new[]{"http://costina-server.local:5089","http://8.8.8.8:5
     await Check("reject simple address '"+sample+"'",()=>Throws<ArgumentException>(()=>{PairingLink.ParseDeviceAddress(sample,simpleConnection:true);return Task.CompletedTask;}));
 foreach(var sample in new[]{"","corto","con espacio dentro","<img src=x onerror=1>","codigo/con/barras","código-con-acento",new string('a',129)})
     await Check("reject pairing code '"+sample[..Math.Min(sample.Length,24)]+"'",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample);return Task.CompletedTask;}));
+// C3c: el QR abre la aplicacion de la intencion del asistente (Costina Sala o Costina Cocina); sin aplicacion, el enrutador /app/.
+await Check("pairing link opens the app of the assistant's intent",()=>{
+    var secure=PairingLink.ParseDeviceAddress("https://costina-server.local:5443");
+    var simple=PairingLink.ParseDeviceAddress("http://192.168.0.81:5089",simpleConnection:true);
+    Assert(PairingLink.Build(secure,"AbC123_def-456",PwaApp.Sala)=="https://costina-server.local:5443/app/sala/#pair=AbC123_def-456");
+    Assert(PairingLink.Build(secure,"AbC123_def-456",PwaApp.Cocina)=="https://costina-server.local:5443/app/cocina/#pair=AbC123_def-456");
+    Assert(PairingLink.Build(secure,"AbC123_def-456",null)=="https://costina-server.local:5443/app/#pair=AbC123_def-456");
+    // El codigo corto viaja sin el espacio con el que lo ensena el PC.
+    Assert(PairingLink.Build(simple,"K7M2Q9XR4T",PwaApp.Sala)=="http://192.168.0.81:5089/app/sala/#pair=K7M2Q9XR4T");
+    Assert(PairingLink.Build(simple,"K7M2Q9XR4T",PwaApp.Cocina)=="http://192.168.0.81:5089/app/cocina/#pair=K7M2Q9XR4T");
+    return Task.CompletedTask;});
+await Check("pairing link app follows the role to approve, anything else goes to the router",()=>{
+    Assert(PairingLink.AppFor("service")==PwaApp.Sala && PairingLink.AppFor("kitchen")==PwaApp.Cocina);
+    foreach(var role in new[]{null,"","main","bar","Kitchen","kitchen "}) Assert(PairingLink.AppFor(role) is null);
+    return Task.CompletedTask;});
+await Check("pairing link refuses an unknown app",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),"AbC123_def-456",(PwaApp)7);return Task.CompletedTask;}));
+foreach(var app in new PwaApp?[]{PwaApp.Sala,PwaApp.Cocina})
+    foreach(var sample in new[]{"K7M2Q 9XR4T","<img src=x onerror=1>","código-con-acento"})
+        await Check("reject pairing code '"+sample+"' for "+app,()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample,app);return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{
     using var client=Client(new Handler((r,_)=>{
         Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/dining/board"); Assert(r.Headers.Authorization?.Scheme=="Bearer");

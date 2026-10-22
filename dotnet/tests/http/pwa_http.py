@@ -131,6 +131,10 @@ class Pwa(unittest.TestCase):
     def test_04_only_build_files_are_public(self):
         status, headers, _ = fetch('/app')
         self.assertEqual((status, headers['Location']), (302, '/app/'))
+        # C3c: las dos aplicaciones (Costina Sala y Costina Cocina) viven en su carpeta bajo /app/, con la barra final como /app.
+        for entry in ('/app/sala', '/app/cocina'):
+            status, headers, _ = fetch(entry)
+            self.assertEqual((status, headers.get('Location')), (302, entry + '/'), entry)
         for path in ('/app/../appsettings.json', '/app/%2e%2e/Costina.Server.dll', '/app/nope.js', '/app/assets/', '/wwwroot/app/index.html'):
             self.assertIn(fetch(path)[0], (401, 404), path)
         status, headers, _ = fetch('/api/native/v1/session')                    # data still needs identity and is never cacheable

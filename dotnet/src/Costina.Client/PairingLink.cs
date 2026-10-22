@@ -41,9 +41,30 @@ public static class PairingLink
     public static bool IsCode(string? code)
         => code is { Length: >= 8 and <= 128 } && code.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
 
-    public static string Build(Uri deviceAddress, string code)
+    // C3c: la aplicacion que corresponde al rol que el asistente del PC va a aprobar (camarero -> Sala, pantalla de cocina -> Cocina).
+    // Cualquier otro valor, o ninguno, no tiene aplicacion propia: el enlace va al enrutador /app/, que pregunta.
+    public static PwaApp? AppFor(string? role) => role switch
+    {
+        "service" => PwaApp.Sala,
+        "kitchen" => PwaApp.Cocina,
+        _ => null
+    };
+
+    // C3c: el QR abre la aplicacion de la intencion del asistente, /app/sala/#pair=CODIGO o /app/cocina/#pair=CODIGO; sin
+    // aplicacion, /app/#pair=CODIGO (el enrutador, y hasta C3c la unica aplicacion). El codigo corto viaja sin espacios.
+    public static string Build(Uri deviceAddress, string code, PwaApp? app = null)
     {
         if (!IsCode(code)) throw new ArgumentException("Código de emparejamiento no válido.");
-        return deviceAddress.GetLeftPart(UriPartial.Authority) + "/app/#pair=" + code;
+        var path = app switch
+        {
+            null => "/app/",
+            PwaApp.Sala => "/app/sala/",
+            PwaApp.Cocina => "/app/cocina/",
+            _ => throw new ArgumentException("Aplicación desconocida para el enlace de emparejamiento.")
+        };
+        return deviceAddress.GetLeftPart(UriPartial.Authority) + path + "#pair=" + code;
     }
 }
+
+// C3c: las dos aplicaciones de los dispositivos, cada una en su carpeta bajo /app/ del mismo origen.
+public enum PwaApp { Sala, Cocina }
