@@ -125,6 +125,11 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .tile.alarm { border-color: var(--danger-line); }
 .tile:disabled { cursor: default; }
 .tile:disabled:hover { border-color: var(--border-strong); }
+/* C3c: «Listo para servir», la tarjeta entera en verde (tonos --ok, como su pastilla). Con una alergia que alarma, el borde rojo manda
+   sobre el verde: fondo verde y borde rojo (maqueta «5 · Sala · aviso»). */
+.tile.ready { border: 2px solid var(--ok-text); background: var(--ok-soft); box-shadow: 0 0 0 3px rgba(30, 142, 90, .14); }
+.tile.ready .tile-name { color: var(--ok-text); }
+.tile.ready.alarm { border: 2.5px solid var(--danger-text); box-shadow: none; }
 .tile-h { display: flex; align-items: flex-start; gap: 6px; }
 .tile-name { flex: 1; min-width: 0; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
 .tile-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 13px; color: var(--muted); white-space: nowrap; margin-top: 3px; }
@@ -252,7 +257,6 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 
 /* ---------- Pantalla de cocina (D6.4): tablet, manos ocupadas o mojadas. Botones de 64 px y texto siempre. ---------- */
 .app:has(.kitchen) { max-width: 100rem; }
-.kitchen-hint { margin: 0 2px 12px; color: var(--muted); }
 .tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 14px; align-items: start; }
 .ticket { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px; background: var(--surface); border: 1.5px solid var(--border); box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
 .ticket h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 19px; font-weight: 700; }
@@ -304,6 +308,30 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .add-home-steps { display: flex; flex-direction: column; gap: 8px; }
 .add-home-steps li { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .step-n { flex: none; width: 28px; height: 28px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+/* Costina Cocina: la estacion en grande junto a la marca («Costiña Cocina · Cocina caliente»), separada por una raya. */
+.station-t { min-width: 0; padding-left: 12px; border-left: 1px solid var(--border-strong); font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+
+/* Aviso de «listo para servir» en Costina Sala (maqueta «5 · Sala · aviso»): debajo de la cabecera, en cualquier pantalla. OCUPA su
+   sitio y no tapa nada (ni volver, ni el buscador de Bodega, ni la bandeja con «Enviar»): se queda hasta «Servido» o «Visto». Verde
+   del acento, nunca rojo (el rojo es de las alergias), y siempre escrito. */
+.banner { display: flex; flex-direction: column; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: 18px; background: var(--accent); color: #FFFFFF; box-shadow: 0 6px 16px rgba(8, 60, 46, .22); }
+.banner :focus-visible { outline-color: #FFFFFF; }
+.bn-h { display: flex; align-items: flex-start; gap: 12px; }
+.bn-ic { flex: none; width: 42px; height: 42px; border-radius: 21px; background: rgba(255, 255, 255, .2); display: flex; align-items: center; justify-content: center; }
+.bn-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bn-t b { font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
+.bn-t span { font-size: 17px; font-weight: 600; line-height: 1.25; }
+.bn-t small { margin-top: 2px; font-size: 13.5px; opacity: .92; }
+.bn-serve { min-height: 54px; padding: 0 12px; border: 0; border-radius: 13px; background: #FFFFFF; color: var(--accent-text); font-weight: 700; font-size: 17px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.bn-serve:disabled { background: rgba(255, 255, 255, .6); cursor: default; }
+.bn-row { display: flex; gap: 8px; }
+.bn-x { flex: 1; min-height: var(--touch); padding: 0 12px; border: 1.5px solid rgba(255, 255, 255, .65); border-radius: 13px; background: transparent; color: #FFFFFF; font-weight: 600; font-size: 15.5px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.bn-more { font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+@media (hover: hover) {
+  .bn-serve:hover:not(:disabled) { background: var(--accent-soft); }
+  .bn-x:hover { background: rgba(255, 255, 255, .12); }
+}
+
 /* La aplicacion equivocada no monta nada: lo dice, con el icono de la buena. */
 .other-app { align-items: center; text-align: center; padding: 28px 18px; }
 .other-app h2 { justify-content: center; text-wrap: balance; }
@@ -469,6 +497,8 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
   .entry-s { font-size: 14px; }
   .entry-go { position: static; margin-left: auto; }
   .appbar-title h2 { font-size: 26px; }
+  /* C3c: la banda, del ancho de la ficha. */
+  .banner { width: 100%; max-width: 52rem; margin: 0 auto 14px; padding: 14px 16px; }
   /* C3b: la ficha en dos columnas, como la maqueta de tableta: los pases a la izquierda; «Lo que lleva la mesa» y «Más opciones» a la
      derecha; el boton grande abajo, de lado a lado. La fila 5 (1fr) se estira para dejar la barra al pie. */
   .ficha.ficha-main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: auto auto auto auto 1fr auto; column-gap: 16px; row-gap: 12px; }
@@ -494,4 +524,15 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
   .tray-list { max-height: 300px; }
   .sheet { left: 50%; right: auto; bottom: 40px; width: 620px; max-width: calc(100vw - 48px); transform: translateX(-50%); border-radius: 22px; max-height: 82vh; }
   .sheet-foot { padding-bottom: 18px; }
+}
+
+/* C3c: con sitio (tableta en horizontal, PC), la banda en una fila: el aviso a la izquierda y «Servido», «Ver mesa» y «Visto» a la
+   derecha; si no caben, bajan a la linea siguiente (flex-wrap), nunca se cortan. */
+@media (min-width: 900px) {
+  .banner { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+  .banner > .bn-h { flex: 1 1 16rem; align-items: center; }
+  .bn-row { display: contents; }
+  .banner .bn-serve { padding: 0 20px; }
+  .banner .bn-x { flex: none; min-height: 54px; padding: 0 18px; }
+  .banner > .bn-more { flex: 1 1 100%; }
 }

@@ -30,6 +30,12 @@ describe('which app fits which role', () => {
     expect(headerRole('cocina', { role: 'kitchen', station: 'hot', stationName: 'Cocina caliente' })).toBe('Cocina caliente')
     expect(headerRole('sala', { role: 'main', station: 'sala-1', stationName: 'Sala 1' })).toBe('Principal (antiguo) · Sala 1')
   })
+  it('a kitchen tablet without a station says so next to the brand (the help paragraph is gone, C3c); Sala keeps it empty', () => {
+    expect(headerRole('cocina', { role: 'kitchen', station: null })).toBe('Sin estación asignada')
+    expect(headerRole('cocina', { role: 'kitchen', station: null, stationName: null })).toBe('Sin estación asignada')
+    expect(headerRole('cocina', { role: 'kitchen', station: 'cold' })).toBe('cold')                 // un servidor anterior sin stationName
+    expect(headerRole('sala', { role: 'service', station: null })).toBe('')
+  })
   it('each app has its own folder, base and colour; Cocina is slate blue, never red (allergies) nor amber (pending)', () => {
     expect([APPS.sala.path, APPS.sala.database, APPS.sala.color]).toEqual(['/app/sala/', 'costina-sala', '#0E7A5F'])
     expect([APPS.cocina.path, APPS.cocina.database, APPS.cocina.color]).toEqual(['/app/cocina/', 'costina-cocina', '#2F4A6D'])

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { offerName, roomSummary, type Configuration, type FloorRoom, type FloorTile } from '../configuration'
-import { alert, alertIsAlarming, alertWord, courseSteps, isTileCode, PENDING_REVIEW, tileElapsed, tileLabel, tileProgress, tileState } from '../floor'
+import { alert, alertIsAlarming, alertWord, courseSteps, isTileCode, PENDING_REVIEW, READY, tileElapsed, tileLabel, tileProgress, tileState } from '../floor'
 import { plural } from '../labels'
 import Icon from './Icon.vue'
 
@@ -9,6 +9,8 @@ import Icon from './Icon.vue'
 // es presentacion de lo leido (floor.ts, la copia de FloorPlan.cs con su tabla de casos comun). Tocar una tarjeta SOLO elige la mesa:
 // una ocupada abre su ficha (la lectura de siempre, F01) y una libre la hoja de «Abrir mesa»; ninguna construye una orden.
 // room: la sala elegida ('' = todas). La guarda BoardView (v-model:room) para que sobreviva a la ida y vuelta a una ficha.
+// C3c: una mesa «Listo para servir» se pinta entera en verde (.tile.ready), con el MISMO estado de la tarjeta (floor.ts, sin tocarlo
+// ni su tabla de casos); con una alergia que alarma, el borde rojo manda sobre el verde.
 const props = defineProps<{ rooms: FloorRoom[]; configuration: Configuration; now: number; canOpen: boolean; room: string }>()
 const emit = defineEmits<{ pick: [tile: FloorTile]; 'update:room': [room: string] }>()
 
@@ -47,7 +49,7 @@ const describe = (tile: FloorTile) => [tile.name, tileLabel(tileState(service(ti
     <div class="room-h"><h3>{{ current.name }}</h3><span class="muted sm">{{ roomSummary(current) }}</span></div>
     <div class="tiles">
       <button v-for="tile in current.tiles" :key="tile.key" type="button" class="tile"
-        :class="{ free: tile.entry === null, alarm: alertIsAlarming(service(tile)) }" :disabled="idle(tile)" :aria-label="describe(tile)"
+        :class="{ free: tile.entry === null, ready: tileState(service(tile)) === READY, alarm: alertIsAlarming(service(tile)) }" :disabled="idle(tile)" :aria-label="describe(tile)"
         :data-testid="`table-${tile.tableId}`" @click="emit('pick', tile)">
         <span class="tile-h">
           <span class="tile-name">{{ tile.name }}</span>

@@ -51,9 +51,14 @@ const stationOf = (who: Who) => who.stationName || who.station || ''
 // «Costina Cocina · Pase»: lo que es el dispositivo y donde esta, con el NOMBRE de la estacion.
 export const connectedAs = (who: Who): string => [kindOf(who.role), stationOf(who)].filter(part => part).join(' · ')
 // Cabecera: la marca ya dice la aplicacion; al lado, la estacion. Un rol que no es el natural de la aplicacion (el `main` antiguo)
-// se dice delante, como siempre.
+// se dice delante, como siempre. C3c: en Costina Cocina la estacion va en grande junto a la marca («Costiña Cocina · Cocina caliente»)
+// y sustituye al parrafo de ayuda; una tablet de cocina sin estacion (ve todas) lo dice, no se queda en blanco.
 const NATURAL: Readonly<Record<AppId, string>> = { sala: 'service', cocina: 'kitchen' }
-export const headerRole = (app: AppId, who: Who): string => who.role === NATURAL[app] ? stationOf(who) : connectedAs(who)
+export const NO_STATION = 'Sin estación asignada'
+export function headerRole(app: AppId, who: Who): string {
+  if (who.role !== NATURAL[app]) return connectedAs(who)
+  return stationOf(who) || (app === 'cocina' ? NO_STATION : '')
+}
 
 // Al emparejar con un codigo que el PC aprobo para la OTRA aplicacion: no se guarda la credencial, el dispositivo se da de baja en
 // el servidor (como «Desvincular») y se dice que codigo hay que pedir. Asi no queda ningun dispositivo huerfano.

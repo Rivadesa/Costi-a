@@ -35,6 +35,8 @@ let timer: number | undefined
 // A11: la cabecera dice QUE es este dispositivo (la marca, con el nombre de la aplicacion) y DONDE esta (el NOMBRE de la estacion);
 // el `main` antiguo lo dice delante, como siempre. Un papel que no se conoce no llega aqui: no se monta.
 const role = computed(() => session.value === null ? '' : headerRole(props.app, session.value))
+// C3c: en Costina Cocina la estacion va en grande junto a la marca («Costiña Cocina · Cocina caliente»), como la maqueta de la tablet.
+const stationTitle = computed(() => props.app === 'cocina' && state.value === 'ready' ? role.value : '')
 
 async function refresh(): Promise<void> {
   // F8: ni IndexedDB que no abre ni un servidor que no esta listo dejan la pantalla en "Cargando…": se dice y se reintenta solo.
@@ -117,11 +119,12 @@ onUnmounted(() => { window.clearInterval(timer); window.removeEventListener('onl
 
 <template>
   <main class="app" :data-app="app">
-    <header class="topbar">
+    <header class="topbar" data-testid="app-header">
       <div class="brand"><AppIcon :app="app" /><h1 data-testid="app-name">{{ definition.name }}</h1></div>
+      <p v-if="stationTitle" class="station-t"><span class="sr"> · </span><span data-testid="station-title">{{ stationTitle }}</span></p>
       <span v-if="session?.demo" class="demo" data-testid="demo">DEMOSTRACIÓN · DATOS FICTICIOS</span>
       <p v-if="state === 'ready' && session" class="who">
-        <span class="who-role" data-testid="role">{{ role }}</span><span class="who-name" data-testid="actor">{{ deviceNameOf(session.actor) }}</span>
+        <span v-if="!stationTitle" class="who-role" data-testid="role">{{ role }}</span><span class="who-name" data-testid="actor">{{ deviceNameOf(session.actor) }}</span>
       </p>
     </header>
     <p v-if="notice" class="notice" role="status" data-testid="notice"><Icon name="info" />{{ notice }}</p>

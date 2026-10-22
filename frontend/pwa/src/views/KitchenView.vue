@@ -14,7 +14,8 @@ import StatusPanel from './StatusPanel.vue'
 // Ninguna regla de negocio: un boton existe si y solo si el servidor anuncia esa accion en ESA elaboracion o en
 // ESE pase para este dispositivo (rol + estacion, D4.3a). La estacion local solo decide que se atenua.
 // C3a: el aspecto nuevo, botones de 64 px y los NOMBRES de mesa y estacion (de /configuration, releida cada 5 minutos). La agrupacion
-// por plato llega en C3c.
+// por plato llega en C3d.
+// C3c (Costina Cocina, lo minimo hasta C3d): sin el parrafo de ayuda de arriba; la cabecera ya dice «Costiña Cocina · <estacion>».
 const props = defineProps<{ token: string; session: Session }>()
 const emit = defineEmits<{ unauthorized: [] }>()
 
@@ -23,11 +24,7 @@ const { configuration, reload } = useConfiguration(props, () => emit('unauthoriz
 const names = computed(() => new Names(configuration))
 
 const station = computed(() => props.session.station)
-const stationName = computed(() => props.session.stationName || names.value.station(station.value))
 const tickets = computed(() => kitchenTickets(state.entries, station.value))
-const hint = computed(() => station.value === null ? 'Pantalla de cocina sin estación asignada: ve los pases de todas las estaciones.'
-  : station.value === PASS_STATION ? 'Pase: ve todas las estaciones, valida los pases y decide las revisiones de restricciones.'
-  : `Pases enviados con trabajo de ${stationName.value}, el más antiguo primero. Lo de otras estaciones aparece atenuado y sin botones.`)
 
 const notes = reactive<Record<string, string>>({})
 const lineKey = (ticket: KitchenTicket, preparation: Preparation) => `${ticket.key}:${preparation.id}`
@@ -59,7 +56,6 @@ function refreshAll(): void { void live.refresh(); void reload() }
   <section class="kitchen" data-testid="kitchen">
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
 
-    <p class="kitchen-hint" data-testid="kitchen-hint">{{ hint }}</p>
     <p v-if="state.readAt && tickets.length === 0" class="notice neutral" data-testid="kitchen-empty"><Icon name="chef" />No hay pases enviados a cocina para esta pantalla.</p>
 
     <ul class="tickets">

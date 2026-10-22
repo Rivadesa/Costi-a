@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, onUnmounted, provide, reactive, ref, watch } from 'vue'
 import type { Session } from '../api'
 import { settlementOf } from '../bodega'
 import { reconnections, useCatalog } from '../catalog'
@@ -9,9 +9,11 @@ import { plural } from '../labels'
 import { useOperations } from '../operations'
 import { PhotoCache, PHOTOS } from '../photos'
 import type { Settlement } from '../round'
+import { buzz, ReadyWatch, serveRequest, type ReadyNotice } from '../sala'
 import FloorGrid from './FloorGrid.vue'
 import Icon from './Icon.vue'
 import OpenTable from './OpenTable.vue'
+import ReadyBanner from './ReadyBanner.vue'
 import StatusPanel from './StatusPanel.vue'
 import TableCard from './TableCard.vue'
 
@@ -19,6 +21,7 @@ import TableCard from './TableCard.vue'
 // La lectura en vivo y la orden incierta son las de operations.ts, compartidas con la pantalla de cocina (D6.4).
 // C3a: el plano por salas (FloorGrid), la ficha de la mesa (TableCard) y la hoja «Abrir mesa» (OpenTable). La configuracion
 // (mesas, salas, ofertas y estaciones) se relee al abrir esa hoja y cada 5 minutos; nombres siempre, nunca codigos.
+// C3c: Costina Sala. Encima de todo eso, debajo de la cabecera, la banda «listo para servir» (ReadyBanner, logica en sala.ts).
 const props = defineProps<{ token: string; session: Session }>()
 const emit = defineEmits<{ unauthorized: [] }>()
 
@@ -68,6 +71,29 @@ watch(() => state.readAt, () => {
   if (selectedId.value && !selected.value) selectedId.value = null
   if (configuration.failed) void reload()
 })
+// C3c: el aviso de «listo para servir» sale de cada lectura CORRECTA (nunca del aviso del canal) y vibra solo con una clave nueva,
+// con la pagina a la vista (sala.ts). La primera lectura no vibra. Sin sonido: en la sala no suena nada.
+const ready = reactive(new ReadyWatch()) as ReadyWatch
+watch(() => state.readAt, () => {
+  const fresh = ready.read(state.entries)
+  buzz(fresh, document.visibilityState === 'visible', navigator)
+})
+const card = ref<InstanceType<typeof TableCard> | null>(null)
+// «Servido» desde la banda: la orden de servir ESE pase con la version leida de esa mesa (F01), una por toque.
+function serve(notice: ReadyNotice): void {
+  const request = serveRequest(notice, names.value.table(notice.entry.service.tableId))
+  if (request) void run(request.path, request.body, request.description)
+}
+// «Ver mesa»: la ficha de esa mesa. Si ya esta abierta (en Carta o Bodega), vuelve a la ficha; si hay otra abierta, sale de ella como
+// con «Mesas» (con una ronda sin enviar, pregunta).
+function viewTable(notice: ReadyNotice): void {
+  const serviceId = notice.entry.service.id
+  openingTable.value = null
+  if (selectedId.value === serviceId) { card.value?.show(); return }
+  if (selectedId.value !== null && card.value) { card.value.leave(() => { selectedId.value = serviceId }); return }
+  selectedId.value = serviceId
+}
+
 // Cambiar de pantalla (plano, ficha, «Abrir mesa») empieza arriba, no donde se quedo el plano.
 watch([selectedId, openingTable], () => { window.scrollTo({ top: 0 }) })
 // «Actualizar» relee tambien la configuracion, como RefreshAll en el puesto.
@@ -96,8 +122,9 @@ async function open(pax: number, offerId: string): Promise<void> {
 <template>
   <section class="screen" data-testid="board">
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
+    <ReadyBanner :notices="ready.shown" :names="names" :locked="locked" @serve="serve" @view="viewTable" @seen="notice => ready.dismiss(notice.key)" />
 
-    <TableCard v-if="selected" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
+    <TableCard v-if="selected" ref="card" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
       :configuration="configuration" :names="names" :products="products" :catalog-status="catalogStatus" :can-consume="canRound" :locked="locked"
       :uncertain="runnerState.pending !== null || runnerState.blocked !== null" :now="now"
       :send-round="sendRound" @run="run" @back="selectedId = null" @bodega="refreshCatalog" />
