@@ -13,7 +13,7 @@ concurrency:
 jobs:
   postgres-http:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20  # C3c: con 30 E2E (escritorio y movil) el job rozaba los 12 min
     services:
       postgres:
         image: postgres:17-alpine
