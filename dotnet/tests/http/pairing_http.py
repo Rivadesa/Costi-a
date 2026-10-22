@@ -10,6 +10,10 @@ import urllib.request
 import native_http as h
 
 PASSWORD = 'clave-de-ensayo-larga-1'
+# C3c: el codigo CORTO (para teclear en el icono de iPhone y iPad) y el LARGO de siempre (base64url de 32 bytes).
+SHORT_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+SHORT = '^[' + SHORT_ALPHABET + ']{10}$'
+LONG = '^[A-Za-z0-9_-]{43}$'
 # B.2: puerto de la conexion sencilla en el laboratorio (alli solo existe si se pide, y solo en loopback).
 LAN_PORT = os.environ.get('COSTINA_TEST_LAN_PORT', str(int(h.PORT) + 11))
 LAN = 'http://127.0.0.1:' + LAN_PORT
@@ -33,6 +37,18 @@ def request(path, data=None, token=None):
     try:
         with urllib.request.urlopen(req, timeout=15) as r: return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e: return e.code, json.loads(e.read())
+
+def post_raw(path, body, token=None):
+    """POST con el cuerpo TAL CUAL (b'' = sin cuerpo, como lo pedia el PC antes de C3c)."""
+    headers = {'Content-Type': 'application/json'}
+    if token: headers['Authorization'] = 'Bearer ' + token
+    req = urllib.request.Request(h.BASE + '/api/native/v1' + path, data=body, headers=headers, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r: return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e: return e.code, json.loads(e.read())
+
+def claim(code, name):
+    return request('/auth/pairings/claim', {'code': code, 'deviceName': name})[0]
 
 class PairingChecks(unittest.TestCase):
     @classmethod
@@ -232,5 +248,72 @@ class PairingChecks(unittest.TestCase):
             self.assertTrue(closed, 'the live channel must be cut when the simple connection is switched off')
         finally:
             sock.close()
+
+    # ---- C3c: codigo corto para teclear (en iPhone y iPad se empareja desde el icono, que no ve lo que guarda Safari) ----
+    def test_15_the_short_code_comes_only_on_request_and_from_the_unambiguous_alphabet(self):
+        status, issued = request('/auth/pairings', {'typed': True}, token=self.admin)
+        self.assertEqual(200, status, issued)
+        self.assertRegex(issued['code'], SHORT)                    # 10 de 32 simbolos sin 0/O ni 1/I: 50 bits
+        self.assertEqual({'pairingId', 'code', 'expiresAt'}, set(issued))
+        # Sin typed, el codigo largo de siempre: el PC de antes lo pide sin cuerpo y el de hoy con {}.
+        for body in (b'', b'{}', b'{"typed":false}'):
+            status, issued = post_raw('/auth/pairings', body, token=self.admin)
+            self.assertEqual(200, status, body)
+            self.assertRegex(issued['code'], LONG, body)
+        status, body = request('/auth/pairings', {'typed': 'si'}, token=self.admin)
+        self.assertEqual((422, 'invalid_request'), (status, body.get('error')))
+        self.assertEqual(403, request('/auth/pairings', {'typed': True}, token=self.simple_device)[0])   # sigue siendo solo del principal
+        self.assertEqual(401, request('/auth/pairings', {'typed': True})[0])
+
+    def test_16_a_short_code_is_typed_in_any_case_with_spaces_or_hyphens_once_and_for_five_minutes(self):
+        _, issued = request('/auth/pairings', {'typed': True}, token=self.admin)
+        code = issued['code']
+        status, claimed = request('/auth/pairings/claim', {'code': (code[:5] + '-' + code[5:]).lower(), 'deviceName': 'ipad-tecleado'})
+        self.assertEqual(200, status, claimed)
+        request(f"/auth/pairings/{claimed['pairingId']}/approve", {'role': 'kitchen', 'station': 'pase'}, token=self.admin)
+        status, creds = request(f"/auth/pairings/{claimed['pairingId']}/collect", {'pollSecret': claimed['pollSecret']})
+        self.assertEqual((200, 'kitchen', 'pase'), (status, creds['role'], creds['station']))
+        self.assertEqual(401, claim(code, 'segundo-uso'))                                         # un solo uso, escrito como sea
+        _, issued = request('/auth/pairings', {'typed': True}, token=self.admin)
+        self.assertEqual(200, claim(' ' + issued['code'][:5] + ' ' + issued['code'][5:] + ' ', 'iphone-espacios'))
+        _, issued = request('/auth/pairings', {'typed': True}, token=self.admin)
+        h.sql("UPDATE core.pairings SET expires_at = now() - interval '1 second' "
+              "WHERE tenant='d4-pairing' AND status='issued'")
+        self.assertEqual(401, claim(issued['code'], 'tarde'))                                    # 5 minutos, como el largo
+        hashes = h.sql("SELECT string_agg(code_hash, ',') FROM core.pairings WHERE tenant='d4-pairing'").split(',')
+        self.assertTrue(all(len(x) == 64 for x in hashes) and issued['code'] not in hashes)       # solo la huella en reposo
+
+    def test_17_the_long_code_is_never_normalised(self):
+        # Es base64url y distingue mayusculas: cambiado de mayusculas o con un espacio NO vale; tal cual, si.
+        _, issued = request('/auth/pairings', {}, token=self.admin)
+        code = issued['code']
+        self.assertNotEqual(code, code.swapcase())
+        self.assertEqual(401, claim(code.swapcase(), 'largo-cambiado'))
+        self.assertEqual(401, claim(code[:5] + ' ' + code[5:], 'largo-con-espacio'))
+        self.assertEqual(200, claim(code, 'largo-tal-cual'))
+
+class PairingTypedThrottle(unittest.TestCase):
+    """C3c: el codigo corto tiene el MISMO freno que el largo (D5.3): 10 fallos en 5 minutos desde un origen lo bloquean 60 s, tambien
+    con un codigo bueno y bien escrito. Clase aparte y la ULTIMA (unittest ordena las clases por nombre): deja este origen bloqueado,
+    y su proceso propio empieza sin fallos contados."""
+    @classmethod
+    def setUpClass(cls):
+        h.ENV['COSTINA_TENANT'] = 'c3c-pairing-throttle'
+        h.NativeHttp.setUpClass()
+        cls.admin = h.KEYS['main']
+    @classmethod
+    def tearDownClass(cls): h.stop_server()
+
+    def test_01_ten_failures_block_typed_codes_like_long_ones(self):
+        _, good = request('/auth/pairings', {'typed': True}, token=self.admin)
+        wrong = [c * 10 for c in SHORT_ALPHABET[:10]]
+        self.assertNotIn(good['code'], wrong)
+        for code in wrong[:9]: self.assertEqual(401, claim(code.lower(), 'intento'))
+        self.assertEqual(200, claim(good['code'].lower(), 'bueno-a-tiempo'))       # 9 fallos: el origen sigue abierto
+        self.assertEqual(401, claim(wrong[9], 'intento'))                          # el decimo lo bloquea
+        _, short = request('/auth/pairings', {'typed': True}, token=self.admin)
+        _, long = request('/auth/pairings', {}, token=self.admin)
+        self.assertEqual(429, claim(short['code'], 'bueno-bloqueado'))
+        self.assertEqual(429, claim(long['code'], 'largo-bloqueado'))
 
 if __name__ == '__main__': unittest.main()

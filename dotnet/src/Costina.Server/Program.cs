@@ -433,7 +433,12 @@ app.MapPost(prefix+"/auth/login",(Func<HttpContext,Task<IResult>>)(async c=>{
 }));
 // D4.2 — emparejamiento de dispositivos. El QR lo pinta el cliente; el servidor emite el codigo.
 app.MapPost(prefix+"/auth/pairings",(Func<HttpContext,Task<IResult>>)(async c=>{
-    var issued=await deviceStore.CreatePairingAsync((string)c.Items["actor"]!,c.RequestAborted);
+    // C3c: {typed:true} (opcional) pide el codigo CORTO para teclear; sin cuerpo (el PC anterior), {} o typed:false, el largo.
+    // Un motor anterior ni lee el cuerpo y devuelve el largo: el PC ensena el que reciba.
+    using var reader=new StreamReader(c.Request.Body);
+    var body=await reader.ReadToEndAsync(c.RequestAborted);
+    var request=string.IsNullOrWhiteSpace(body)?null:JsonSerializer.Deserialize<PairingIssueRequest>(body,Wire.Json);
+    var issued=await deviceStore.CreatePairingAsync((string)c.Items["actor"]!,request?.Typed==true,c.RequestAborted);
     return Results.Json(new {pairingId=issued.PairingId,code=issued.Code,expiresAt=issued.ExpiresAt});
 })).WithMetadata(new RouteAccess("main"));
 app.MapGet(prefix+"/auth/pairings/pending",(Func<HttpContext,Task<IResult>>)(async c=>

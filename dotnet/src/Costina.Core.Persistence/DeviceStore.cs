@@ -24,6 +24,42 @@ public sealed class DeviceStore(NpgsqlDataSource dataSource, BusinessScope scope
     private static string RandomToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
+    // C3c: codigo CORTO para teclear. En iPhone y iPad la camara abre el enlace del QR en Safari, nunca en el icono de la pantalla de
+    // inicio, y el icono no ve lo que guarda Safari: se empareja desde el icono tecleando este codigo. 10 simbolos de un alfabeto sin
+    // ambiguedades (sin 0/O ni 1/I): 32 simbolos, 50 bits. Mismo uso unico, mismos 5 minutos y mismo freno de intentos que el largo;
+    // lo que de verdad protege es la aprobacion en el PC, con el nombre y la intencion a la vista.
+    public const string ShortAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    public const int ShortLength = 10;
+    public const int IssueAttempts = 8;
+    public static string ShortCode() => RandomNumberGenerator.GetString(ShortAlphabet, ShortLength);
+    // Forma canonica de un codigo corto TECLEADO: sin espacios ni guiones y en mayusculas, y solo si quedan 10 simbolos del alfabeto
+    // corto (si no, null). Solo letras y cifras ASCII: una letra de otro alfabeto que se parezca o que pase a mayuscula ASCII no vale.
+    // Nunca se aplica al codigo LARGO, que es base64url y distingue mayusculas: ClaimAsync busca primero el codigo tal cual.
+    public static string? ShortForm(string code)
+    {
+        if (code.Length > 64) return null;
+        var compact = new System.Text.StringBuilder(ShortLength);
+        foreach (var c in code)
+        {
+            if (c == '-' || char.IsWhiteSpace(c)) continue;
+            if (!char.IsAsciiLetterOrDigit(c) || compact.Length == ShortLength) return null;
+            compact.Append(char.ToUpperInvariant(c));
+        }
+        var form = compact.ToString();
+        return form.Length == ShortLength && form.All(c => ShortAlphabet.Contains(c)) ? form : null;
+    }
+    // La huella del codigo es UNICA en toda la tabla, tambien entre las filas viejas (schema.sql, core.pairings): si una emision choca
+    // con una huella existente se genera OTRO codigo, en vez de devolver un conflicto. Con 50 bits es rarisimo y con el largo,
+    // imposible en la practica; el limite de intentos solo evita un bucle sin fin. Cualquier otro error de la base no se reintenta.
+    public static async Task<PairingIssued> IssueFreshAsync(Func<string> generate, Func<string, Task<PairingIssued>> insert)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return await insert(generate()); }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation && attempt < IssueAttempts) { }
+        }
+    }
+
     private NpgsqlCommand Command(string sql)
     {
         var command = dataSource.CreateCommand(sql);
@@ -33,10 +69,13 @@ public sealed class DeviceStore(NpgsqlDataSource dataSource, BusinessScope scope
         return command;
     }
 
-    public async Task<PairingIssued> CreatePairingAsync(string createdBy, CancellationToken ct = default)
+    // typed (C3c): el codigo corto para teclear; si no, el largo de siempre. La misma columna y la misma huella para los dos.
+    public Task<PairingIssued> CreatePairingAsync(string createdBy, bool typed = false, CancellationToken ct = default)
+        => IssueFreshAsync(typed ? ShortCode : RandomToken, code => InsertPairingAsync(code, createdBy, ct));
+
+    private async Task<PairingIssued> InsertPairingAsync(string code, string createdBy, CancellationToken ct)
     {
         var id = Guid.NewGuid().ToString("N");
-        var code = RandomToken();
         var expires = DateTimeOffset.UtcNow + CodeLifetime;
         await using var command = Command(
             "INSERT INTO core.pairings (tenant,company,location,id,code_hash,created_by,expires_at) " +
@@ -50,10 +89,20 @@ public sealed class DeviceStore(NpgsqlDataSource dataSource, BusinessScope scope
     }
 
     // Un solo uso por transicion de estado: el segundo claim del mismo codigo no encuentra 'issued'.
+    // C3c: primero el codigo TAL CUAL (el largo distingue mayusculas y nunca se normaliza). Solo si no casa y lo recibido es un codigo
+    // corto escrito de otra forma (minusculas, espacios, guiones), tambien su forma canonica. Cada intento toca como mucho una fila
+    // (la huella es unica) y el freno de intentos de la ruta cuenta la peticion entera como un solo fallo.
     public async Task<(string PairingId, string PollSecret)?> ClaimAsync(string code, string deviceName, CancellationToken ct = default)
     {
         deviceName = deviceName.Trim();
         if (deviceName.Length is < 3 or > 60) return null;
+        var claimed = await ClaimExactAsync(code, deviceName, ct);
+        if (claimed is null && ShortForm(code) is { } typed && typed != code) claimed = await ClaimExactAsync(typed, deviceName, ct);
+        return claimed;
+    }
+
+    private async Task<(string PairingId, string PollSecret)?> ClaimExactAsync(string code, string deviceName, CancellationToken ct)
+    {
         var pollSecret = RandomToken();
         await using var command = Command(
             "UPDATE core.pairings SET status='claimed', device_name=@name, poll_secret_hash=@poll, claimed_at=now() " +
