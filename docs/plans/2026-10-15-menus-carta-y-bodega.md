@@ -2,6 +2,8 @@
 
 Fecha: 2026-10-15. **Estado: APROBADO por el promotor el 15-10-2026.** Contestó las siete preguntas del resumen; las respuestas y lo que cambian están en la sección 10, y las decisiones en la 9. El orden de entrega pasa a ser E4d, E3.3, C3a, C3b, E4e, C3c, **E4f, E4c**, E4g.
 
+> **Nota del 22-10: el orden que queda lo sustituye otro plan.** E4d, E3.3, C3a y C3b están entregados. A partir de ahí manda `docs/plans/2026-10-22-sala-y-cocina.md`, APROBADO por el promotor el 22-10: C3c (dos aplicaciones, Costiña Sala y Costiña Cocina), E4e, C3d (Costiña Cocina), C3e (Costiña Sala), E4f, E4c y E4g, con versiones nuevas a partir de `0.43.0-c3c`. El C3c de la sección 4.6 se reparte entre C3d (cocina) y C3e (sala), y el nombre «C3c» pasa a las dos aplicaciones. Lo aprobado aquí para E4e, E4f, E4c y E4g sigue valiendo con las concreciones de ese plan.
+
 **Maqueta del comandero:** `docs/plans/maquetas/2026-10-15-comandero.html`. Se abre en el navegador y tiene pestañas para abrir mesa, mesa, bodega, ronda, combinados, menú cerrado, carta y PC. Capturas en `docs/plans/maquetas/2026-10-15-comandero/`.
 
 ## Resumen para el promotor
@@ -250,6 +252,8 @@ Solo cambian las etiquetas. Los códigos internos (`tasting`, `set-menu`, `a-la-
 ## 4. Cortes
 
 Una PR por corte. Las versiones siguen a `0.38.0-c2b`.
+
+**Desde el 22-10, el orden y las versiones de las filas 5 a 9 los fija `docs/plans/2026-10-22-sala-y-cocina.md`** (sección 4, APROBADO): esta tabla queda como historia.
 
 | Orden | Corte | Versión | Esquema | Qué gana el promotor |
 |---|---|---|---|---|

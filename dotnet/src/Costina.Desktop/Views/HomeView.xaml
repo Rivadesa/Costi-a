@@ -6,8 +6,9 @@
       los accesos a cada apartado; y las notas (conexion sencilla, copia de seguridad, servidor).
       Hereda el DataContext del cascaron (ShellViewModel). Las cifras y el mini plano salen de las tarjetas del Comedor (Home.Tiles =
       Service.Tiles): presentacion pura. Toda alerta lleva su palabra (nunca solo color). Una mesa del mini plano y "Abrir mesa" abren el
-      Comedor por el camino de siempre (Home.OpenTile -> Service.PickTile; Home.OpenTable -> Service.StartOpen); "Conectar comandero" y
-      "Pantalla de cocina" abren SU asistente en Dispositivos (Home.ConnectDevice -> Devices.Request).
+      Comedor por el camino de siempre (Home.OpenTile -> Service.PickTile; Home.OpenTable -> Service.StartOpen); "Conectar Costiña Sala" y
+      "Conectar Costiña Cocina" (C3c; antes "Conectar comandero" y "Pantalla de cocina") abren SU asistente en Dispositivos
+      (Home.ConnectDevice -> Devices.Request).
       Los accesos navegan con NavigationCommands.GoToPage: la ventana aplica la misma logica que el menu (elevacion incluida). La vista se
       construye ANTES de colgar de la ventana: sin esta CommandBinding (solo CanExecute, siempre true) los accesos calcularian CanExecute
       sin llegar a la de la ventana y nacerian deshabilitados hasta la primera tecla o clic. La orden no se ejecuta aqui: sigue subiendo y
@@ -115,7 +116,7 @@
   <DockPanel Margin="0,0,0,18">
    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
     <Button x:Name="ConnectDeviceButton" Content="Conectar dispositivo" ContentTemplate="{StaticResource QrButtonText}" Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab"
-            MinHeight="40" Padding="14,0,16,0" Margin="0" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}" ToolTip="Comanderos y pantallas de cocina: conectarlos con un código de un solo uso"/>
+            MinHeight="40" Padding="14,0,16,0" Margin="0" Visibility="{Binding IsMain, Converter={StaticResource Bool2Vis}}" ToolTip="Costiña Sala y Costiña Cocina: conectar móviles y tablets con un código de un solo uso"/>
     <Button x:Name="HomeOpenTableButton" Style="{StaticResource Primary}" Content="Abrir mesa" ContentTemplate="{StaticResource PlusButtonText}" Command="{Binding Home.OpenTableCommand}"
             MinHeight="40" Padding="12,0,18,0" Margin="10,0,0,0" Visibility="{Binding Home.CanOpenTables, Converter={StaticResource Bool2Vis}}" ToolTip="Abre el Comedor con el formulario de abrir mesa"/>
    </StackPanel>
@@ -270,12 +271,17 @@
       <TextBlock DockPanel.Dock="Right" Text="{Binding Home.DevicesSummary}" Style="{StaticResource Subtle}" VerticalAlignment="Center" Margin="8,0,0,0"/>
       <TextBlock Text="Dispositivos" Style="{StaticResource PanelTitle}" FontSize="16"/>
      </DockPanel>
-     <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="0,12,-8,0">
-      <Button x:Name="HomeConnectWaiterButton" Content="Conectar comandero" Command="{Binding Home.ConnectDeviceCommand}" CommandParameter="service" Margin="0,0,8,0" MinHeight="36" Padding="6,0" HorizontalAlignment="Stretch"
-              ToolTip="Abre en Dispositivos el asistente para conectar un comandero (tablet o móvil de sala)"/>
-      <Button x:Name="HomeConnectKitchenButton" Content="Pantalla de cocina" Command="{Binding Home.ConnectDeviceCommand}" CommandParameter="kitchen" Margin="0,0,8,0" MinHeight="36" Padding="6,0" HorizontalAlignment="Stretch"
-              ToolTip="Abre en Dispositivos el asistente para conectar una pantalla de cocina"/>
-     </UniformGrid>
+     <!-- C3c: un boton por aplicacion, con su icono y su nombre entero (uno debajo del otro: a dos columnas no caben). -->
+     <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+      <Button x:Name="HomeConnectWaiterButton" Command="{Binding Home.ConnectDeviceCommand}" CommandParameter="service" Margin="0,0,0,6" MinHeight="36" Padding="10,0" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" AutomationProperties.Name="Conectar Costiña Sala" ToolTip="Abre en Dispositivos el asistente para conectar el móvil de un camarero">
+       <StackPanel Orientation="Horizontal"><Image Source="{StaticResource AppIconSala}" Width="20" Height="20" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Conectar Costiña Sala" VerticalAlignment="Center"/></StackPanel>
+      </Button>
+      <Button x:Name="HomeConnectKitchenButton" Command="{Binding Home.ConnectDeviceCommand}" CommandParameter="kitchen" Margin="0" MinHeight="36" Padding="10,0" HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Left" AutomationProperties.Name="Conectar Costiña Cocina" ToolTip="Abre en Dispositivos el asistente para conectar la tablet de una estación de cocina">
+       <StackPanel Orientation="Horizontal"><Image Source="{StaticResource AppIconCocina}" Width="20" Height="20" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Conectar Costiña Cocina" VerticalAlignment="Center"/></StackPanel>
+      </Button>
+     </StackPanel>
      <!-- B.2: estado de la conexion sencilla (solo si el servidor la tiene), con punto y palabra. -->
      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0" Visibility="{Binding Home.SimpleState, Converter={StaticResource Text2Vis}}">
       <Ellipse Style="{StaticResource Dot}" Tag="{Binding Home.SimpleDot}"/>
@@ -345,7 +351,7 @@
            Command="NavigationCommands.GoToPage" CommandParameter="OffersTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
    <Button Content="Salas, mesas y estaciones" local:Ui.Icon="{StaticResource IconOrganization}" local:Ui.Hint="La organización del local."
            Command="NavigationCommands.GoToPage" CommandParameter="OrganizationTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
-   <Button x:Name="HomeDevicesButton" Content="Dispositivos" local:Ui.Icon="{StaticResource IconDevices}" local:Ui.Hint="Comanderos y pantallas de cocina."
+   <Button x:Name="HomeDevicesButton" Content="Dispositivos" local:Ui.Icon="{StaticResource IconDevices}" local:Ui.Hint="Costiña Sala y Costiña Cocina."
            Command="NavigationCommands.GoToPage" CommandParameter="DevicesTab" Visibility="{Binding Connected, Converter={StaticResource Bool2Vis}}"/>
   </UniformGrid>
 

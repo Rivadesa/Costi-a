@@ -112,26 +112,54 @@ class Pwa(unittest.TestCase):
         status, headers, _ = fetch(asset)
         self.assertEqual((status, headers['Cache-Control']), (200, 'public, max-age=31536000, immutable'))
         self.assertIn('javascript', headers['Content-Type'])
+        # C3c: /app/ es el ENRUTADOR: sin manifiesto ni metas de iOS (no se instala). Su service worker de antes se retira: el fichero
+        # que se sirve ahora borra su cache y se da de baja, sin interceptar nada.
+        for installable in (b'rel="manifest"', b'apple-mobile-web-app', b'apple-touch-icon'):
+            self.assertNotIn(installable, body)
+        self.assertIn(fetch('/app/manifest.webmanifest')[0], (401, 404))     # como cualquier fichero que no es del build
         status, headers, worker = fetch('/app/sw.js')
         self.assertEqual((status, headers['Cache-Control']), (200, 'no-cache'))
-        self.assertNotIn(b"'/api", worker)                                     # the service worker never caches data
-        self.assertEqual(fetch('/app/manifest.webmanifest')[1]['Content-Type'], 'application/manifest+json')
-        # D6.5: instalable en Android e iOS. Cada icono declarado existe, es un PNG real del tamano que dice y lo sirve el motor.
-        manifest = json.loads(fetch('/app/manifest.webmanifest')[2])
-        declared = {(i['sizes'], i['purpose']) for i in manifest['icons'] if i['type'] == 'image/png'}
-        self.assertEqual(declared, {('192x192', 'any'), ('512x512', 'any'), ('512x512', 'maskable')})
-        for icon in [i for i in manifest['icons'] if i['type'] == 'image/png'] + [dict(src='/app/apple-touch-icon.png', sizes='180x180')]:
-            status, headers, data = fetch(icon['src'])
-            self.assertEqual((status, headers['Content-Type'], headers['Cache-Control']), (200, 'image/png', 'no-cache'), icon['src'])
-            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n', icon['src'])
-            width, height = int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
-            self.assertEqual(f'{width}x{height}', icon['sizes'], icon['src'])
-        self.assertIn(b'rel="apple-touch-icon" href="/app/apple-touch-icon.png"', body)
+        self.assertIn(b'unregister()', worker)
+        self.assertNotIn(b"addEventListener('fetch'", worker)
+        # C3c: Costina Sala y Costina Cocina, cada una en su carpeta del MISMO build, con la MISMA CSP, su manifiesto (id y alcance
+        # propios), sus iconos y su service worker. D6.5: instalables en Android e iOS; cada icono declarado existe, es un PNG real del
+        # tamano que dice y lo sirve el motor.
+        for app, name, color in (('sala', 'Costiña Sala', '#0E7A5F'), ('cocina', 'Costiña Cocina', '#2F4A6D')):
+            folder = '/app/' + app + '/'
+            status, headers, page = fetch(folder)
+            self.assertEqual(status, 200, folder)
+            self.assertEqual(headers['Content-Security-Policy'], csp, folder)
+            self.assertEqual(headers['Cache-Control'], 'no-cache', folder)
+            self.assertIn(('<title>' + name + '</title>').encode(), page)
+            self.assertIn(('rel="manifest" href="' + folder + 'manifest.webmanifest"').encode(), page)
+            self.assertIn(('rel="apple-touch-icon" href="' + folder + 'apple-touch-icon.png"').encode(), page)
+            self.assertNotIn(b'<script>', page)
+            status, headers, raw = fetch(folder + 'manifest.webmanifest')
+            self.assertEqual((status, headers['Content-Type']), (200, 'application/manifest+json'), folder)
+            manifest = json.loads(raw)
+            self.assertEqual((manifest['id'], manifest['start_url'], manifest['scope'], manifest['name'], manifest['theme_color']), (folder, folder, folder, name, color))
+            declared = {(i['sizes'], i['purpose']) for i in manifest['icons'] if i['type'] == 'image/png'}
+            self.assertEqual(declared, {('192x192', 'any'), ('512x512', 'any'), ('512x512', 'maskable')})
+            for icon in [i for i in manifest['icons'] if i['type'] == 'image/png'] + [dict(src=folder + 'apple-touch-icon.png', sizes='180x180')]:
+                self.assertTrue(icon['src'].startswith(folder), icon['src'])
+                status, headers, data = fetch(icon['src'])
+                self.assertEqual((status, headers['Content-Type'], headers['Cache-Control']), (200, 'image/png', 'no-cache'), icon['src'])
+                self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n', icon['src'])
+                width, height = int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+                self.assertEqual(f'{width}x{height}', icon['sizes'], icon['src'])
+            status, headers, worker = fetch(folder + 'sw.js')
+            self.assertEqual((status, headers['Cache-Control']), (200, 'no-cache'), folder)
+            self.assertNotIn(b"'/api", worker)                                 # the service worker never caches data
 
     def test_04_only_build_files_are_public(self):
         status, headers, _ = fetch('/app')
         self.assertEqual((status, headers['Location']), (302, '/app/'))
-        for path in ('/app/../appsettings.json', '/app/%2e%2e/Costina.Server.dll', '/app/nope.js', '/app/assets/', '/wwwroot/app/index.html'):
+        # C3c: las dos aplicaciones (Costina Sala y Costina Cocina) viven en su carpeta bajo /app/, con la barra final como /app.
+        for entry in ('/app/sala', '/app/cocina'):
+            status, headers, _ = fetch(entry)
+            self.assertEqual((status, headers.get('Location')), (302, entry + '/'), entry)
+        for path in ('/app/../appsettings.json', '/app/%2e%2e/Costina.Server.dll', '/app/nope.js', '/app/assets/', '/wwwroot/app/index.html',
+                     '/app/sala/../../appsettings.json', '/app/sala/nope.js', '/app/otra/'):
             self.assertIn(fetch(path)[0], (401, 404), path)
         status, headers, _ = fetch('/api/native/v1/session')                    # data still needs identity and is never cacheable
         self.assertEqual((status, headers['Cache-Control']), (401, 'no-store'))

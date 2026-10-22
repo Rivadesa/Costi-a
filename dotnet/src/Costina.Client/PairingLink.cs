@@ -41,9 +41,38 @@ public static class PairingLink
     public static bool IsCode(string? code)
         => code is { Length: >= 8 and <= 128 } && code.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
 
-    public static string Build(Uri deviceAddress, string code)
+    // C3c: el codigo CORTO del motor ({typed:true} en POST /auth/pairings): 10 caracteres de este alfabeto sin ambiguedades, el mismo
+    // que DeviceStore.ShortAlphabet. El PC lo ensena en dos grupos para teclearlo en el icono de un iPhone o un iPad («K7M2Q 9XR4T»);
+    // el QR lo lleva sin el espacio. Cualquier otro codigo (el largo de un motor anterior, que no lee el cuerpo) se ensena tal cual.
+    public const string ShortAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    public const int ShortLength = 10;
+    public static bool IsShortCode(string? code) => code is { Length: ShortLength } && code.All(c => ShortAlphabet.Contains(c));
+    public static string DisplayCode(string? code) => IsShortCode(code) ? code![..5] + " " + code[5..] : code ?? "";
+
+    // C3c: la aplicacion que corresponde al rol que el asistente del PC va a aprobar (camarero -> Sala, pantalla de cocina -> Cocina).
+    // Cualquier otro valor, o ninguno, no tiene aplicacion propia: el enlace va al enrutador /app/, que pregunta.
+    public static PwaApp? AppFor(string? role) => role switch
+    {
+        "service" => PwaApp.Sala,
+        "kitchen" => PwaApp.Cocina,
+        _ => null
+    };
+
+    // C3c: el QR abre la aplicacion de la intencion del asistente, /app/sala/#pair=CODIGO o /app/cocina/#pair=CODIGO; sin
+    // aplicacion, /app/#pair=CODIGO (el enrutador, y hasta C3c la unica aplicacion). El codigo corto viaja sin espacios.
+    public static string Build(Uri deviceAddress, string code, PwaApp? app = null)
     {
         if (!IsCode(code)) throw new ArgumentException("Código de emparejamiento no válido.");
-        return deviceAddress.GetLeftPart(UriPartial.Authority) + "/app/#pair=" + code;
+        var path = app switch
+        {
+            null => "/app/",
+            PwaApp.Sala => "/app/sala/",
+            PwaApp.Cocina => "/app/cocina/",
+            _ => throw new ArgumentException("Aplicación desconocida para el enlace de emparejamiento.")
+        };
+        return deviceAddress.GetLeftPart(UriPartial.Authority) + path + "#pair=" + code;
     }
 }
+
+// C3c: las dos aplicaciones de los dispositivos, cada una en su carpeta bajo /app/ del mismo origen.
+public enum PwaApp { Sala, Cocina }

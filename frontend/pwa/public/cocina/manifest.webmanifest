@@ -1,0 +1,20 @@
+{
+  "name": "Costiña Cocina",
+  "short_name": "Cocina",
+  "description": "Costiña Cocina: la pantalla de cada estación de cocina y del pase.",
+  "lang": "es",
+  "id": "/app/cocina/",
+  "start_url": "/app/cocina/",
+  "scope": "/app/cocina/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F3F4F6",
+  "theme_color": "#2F4A6D",
+  "categories": ["business", "food"],
+  "icons": [
+    { "src": "/app/cocina/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app/cocina/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app/cocina/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/app/cocina/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

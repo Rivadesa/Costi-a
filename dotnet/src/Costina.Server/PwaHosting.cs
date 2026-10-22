@@ -11,6 +11,10 @@ namespace Costina.Server;
 public static partial class PwaHosting
 {
     [GeneratedRegex(@"^[A-Za-z0-9.\-:\[\]]{1,255}$")] private static partial Regex SafeHost();
+    // C3c: el enrutador /app/ y las dos aplicaciones, Costina Sala (/app/sala/) y Costina Cocina (/app/cocina/), cada una en su carpeta
+    // del MISMO build, servidas por los mismos ficheros estaticos y con la MISMA CSP. Sin la barra final, el navegador resolveria mal
+    // las rutas relativas, el alcance del service worker y el del manifiesto: se redirige a la carpeta, como siempre con /app.
+    private static readonly string[] Entries=["/app","/app/sala","/app/cocina"];
 
     public static bool Map(WebApplication app)
     {
@@ -21,7 +25,9 @@ public static partial class PwaHosting
         types.Mappings[".webmanifest"]="application/manifest+json";
         app.Use(async (context,next)=>
         {
-            if(context.Request.Path=="/app" && HttpMethods.IsGet(context.Request.Method)) { context.Response.Redirect("/app/"); return; }
+            if(HttpMethods.IsGet(context.Request.Method)
+                && Array.Find(Entries,e=>context.Request.Path.Equals(e,StringComparison.OrdinalIgnoreCase)) is { } entry)
+            { context.Response.Redirect(entry+"/"); return; }
             await next();
         });
         app.UseDefaultFiles(new DefaultFilesOptions{FileProvider=provider,RequestPath="/app"});

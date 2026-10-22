@@ -1,0 +1,20 @@
+{
+  "name": "Costiña Sala",
+  "short_name": "Costiña Sala",
+  "description": "Costiña Sala: el comandero de cada camarero, con sus mesas, sus pases y las bebidas.",
+  "lang": "es",
+  "id": "/app/sala/",
+  "start_url": "/app/sala/",
+  "scope": "/app/sala/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F3F4F6",
+  "theme_color": "#0E7A5F",
+  "categories": ["business", "food"],
+  "icons": [
+    { "src": "/app/sala/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app/sala/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app/sala/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/app/sala/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

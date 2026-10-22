@@ -1,6 +1,7 @@
 using Costina.Core.Domain;
 using Costina.Core.Persistence;
 using Costina.Modules.Dining.Domain;
+using Npgsql;
 
 var scope=new BusinessScope("tenant","company","location");
 var stamp=new CommandStamp(scope,"actor",DateTimeOffset.UtcNow);
@@ -80,4 +81,26 @@ Check(PasswordHashing.Verify("una-contrasena-de-ensayo",stored),"correct passwor
 Check(!PasswordHashing.Verify("otra-contrasena-distinta",stored),"wrong password fails");
 Check(!PasswordHashing.Verify("una-contrasena-de-ensayo","basura.sin.formato"),"malformed stored hash fails closed");
 Check(PasswordHashing.Hash("x")!=PasswordHashing.Hash("x"),"salt makes every hash unique");
+// C3c: codigo CORTO de emparejamiento para teclear en el icono de iPhone y iPad (puro, sin base de datos).
+Check(DeviceStore.ShortAlphabet=="23456789ABCDEFGHJKLMNPQRSTUVWXYZ" && DeviceStore.ShortAlphabet.Distinct().Count()==32,"short code alphabet has 32 unambiguous symbols");
+var shortCodes=Enumerable.Range(0,500).Select(_=>DeviceStore.ShortCode()).ToList();
+Check(shortCodes.All(c=>c.Length==10 && c.All(DeviceStore.ShortAlphabet.Contains)),"short code is 10 symbols of the alphabet");
+Check(shortCodes.Distinct().Count()==500 && DeviceStore.ShortAlphabet.All(s=>shortCodes.Any(c=>c.Contains(s))),"short codes are random over the whole alphabet");
+foreach(var (typed,canonical) in new[]{("K7M2Q9XR4T","K7M2Q9XR4T"),("k7m2q-9xr4t","K7M2Q9XR4T"),(" K7M2Q 9XR4T ","K7M2Q9XR4T"),("k7m2q - 9xr4t","K7M2Q9XR4T")})
+    Check(DeviceStore.ShortForm(typed)==canonical,"typed short code '"+typed+"' is read in any case, with spaces or hyphens");
+// Nada que no sean 10 simbolos del alfabeto: ni el codigo largo (base64url, distingue mayusculas), ni 0/O/1/I, ni otros separadores.
+foreach(var sample in new[]{"","K7M2Q9XR4","K7M2Q9XR4TT","K7M2Q9XR4O","K7M2Q9XR41","K7M2Q9XR4I","K7M2Q_9XR4T","K7M2Q.9XR4T",(char)0x017F+"7M2Q9XR4T","K7M2Q9XR4"+(char)0x0422,"kjYLiRkxgaTdekLGDPTDuj-sz3kr1xM5j8QVQmkW-DU","2345678923-AB"})
+    Check(DeviceStore.ShortForm(sample) is null,"not a short code: '"+sample+"'");
+// La huella del codigo es UNICA en toda la tabla (tambien filas viejas): si una emision choca, se emite otro codigo; otro error no se reintenta.
+PostgresException Unique() => new("duplicate key value violates unique constraint","ERROR","ERROR",PostgresErrorCodes.UniqueViolation);
+var offered=new Queue<string>(["CHOCA","NUEVO","OTRO"]); var inserted=new List<string>();
+var fresh=await DeviceStore.IssueFreshAsync(()=>offered.Dequeue(),code=>{ inserted.Add(code);
+    return code=="CHOCA" ? throw Unique() : Task.FromResult(new PairingIssued("id",code,DateTimeOffset.UtcNow)); });
+Check(fresh.Code=="NUEVO" && inserted.SequenceEqual(["CHOCA","NUEVO"]),"a code whose hash collides is replaced by a fresh one");
+var attempts=0;
+try { await DeviceStore.IssueFreshAsync(()=>"SIEMPRE",_=>{ attempts++; throw Unique(); }); Check(false,"endless collisions must fail"); }
+catch(PostgresException) { Check(attempts==DeviceStore.IssueAttempts,"collisions are retried a bounded number of times"); }
+attempts=0;
+try { await DeviceStore.IssueFreshAsync(()=>"OTRO",_=>{ attempts++; throw new PostgresException("other","ERROR","ERROR",PostgresErrorCodes.ForeignKeyViolation); }); Check(false,"other errors must fail"); }
+catch(PostgresException) { Check(attempts==1,"any other storage error is not retried"); }
 Console.WriteLine($"D1 snapshots: {checks}/{checks} passed.");

@@ -64,6 +64,36 @@ foreach(var sample in new[]{"http://costina-server.local:5089","http://8.8.8.8:5
     await Check("reject simple address '"+sample+"'",()=>Throws<ArgumentException>(()=>{PairingLink.ParseDeviceAddress(sample,simpleConnection:true);return Task.CompletedTask;}));
 foreach(var sample in new[]{"","corto","con espacio dentro","<img src=x onerror=1>","codigo/con/barras","código-con-acento",new string('a',129)})
     await Check("reject pairing code '"+sample[..Math.Min(sample.Length,24)]+"'",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample);return Task.CompletedTask;}));
+// C3c: el QR abre la aplicacion de la intencion del asistente (Costina Sala o Costina Cocina); sin aplicacion, el enrutador /app/.
+await Check("pairing link opens the app of the assistant's intent",()=>{
+    var secure=PairingLink.ParseDeviceAddress("https://costina-server.local:5443");
+    var simple=PairingLink.ParseDeviceAddress("http://192.168.0.81:5089",simpleConnection:true);
+    Assert(PairingLink.Build(secure,"AbC123_def-456",PwaApp.Sala)=="https://costina-server.local:5443/app/sala/#pair=AbC123_def-456");
+    Assert(PairingLink.Build(secure,"AbC123_def-456",PwaApp.Cocina)=="https://costina-server.local:5443/app/cocina/#pair=AbC123_def-456");
+    Assert(PairingLink.Build(secure,"AbC123_def-456",null)=="https://costina-server.local:5443/app/#pair=AbC123_def-456");
+    // El codigo corto viaja sin el espacio con el que lo ensena el PC.
+    Assert(PairingLink.Build(simple,"K7M2Q9XR4T",PwaApp.Sala)=="http://192.168.0.81:5089/app/sala/#pair=K7M2Q9XR4T");
+    Assert(PairingLink.Build(simple,"K7M2Q9XR4T",PwaApp.Cocina)=="http://192.168.0.81:5089/app/cocina/#pair=K7M2Q9XR4T");
+    return Task.CompletedTask;});
+await Check("pairing link app follows the role to approve, anything else goes to the router",()=>{
+    Assert(PairingLink.AppFor("service")==PwaApp.Sala && PairingLink.AppFor("kitchen")==PwaApp.Cocina);
+    foreach(var role in new[]{null,"","main","bar","Kitchen","kitchen "}) Assert(PairingLink.AppFor(role) is null);
+    return Task.CompletedTask;});
+await Check("pairing link refuses an unknown app",()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),"AbC123_def-456",(PwaApp)7);return Task.CompletedTask;}));
+// C3c: el PC ensena el codigo corto en dos grupos para teclearlo («K7M2Q 9XR4T»); el QR lo lleva sin el espacio. Cualquier otro codigo
+// (el largo de un motor anterior a C3c, que no lee el cuerpo y lo devuelve siempre) se ensena tal cual, sin partirlo ni tocarlo.
+// El alfabeto es el del motor (DeviceStore.ShortAlphabet): sin 0, 1, I ni O.
+await Check("pairing code: the short code in two groups, anything else raw",()=>{
+    Assert(PairingLink.ShortAlphabet=="23456789ABCDEFGHJKLMNPQRSTUVWXYZ");
+    Assert(PairingLink.IsShortCode("K7M2Q9XR4T")&&PairingLink.DisplayCode("K7M2Q9XR4T")=="K7M2Q 9XR4T");
+    Assert(PairingLink.IsShortCode("2345678ZZZ")&&PairingLink.DisplayCode("2345678ZZZ")=="23456 78ZZZ");
+    foreach(var raw in new[]{"AbC123_def-456","k7m2q9xr4t","K7M2Q9XR4","K7M2Q9XR4TT","K7M2Q9XR41","K7M2Q9XR4O","K7M2Q 9XR4T","K7M2Q-9XR4T",new string('A',43),""})
+        Assert(!PairingLink.IsShortCode(raw)&&PairingLink.DisplayCode(raw)==raw);
+    Assert(!PairingLink.IsShortCode(null)&&PairingLink.DisplayCode(null)=="");
+    return Task.CompletedTask;});
+foreach(var app in new PwaApp?[]{PwaApp.Sala,PwaApp.Cocina})
+    foreach(var sample in new[]{"K7M2Q 9XR4T","<img src=x onerror=1>","código-con-acento"})
+        await Check("reject pairing code '"+sample+"' for "+app,()=>Throws<ArgumentException>(()=>{PairingLink.Build(new Uri("https://costina-server.local:5443"),sample,app);return Task.CompletedTask;}));
 await Check("GET uses correct authenticated relative route",async()=>{
     using var client=Client(new Handler((r,_)=>{
         Assert(r.RequestUri!.AbsolutePath=="/api/native/v1/dining/board"); Assert(r.Headers.Authorization?.Scheme=="Bearer");
@@ -162,8 +192,8 @@ await Check("device rows and session accept an older server without online or st
     var web=new JsonSerializerOptions(JsonSerializerDefaults.Web);
     var online=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d1\",\"name\":\"tablet\",\"role\":\"service\",\"station\":\"sala-1\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":null,\"online\":true}",web)!;
     var older=JsonSerializer.Deserialize<DeviceRowDto>("{\"id\":\"d2\",\"name\":\"kds\",\"role\":\"kitchen\",\"station\":\"cold\",\"approvedBy\":\"user:jefa\",\"createdAt\":\"2026-10-06T10:00:00Z\",\"revokedAt\":\"2026-10-06T11:00:00Z\"}",web)!;
-    Assert(online.Online&&online.Active&&online.StateLabel=="Conectado"&&online.RoleLabel=="Comandero"&&online.ToString().EndsWith("aprobado por jefa",StringComparison.Ordinal));
-    Assert(!older.Online&&!older.Active&&older.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)&&older.RoleLabel=="Pantalla de cocina");
+    Assert(online.Online&&online.Active&&online.StateLabel=="Conectado"&&online.RoleLabel=="Costiña Sala"&&online.ToString().EndsWith("aprobado por jefa",StringComparison.Ordinal));
+    Assert(!older.Online&&!older.Active&&older.StateLabel.StartsWith("Quitado el ",StringComparison.Ordinal)&&older.RoleLabel=="Costiña Cocina");
     var named=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\",\"stationName\":\"Cocina fría\"}",web)!;
     var unnamed=JsonSerializer.Deserialize<SessionInfo>("{\"role\":\"kitchen\",\"tenantId\":\"t\",\"companyId\":\"c\",\"locationId\":\"l\",\"station\":\"cold\"}",web)!;
     Assert(named.StationName=="Cocina fría"&&unnamed.StationName is null);
@@ -530,7 +560,12 @@ await Check("vocabulary: the exact words of the plan table",()=>{
     Expect(string.Join("|",new[]{"card","cash","other"}.Select(Labels.PaymentMethod))=="Tarjeta|Efectivo|Otro","pago");
     Expect(string.Join("|",new[]{"tasting","set-menu","a-la-carte"}.Select(Labels.OfferKind))=="Menú degustación|Menú con elección|Carta","oferta");
     Expect(string.Join("|",new[]{"any","lunch","dinner"}.Select(Labels.OfferService))=="Comida y cena|Comida|Cena","servicio de la oferta");
-    Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Pantalla de cocina","rol");
+    // C3c (plan 2026-10-22, seccion 3): los dispositivos son las dos aplicaciones, «Costiña Sala» y «Costiña Cocina» (sustituyen a
+    // «Comandero» y «Pantalla de cocina»); el antiguo con rol principal sigue diciendolo. La sesion de ESTE PC es un puesto: de sala o de
+    // cocina, nunca una de las aplicaciones de los moviles. Los tipos de dispositivo no estan en vocabulary-cases.json: su copia en la
+    // PWA (apps.ts, KINDS) se comprueba con vitest.
+    Expect(string.Join("|",new[]{"service","kitchen","main"}.Select(Labels.DeviceRole))=="Costiña Sala|Costiña Cocina|Principal (antiguo)","tipo de dispositivo");
+    Expect(string.Join("|",new[]{"main","service","kitchen"}.Select(Labels.SessionRole))=="Responsable|Puesto de sala|Puesto de cocina","rol");
     Expect(string.Join("|",new[]{"connected","reconnecting","closed"}.Select(Labels.Realtime))=="Tiempo real activo|Reconectando…|Sin tiempo real, reintentando","tiempo real");
     Expect(Labels.Guest(null)=="Toda la mesa"&&Labels.Guest(3)=="Comensal 3","comensal");
     Expect(string.Join("|",new[]{"free","seated","kitchen","ready","eating","paused","finished","cancelled"}.Select(Labels.TableState))

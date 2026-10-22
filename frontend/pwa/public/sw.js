@@ -1,34 +1,12 @@
-// Service worker de Costina. Escrito a mano y deliberadamente pequeno para poder auditarlo.
-//
-// REGLA: solo cachea el "shell" de la aplicacion (HTML, JS, CSS, icono, manifiesto) bajo /app/.
-// JAMAS intercepta /api/, /health ni nada fuera de /app/: los datos operativos son siempre una
-// lectura autoritativa del servidor o un error visible; una respuesta cacheada seria una mentira.
-// No hay Background Sync: las ordenes pendientes se reintentan con la aplicacion en primer plano.
-const CACHE = 'costina-shell-v1'
+// C3c: RETIRADA del service worker de antes (alcance /app/, cache costina-shell-v1). Con dos aplicaciones en /app/sala/ y
+// /app/cocina/, cada una con el suyo (public/sala/sw.js), uno de alcance /app/ las cubriria tambien a ellas. El navegador busca
+// actualizaciones de este fichero al navegar por las paginas que el viejo controla: recibe esto, que no intercepta NADA (sin
+// manejador fetch, todo va a la red), borra la cache vieja y se da de baja. Ademas, el enrutador y cada aplicacion dan de baja
+// cualquier registro de alcance exacto /app/ (src/worker.ts). No toca /api/ ni ninguna otra cache.
+const OLD_CACHE = 'costina-shell-v1'
 
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(['/app/', '/app/manifest.webmanifest', '/app/icon.svg'])).then(() => self.skipWaiting()))
-})
+self.addEventListener('install', () => self.skipWaiting())
 
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()))
-})
-
-self.addEventListener('fetch', event => {
-  const request = event.request
-  const url = new URL(request.url)
-  if (request.method !== 'GET' || url.origin !== self.location.origin || !url.pathname.startsWith('/app/')) return
-  if (url.pathname.startsWith('/app/assets/')) {
-    // Ficheros con hash en el nombre: inmutables. Cache primero.
-    event.respondWith(caches.match(request).then(hit => hit ?? fetch(request).then(response => {
-      if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(request, copy)) }
-      return response
-    })))
-    return
-  }
-  // Shell (index.html, manifiesto, icono): red primero para recibir actualizaciones; cache si no hay red.
-  event.respondWith(fetch(request).then(response => {
-    if (response.ok) { const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(request, copy)) }
-    return response
-  }).catch(() => caches.match(request).then(hit => hit ?? caches.match('/app/'))))
+  event.waitUntil(caches.delete(OLD_CACHE).then(() => self.registration.unregister()))
 })

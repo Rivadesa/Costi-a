@@ -134,6 +134,17 @@ describe('pairing', () => {
     expect(await pairDevice('c', 'tablet', { wait: noWait, fetcher: async () => json(401, { error: 'invalid_code' }) })).toEqual({ kind: 'invalid_code' })
     expect(await pairDevice('c', 'tablet', { wait: noWait, fetcher: async () => json(429, { error: 'too_many_attempts' }) })).toEqual({ kind: 'throttled' })
   })
+  it('claims a typed short code in its canonical form and the long code exactly as it came (C3c)', async () => {
+    const claimed: string[] = []
+    const fetcher: Fetch = async (url, init) => {
+      if (String(url).endsWith('/claim')) { claimed.push(JSON.parse(String(init!.body)).code); return json(200, { pairingId: 'p1', pollSecret: 's1' }) }
+      return json(200, { status: 'approved', deviceToken: 'dev.d1.s', role: 'kitchen', station: 'pase' })
+    }
+    await pairDevice(' k7m2q 9xr4t ', 'tablet del pase', { wait: noWait, fetcher })
+    await pairDevice(' aB3-dEf_ghIJ-klmNOpqr-STUvwxYZ_0123456789ab ', 'tablet del pase', { wait: noWait, fetcher })
+    expect(claimed).toEqual(['K7M2Q9XR4T', 'aB3-dEf_ghIJ-klmNOpqr-STUvwxYZ_0123456789ab'])
+    expect(codeFromLocation('#pair=K7M2Q9XR4T')).toBe('K7M2Q9XR4T')                 // el QR lleva el corto sin espacio
+  })
   it('reads the code from the URL fragment only', () => {
     expect(codeFromLocation('#pair=AbC_def-1234567890')).toBe('AbC_def-1234567890')
     expect(codeFromLocation('#x=1&pair=AbCdEf123456')).toBe('AbCdEf123456')
@@ -161,6 +172,9 @@ describe('persistent storage request (D6.6)', () => {
     const { requestPersistence, PERSISTENCE_HINT } = await import('../src/storage')
     expect(await requestPersistence({ persist: async () => { throw new Error('must not ask over http') } }, false)).toBe('plain-http')
     expect(PERSISTENCE_HINT['plain-http']).toMatch(/sin cifrar/)
+    // C3c (revision): en los dos caminos se anade el icono de la aplicacion; dentro de ese icono no se dice que no se puede instalar.
+    expect(PERSISTENCE_HINT['plain-http']).not.toMatch(/no deja instalar/)
+    expect(PERSISTENCE_HINT['plain-http']).toMatch(/ábrela siempre desde su icono/)
   })
 })
 

@@ -1,11 +1,9 @@
 import { createApp } from 'vue'
-import App from './App.vue'
+import RouterApp from './RouterApp.vue'
+import { startWorkers } from './worker'
 import './style.css'
 
-createApp(App).mount('#app')
-
-// Service worker: solo cachea el "shell" de la aplicacion para poder abrirla sin red. JAMAS intercepta
-// /api/: los datos operativos siempre son una lectura autoritativa del servidor o un error visible.
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => { navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(() => undefined) })
-}
+// C3c: /app/ es el ENRUTADOR (index.html). No tiene service worker propio: solo retira el de antes, de alcance /app/ (worker.ts).
+// Por eso un acceso directo viejo a /app/ («Costina») ya no abre sin red, ni por https: lo que abre sin red es el icono de cada aplicacion.
+createApp(RouterApp).mount('#app')
+startWorkers(null)

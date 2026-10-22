@@ -54,6 +54,23 @@ public static class Ui
         list.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { if (ReferenceEquals(list.SelectedItem, item) && list.IsVisible) list.ScrollIntoView(item); });
     }
 
+    // C3c: un panel que aparece por un gesto (el asistente de Dispositivos, con su QR y los dos caminos de instalacion) se desplaza a la
+    // vista en cuanto se ve, entero si cabe; antes quedaba media pantalla por debajo, tras los avisos. Solo pinta.
+    public static readonly DependencyProperty RevealWhenShownProperty = DependencyProperty.RegisterAttached(
+        "RevealWhenShown", typeof(bool), typeof(Ui), new PropertyMetadata(false, (d, e) =>
+        {
+            if (d is not FrameworkElement element) return;
+            element.IsVisibleChanged -= RevealShown;
+            if ((bool)e.NewValue) element.IsVisibleChanged += RevealShown;
+        }));
+    public static bool GetRevealWhenShown(DependencyObject element) => (bool)element.GetValue(RevealWhenShownProperty);
+    public static void SetRevealWhenShown(DependencyObject element, bool value) => element.SetValue(RevealWhenShownProperty, value);
+    private static void RevealShown(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || e.NewValue is not true) return;
+        element.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { if (element.IsVisible) element.BringIntoView(); });
+    }
+
     // Barra lateral plegada a iconos: se fija una vez en la barra y la heredan todos sus elementos.
     public static readonly DependencyProperty CompactProperty = DependencyProperty.RegisterAttached(
         "Compact", typeof(bool), typeof(Ui), new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.Inherits));

@@ -1,10 +1,12 @@
 # Plan: Costiña Sala y Costiña Cocina, una aplicación para cada sitio (cortes C3c, E4e, C3d y C3e; reordena lo que queda del plan del 15-10)
 
-Fecha: 2026-10-22. **Estado: BORRADOR revisado.** La revisión crítica contra el código está hecha (sección «Revisión», al final). La maqueta está corregida según esa revisión. Faltan la aprobación del promotor y sus respuestas (sección 10).
+Fecha: 2026-10-22. **Estado: APROBADO por el promotor el 22-10-2026**, con sus palabras: «Si a todo, la 5, va haber android y apple». Acepta las cuatro propuestas de la sección 10 y contesta la quinta: habrá Android y también iPhone y iPad. Las respuestas, y en qué corte entra cada una, están en las secciones 9 y 10. **Da permiso para subir y mezclar C3c** cuando la CI esté en verde; para E4e, C3d y C3e se vuelve a pedir. La revisión crítica contra el código está hecha (sección «Revisión», al final), y la maqueta está corregida según esa revisión.
+
+**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). Siguiente: E4e.
 
 **Maqueta:** `docs/plans/maquetas/2026-10-22-sala-y-cocina.html` (se abre en el navegador; pestañas: instalar, mis mesas, mesa, estación, pase, aviso y servido) y capturas en `docs/plans/maquetas/2026-10-22-sala-y-cocina/`.
 
-Cuando se apruebe:
+Al aprobarse, este plan:
 - sustituye el orden de la sección 4 de `docs/plans/2026-10-15-menus-carta-y-bodega.md` a partir de E4e;
 - reparte el C3c de ese plan (sección 4.6) entre C3d (cocina) y C3e (sala).
 
@@ -33,12 +35,12 @@ Esto es lo que tendrás, en este orden, después de la versión que usas ahora (
 
 **Lo que no cambia:** ni precios ni importes en los móviles ni en cocina; el servidor decide qué botones salen; no se borra nada.
 
-**Preguntas** (basta una palabra o una línea; entre paréntesis, lo que proponemos):
-1. En las estaciones, ¿solo «Listo», o también «Empezar»? (solo «Listo»)
-2. Si se estropea la tablet de una estación, ¿puede el pase marcar «Listo» por ella? (sí)
-3. ¿A los cuántos minutos avisa la cocina de que una comanda se retrasa? (en ámbar a los 15 y más fuerte a los 25; nunca en rojo, que es para las alergias)
-4. ¿Quieres que suenen las tablets de cocina cuando llegue una comanda? (sí, después de tocar «Empezar turno» al encenderlas)
-5. ¿Los móviles de sala y las tablets de cocina son iPhone/iPad o Android? (dinos cuáles: de eso depende cómo se instalan y si vibran)
+**Preguntas** (basta una palabra o una línea; entre paréntesis, lo que proponemos). **Contestadas el 22-10** («Si a todo, la 5, va haber android y apple»); el detalle está en la sección 10:
+1. En las estaciones, ¿solo «Listo», o también «Empezar»? (solo «Listo») → **solo «Listo»** (C3d).
+2. Si se estropea la tablet de una estación, ¿puede el pase marcar «Listo» por ella? (sí) → **sí** (E4e y C3d).
+3. ¿A los cuántos minutos avisa la cocina de que una comanda se retrasa? (en ámbar a los 15 y más fuerte a los 25; nunca en rojo, que es para las alergias) → **así** (C3d).
+4. ¿Quieres que suenen las tablets de cocina cuando llegue una comanda? (sí, después de tocar «Empezar turno» al encenderlas) → **sí** (C3d).
+5. ¿Los móviles de sala y las tablets de cocina son iPhone/iPad o Android? (dinos cuáles: de eso depende cómo se instalan y si vibran) → **habrá de los dos**: los dos caminos de instalación de C3c tienen que quedar sólidos y probados.
 
 ## Base técnica
 
@@ -363,6 +365,17 @@ Una PR por corte. Las versiones siguen a `0.42.0-c3b`.
     - C3e: «Mis mesas» por dispositivo, que no es atribución a una persona.
 
 ### 4.1. C3c: dos aplicaciones, Costiña Sala y Costiña Cocina (`0.43.0-c3c`, sin cambio de esquema; el motor solo añade)
+
+**Entregado el 22-10**: `docs/native/C3c-dos-apps.md`, con sus capturas en `docs/native/images/c3c/` y su ADR, `docs/ADR/ADR-015-dos-aplicaciones-mismo-origen.md`. Incluye todo el alcance de abajo, con estas diferencias:
+- **Nombres de las entradas:** `main-sala.ts` y `main-cocina.ts`, no `sala.ts` y `cocina.ts`. Así `pwa/sala.ts` es la lógica del aviso, y `pwa/cocina.ts` queda libre para C3d.
+- **La adopción mira también la base de la otra aplicación:** con una credencial suya (Android, mismo origen), la aplicación no monta nada y ofrece «Desvincular».
+- **El PC:** Costiña Cocina usa un desplegable de estaciones y un solo botón, como Sala y como la maqueta (antes había un botón por estación). La lista de dispositivos va agrupada por aplicación, con el icono de cada una. El papel de un PC conectado como cocina pasa a «Puesto de cocina». «Dejar este PC conectado» sigue pidiendo el código largo, porque el PC recoge su propio código. `PairingLink` añade `AppFor` (del papel a la aplicación) y `DisplayCode` (el código en dos grupos).
+- **La banda:** en una fila desde 900 px de ancho. Sus `data-testid` no empiezan por `do-`, porque la ficha de la misma mesa puede estar debajo con su propio botón de servir. Vibra con dos golpes cortos.
+- **Cocina:** la cabecera dice «Costiña Cocina | <estación>», y «Sin estación asignada» en una tablet de cocina sin estación.
+- **Pruebas:** el iPhone se simula en Chromium (agente de iOS y `navigator.standalone`), porque la CI solo instala Chromium. `install.test.ts` ejecuta los dos service workers en un navegador de mentira. `pwa_http` admite 401 o 404 para el manifiesto retirado de `/app/`. Las cifras y las pruebas en rojo están en el documento del corte.
+- **Para revisar con el promotor:** doce decisiones pequeñas, en «Decisiones y diferencias con la maqueta» del documento del corte.
+- **Queda el guion físico** con un Android, un iPhone y un iPad en un laboratorio (documento del corte). Su riesgo principal: que un icono de iPhone o iPad abierto por la conexión sencilla (http) no se abra a pantalla completa.
+- **Revisión antes de mezclar:** la orden sin confirmar de antes se mueve sin duplicarse y se recoge al arrancar; la que quedó sin credencial se enseña al emparejar y la toma la aplicación que se empareja (antes era un límite). Dentro del icono de iPhone y iPad no se manda a la cámara; la página de Safari cubre la barra compacta y «Abrir como app web» de iOS 26. Un icono «Costina» de antes ya no abre sin red por https, porque el enrutador no tiene service worker: en iPhone y iPad también conviene cambiarlo.
 
 **PWA: dos entradas de la misma compilación**
 - **Vite multipágina**, con `base: '/app/'` de siempre:
@@ -850,6 +863,13 @@ Tienen el mismo contenido que en el plan del 15-10 (`plan:700-806`); solo cambia
   - **el flujo de la sección 2**: el camarero envía cada pase; cada estación recibe la suya y toca «Listo»; el pase valida; el camarero recibe el aviso con banda grande, vibración en Android y también en otra pantalla, con su mesa en verde; sirve y toca «Servido»;
   - **el límite del iPhone queda aceptado**: con la aplicación cerrada no hay aviso mientras no haya certificado público con dominio;
   - **Sala enseña primero «Mis mesas»** (las que abrió y las de su sala; cada móvil va emparejado a una estación de sala) y después «Todas».
+- **22-10, al aprobar este plan** («Si a todo, la 5, va haber android y apple»):
+  - **el plan entero, con su orden de cortes** (C3c, E4e, C3d, C3e, E4f, E4c y E4g) y **permiso para subir y mezclar C3c** cuando la CI esté en verde;
+  - **en las estaciones, solo «Listo»**, sin «Empezar» → C3d;
+  - **el pase puede marcar «Listo» por una estación con la tablet estropeada** → E4e (la matriz de estación se amplía solo para el pase) y C3d (el botón en la pantalla del pase);
+  - **retraso en cocina: ámbar a los 15 minutos y ámbar más fuerte a los 25**, nunca rojo → C3d;
+  - **las tablets de cocina suenan al llegar una comanda**, después de tocar «Empezar turno» → C3d;
+  - **habrá Android y también iPhone y iPad** → C3c: los dos caminos de instalación tienen que quedar sólidos y probados (sección 10, pregunta 5).
 - **Siguen valiendo todas las decisiones del 15-10** (`plan:886-909`):
   - menú cerrado en Costiña;
   - alergias decididas por cocina antes de enviar (E4e);
@@ -859,26 +879,35 @@ Tienen el mismo contenido que en el plan del 15-10 (`plan:700-806`); solo cambia
   - castellano con tildes;
   - sin importes en los móviles ni en cocina.
 
-## 10. Preguntas abiertas (solo las que necesitan al promotor)
+## 10. Preguntas al promotor (contestadas el 22-10)
 
-El resumen las hace en palabras llanas; aquí está lo que cambia cada respuesta.
+El resumen las hace en palabras llanas; aquí está lo que cambia cada respuesta. **Contestadas el 22-10** con «Si a todo, la 5, va haber android y apple»: las cuatro primeras, con la propuesta; la quinta, con los dos tipos de dispositivo.
 1. **«Empezar» en las estaciones.**
    - Propuesta: solo «Listo», porque el motor ya admite marcar lista una elaboración recién enviada (`AllowedActions.cs:56-57`).
    - Con «sí», C3d añade un «Empezar» por comanda (`preparations-start`).
+   - **Respuesta: solo «Listo».** Entra en **C3d**: la comanda de una estación tiene un único botón «Listo» y ningún «Empezar».
 2. **El pase marca por una estación sin tablet.**
    - Propuesta: sí.
    - Con «sí», E4e amplía la matriz de estación solo para el pase (sección 4.2).
    - Con «no», solo puede el PC con la contraseña del responsable.
+   - **Respuesta: sí.** Entra en **E4e** (la matriz de estación del motor se amplía solo para el pase, con su prueba de `station_http.py`) y en **C3d** (el botón del pase para una estación que no ha terminado).
 3. **Minutos de aviso por retraso en cocina.**
    - Propuesta: ámbar a los 15 y ámbar oscuro a los 25; nunca rojo.
    - Son dos números de C3d; más adelante pueden pasar a la configuración.
+   - **Respuesta: así.** Entra en **C3d**: ámbar a los 15 minutos, ámbar más fuerte a los 25 y nunca rojo, que sigue siendo solo de las alergias.
 4. **Sonido en las tablets de cocina.**
    - Propuesta: sí, después de «Empezar turno».
    - El plan del 15-10 lo tenía diferido (`plan:847`). En la sala no suena nunca.
+   - **Respuesta: sí.** Entra en **C3d**: «Empezar turno» al encender la tablet y un sonido cuando llega una comanda. En la sala sigue sin sonar nada.
 5. **Qué dispositivos hay: iPhone/iPad o Android.**
    - Decide si el código corto y el guion del iPad son lo primero.
    - Decide también cuánto vale la vibración.
    - Explica qué verá en Android por http.
+   - **Respuesta: habrá Android y también iPhone y iPad.** Entra en **C3c**, y los **dos** caminos de instalación tienen que quedar sólidos y probados, ninguno a medias:
+     - **Android:** el QR del PC abre la aplicación que toca (`/app/sala/#pair=…` o `/app/cocina/#pair=…`) y se empareja allí mismo;
+     - **iPhone y iPad:** el QR abre Safari, que no deja emparejar y explica «Compartir › Añadir a pantalla de inicio»; después se abre el icono y se teclea el **código corto** que enseña el PC.
+
+     Por eso el código corto del motor, el enlace por aplicación del QR y la página de Safari son parte de C3c, con sus pruebas (sección 4.1), y el guion físico de la sección 7 se hace con un Android **y** con un iPhone o un iPad. La vibración solo existe en Android: en iPhone y iPad la banda sale igual, sin vibrar (resumen, «Límites que conviene saber»).
 
 ## Fuentes de la práctica del sector
 

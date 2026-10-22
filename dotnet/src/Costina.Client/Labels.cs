@@ -37,8 +37,11 @@ public static class Labels
     private static readonly Vocabulary OfferKinds = new(("tasting", "Menú degustación"), ("set-menu", "Menú con elección"), ("a-la-carte", "Carta"));
     private static readonly Vocabulary OfferServices = new(("any", "Comida y cena"), ("lunch", "Comida"), ("dinner", "Cena"));
     private static readonly Vocabulary StationKinds = new(("Kitchen", "Cocina"), ("Pass", "Pase"), ("Bar", "Barra"), ("Room", "Sala"));
-    private static readonly Vocabulary DeviceRoles = new(("service", "Comandero"), ("kitchen", "Pantalla de cocina"), ("main", "Principal (antiguo)"));
-    private static readonly Vocabulary SessionRoles = new(("main", "Responsable"), ("service", "Puesto de sala"), ("kitchen", "Pantalla de cocina"));
+    // C3c (plan 2026-10-22, seccion 3): cada dispositivo es una de las dos aplicaciones (antes «Comandero» y «Pantalla de cocina»). Copia
+    // en la PWA: frontend/pwa/src/apps.ts (KINDS). La sesion de ESTE PC (SessionRoles) es un puesto, de sala o de cocina: el programa del
+    // PC no es ninguna de las dos aplicaciones de los moviles y tablets.
+    private static readonly Vocabulary DeviceRoles = new(("service", "Costiña Sala"), ("kitchen", "Costiña Cocina"), ("main", "Principal (antiguo)"));
+    private static readonly Vocabulary SessionRoles = new(("main", "Responsable"), ("service", "Puesto de sala"), ("kitchen", "Puesto de cocina"));
     // Restricciones (D3.2): SIEMPRE con texto; la alergia en mayusculas para que se vea sin depender del color.
     private static readonly Vocabulary RestrictionKinds = new(("Allergy", "ALERGIA"), ("Intolerance", "Intolerancia"), ("Preference", "Preferencia"));
     private static readonly Vocabulary Severities = new(("Severe", "grave"), ("Moderate", "moderada"), ("Mild", "leve"));

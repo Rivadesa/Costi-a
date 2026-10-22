@@ -103,10 +103,22 @@ function editRemove(): void {
 }
 // Volver a Mesas: con una ronda sin enviar, primero se pregunta (es un camino excepcional; la ronda no se guarda en ningun sitio).
 // Mientras la ronda va camino del servidor no hay nada que perder: lo que pase con ella se ve arriba (aviso u orden sin confirmar).
-function leave(): void { if (round.lines.length > 0 && !round.sending) leaving.value = true; else emit('back') }
+// C3c: «Ver mesa» de la banda de otra mesa sale por aqui con `then` (ir a esa mesa) en lugar de volver al plano: tambien pregunta.
+let afterLeave: (() => void) | null = null
+function leave(then?: () => void): void {
+  if (round.lines.length > 0 && !round.sending) { afterLeave = then ?? null; leaving.value = true; return }
+  if (then) then(); else emit('back')
+}
 const stay = ref<HTMLButtonElement | null>(null)
-watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()) })
-function discardAndLeave(): void { leaving.value = false; round.clear(); emit('back') }
+watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()); else afterLeave = null })
+function discardAndLeave(): void {
+  const then = afterLeave
+  leaving.value = false; round.clear()
+  if (then) then(); else emit('back')
+}
+// C3c: «Ver mesa» de la banda de ESTA mesa: la ficha (desde Carta o Bodega; la ronda sigue, es de la ficha).
+function show(): void { panel.value = 'ficha'; window.scrollTo({ top: 0 }) }
+defineExpose({ leave, show })
 
 // ---- Lo que lleva la mesa: bebidas y extras ya enviados (tambien los de Caja), sin importes ni totales ----
 const had = computed(() => props.entry.consumptions ?? [])
@@ -182,7 +194,7 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
 <template>
   <article class="ficha stack" :class="{ 'ficha-main': panel === 'ficha' }" data-testid="detail">
     <header class="appbar">
-      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="leave"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
+      <button v-if="panel === 'ficha'" type="button" class="back" data-testid="back" @click="leave()"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
       <button v-else type="button" class="back" data-testid="back" @click="panel = 'ficha'"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">{{ tableName }}</span></button>
       <div class="appbar-t">
         <div class="appbar-title">

@@ -11,7 +11,33 @@
       tarjetas como en Inicio (icono, nombre, tipo y estacion por su nombre, el punto y la palabra de la conexion, quien lo aprobo y cuando);
       la lista vacia explica que falta y ofrece conectar; quitar sigue en dos pasos, abajo y a la vista. El asistente, la conexion sencilla
       (B.2), "Dejar este PC conectado" y las peticiones de Inicio no cambian. Una barra de desplazamiento por columna: las solicitudes
-      recibidas ya no desplazan por su cuenta dentro de la tarjeta de conectar. -->
+      recibidas ya no desplazan por su cuenta dentro de la tarjeta de conectar.
+      C3c (plan 2026-10-22, seccion 4.1): las dos aplicaciones de los dispositivos, cada una en su bloque con su icono (el de la PWA), su
+      desplegable de estaciones y su boton «Conectar Costiña Sala · <estacion>» / «Conectar Costiña Cocina · <estacion>». El asistente
+      abierto lleva el icono de su aplicacion, el QR que la abre, el codigo corto en dos grupos para teclearlo y los dos caminos de
+      instalacion (Android; iPhone y iPad). La lista de dispositivos se agrupa por aplicacion (DeviceRow.Group) y cada tarjeta dice su
+      estacion. -->
+ <UserControl.Resources>
+  <!-- Boton con el icono del QR y un texto que se parte si no cabe (el nombre de la estacion puede ser largo). -->
+  <DataTemplate x:Key="QrWrapText"><DockPanel><Path DockPanel.Dock="Left" Style="{StaticResource IconSmall}" Data="{StaticResource IconQr}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+   <TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel></DataTemplate>
+  <!-- Bloque de una aplicacion (y el del asistente): borde fino, esquinas de 10; a la izquierda, su icono. -->
+  <Style x:Key="AppBlock" TargetType="Border">
+   <Setter Property="CornerRadius" Value="10"/><Setter Property="BorderBrush" Value="{StaticResource Stroke}"/><Setter Property="BorderThickness" Value="1"/>
+   <Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="Padding" Value="14,12"/><Setter Property="Margin" Value="0,0,0,12"/>
+  </Style>
+  <Style x:Key="AppBlockIcon" TargetType="Image">
+   <Setter Property="Width" Value="40"/><Setter Property="Height" Value="40"/><Setter Property="VerticalAlignment" Value="Top"/><Setter Property="Margin" Value="0,0,12,0"/>
+  </Style>
+  <Style x:Key="AppName" TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/><Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="SemiBold"/>
+   <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+  </Style>
+  <!-- La lista de dispositivos, agrupada por aplicacion en el orden de las filas (Costina Sala, Costina Cocina y el resto). -->
+  <CollectionViewSource x:Key="DeviceGroups" Source="{Binding Devices.Rows}">
+   <CollectionViewSource.GroupDescriptions><PropertyGroupDescription PropertyName="Group"/></CollectionViewSource.GroupDescriptions>
+  </CollectionViewSource>
+ </UserControl.Resources>
  <DockPanel>
   <!-- ===== Cabecera de pagina: titulo y resumen (activos por tipo y quitados) ===== -->
   <DockPanel DockPanel.Dock="Top" Style="{StaticResource PageBar}">
@@ -44,65 +70,117 @@
      <Button DockPanel.Dock="Right" x:Name="DisableSimpleButton" Content="Desactivar" Command="{Binding Devices.DisableSimpleCommand}" Margin="12,0,0,0" VerticalAlignment="Center"/>
      <TextBlock Text="{Binding Devices.SimpleText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
     </DockPanel></ContentControl>
-    <TextBlock Text="Elige qué va a ser. El código sirve una vez y caduca en cinco minutos; la solicitud del dispositivo aparece aquí sola." Style="{StaticResource Body}" Margin="0,12,0,12"/>
+    <!-- Con un asistente abierto se recoge: el asistente ya dice que hacer, y asi el QR y los dos caminos caben a la vista. -->
+    <TextBlock x:Name="ConnectIntro" Text="Costiña Sala va en el móvil de cada camarero y Costiña Cocina en la tablet fija de cada estación. Cada uno se conecta con un QR o con un código corto de un solo uso, que caduca en cinco minutos; su solicitud aparece aquí sola."
+               Style="{StaticResource Body}" Margin="0,12,0,12" Visibility="{Binding Devices.HasAssistant, Converter={StaticResource NotBool2Vis}}"/>
     <!-- C2: asistente pedido desde Inicio con varias estaciones posibles: primer paso, elegir la estacion (la otra seccion se recoge). -->
     <ContentControl x:Name="ChooseStationBar" Style="{StaticResource InfoBar}" Margin="0,0,0,12" Visibility="{Binding Devices.ChoosingStation, Converter={StaticResource Bool2Vis}}"><DockPanel>
      <Button DockPanel.Dock="Right" Content="Ver todo" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelChoosingCommand}" Margin="12,0,0,0" VerticalAlignment="Center"
-             ToolTip="Volver a ver los dos tipos de dispositivo"/>
+             ToolTip="Volver a ver las dos aplicaciones"/>
      <TextBlock Text="{Binding Devices.ChoosingText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
     </DockPanel></ContentControl>
-    <StackPanel x:Name="WaiterSection" Visibility="{Binding Devices.ShowWaiterSection, Converter={StaticResource Bool2Vis}}">
-     <TextBlock Text="Comandero (sala)" Style="{StaticResource Section}"/>
-     <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
-      <ComboBox x:Name="RoomStationBox" Width="210" ItemsSource="{Binding Devices.RoomStations}" SelectedItem="{Binding Devices.SelectedRoomStation}" DisplayMemberPath="Name" Margin="0,0,8,0" ToolTip="Estación de sala (o barra) a la que pertenece el comandero"/>
-      <Button x:Name="StartWaiterButton" Content="Conectar comandero" Style="{StaticResource Primary}" Command="{Binding Devices.StartWaiterCommand}"/>
-     </WrapPanel>
-     <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource Bool2Vis}}">
-      <TextBlock Text="No hay ninguna estación de sala donde poner un comandero." VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap"/>
-      <Button x:Name="CreateRoomStationButton" Content="Crear la estación «Sala»" Command="{Binding Devices.CreateRoomStationCommand}"/>
-     </WrapPanel>
-     <WrapPanel Margin="0,6,0,0" Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
-      <Button x:Name="KeepThisPcButton" Content="Dejar este PC conectado para el servicio" Command="{Binding Devices.KeepThisPcConnectedCommand}" ToolTip="Este PC queda emparejado como puesto de sala en la estación elegida: al encenderlo entra solo y toma comandas; caja, configuración y dispositivos siguen pidiendo la contraseña del responsable."/>
-      <TextBlock Text="{Binding Devices.ThisPcText}" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap" MaxWidth="360" Style="{StaticResource Subtle}"/>
-     </WrapPanel>
-    </StackPanel>
-    <StackPanel x:Name="KitchenSection" Margin="0,14,0,0" Visibility="{Binding Devices.ShowKitchenSection, Converter={StaticResource Bool2Vis}}">
-     <TextBlock Text="Pantalla de cocina (una por estación)" Style="{StaticResource Section}" Margin="0,0,0,4"/>
-     <ItemsControl x:Name="KitchenButtons" ItemsSource="{Binding Devices.KitchenStations}">
-      <!-- Cada boton mide su nombre (antes un ancho minimo de 160 dejaba la tercera estacion sola en otra linea). -->
-      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-      <ItemsControl.ItemTemplate><DataTemplate>
-       <Button Command="{Binding DataContext.Devices.StartKitchenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-               ToolTip="Conectar la pantalla de cocina de esta estación">
-        <StackPanel Orientation="Horizontal"><Path Style="{StaticResource IconSmall}" Data="{StaticResource IconQr}" Margin="0,0,8,0"/><TextBlock Text="{Binding Name}"/></StackPanel>
-       </Button>
-      </DataTemplate></ItemsControl.ItemTemplate>
-     </ItemsControl>
-    </StackPanel>
-    <StackPanel Visibility="{Binding Devices.HasAssistant, Converter={StaticResource Bool2Vis}}">
-     <TextBlock Text="{Binding Devices.AssistantTitle}" Style="{StaticResource Section}"/>
-     <TextBlock Text="{Binding Devices.AssistantText}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-     <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Background="#FFFFFF" Padding="8" CornerRadius="8" BorderBrush="{StaticResource Stroke}" BorderThickness="1" VerticalAlignment="Top" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
-       <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="232" Height="232" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
-      </Border>
-      <StackPanel Grid.Column="1" Margin="12,0,0,0">
-       <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap" Style="{StaticResource Subtle}"/>
-       <TextBlock Text="Código" Style="{StaticResource FieldLabel}" Margin="0,8,0,2"/>
-       <TextBox Text="{Binding Devices.PairingCode, Mode=OneWay}" IsReadOnly="True" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"/>
-       <TextBox Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Margin="0,4,0,0"/>
+    <!-- C3c: Costina Sala, con su icono, su estacion de sala y su boton, que la nombra. «Dejar este PC conectado» sigue aqui: el PC es un
+         puesto de sala (no Costina Sala), en la estacion elegida. -->
+    <Border x:Name="WaiterSection" Style="{StaticResource AppBlock}" Visibility="{Binding Devices.ShowWaiterSection, Converter={StaticResource Bool2Vis}}">
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Image Source="{StaticResource AppIconSala}" Style="{StaticResource AppBlockIcon}" AutomationProperties.Name="Icono de Costiña Sala"/>
+      <StackPanel Grid.Column="1">
+       <TextBlock Text="Costiña Sala" Style="{StaticResource AppName}"/>
+       <TextBlock Text="El móvil de cada camarero. Elige su estación de sala." Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,6"/>
+       <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+        <ComboBox x:Name="RoomStationBox" Width="170" ItemsSource="{Binding Devices.RoomStations}" SelectedItem="{Binding Devices.SelectedRoomStation}" DisplayMemberPath="Name" Margin="0,4,8,4"
+                  VerticalAlignment="Center" ToolTip="Estación de sala (o barra) del móvil" AutomationProperties.Name="Estación de Costiña Sala"/>
+        <Button x:Name="StartWaiterButton" Content="{Binding Devices.WaiterConnectText}" ContentTemplate="{StaticResource QrWrapText}" Style="{StaticResource Primary}" Command="{Binding Devices.StartWaiterCommand}"/>
+       </WrapPanel>
+       <WrapPanel Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource Bool2Vis}}">
+        <TextBlock Text="No hay ninguna estación de sala donde poner Costiña Sala." VerticalAlignment="Center" Margin="0,0,8,0" TextWrapping="Wrap"/>
+        <Button x:Name="CreateRoomStationButton" Content="Crear la estación «Sala»" Command="{Binding Devices.CreateRoomStationCommand}"/>
+       </WrapPanel>
+       <WrapPanel Margin="0,2,0,0" Visibility="{Binding Devices.NeedsRoomStation, Converter={StaticResource NotBool2Vis}}">
+        <Button x:Name="KeepThisPcButton" Content="Dejar este PC conectado para el servicio" Command="{Binding Devices.KeepThisPcConnectedCommand}" ToolTip="Este PC queda emparejado como puesto de sala en la estación elegida: al encenderlo entra solo y toma comandas; caja, configuración y dispositivos siguen pidiendo la contraseña del responsable."/>
+        <TextBlock Text="{Binding Devices.ThisPcText}" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap" MaxWidth="360" Style="{StaticResource Subtle}"/>
+       </WrapPanel>
       </StackPanel>
      </Grid>
-     <ContentControl Style="{StaticResource WarnBar}" Margin="0,0,0,8" Visibility="{Binding Devices.HasDuplicateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Devices.DuplicateWarning}" TextWrapping="Wrap"/></ContentControl>
-     <ContentControl Style="{StaticResource OkBar}" Margin="0,0,0,8" Visibility="{Binding Devices.HasRecognised, Converter={StaticResource Bool2Vis}}"><DockPanel>
-      <Button DockPanel.Dock="Right" x:Name="ApproveButton" Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}" Margin="12,0,0,0"/>
-      <TextBlock Text="{Binding Devices.RecognisedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-     </DockPanel></ContentControl>
-     <WrapPanel>
-      <Button Content="Generar otro código" Command="{Binding Devices.NewCodeCommand}"/>
-      <Button Content="Cerrar el asistente" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelCommand}"/>
-     </WrapPanel>
-    </StackPanel>
+    </Border>
+    <!-- C3c: Costina Cocina, como Costina Sala: su estacion en un desplegable y un boton que la nombra (antes, un boton por estacion). -->
+    <Border x:Name="KitchenSection" Style="{StaticResource AppBlock}" Visibility="{Binding Devices.ShowKitchenSection, Converter={StaticResource Bool2Vis}}">
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Image Source="{StaticResource AppIconCocina}" Style="{StaticResource AppBlockIcon}" AutomationProperties.Name="Icono de Costiña Cocina"/>
+      <StackPanel Grid.Column="1">
+       <TextBlock Text="Costiña Cocina" Style="{StaticResource AppName}"/>
+       <TextBlock Text="{Binding Devices.KitchenPurpose}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,6"/>
+       <WrapPanel Visibility="{Binding Devices.NeedsKitchenStation, Converter={StaticResource NotBool2Vis}}">
+        <ComboBox x:Name="KitchenStationBox" Width="170" ItemsSource="{Binding Devices.KitchenStations}" SelectedItem="{Binding Devices.SelectedKitchenStation}" DisplayMemberPath="Name" Margin="0,4,8,4"
+                  VerticalAlignment="Center" ToolTip="Estación de cocina, pase o barra de la tablet" AutomationProperties.Name="Estación de Costiña Cocina"/>
+        <Button x:Name="StartKitchenButton" Content="{Binding Devices.KitchenConnectText}" ContentTemplate="{StaticResource QrWrapText}" Style="{StaticResource Primary}" Command="{Binding Devices.StartKitchenCommand}"/>
+       </WrapPanel>
+       <TextBlock Text="No hay ninguna estación de cocina, pase o barra activa: créala en Salas, mesas y estaciones." TextWrapping="Wrap"
+                  Visibility="{Binding Devices.NeedsKitchenStation, Converter={StaticResource Bool2Vis}}"/>
+      </StackPanel>
+     </Grid>
+    </Border>
+    <!-- C3c: el asistente abierto, con el icono de su aplicacion. El QR abre esa aplicacion; a su lado, el codigo corto en dos grupos para
+         teclearlo (un motor anterior da el largo: sale tal cual, mas pequeno) y el enlace; debajo, los dos caminos, Android e iPhone/iPad. -->
+    <Border x:Name="AssistantPanel" Style="{StaticResource AppBlock}" Background="{StaticResource AccentSoft}" BorderBrush="{StaticResource AccentLine}" Margin="0,12,0,12" local:Ui.RevealWhenShown="True"
+            Visibility="{Binding Devices.HasAssistant, Converter={StaticResource Bool2Vis}}">
+     <StackPanel>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Image x:Name="AssistantIcon" AutomationProperties.Name="{Binding Devices.IntentAppName}">
+        <Image.Style>
+         <Style TargetType="Image" BasedOn="{StaticResource AppBlockIcon}">
+          <Setter Property="Source" Value="{StaticResource AppIconSala}"/>
+          <Style.Triggers><DataTrigger Binding="{Binding Devices.IntentRole}" Value="kitchen"><Setter Property="Source" Value="{StaticResource AppIconCocina}"/></DataTrigger></Style.Triggers>
+         </Style>
+        </Image.Style>
+       </Image>
+       <StackPanel Grid.Column="1">
+        <TextBlock x:Name="AssistantTitleText" Text="{Binding Devices.AssistantTitle}" Style="{StaticResource AppName}" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding Devices.AssistantText}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+       </StackPanel>
+      </Grid>
+      <Grid Margin="0,12,0,0" Visibility="{Binding Devices.HasCode, Converter={StaticResource Bool2Vis}}"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Border Grid.Column="0" Background="#FFFFFF" Padding="8" CornerRadius="8" BorderBrush="{StaticResource Stroke}" BorderThickness="1" VerticalAlignment="Top" Margin="0,0,12,0"
+               Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+        <Image x:Name="PairingQrImage" Source="{Binding Devices.PairingQr}" Width="232" Height="232" RenderOptions.BitmapScalingMode="NearestNeighbor" AutomationProperties.Name="QR de emparejamiento"/>
+       </Border>
+       <StackPanel Grid.Column="1">
+        <TextBlock Text="Código para teclear" Style="{StaticResource FieldLabel}" Margin="0,0,0,2"/>
+        <TextBox x:Name="PairingCodeBox" Text="{Binding Devices.PairingCodeText, Mode=OneWay}" IsReadOnly="True" AutomationProperties.Name="Código para teclear">
+         <TextBox.Style>
+          <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+           <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="0"/>
+           <Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontSize" Value="24"/><Setter Property="FontWeight" Value="Bold"/>
+           <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="TextWrapping" Value="Wrap"/>
+           <Style.Triggers><DataTrigger Binding="{Binding Devices.ShortCodeShown}" Value="False"><Setter Property="FontSize" Value="14"/></DataTrigger></Style.Triggers>
+          </Style>
+         </TextBox.Style>
+        </TextBox>
+        <TextBlock Text="Enlace del QR" Style="{StaticResource FieldLabel}" Margin="0,10,0,2" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}"/>
+        <TextBox x:Name="PairingUrlBox" Text="{Binding Devices.PairingUrl, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0" FontSize="12" TextWrapping="Wrap"
+                 Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}" AutomationProperties.Name="Enlace del QR"/>
+        <TextBlock Text="{Binding Devices.QrInfo}" TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="12" Margin="0,10,0,0"/>
+       </StackPanel>
+      </Grid>
+      <Grid x:Name="InstallSteps" Margin="0,12,0,4" Visibility="{Binding Devices.HasQr, Converter={StaticResource Bool2Vis}}">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+       <TextBlock Text="Android" FontSize="13" FontWeight="SemiBold" Margin="0,0,12,6"/>
+       <TextBlock Grid.Column="1" Text="{Binding Devices.AndroidSteps}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,6"/>
+       <TextBlock Grid.Row="1" Text="iPhone y iPad" FontSize="13" FontWeight="SemiBold" Margin="0,0,12,0"/>
+       <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Devices.AppleSteps}" FontSize="13" TextWrapping="Wrap"/>
+      </Grid>
+      <ContentControl Style="{StaticResource WarnBar}" Margin="0,8,0,0" Visibility="{Binding Devices.HasDuplicateWarning, Converter={StaticResource Bool2Vis}}"><TextBlock Text="{Binding Devices.DuplicateWarning}" TextWrapping="Wrap"/></ContentControl>
+      <ContentControl Style="{StaticResource OkBar}" Margin="0,8,0,0" Visibility="{Binding Devices.HasRecognised, Converter={StaticResource Bool2Vis}}"><DockPanel>
+       <Button DockPanel.Dock="Right" x:Name="ApproveButton" Content="Aprobar" Style="{StaticResource Primary}" Command="{Binding Devices.ApproveCommand}" Margin="12,0,0,0"/>
+       <TextBlock Text="{Binding Devices.RecognisedText}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+      </DockPanel></ContentControl>
+      <WrapPanel Margin="0,6,0,0">
+       <Button x:Name="NewCodeButton" Content="Generar otro código" Command="{Binding Devices.NewCodeCommand}"/>
+       <Button x:Name="CloseAssistantButton" Content="Cerrar el asistente" Style="{StaticResource Ghost}" Command="{Binding Devices.CancelCommand}"/>
+      </WrapPanel>
+     </StackPanel>
+    </Border>
     <Expander x:Name="AddressExpander" Header="Dirección para los dispositivos y solicitudes recibidas" Margin="0,14,0,0">
      <StackPanel Margin="0,6,0,0">
       <TextBlock Text="Dirección para los dispositivos" Style="{StaticResource FieldLabel}"/>
@@ -146,7 +224,7 @@
       </StackPanel>
      </Border>
      <Grid Margin="0,14,0,0">
-      <!-- Lista vacia: dice que falta (sin leer, ninguno todavia o todos quitados) y ofrece conectar un comandero en la estacion elegida. -->
+      <!-- Lista vacia: dice que falta (sin leer, ninguno todavia o todos quitados) y ofrece conectar Costina Sala en la estacion elegida. -->
       <StackPanel x:Name="DevicesEmpty" VerticalAlignment="Center" Margin="8,0,8,24" Visibility="{Binding Devices.ShowListEmpty, Converter={StaticResource Bool2Vis}}">
        <ContentControl Style="{StaticResource EmptyState}" local:Ui.Icon="{StaticResource IconDevices}"
                        local:Ui.Heading="{Binding Devices.ListEmptyHeading}" Content="{Binding Devices.ListEmptyText}"/>
@@ -154,8 +232,31 @@
                local:Ui.Icon="{StaticResource IconQr}" Command="{Binding Devices.StartWaiterCommand}"
                Visibility="{Binding Devices.ShowEmptyConnect, Converter={StaticResource Bool2Vis}}"/>
       </StackPanel>
-      <ListBox x:Name="DeviceList" Style="{StaticResource CardRows}" ItemsSource="{Binding Devices.Rows}" SelectedItem="{Binding Devices.SelectedRow}"
+      <ListBox x:Name="DeviceList" Style="{StaticResource CardRows}" ItemsSource="{Binding Source={StaticResource DeviceGroups}}" SelectedItem="{Binding Devices.SelectedRow}"
                AutomationProperties.Name="Dispositivos conectados" Visibility="{Binding Devices.ShowListEmpty, Converter={StaticResource NotBool2Vis}}">
+       <!-- C3c: cabecera de cada grupo: el icono de su aplicacion (un tipo sin aplicacion, sin icono) y su nombre. -->
+       <ListBox.GroupStyle>
+        <GroupStyle>
+         <GroupStyle.HeaderTemplate>
+          <DataTemplate>
+           <DockPanel Margin="0,4,10,8">
+            <Image Width="22" Height="22" Margin="0,0,8,0" VerticalAlignment="Center">
+             <Image.Style>
+              <Style TargetType="Image">
+               <Setter Property="Visibility" Value="Collapsed"/>
+               <Style.Triggers>
+                <DataTrigger Binding="{Binding Items[0].Device.Role}" Value="service"><Setter Property="Source" Value="{StaticResource AppIconSala}"/><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                <DataTrigger Binding="{Binding Items[0].Device.Role}" Value="kitchen"><Setter Property="Source" Value="{StaticResource AppIconCocina}"/><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+               </Style.Triggers>
+              </Style>
+             </Image.Style>
+            </Image>
+            <TextBlock x:Name="GroupName" Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Ink}" VerticalAlignment="Center"/>
+           </DockPanel>
+          </DataTemplate>
+         </GroupStyle.HeaderTemplate>
+        </GroupStyle>
+       </ListBox.GroupStyle>
        <ListBox.ItemTemplate>
         <DataTemplate>
          <DockPanel AutomationProperties.Name="{Binding Text}">
@@ -193,7 +294,7 @@
              </TextBlock.Style>
             </TextBlock>
            </DockPanel>
-           <TextBlock Text="{Binding Kind}" Style="{StaticResource RowDetail}"/>
+           <TextBlock Text="{Binding Place}" Style="{StaticResource RowDetail}"/>
            <TextBlock Text="{Binding Approved}" Style="{StaticResource RowDetail}"/>
           </StackPanel>
          </DockPanel>

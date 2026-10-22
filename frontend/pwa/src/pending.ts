@@ -1,12 +1,12 @@
-import { run, STORES, transact } from './db'
+import { currentDatabase, peek, run, STORES, transact } from './db'
 
 // La ORDEN INCIERTA de este dispositivo (mismo modelo que el cliente Windows, D3.3/D3.4):
 // exactamente UNA, persistida ANTES del primer intento con sus bytes exactos y su Idempotency-Key, y
 // borrada solo con exito confirmado o rechazo definitivo. No es una cola de trabajo sin conexion: los
 // comandos llevan expectedVersion y, encolados, llegarian obsoletos del segundo en adelante.
-// D6.7: el hueco es UNO por origen y lo comparten todas las pestanas y ventanas. Reservarlo y liberarlo se hace
-// comprobando y escribiendo en la MISMA transaccion de IndexedDB: ninguna pestana atrasada sustituye ni borra la
-// orden de otra, con o sin Web Locks.
+// D6.7: el hueco es UNO por base y lo comparten todas las pestanas y ventanas de la aplicacion (C3c: una base por aplicacion,
+// db.ts). Reservarlo y liberarlo se hace comprobando y escribiendo en la MISMA transaccion de IndexedDB: ninguna pestana atrasada
+// sustituye ni borra la orden de otra, con o sin Web Locks.
 export interface PendingCommand {
   key: string            // Idempotency-Key: la identidad de la orden ante el servidor
   path: string           // ruta relativa a /api/native/v1
@@ -50,13 +50,14 @@ export function parsePending(stored: unknown): PendingLoad {
 const keyOf = (load: PendingLoad): string | null | undefined => load.kind === 'restored' ? load.command.key : load.kind === 'unreadable' ? load.key : undefined
 
 // Borra el hueco solo si sigue guardando la orden con esa clave, comprobado en la MISMA transaccion que borra.
-const deleteIfKey = (key: string | null) => transact<void>(STORES.pending, (store, done) => {
+const deleteIfKey = (key: string | null, database: string) => transact<void>(STORES.pending, (store, done) => {
   const read = store.get(KEY)
   read.onsuccess = () => { if (keyOf(parsePending(read.result)) === key) store.delete(KEY); done(undefined) }
-})
+}, database)
 
-export const indexedDbPendingStore: PendingStore = {
-  load: async () => parsePending(await run<unknown>(STORES.pending, 'readonly', store => store.get(KEY))),
+// C3c: el almacen de una base concreta (la de cada aplicacion). `database` se consulta en cada llamada.
+export const pendingStoreIn = (database: () => string): PendingStore => ({
+  load: async () => parsePending(await run<unknown>(STORES.pending, 'readonly', store => store.get(KEY), database())),
   reserve: command => transact<PendingLoad>(STORES.pending, (store, done) => {
     const read = store.get(KEY)
     read.onsuccess = () => {
@@ -64,7 +65,30 @@ export const indexedDbPendingStore: PendingStore = {
       if (current.kind === 'absent') store.put(command, KEY)
       done(current)
     }
-  }),
-  clear: key => deleteIfKey(key),
-  discard: key => deleteIfKey(key),
+  }, database()),
+  clear: key => deleteIfKey(key, database()),
+  discard: key => deleteIfKey(key, database()),
+})
+export const indexedDbPendingStore: PendingStore = pendingStoreIn(currentDatabase)
+
+// C3c, adopcion (adoption.ts): lo guardado TAL CUAL en el hueco de otra base (la vieja), sin crearla si no existe. Se mueve el
+// registro crudo, legible o no: uno ilegible tambien bloquea hasta conciliarlo o descartarlo, y nunca se destruye sin decision.
+export const peekPendingRecord = (database: string): Promise<unknown> => peek<unknown>(database, STORES.pending, store => store.get(KEY))
+// Ocupa el hueco VACIO de `database` con ese registro, comprobando y escribiendo en UNA transaccion (D6.7, como reserve). Devuelve
+// true si el registro queda en el hueco: lo escribe, o ya estaba (revision C3c: la MISMA orden, por su clave, copiada por un traslado
+// que se corto antes de soltarla de la vieja; asi repetirlo lo termina sin duplicarla). Con otra cosa en el hueco devuelve false y no
+// escribe nada. Sin clave legible no hay «la misma»: dos registros ilegibles sin clave nunca se dan por iguales.
+export const adoptPendingRecord = (record: unknown, database: string): Promise<boolean> => transact<boolean>(STORES.pending, (store, done) => {
+  const read = store.get(KEY)
+  read.onsuccess = () => {
+    const current = parsePending(read.result)
+    if (current.kind === 'absent') { store.put(record, KEY); done(true); return }
+    const key = keyOf(parsePending(record))
+    done(typeof key === 'string' && keyOf(current) === key)
+  }
+}, database)
+// Y lo quita de la base de origen solo si sigue siendo ESE registro (por su clave, en la misma transaccion que borra).
+export async function releasePendingRecord(record: unknown, database: string): Promise<void> {
+  const key = keyOf(parsePending(record))
+  if (key !== undefined) await deleteIfKey(key, database)
 }

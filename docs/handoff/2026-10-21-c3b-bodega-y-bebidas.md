@@ -1,5 +1,7 @@
 # Traspaso 2026-10-21: C3b (bodega y bebidas); siguiente, E4e
 
+> **Ya no es el punto de entrada:** desde el 22-10 lo es `docs/handoff/2026-10-22-c3c-dos-apps.md`. El plan del 22-10 (`docs/plans/2026-10-22-sala-y-cocina.md`) cambió el orden de abajo: C3c (dos aplicaciones) va antes que E4e, y lo que aquí se dejaba para C3c pasa a C3e. Este documento sigue valiendo para C3b, sus decisiones para revisar, su guion y la pregunta de las copas.
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-20-c3a-comandero-nuevo.md`. El anterior sigue valiendo para C3a, sus decisiones para revisar y su guion con móvil e iPad.
 
 Leer antes, en este orden:

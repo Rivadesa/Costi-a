@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest'
 // navegador: ninguna palabra de caja (ni dentro de otra palabra, como kitchen.spec.ts), castellano con tildes, ni un codigo pintado
 // en lugar de un nombre, y nada que la CSP del motor rechace (estilos en linea) ni imagenes (los iconos son SVG en la plantilla).
 const folder = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+// C3c: las tres paginas (RouterApp, SalaApp y CocinaApp, en src/) y todas las vistas.
 const files = [
-  ['App.vue', readFileSync(folder('../src/App.vue')).toString('utf8')],
+  ...readdirSync(folder('../src/')).filter(name => name.endsWith('.vue')).map(name => [name, readFileSync(folder(`../src/${name}`)).toString('utf8')]),
   ...readdirSync(folder('../src/views/')).filter(name => name.endsWith('.vue')).map(name => [`views/${name}`, readFileSync(folder(`../src/views/${name}`)).toString('utf8')]),
 ] as Array<[string, string]>
 
@@ -28,9 +29,11 @@ const UNACCENTED = ['aplicacion', 'aplico', 'revision', 'accion', 'estacion', 'c
 
 describe('words the views write as they are', () => {
   it('found something to check in every view (the scan itself works)', () => {
-    // Icon y DrinkPhoto solo pintan un dibujo, una foto o unas iniciales: no escriben ningun texto propio.
-    for (const [name, source] of files.filter(([name]) => !['views/Icon.vue', 'views/DrinkPhoto.vue'].includes(name))) expect(shown(source).length, name).toBeGreaterThan(0)
-    expect(files.map(([name]) => name)).toContain('views/TableCard.vue')
+    // Icon, AppIcon y DrinkPhoto solo pintan un dibujo, una foto o unas iniciales; SalaApp y CocinaApp solo montan el marco con su
+    // pantalla: no escriben ningun texto propio.
+    const silent = ['views/Icon.vue', 'views/AppIcon.vue', 'views/DrinkPhoto.vue', 'SalaApp.vue', 'CocinaApp.vue']
+    for (const [name, source] of files.filter(([name]) => !silent.includes(name))) expect(shown(source).length, name).toBeGreaterThan(0)
+    expect(files.map(([name]) => name)).toEqual(expect.arrayContaining(['views/TableCard.vue', 'RouterApp.vue', 'SalaApp.vue', 'CocinaApp.vue', 'views/Shell.vue', 'views/PairView.vue', 'views/OtherApp.vue']))
   })
   it('no checkout word, not even inside another word', () => {
     const found = files.flatMap(([name, source]) => [...shown(source), ...literals(source)].filter(text => /€|precio|saldo|pago|cuenta/i.test(text)).map(text => `${name}: ${text}`))
@@ -56,5 +59,20 @@ describe('words the views write as they are', () => {
     expect(images).toHaveLength(1)
     expect(images[0]).toMatch(/\s:src="url"/)
     expect(images[0]).not.toMatch(/(?<!:)\bsrc=|data:|https?:/)
+  })
+  it('the pairing code field is made for typing a code on a phone: capitals, no autocorrect, no spelling (C3c revision)', () => {
+    // En iOS, spellcheck="false" no para la autocorreccion: al pulsar el espacio tras un grupo de solo letras la cambiaria por una
+    // palabra del diccionario, y el fallo gastaria un intento del freno. El PC lo ensena en mayusculas («K7M2Q 9XR4T»).
+    const pair = files.find(([name]) => name === 'views/PairView.vue')![1]
+    const input = template(pair).match(/<input id="pair-code"[^>]*>/)?.[0] ?? ''
+    for (const attribute of ['autocomplete="off"', 'autocorrect="off"', 'autocapitalize="characters"', 'spellcheck="false"'])
+      expect(input, attribute).toContain(` ${attribute}`)
+  })
+  it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
+    const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
+    expect(found).toEqual(['views/AppIcon.vue'])
+    const icon = files.find(([name]) => name === 'views/AppIcon.vue')![1]
+    expect(icon).toMatch(/v-html="body"/)
+    expect(icon).toMatch(/const body = computed\(\(\) => iconBody\(props\.app\)\)/)
   })
 })

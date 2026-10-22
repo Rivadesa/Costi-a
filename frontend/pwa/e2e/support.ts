@@ -112,33 +112,80 @@ export function deviceContext(browser: Browser): Promise<BrowserContext> {
     isMobile: use.isMobile, hasTouch: use.hasTouch, userAgent: use.userAgent })
 }
 
-// Emparejar por la pantalla, como en el local: codigo en el fragmento (el QR), nombre, solicitud y aprobacion en el PC principal.
-export async function pairThroughTheUi(page: Page, request: APIRequestContext, name: string, role: string, station: string): Promise<string> {
-  const issued = await (await asMain(request, '/auth/pairings', {})).json()
-  await page.goto(`/app/#pair=${issued.code}`)
-  await expect(page.locator('input[name=code]')).toHaveValue(issued.code)          // el QR lleva el codigo en el fragmento
-  await checkScreen(page, 'pairing')
-  await page.fill('input[name=deviceName]', name)
-  await press(page.getByTestId('do-pair'))
-  await expect(page.getByTestId('pair-status')).toContainText('Esperando la aprobación')
+// C3c: cada rol tiene su aplicacion, en su carpeta y con su base IndexedDB (src/apps.ts): Costina Sala para la sala (y el `main`
+// antiguo) y Costina Cocina para cocina.
+export const appOf = (role: string): 'sala' | 'cocina' => role === 'kitchen' ? 'cocina' : 'sala'
+export const databaseOf = (app: 'sala' | 'cocina') => `costina-${app}`
+// El codigo de emparejamiento, como lo pide el PC desde C3c: el CORTO, que tambien se puede teclear (iPhone y iPad desde el icono).
+export const issueCode = async (request: APIRequestContext): Promise<string> => (await (await asMain(request, '/auth/pairings', { typed: true })).json()).code as string
+
+// La solicitud que espera aprobacion en el PC principal, por el nombre del dispositivo.
+export async function pendingPairing(request: APIRequestContext, name: string): Promise<string> {
   let pairingId = ''
   await expect.poll(async () => {
     const pending = await (await asMain(request, '/auth/pairings/pending')).json() as Array<{ pairingId: string; deviceName: string }>
     pairingId = pending.find(p => p.deviceName === name)?.pairingId ?? ''
     return pairingId
   }, { timeout: 15_000 }).not.toBe('')
-  expect((await asMain(request, `/auth/pairings/${pairingId}/approve`, { role, station })).ok()).toBeTruthy()
-  await expect(page.getByTestId('home')).toBeVisible({ timeout: 15_000 })
-  const devices = await (await asMain(request, '/auth/devices')).json() as Array<{ id: string; name: string }>
-  return devices.find(d => d.name === name)!.id
+  return pairingId
 }
 
-// Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB), no lo que pinta la pantalla.
-export const storedOrder = (page: Page) => page.evaluate(() => new Promise<string | null>(resolve => {
-  const open = indexedDB.open('costina')
-  open.onsuccess = () => { const get = open.result.transaction('pending').objectStore('pending').get('uncertain'); get.onsuccess = () => { open.result.close(); resolve(get.result ? String(get.result.description) : null) } }
-  open.onerror = () => resolve('error')
-}))
+// Emparejar por la pantalla, como en el local: el QR abre la aplicacion del rol con el codigo en el fragmento; nombre, solicitud y
+// aprobacion en el PC principal.
+export async function pairThroughTheUi(page: Page, request: APIRequestContext, name: string, role: string, station: string): Promise<string> {
+  const code = await issueCode(request)
+  await page.goto(`/app/${appOf(role)}/#pair=${code}`)
+  await expect(page.locator('input[name=code]')).toHaveValue(code)                 // el QR lleva el codigo en el fragmento
+  await checkScreen(page, 'pairing')
+  await page.fill('input[name=deviceName]', name)
+  await press(page.getByTestId('do-pair'))
+  await expect(page.getByTestId('pair-status')).toContainText('Esperando la aprobación')
+  const pairingId = await pendingPairing(request, name)
+  expect((await asMain(request, `/auth/pairings/${pairingId}/approve`, { role, station })).ok()).toBeTruthy()
+  await expect(page.getByTestId('home')).toBeVisible({ timeout: 15_000 })
+  return deviceIdOf(request, name)
+}
+export const deviceIdOf = async (request: APIRequestContext, name: string): Promise<string> =>
+  ((await (await asMain(request, '/auth/devices')).json()) as Array<{ id: string; name: string }>).find(d => d.name === name)!.id
+
+// Un dispositivo emparejado SOLO por API (como si lo hubiera emparejado una version anterior): reclama, el PC aprueba y recoge el token.
+export async function pairByApi(request: APIRequestContext, name: string, role: string, station: string): Promise<string> {
+  const code = await issueCode(request)
+  const key = () => ({ 'Idempotency-Key': randomBytes(16).toString('hex') })
+  const claimed = await request.post(API + '/auth/pairings/claim', { data: { code, deviceName: name }, headers: key() })
+  expect(claimed.ok(), `claim -> ${claimed.status()}`).toBeTruthy()
+  const { pairingId, pollSecret } = await claimed.json() as { pairingId: string; pollSecret: string }
+  expect((await asMain(request, `/auth/pairings/${pairingId}/approve`, { role, station })).ok()).toBeTruthy()
+  const collected = await request.post(API + `/auth/pairings/${pairingId}/collect`, { data: { pollSecret }, headers: key() })
+  expect(collected.ok(), `collect -> ${collected.status()}`).toBeTruthy()
+  return (await collected.json() as { deviceToken: string }).deviceToken
+}
+
+// Lo que hay DE VERDAD guardado en el dispositivo (IndexedDB de SU aplicacion), no lo que pinta la pantalla. Sin crear la base: si no
+// existe, 'absent'. Revision C3c: cualquier otro fallo al abrirla o al leer es 'error', nunca «no hay nada».
+export const stored = (page: Page, database: string, store: 'device' | 'pending', key: string) => page.evaluate(([database, store, key]) => new Promise<unknown>(resolve => {
+  let absent = false
+  const open = indexedDB.open(database)
+  open.onupgradeneeded = () => { absent = true; open.transaction?.abort() }
+  open.onsuccess = () => {
+    if (!open.result.objectStoreNames.contains(store)) { open.result.close(); resolve('error'); return }
+    const get = open.result.transaction(store).objectStore(store).get(key)
+    get.onsuccess = () => { open.result.close(); resolve(get.result) }
+    get.onerror = () => { open.result.close(); resolve('error') }
+  }
+  open.onerror = () => resolve(absent ? 'absent' : 'error')
+}), [database, store, key] as const)
+// null y '' quieren decir «la base existe y ese hueco esta vacio». Una base que no existe o que no se pudo leer sale como '<absent>' o
+// '<error>': asi un toBeNull() o un toBe('') nunca pasan por un fallo o por mirar la base equivocada.
+const unread = (value: unknown) => value === 'absent' || value === 'error' ? `<${value}>` : null
+export const storedOrder = async (page: Page, database = databaseOf('sala')) => {
+  const order = await stored(page, database, 'pending', 'uncertain') as { description?: unknown } | undefined
+  return unread(order) ?? (order ? String(order.description) : null)
+}
+export const storedToken = async (page: Page, database: string) => {
+  const credential = await stored(page, database, 'device', 'credential') as { token?: unknown } | undefined
+  return unread(credential) ?? (credential ? String(credential.token ?? '') : '')
+}
 
 // RESPUESTA PERDIDA de verdad: el servidor aplica la orden y la respuesta nunca llega. `lost` se resuelve cuando eso YA ocurrio:
 // la orden pendiente se ve ANTES del primer intento (por diseno), asi que sin esperar a `lost` el test podia retirar la ruta
