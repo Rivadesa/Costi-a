@@ -2,6 +2,8 @@
 
 Fecha: 2026-10-22. **Estado: APROBADO por el promotor el 22-10-2026**, con sus palabras: «Si a todo, la 5, va haber android y apple». Acepta las cuatro propuestas de la sección 10 y contesta la quinta: habrá Android y también iPhone y iPad. Las respuestas, y en qué corte entra cada una, están en las secciones 9 y 10. **Da permiso para subir y mezclar C3c** cuando la CI esté en verde; para E4e, C3d y C3e se vuelve a pedir. La revisión crítica contra el código está hecha (sección «Revisión», al final), y la maqueta está corregida según esa revisión.
 
+**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). Siguiente: E4e.
+
 **Maqueta:** `docs/plans/maquetas/2026-10-22-sala-y-cocina.html` (se abre en el navegador; pestañas: instalar, mis mesas, mesa, estación, pase, aviso y servido) y capturas en `docs/plans/maquetas/2026-10-22-sala-y-cocina/`.
 
 Al aprobarse, este plan:
@@ -363,6 +365,16 @@ Una PR por corte. Las versiones siguen a `0.42.0-c3b`.
     - C3e: «Mis mesas» por dispositivo, que no es atribución a una persona.
 
 ### 4.1. C3c: dos aplicaciones, Costiña Sala y Costiña Cocina (`0.43.0-c3c`, sin cambio de esquema; el motor solo añade)
+
+**Entregado el 22-10**: `docs/native/C3c-dos-apps.md`, con sus capturas en `docs/native/images/c3c/` y su ADR, `docs/ADR/ADR-015-dos-aplicaciones-mismo-origen.md`. Incluye todo el alcance de abajo, con estas diferencias:
+- **Nombres de las entradas:** `main-sala.ts` y `main-cocina.ts`, no `sala.ts` y `cocina.ts`. Así `pwa/sala.ts` es la lógica del aviso, y `pwa/cocina.ts` queda libre para C3d.
+- **La adopción mira también la base de la otra aplicación:** con una credencial suya (Android, mismo origen), la aplicación no monta nada y ofrece «Desvincular».
+- **El PC:** Costiña Cocina usa un desplegable de estaciones y un solo botón, como Sala y como la maqueta (antes había un botón por estación). La lista de dispositivos va agrupada por aplicación, con el icono de cada una. El papel de un PC conectado como cocina pasa a «Puesto de cocina». «Dejar este PC conectado» sigue pidiendo el código largo, porque el PC recoge su propio código. `PairingLink` añade `AppFor` (del papel a la aplicación) y `DisplayCode` (el código en dos grupos).
+- **La banda:** en una fila desde 900 px de ancho. Sus `data-testid` no empiezan por `do-`, porque la ficha de la misma mesa puede estar debajo con su propio botón de servir. Vibra con dos golpes cortos.
+- **Cocina:** la cabecera dice «Costiña Cocina | <estación>», y «Sin estación asignada» en una tablet de cocina sin estación.
+- **Pruebas:** el iPhone se simula en Chromium (agente de iOS y `navigator.standalone`), porque la CI solo instala Chromium. `install.test.ts` ejecuta los dos service workers en un navegador de mentira. `pwa_http` admite 401 o 404 para el manifiesto retirado de `/app/`. Las cifras y las pruebas en rojo están en el documento del corte.
+- **Para revisar con el promotor:** doce decisiones pequeñas, en «Decisiones y diferencias con la maqueta» del documento del corte.
+- **Queda el guion físico** con un Android, un iPhone y un iPad en un laboratorio (documento del corte). Su riesgo principal: que un icono de iPhone o iPad abierto por la conexión sencilla (http) no se abra a pantalla completa.
 
 **PWA: dos entradas de la misma compilación**
 - **Vite multipágina**, con `base: '/app/'` de siempre:
