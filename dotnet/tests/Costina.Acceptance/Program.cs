@@ -535,6 +535,12 @@ internal static class Program
                 ["preparation-start"] = s => s.StartPreparation("course-1", "fish", Stamp),
                 ["preparation-ready"] = s => s.ReadyPreparation("course-1", "fish", Stamp),
                 ["review-preparation"] = s => s.ReviewPreparation("course-1", "fish", ReviewDecision.Unaffected, "x", Stamp) };
+            // E4e: la orden de grupo la deduce Affordances.Filter en el pase si alguna elaboracion anuncia la individual, y el cliente
+            // envia SOLO las que la anuncian: con ellas, la orden de grupo tiene que ser ejecutable (una por pase para marcar).
+            var groupCatalog = new Dictionary<string, Action<DiningService, (string Course, string Item)[]>> {
+                ["preparation-start"] = (s, items) => { foreach (var c in items.GroupBy(i => i.Course)) s.StartPreparations(c.Key, c.Select(i => i.Item).ToArray(), Stamp); },
+                ["preparation-ready"] = (s, items) => { foreach (var c in items.GroupBy(i => i.Course)) s.ReadyPreparations(c.Key, c.Select(i => i.Item).ToArray(), Stamp); },
+                ["review-preparation"] = (s, items) => s.ReviewPreparations(items.Select(i => new PreparationDecision(i.Course, i.Item, ReviewDecision.Unaffected, "x")).ToArray(), Stamp) };
             var stages = new (string Name, Action<DiningService> Build)[] {
                 ("open", _ => { }),
                 ("started", s => s.Start(Stamp)),
@@ -585,6 +591,11 @@ internal static class Program
                     Consistent(course.Actions!.Contains(action), Try(() => run(At())), $"{name}/course-1/{action}");
                 foreach (var (action, run) in prepCatalog)
                     Consistent(item.Actions!.Contains(action), Try(() => run(At())), $"{name}/fish/{action}");
+                foreach (var (individual, run) in groupCatalog)
+                {
+                    var announced = view.Courses.SelectMany(c => c.Preparations.Where(p => p.Actions!.Contains(individual)).Select(p => (c.Id, p.Id))).ToArray();
+                    if (announced.Length > 0) Consistent(true, Try(() => run(At(), announced)), $"{name}/group/{individual}");
+                }
             }
         });
         Test("plain view carries no affordances and stays snapshot-identical", () => {
@@ -886,6 +897,79 @@ internal static class Program
             service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa aparte", Stamp);
             var reviewed = service.PendingEvents.Single();
             Equal("restriction.reviewed", reviewed.Type); Equal("Adapt", reviewed.Data["decision"]); Equal("sauce", reviewed.Data["item_id"]);
+        });
+        // E4e: ordenes de grupo. UNA orden con varias elaboraciones: se comprueban todas antes de tocar ninguna (todo o nada tambien en
+        // memoria) y deja un evento por elaboracion con los tipos de siempre.
+        Test("group marks are one all-or-nothing change with one event per preparation", () => {
+            var seated = Service();
+            Rule("service_not_active", () => seated.ReadyPreparations("course-1", ["fish"], Stamp));
+            var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
+            service.ClearPendingEvents();
+            Rule("preparation_not_found", () => service.ReadyPreparations("course-1", ["fish", "missing"], Stamp));
+            Throws<ArgumentException>(() => service.StartPreparations("course-1", ["fish", "fish"], Stamp));
+            Throws<ArgumentException>(() => service.StartPreparations("course-1", [], Stamp));
+            Rule("course_not_found", () => service.StartPreparations("course-9", ["fish"], Stamp));
+            Rule("course_not_preparing", () => service.StartPreparations("course-2", ["dessert"], Stamp));
+            True(service.View().Courses[0].Preparations.All(p => p.State == PreparationState.Fired) && service.PendingEvents.Count == 0, "A refused group changes nothing.");
+            service.StartPreparation("course-1", "fish", Stamp);
+            Rule("preparation_not_fired", () => service.StartPreparations("course-1", ["sauce", "fish"], Stamp));
+            Equal(PreparationState.Fired, service.View().Courses[0].Preparations.Single(p => p.Id == "sauce").State);
+            service.ClearPendingEvents();
+            service.ReadyPreparations("course-1", ["fish", "sauce"], Stamp);
+            True(service.View().Courses[0].Preparations.All(p => p.State == PreparationState.Ready));
+            Equal("course_item.ready:fish,course_item.ready:sauce", string.Join(",", service.PendingEvents.Select(e => e.Type + ":" + e.Data["item_id"])));
+            Rule("preparation_not_active", () => service.ReadyPreparations("course-1", ["fish"], Stamp));
+            service.ValidateReady("course-1", Stamp);
+            var started = Service(); started.Start(Stamp); started.FireNext(Stamp); started.ClearPendingEvents();
+            started.StartPreparations("course-1", ["sauce", "fish"], Stamp);
+            Equal(CourseState.Preparing, started.View().Courses[0].State);
+            Equal("course_item.started:sauce,course_item.started:fish", string.Join(",", started.PendingEvents.Select(e => e.Type + ":" + e.Data["item_id"])));
+        });
+        Test("review-preparations decides a guest's whole menu in one command, each dish with its own decision and note", () => {
+            var service = Service();
+            service.DeclareRestriction(null, RestrictionKind.Allergy, "gluten", RestrictionSeverity.Severe, Stamp);
+            service.ClearPendingEvents();
+            static PreparationDecision Decide(string course, string item, ReviewDecision decision, string note) => new(course, item, decision, note);
+            var menu = new[] { Decide("course-1", "fish", ReviewDecision.Adapt, "pan de maiz"), Decide("course-1", "sauce", ReviewDecision.Unaffected, "no lleva gluten"),
+                Decide("course-2", "dessert", ReviewDecision.Adapt, "tarta sin harina") };
+            Rule("nothing_to_remake", () => service.ReviewPreparations([menu[0], menu[1], menu[2] with { Decision = ReviewDecision.Remake }], Stamp));
+            Throws<ArgumentException>(() => service.ReviewPreparations([menu[0], menu[1] with { Note = " " }], Stamp));
+            Throws<ArgumentException>(() => service.ReviewPreparations([menu[0], menu[0]], Stamp));
+            Throws<ArgumentException>(() => service.ReviewPreparations([], Stamp));
+            Rule("preparation_not_found", () => service.ReviewPreparations([menu[0], Decide("course-1", "missing", ReviewDecision.Adapt, "x")], Stamp));
+            Rule("invalid_review", () => service.ReviewPreparations([menu[0], menu[1] with { Decision = (ReviewDecision)9 }], Stamp));
+            True(service.View().Courses.All(c => c.Preparations.All(p => p.ReviewPending && p.Review is null)) && service.PendingEvents.Count == 0,
+                "A refused group decides nothing.");
+            service.ReviewPreparations(menu, Stamp);
+            True(!service.RestrictionsPendingAck);
+            True(service.PendingEvents.All(e => e.Type == "restriction.reviewed"));
+            Equal("fish:Adapt:pan de maiz,sauce:Unaffected:no lleva gluten,dessert:Adapt:tarta sin harina",
+                string.Join(",", service.PendingEvents.Select(e => e.Data["item_id"] + ":" + e.Data["decision"] + ":" + e.Data["note"])));
+            Rule("nothing_to_review", () => service.ReviewPreparations([menu[0]], Stamp));
+            // Rehacer en grupo, solo lo enviado: vuelve a enviada y el pase pierde su validacion, como una a una.
+            var sent = Service(); sent.Start(Stamp); sent.FireNext(Stamp);
+            sent.ReadyPreparations("course-1", ["fish", "sauce"], Stamp); sent.ValidateReady("course-1", Stamp);
+            sent.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            sent.ReviewPreparations([Decide("course-1", "fish", ReviewDecision.Remake, "verduras"), Decide("course-1", "sauce", ReviewDecision.Unaffected, "sin marisco"),
+                Decide("course-2", "dessert", ReviewDecision.Unaffected, "sin marisco")], Stamp);
+            var course = sent.View().Courses[0];
+            Equal((CourseState.Preparing, PreparationState.Fired), (course.State, course.Preparations.Single(p => p.Id == "fish").State));
+            True(course.ReadyAt is null && !sent.RestrictionsPendingAck);
+        });
+        // E4e: quien abrio la mesa (la identidad de la orden 'open'), para «Mis mesas» de C3e. Aditivo: una mesa anterior lo lee vacio.
+        Test("the table remembers who opened it and from which station, and an older snapshot reads without them", () => {
+            CourseDefinition[] menu = [new("c", "C", [new("a", "A", "hot")])];
+            var device = new DiningService("s", Scope, "M1", 2, menu, "LAB-TASTING", "device:movil-ana", "sala-1");
+            Equal(("device:movil-ana", "sala-1"), (device.View(true).OpenedBy, device.View(true).OpenedStation));
+            var restored = DiningService.Restore(device.Snapshot());
+            Equal(("device:movil-ana", "sala-1"), (restored.OpenedBy, restored.OpenedStation));
+            var person = JsonSerializer.SerializeToElement(new DiningService("s", Scope, "M1", 2, menu, "LAB-TASTING", "user:chef").View(true), Json);
+            Equal("user:chef", person.GetProperty("OpenedBy").GetString());
+            True(!person.TryGetProperty("OpenedStation", out _), "A person has no station: the key is left out.");
+            var older = DiningService.Restore(device.Snapshot() with { OpenedBy = null, OpenedStation = null });
+            True(older.OpenedBy is null && older.OpenedStation is null);
+            True(!JsonSerializer.Serialize(older.View(true), Json).Contains("Opened", StringComparison.Ordinal), "A table saved before E4e shows neither key.");
+            True(new DiningService("s", Scope, "M1", 2, menu, null, " ", "").OpenedBy is null, "Blank is the same as unknown.");
         });
         Test("release affordance appears only while occupied and dining finished", () => {
             var service = Service(); var occupancy = Occupancy();

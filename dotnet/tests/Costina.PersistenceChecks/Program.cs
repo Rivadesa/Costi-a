@@ -88,6 +88,22 @@ var c3cTable=DiningService.Restore(Wire.Decode<DiningSnapshot>(c3c)).View();
 Check(c3cTable.RestrictionsPendingAck && c3cTable.Restrictions!.Count==2 && c3cTable.Courses[0].Preparations.Single(p=>p.Id=="pan").ReviewPending
     && c3cTable.Courses[0].Preparations.Single(p=>p.Id=="ostra-1").Review?.Decision==ReviewDecision.Adapt && !c3cTable.Courses[1].Preparations[0].ReviewPending,
     "a 0.43.0-c3c payload restores unchanged and its unsent course stays unmarked");
+// E4e: quien abrio la mesa (openedBy/openedStation) va en el JSON de la instantanea, sin columna nueva. La mesa de 0.43.0-c3c de arriba lo
+// lee vacio y su vista no lo nombra; una persona no tiene estacion. SIN VUELTA ATRAS: el decodificador estricto de un motor anterior
+// rechaza las dos claves aunque vayan a null, y toda mesa que se vuelva a guardar las lleva.
+Check(c3cTable.OpenedBy is null && c3cTable.OpenedStation is null && !Wire.Encode(c3cTable).Contains("opened",StringComparison.OrdinalIgnoreCase),
+    "a 0.43.0-c3c payload reads without who opened the table");
+var openedByDevice=new DiningService("od",scope,"M6",2,[new("p1","Pase",[new("a","Plato","hot")])],"LAB-TASTING","device:movil-ana","sala-1");
+var openedRestored=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(openedByDevice.Snapshot())));
+Check(openedRestored.OpenedBy=="device:movil-ana" && openedRestored.OpenedStation=="sala-1" && Wire.Encode(openedRestored.Snapshot())==Wire.Encode(openedByDevice.Snapshot()),
+    "who opened the table survives restart");
+Check(Wire.Encode(openedRestored.View(true)).Contains("\"openedBy\":\"device:movil-ana\",\"openedStation\":\"sala-1\"",StringComparison.Ordinal),"the view names the device and its station");
+var openedByPerson=Wire.Encode(new DiningService("op",scope,"M7",1,[new("p1","Pase",[new("a","Plato","hot")])],"LAB-TASTING","user:chef").View(true));
+Check(openedByPerson.Contains("\"openedBy\":\"user:chef\"",StringComparison.Ordinal) && !openedByPerson.Contains("openedStation",StringComparison.Ordinal),
+    "a person has no station: the view leaves the key out");
+Check(Wire.Encode(openedByDevice.Snapshot()).Contains("\"openedStation\":\"sala-1\"",StringComparison.Ordinal)
+    && Wire.Encode(new DiningService("on",scope,"M8",1,[]).Snapshot()).Contains("\"openedBy\":null,\"openedStation\":null",StringComparison.Ordinal),
+    "the snapshot always writes both keys (no way back documented)");
 // D3.1: las affordances se calculan al leer y NUNCA entran en los payloads persistidos.
 foreach(var payload in new[]{Wire.Encode(d.Snapshot()),Wire.Encode(restored.Snapshot()),Wire.Encode(a2.Snapshot()),Wire.Encode(o.Snapshot())})
     Check(!payload.Contains("actions",StringComparison.OrdinalIgnoreCase),"snapshot payload has no affordances");

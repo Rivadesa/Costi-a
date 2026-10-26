@@ -93,22 +93,25 @@ internal sealed partial class CourseExecution
         foreach (var p in preparations) p.State = PreparationState.Fired;
     }
 
-    public void StartPreparation(string id)
+    // E4e: marcas de estacion para una o varias elaboraciones del pase (la individual es el grupo de una). Se comprueban TODAS antes de
+    // tocar ninguna: una mala no deja nada a medias. Lo que comprueba cada una no depende de las demas, asi que equivale a marcarlas
+    // una detras de otra.
+    internal void StartPreparations(IReadOnlyList<string> ids)
     {
         EnsurePreparing();
-        var item = Find(id);
-        Guard.Rule(item.State == PreparationState.Fired, "preparation_not_fired", "Preparation was not fired.");
-        item.State = PreparationState.Preparing;
+        var items = ids.Select(Find).ToArray();
+        foreach (var item in items) Guard.Rule(item.State == PreparationState.Fired, "preparation_not_fired", "Preparation was not fired.");
+        foreach (var item in items) item.State = PreparationState.Preparing;
         State = CourseState.Preparing;
     }
 
-    public void ReadyPreparation(string id)
+    internal void ReadyPreparations(IReadOnlyList<string> ids)
     {
         EnsurePreparing();
-        var item = Find(id);
-        Guard.Rule(item.State is PreparationState.Fired or PreparationState.Preparing,
-            "preparation_not_active", "Preparation is not active.");
-        item.State = PreparationState.Ready;
+        var items = ids.Select(Find).ToArray();
+        foreach (var item in items)
+            Guard.Rule(item.State is PreparationState.Fired or PreparationState.Preparing, "preparation_not_active", "Preparation is not active.");
+        foreach (var item in items) item.State = PreparationState.Ready;
         State = CourseState.Preparing;
     }
 
@@ -162,7 +165,9 @@ internal sealed partial class CourseExecution
         return count;
     }
 
-    internal void Review(string id, ReviewDecision decision, string note, CommandStamp stamp)
+    // E4e: revisar es COMPROBAR (sin tocar nada) y despues APLICAR, para que review-preparations compruebe todas sus decisiones antes de
+    // aplicar ninguna. Lo que comprueba una no lo cambia la otra (rehacer deja el pase activo y no toca las demas elaboraciones).
+    internal void CheckReview(string id, ReviewDecision decision)
     {
         // E4e: tambien en un pase sin enviar (se decide antes de cocinar); nunca en uno servido u omitido.
         Guard.Rule(!Terminal, "course_not_preparing", "Course is not available for review.");
@@ -171,6 +176,11 @@ internal sealed partial class CourseExecution
         // Rehacer es solo para lo que ya esta en cocina: un plato sin enviar se adapta o no le afecta.
         Guard.Rule(decision != ReviewDecision.Remake || Active, "nothing_to_remake",
             "Only work already sent to the kitchen can be remade: adapt it or mark it unaffected.");
+    }
+
+    internal void ApplyReview(string id, ReviewDecision decision, string note, CommandStamp stamp)
+    {
+        var item = Find(id);
         item.ReviewPending = false;
         item.Review = new(decision, note, stamp.At);
         if (decision != ReviewDecision.Remake) return;

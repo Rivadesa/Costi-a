@@ -27,7 +27,7 @@ public sealed partial class DiningService
             actions.Add("remove-restriction");
         return new(Id, TableId, Pax, State,
             Array.AsReadOnly(courses.Select(c => c.ViewWithActions(State, restrictions)).ToArray()),
-            actions.AsReadOnly(), restrictions.AsReadOnly(), pending, OfferId);
+            actions.AsReadOnly(), restrictions.AsReadOnly(), pending, OfferId, OpenedBy, OpenedStation);
     }
 }
 

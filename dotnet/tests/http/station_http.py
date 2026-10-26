@@ -1,4 +1,5 @@
-"""D4.3: matriz rol x estacion y billete efimero del hub sobre HTTP real. Ambito propio."""
+"""D4.3: matriz rol x estacion y billete efimero del hub sobre HTTP real. Ambito propio.
+E4e (ADR-016): ordenes de grupo comprobadas elaboracion a elaboracion y el pase que marca por cualquier estacion."""
 import json
 import secrets
 import unittest
@@ -120,6 +121,45 @@ class StationChecks(unittest.TestCase):
         self.assertEqual(version, h.dining(sid)['version'])                                              # ni duplicada ni deshecha
         status, lookup = request('/commands/' + key, token=cook)                                         # mismo actor: el registro manda
         self.assertEqual(200, status); self.assertTrue(lookup['found']); self.assertEqual(key, lookup['key'])
+
+    def group(self, sid, token, action, **fields):
+        return request('/dining/services/' + sid + '/commands/' + action, dict(expectedVersion=h.dining(sid)['version'], **fields), token=token)
+
+    def test_07_a_group_with_another_stations_preparation_applies_nothing(self):
+        # E4e: preparations-start|ready es UNA orden con varias elaboraciones de un pase (una subida de version, un evento por
+        # elaboracion). La matriz de estacion se comprueba elaboracion a elaboracion: una ajena rechaza el grupo entero, con el token
+        # del propio dispositivo, y no se aplica nada.
+        sid = type(self).group_sid = h.open_table('M4')
+        h.mutate(sid, 'fire-next')
+        preps = h.dining(sid)['data']['courses'][0]['preparations']
+        cold = [p['id'] for p in preps if p['stationId'] == 'cold']; hot = [p['id'] for p in preps if p['stationId'] == 'hot']
+        before = h.dining(sid)['version']
+        status, body = self.group(sid, self.cold, 'preparations-ready', courseId='p1', itemIds=cold + hot[:1])
+        self.assertEqual((409, 'wrong_station'), (status, body['error']))
+        self.assertEqual(before, h.dining(sid)['version'])
+        self.assertEqual(['Fired'] * len(preps), [p['state'] for p in h.dining(sid)['data']['courses'][0]['preparations']])
+        status, body = self.group(sid, self.cold, 'preparations-ready', courseId='p1', itemIds=['x%d' % i for i in range(201)])
+        self.assertEqual((409, 'too_many_items'), (status, body['error']))
+        status, body = self.group(sid, self.cold, 'review-preparations', items=[dict(courseId='p1', itemId=cold[0], decision='unaffected', note='x')])
+        self.assertEqual((409, 'wrong_station'), (status, body['error']))   # revisar sigue siendo del pase
+        status, body = self.group(sid, self.cold, 'preparations-ready', courseId='p1', itemIds=cold)
+        self.assertEqual((200, before + 1), (status, body.get('version')), body)
+        states = {p['id']: p['state'] for p in h.dining(sid)['data']['courses'][0]['preparations']}
+        self.assertEqual((['Ready'] * len(cold), ['Fired'] * len(hot)), ([states[i] for i in cold], [states[i] for i in hot]))
+        self.assertEqual(f'{len(cold)}|1', h.sql("SELECT count(*)||'|'||count(DISTINCT command_key) FROM core.audit WHERE tenant='d4-station' "
+                                                 f"AND aggregate_id='{sid}' AND action='course_item.ready'"))   # UNA orden, un evento por plato
+
+    def test_08_the_pass_marks_for_a_station_whose_tablet_is_broken(self):
+        # E4e (ADR-016; respuesta 2 del 22-10): el pase marca por cualquier estacion, plato a plato o en grupo; se le anuncia en cada
+        # elaboracion y en el pase. Las demas estaciones siguen marcando solo lo suyo (test_01).
+        sid = self.group_sid
+        hot = [p['id'] for p in h.dining(sid)['data']['courses'][0]['preparations'] if p['stationId'] == 'hot']
+        course = request('/dining/services/' + sid, token=self.pase)[1]['data']['courses'][0]
+        self.assertIn('preparations-ready', course['actions'])
+        self.assertTrue(all('preparation-ready' in p['actions'] for p in course['preparations'] if p['id'] in hot))
+        self.assertEqual(200, self.group(sid, self.pase, 'preparation-start', courseId='p1', itemId=hot[0])[0])
+        self.assertEqual(200, self.group(sid, self.pase, 'preparations-ready', courseId='p1', itemIds=hot)[0])
+        self.assertEqual(200, self.group(sid, self.pase, 'ready', courseId='p1')[0])
 
     def test_03b_session_names_the_station_of_a_device(self):
         # A4 (Inicio y dispositivos): la tablet rotula su cabecera con el nombre, no con el codigo.

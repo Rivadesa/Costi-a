@@ -61,14 +61,16 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(coldTicket).toContainText('ALERGIA marisco (grave)')
   await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                               // en NINGUNA mesa: el servidor no se lo anuncia a una estacion
 
-  // 5) PASE (otro dispositivo): todo es suyo para mirar, nada de marcar elaboraciones; revisa con nota OBLIGATORIA.
+  // 5) PASE (otro dispositivo): todo es suyo para mirar; revisa con nota OBLIGATORIA. E4e (ADR-016): tambien puede marcar por una estacion
+  //    con la tablet estropeada, asi que el servidor le anuncia lo que falta de CUALQUIER estacion (lo ya listo de la fria, no).
   const passContext = await deviceContext(browser); const passPage = await passContext.newPage(); watch(passPage, leaks, violations)
   await pairThroughTheUi(passPage, request, deviceName('pase'), 'kitchen', 'pase')
   await expect(passPage.getByTestId('kitchen')).toBeVisible(); await checkDevice(passPage)
   const passTicket = passPage.getByTestId(`ticket-${TABLE}-${course.id}`)
   await expect(passTicket).toBeVisible({ timeout: 15_000 })
   await expect(passTicket).not.toContainText('(otra estación)')
-  await expect(passPage.locator(`[data-testid^="do-preparation-"][data-testid*="-${TABLE}-"]`)).toHaveCount(0)
+  await expect(passPage.getByTestId(id('preparation-ready', hot.id))).toBeVisible()
+  await expect(passPage.getByTestId(id('preparation-ready', cold.id))).toHaveCount(0)
   await expect(passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)            // con revisiones pendientes el servidor no anuncia validar
   await checkScreen(passPage, 'pass', true)
   const reviews = passTicket.locator('[data-testid^="review-"]')

@@ -7,14 +7,22 @@ namespace Costina.Modules.Dining;
 // El dominio calcula QUE admite el agregado; aqui se decide QUIEN puede verlo/hacerlo.
 public static class Affordances
 {
-    private static readonly string[] KitchenAllowed = ["preparation-start", "preparation-ready", "ready", "review-preparation"];
+    // Estacion reservada del pase (E2): valida y revisa; desde E4e (ADR-016) tambien marca por cualquier estacion.
+    public const string PassStation = "pase";
+    // E4e: cada orden de grupo con su individual. Por ROL valen lo mismo (Allows) y el anuncio del grupo se deduce de la individual (Filter).
+    private static readonly (string Individual, string Group)[] Groups =
+        [("preparation-start", "preparations-start"), ("preparation-ready", "preparations-ready"), ("review-preparation", "review-preparations")];
+    private static readonly string[] KitchenAllowed = ["preparation-start", "preparation-ready", "ready", "review-preparation",
+        "preparations-start", "preparations-ready", "review-preparations"];
 
     // C3b: add-consumptions (la ronda) es de principal y sala, como add-consumption: sala la tiene porque no esta en su lista de
     // excluidas y cocina no, porque no esta en KitchenAllowed. Es accion de SESION (DiningModule.SessionActions), sin estacion.
+    // E4e: la sala queda fuera de review-preparations como de review-preparation, y conserva preparations-start|ready como conserva las
+    // individuales: lo que impide a un comandero de sala marcar platos de cocina es la estacion (StationAllowed), plato a plato.
     public static bool Allows(string role, string action) => role switch
     {
         "main" => true,
-        "service" => action is not ("complete" or "cancel-unstarted" or "release" or "review-preparation"),
+        "service" => action is not ("complete" or "cancel-unstarted" or "release" or "review-preparation" or "review-preparations"),
         "kitchen" => KitchenAllowed.Contains(action, StringComparer.Ordinal),
         _ => false
     };
@@ -22,28 +30,43 @@ public static class Affordances
     private static IReadOnlyList<string>? Keep(IReadOnlyList<string>? actions, string role)
         => actions?.Where(a => Allows(role, a)).ToArray();
 
-    // Espejo de la matriz de estacion (D4.3): lo que un dispositivo no puede hacer no se anuncia.
+    private static bool IsPass(string? station) => string.Equals(station, PassStation, StringComparison.Ordinal);
+
+    // Espejo de la matriz de estacion (D4.3; DiningOperations.StationAllowed): lo que un dispositivo no puede hacer no se anuncia.
+    // E4e (ADR-016): el pase marca por cualquier estacion; las demas, solo lo suyo.
     private static bool StationKeeps(string action, string? station, string prepStation) => station is null
         || (action is "preparation-start" or "preparation-ready"
-            ? string.Equals(prepStation, station, StringComparison.Ordinal)
+            ? string.Equals(prepStation, station, StringComparison.Ordinal) || IsPass(station)
             // D6.4: review-preparation se anuncia EN LA ELABORACION (AllowedActions) y el comando exige la estacion
             // 'pase' (LocalOperations.StationAllowed). Sin este filtro una estacion veia un boton que daba wrong_station.
-            : action is not "review-preparation" || string.Equals(station, "pase", StringComparison.Ordinal));
+            : action is not "review-preparation" || IsPass(station));
     private static bool PassKeeps(string action, string? station) => station is null
-        || (action is "ready" or "review-preparation" ? string.Equals(station, "pase", StringComparison.Ordinal) : true);
+        || (action is "ready" or "review-preparation" or "review-preparations" ? IsPass(station) : true);
 
     public static DiningView Filter(DiningView view, string role, string? station = null) => view with
     {
         Actions = Keep(view.Actions, role),
-        Courses = view.Courses.Select(c => c with
-        {
-            Actions = Keep(c.Actions, role)?.Where(a => PassKeeps(a, station)).ToArray(),
-            Preparations = c.Preparations.Select(p => p with
-            {
-                Actions = Keep(p.Actions, role)?.Where(a => StationKeeps(a, station, p.StationId)).ToArray()
-            }).ToArray()
-        }).ToArray()
+        Courses = view.Courses.Select(c => Filter(c, role, station)).ToArray()
     };
+
+    // E4e: es la PRIMERA ACCION QUE SE DEDUCE EN EL FILTRO (el dominio no la anuncia). Cada orden de grupo sale en el pase si alguna de
+    // sus elaboraciones anuncia la individual DESPUES de filtrar por rol y estacion, asi que hereda la matriz entera: una estacion solo
+    // ve el grupo de lo suyo, el pase el de todo y la sala nunca review-preparations. El cliente manda en el grupo SOLO las elaboraciones
+    // que anuncian la individual (Costina.Acceptance comprueba que esa orden es ejecutable). Una vista sin affordances sigue sin ellas.
+    private static CourseView Filter(CourseView course, string role, string? station)
+    {
+        var preparations = course.Preparations.Select(p => p with
+        {
+            Actions = Keep(p.Actions, role)?.Where(a => StationKeeps(a, station, p.StationId)).ToArray()
+        }).ToArray();
+        var groups = course.Actions is null ? []
+            : Groups.Where(g => preparations.Any(p => p.Actions?.Contains(g.Individual, StringComparer.Ordinal) == true)).Select(g => g.Group);
+        return course with
+        {
+            Actions = Keep(course.Actions?.Concat(groups).ToArray(), role)?.Where(a => PassKeeps(a, station)).ToArray(),
+            Preparations = preparations
+        };
+    }
 
     public static OccupancyView Filter(OccupancyView view, string role)
         => view with { Actions = Keep(view.Actions, role) };

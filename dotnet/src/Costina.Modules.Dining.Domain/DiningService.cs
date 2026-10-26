@@ -14,11 +14,18 @@ public sealed partial class DiningService : Aggregate
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
 
+    // E4e: quien abrio la mesa, tomado de la identidad de la orden 'open' (actor y estacion del dispositivo; una persona no tiene
+    // estacion). Solo se escribe al abrir y nunca cambia; null en mesas abiertas antes de E4e. No es atribucion a una persona (C3e).
+    public string? OpenedBy { get; }
+    public string? OpenedStation { get; }
+
     public DiningService(string id, BusinessScope scope, string tableId, int pax,
-        IReadOnlyList<CourseDefinition> definitions, string? offerId = null) : base(id, scope)
+        IReadOnlyList<CourseDefinition> definitions, string? offerId = null, string? openedBy = null, string? openedStation = null) : base(id, scope)
     {
         TableId = Guard.Text(tableId, nameof(tableId));
         OfferId = string.IsNullOrWhiteSpace(offerId) ? null : offerId;
+        OpenedBy = string.IsNullOrWhiteSpace(openedBy) ? null : openedBy;
+        OpenedStation = string.IsNullOrWhiteSpace(openedStation) ? null : openedStation;
         Guard.Rule(pax > 0, "invalid_pax", "Pax must be positive.");
         Pax = pax;
         ArgumentNullException.ThrowIfNull(definitions);
@@ -60,18 +67,40 @@ public sealed partial class DiningService : Aggregate
     // El pase que saldria con fire-next: el primero pendiente.
     private CourseExecution? NextCourse() => courses.FirstOrDefault(c => c.State == CourseState.Pending);
 
-    public void StartPreparation(string courseId, string itemId, CommandStamp stamp)
+    public void StartPreparation(string courseId, string itemId, CommandStamp stamp) => StartPreparations(courseId, [itemId], stamp);
+
+    public void ReadyPreparation(string courseId, string itemId, CommandStamp stamp) => ReadyPreparations(courseId, [itemId], stamp);
+
+    // E4e: ORDEN DE GRUPO (preparations-start|ready): varias elaboraciones de UN pase en una sola orden. Todo o nada tambien en memoria
+    // (CourseExecution comprueba todas antes de tocar ninguna) y un evento por elaboracion con los tipos de siempre, en el orden pedido.
+    // La individual es el grupo de una. Lista vacia o con una elaboracion repetida: peticion mal formada (422).
+    public void StartPreparations(string courseId, IReadOnlyList<string> itemIds, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Find(courseId).StartPreparation(itemId);
-        Emit("course_item.started", stamp, ("course_id", courseId), ("item_id", itemId));
+        var ids = GroupIds(itemIds);
+        Find(courseId).StartPreparations(ids);
+        foreach (var id in ids) Emit("course_item.started", stamp, ("course_id", courseId), ("item_id", id));
     }
 
-    public void ReadyPreparation(string courseId, string itemId, CommandStamp stamp)
+    public void ReadyPreparations(string courseId, IReadOnlyList<string> itemIds, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Find(courseId).ReadyPreparation(itemId);
-        Emit("course_item.ready", stamp, ("course_id", courseId), ("item_id", itemId));
+        var ids = GroupIds(itemIds);
+        Find(courseId).ReadyPreparations(ids);
+        foreach (var id in ids) Emit("course_item.ready", stamp, ("course_id", courseId), ("item_id", id));
+    }
+
+    // Los identificadores van TAL CUAL (sin recortar): la matriz de estacion los busca exactos y un espacio de mas no puede esconder
+    // la estacion de una elaboracion.
+    private static IReadOnlyList<string> GroupIds(IReadOnlyList<string> itemIds)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        if (itemIds.Count == 0) throw new ArgumentException("At least one preparation is required.", nameof(itemIds));
+        var ids = itemIds.ToArray();
+        if (ids.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("A preparation id cannot be blank.", nameof(itemIds));
+        if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
+            throw new ArgumentException("A preparation can appear only once per command.", nameof(itemIds));
+        return ids;
     }
 
     public void ValidateReady(string courseId, CommandStamp stamp)
@@ -163,7 +192,8 @@ public sealed partial class DiningService : Aggregate
 
     public DiningView View() => new(Id, TableId, Pax, State,
         Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck, OfferId: OfferId);
+        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck, OfferId: OfferId,
+        OpenedBy: OpenedBy, OpenedStation: OpenedStation);
     private CourseExecution Find(string id) => courses.FirstOrDefault(c => c.Id == id)
         ?? throw new RuleViolation("course_not_found", "Course not found.");
     private void KitchenAllowed(CommandStamp stamp)

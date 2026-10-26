@@ -224,4 +224,34 @@ class RestrictionChecks(unittest.TestCase):
                                     f"AND aggregate_id='{sid}' AND action='course.skipped'"))
         act(sid, 'complete')
 
+    def test_09_the_whole_menu_of_a_guest_is_reviewed_in_one_command(self):
+        # E4e: review-preparations {items:[{courseId, itemId, decision, note}]}: de 1 a 60 decisiones, cada una con su nota, todo o
+        # nada, UNA subida de version y un restriction.reviewed por elaboracion. Sala no decide por cocina (403, como la individual).
+        status, body = open_with('M3', restrictions=[dict(guestPosition=2, kind='intolerance', substance='lactosa', severity='mild')])
+        sid = json.loads(body)['serviceId']
+        menu = [(c['id'], p['id']) for c in h.dining(sid)['data']['courses'] for p in c['preparations'] if p['reviewPending']]
+        self.assertEqual([('p1', 'frio-2'), ('p1', 'caliente-2'), ('p2', 'principal-2')], menu)
+        items = [dict(courseId=c, itemId=i, decision='adapt' if i == 'caliente-2' else 'unaffected',
+                      note='salsa sin nata' if i == 'caliente-2' else 'no lleva lacteos') for c, i in menu]
+        version = h.dining(sid)['version']
+        self.assertEqual(403, attempt(sid, 'review-preparations', role='service', items=items)[0])
+        for bad, expected in (([dict(items[0], note=' ')] + items[1:], (422, 'invalid_request')),
+                              (items[:2] + [dict(items[2], decision='remake')], (409, 'nothing_to_remake')),   # rehacer, solo lo enviado
+                              (items + [items[0]], (422, 'invalid_request')),                                  # la misma elaboracion dos veces
+                              ([], (422, 'invalid_request')),
+                              ([items[0]] * 61, (409, 'too_many_items'))):
+            status, body = attempt(sid, 'review-preparations', role='kitchen', items=bad)
+            self.assertEqual(expected, (status, body.get('error')), bad[:1])
+        self.assertEqual((version, menu), (h.dining(sid)['version'], [(c['id'], p['id']) for c in h.dining(sid)['data']['courses']
+                                                                       for p in c['preparations'] if p['reviewPending']]))   # nada a medias
+        self.assertEqual(version + 1, act(sid, 'review-preparations', role='kitchen', items=items)['version'])
+        data = h.dining(sid)['data']
+        self.assertFalse(data['restrictionsPendingAck'])
+        decided = {p['id']: (p['review']['decision'], p['review']['note']) for c in data['courses'] for p in c['preparations'] if p.get('review')}
+        self.assertEqual({'frio-2': ('Unaffected', 'no lleva lacteos'), 'caliente-2': ('Adapt', 'salsa sin nata'),
+                          'principal-2': ('Unaffected', 'no lleva lacteos')}, decided)
+        self.assertEqual('3|1', h.sql("SELECT count(*)||'|'||count(DISTINCT command_key) FROM core.audit WHERE tenant='d3-restrictions' "
+                                      f"AND aggregate_id='{sid}' AND action='restriction.reviewed'"))
+        act(sid, 'fire-next', role='service')
+
 if __name__ == '__main__': unittest.main()

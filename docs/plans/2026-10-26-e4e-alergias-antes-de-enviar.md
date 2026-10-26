@@ -60,6 +60,10 @@ Rutas cortas como en los dos planes: `Dining/` = `dotnet/src/Costina.Modules.Din
 - **`preparations-start|preparations-ready`** `{expectedVersion, courseId, itemIds}`: de 1 a 200 elaboraciones de ese pase (`too_many_items`), todo o nada, **una** subida de versión y un evento por elaboración con los tipos de hoy (`course_item.started|ready`).
 - **`review-preparations`** `{expectedVersion, items}`: de 1 a 60 decisiones (caben en los 32 KiB de `Core.Hosting/Requests.cs:30`), nota obligatoria en cada una y un `restriction.reviewed` por elaboración. Decisión y nota por elaboración: el menú entero de un comensal se revisa en una orden.
 - **Anuncio, en el pase:** cada orden de grupo sale si alguna elaboración anuncia la individual **después** de filtrar por rol y estación (`Dining/Affordances.cs:35-46`). Es la primera acción que se deduce en el filtro: se documenta.
+- **Concreción:**
+  - una lista vacía, una elaboración repetida en la misma orden o una decisión sin pase, plato, decisión conocida o nota es una petición mal formada: `422 invalid_request`. Pasar de 200 o de 60 da `409 too_many_items`;
+  - los identificadores van tal cual, sin recortar, igual que los busca la matriz de estación: un espacio de más no puede esconder la estación de una elaboración;
+  - todo o nada también en memoria: el dominio comprueba todas las elaboraciones antes de tocar ninguna. Las órdenes individuales pasan a ser el grupo de una, con las mismas reglas, los mismos errores y el mismo evento.
 
 ### 5. Matriz de estación sin huecos y el pase que marca por una estación (`plan22:574-583`)
 
@@ -67,12 +71,14 @@ Rutas cortas como en los dos planes: `Dining/` = `dotnet/src/Costina.Modules.Din
 - `KitchenAllowed` (`Affordances.cs:10`) gana las tres acciones. **Por rol, cada orden de grupo vale lo mismo que su individual** (`Affordances.cs:17`): la sala queda fuera de `review-preparations`, como de `review-preparation`.
 - `StationKeeps` y `PassKeeps` (`Affordances.cs:26-33`) las reflejan.
 - **El pase puede marcar `preparation(s)-start|ready` de cualquier estación** (respuesta 2 del 22-10). Cambia D4.3a solo para el pase (`dotnet/AGENTS.md:25`); las demás estaciones siguen marcando solo lo suyo.
+- **Consecuencia en pantalla:** mientras el paso de la PWA (sección 10) o C3d no decidan otra cosa, la pantalla del pase de Costiña Cocina pinta «Empezar» y «Marcar lista» en lo que falta de **todas** las estaciones, porque el servidor se lo anuncia. `e2e/kitchen.spec.ts` lo fija. C3d lo lleva a «Más opciones» de cada tarjeta (`plan22:666`).
 
 ### 6. Quién abrió la mesa (`plan22:585-594`)
 
 - `DiningService` guarda `OpenedBy` (`device:<nombre>` o `user:<nombre>`) y `OpenedStation` (vacía para una persona), tomados de `ExecutionIdentity` (`Core.Persistence/Contracts.cs:38`) en `open`.
 - Campos aditivos de `DiningSnapshot` (`Dining.Domain/Snapshots.cs:8-11`), en el JSON de `dining.services.payload`: sin columna nueva. Una mesa guardada antes los restaura vacíos.
 - En `DiningView` (`Dining.Domain/ServiceModels.cs:42-50`) como `openedBy` y `openedStation`, omitidos si están vacíos. Sin evento nuevo: `service.created` ya lleva el actor.
+- **Concreción:** en la instantánea las dos claves se escriben siempre, también a `null`, como `offerId`. Un valor en blanco cuenta como desconocido.
 
 ### 7. Instantáneas: reglas nuevas sin vuelta atrás (`plan15:618-623`)
 

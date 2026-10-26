@@ -5,10 +5,14 @@ namespace Costina.Modules.Dining.Domain;
 // Trusted persistence boundary. These records are not accepted as HTTP commands.
 // Restrictions/RestrictionsPendingAck son aditivos opcionales: un payload D1 sin ellos
 // restaura con lista vacia y sin acuse pendiente; payload_version sigue siendo 1.
+// E4e: OpenedBy/OpenedStation (quien abrio la mesa), aditivos en el JSON de dining.services.payload, sin columna: un payload anterior
+// los restaura vacios. Se escriben SIEMPRE (tambien a null, como OfferId): SIN VUELTA ATRAS, el decodificador estricto de un motor
+// anterior (Wire, UnmappedMemberHandling.Disallow) rechaza las claves, asi que toda mesa que E4e vuelva a guardar ya no la lee 0.43.
 public sealed record DiningSnapshot(string Id, BusinessScope Scope, string TableId, int Pax,
     DiningState State, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
     IReadOnlyList<CourseView> Courses,
-    IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false, string? OfferId = null);
+    IReadOnlyList<GuestRestriction>? Restrictions = null, bool RestrictionsPendingAck = false, string? OfferId = null,
+    string? OpenedBy = null, string? OpenedStation = null);
 public sealed record OccupancySnapshot(string Id, BusinessScope Scope, string TableId,
     string ServiceId, OccupancyState State, DateTimeOffset? ReleasedAt);
 
@@ -16,7 +20,7 @@ public sealed partial class DiningService
 {
     public DiningSnapshot Snapshot() => new(Id, Scope, TableId, Pax, State, StartedAt,
         CompletedAt, Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        restrictions.AsReadOnly(), RestrictionsPendingAck, OfferId);
+        restrictions.AsReadOnly(), RestrictionsPendingAck, OfferId, OpenedBy, OpenedStation);
 
     public static DiningService Restore(DiningSnapshot value)
     {
@@ -25,7 +29,8 @@ public sealed partial class DiningService
         var result = new DiningService(value.Id, value.Scope, value.TableId, value.Pax,
             value.Courses.Select(c => new CourseDefinition(c.Id, c.Name,
                 c.Preparations.Select(p => new PreparationDefinition(p.Id, p.Name, p.StationId,
-                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), c.ChoiceRequired, c.Optional)).ToArray(), value.OfferId);
+                    p.Quantity, p.GuestPosition, p.Mandatory)).ToArray(), c.ChoiceRequired, c.Optional)).ToArray(), value.OfferId,
+            value.OpenedBy, value.OpenedStation);
         result.courses.Clear();
         result.courses.AddRange(value.Courses.Select(c => CourseExecution.Restore(c, value.Pax)));
         Guard.Rule(result.courses.Count(c => c.Active) <= 1, "invalid_snapshot", "Multiple active courses.");
