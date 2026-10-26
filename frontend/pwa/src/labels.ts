@@ -46,6 +46,8 @@ export const VOCABULARY = {
     'preparation-start': 'Empezar elaboración', 'preparation-ready': 'Marcar elaboración lista', 'review-preparation': 'Revisar elaboración',
     'declare-restriction': 'Declarar restricción', 'remove-restriction': 'Retirar restricción', release: 'Liberar mesa',
     'add-consumption': 'Añadir consumo',
+    // E4e: las ordenes de grupo (un plato agrupado, o el menu de un comensal, en UNA orden).
+    'preparations-start': 'Empezar plato', 'preparations-ready': 'Marcar plato listo', 'review-preparations': 'Revisar platos',
   },
 } as const satisfies Record<string, Record<string, string>>
 
@@ -98,6 +100,17 @@ export function restrictionLabel(restriction: GuestRestriction): string {
 export function reviewLabel(preparation: Preparation): string {
   if (preparation.reviewPending) return 'PENDIENTE DE REVISIÓN POR COCINA'
   return preparation.review ? `Revisada: ${reviewDecisionLabel(preparation.review.decision)} — ${preparation.review.note}` : ''
+}
+
+// E4e (plan 2026-10-15, seccion 3): lo que la SALA lee de la decision de cocina sobre el plato de un comensal (espejo de
+// Labels.ReviewOutcome del puesto; tabla comun vocabulary-cases.json, «reviews»): «Por revisar en cocina» mientras cocina no decide y,
+// despues, la decision delante del texto de cocina («Adaptado: tosta de maíz»). El nombre del plato no cambia. Una decision que no se
+// conoce sale tal cual. La cocina conserva su rotulo (reviewLabel) hasta C3d.
+export const REVIEW_PENDING_TEXT = 'Por revisar en cocina'
+const REVIEW_OUTCOMES = vocabulary({ Unaffected: 'No le afecta', Adapt: 'Adaptado', Remake: 'Rehecho' })
+export function reviewOutcome(preparation: Preparation): string {
+  if (preparation.reviewPending) return REVIEW_PENDING_TEXT
+  return preparation.review ? `${REVIEW_OUTCOMES(preparation.review.decision)}: ${preparation.review.note}` : ''
 }
 
 // El pase "en curso" de una mesa: el primero que no esta servido ni omitido.

@@ -84,19 +84,21 @@ internal static class Program
         var entry=new Costina.Client.BoardEntry(3,dto,new("o1","M1","s1","Occupied",null,["release"]),1);
         shell.Service.Board=[entry]; shell.Service.SelectedEntry=entry;   // sin Api la seleccion no dispara lecturas
         shell.Service.Dining=new(3,dto);
-        shell.Service.SelectedCourse=new Costina.Client.CourseDto("c1","Pase","Ready",null,null,null,null,[prep],["serve"]);
-        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparation-start")||!shell.Service.CanAction("release")||!shell.Service.CanAction("review-preparation"))
+        // E4e: las acciones de cocina van por PLATO agrupado (ordenes de grupo, anunciadas en el pase) y solo con elaboraciones que anuncian
+        // la individual: «Marcar plato listo» no sale aunque el pase anuncie preparations-ready si ninguna elaboracion anuncia preparation-ready.
+        shell.Service.SelectedCourse=new Costina.Client.CourseDto("c1","Pase","Ready",null,null,null,null,[prep],["serve","preparations-start","preparations-ready","review-preparations"]);
+        if(!shell.Service.CanAction("pause")||!shell.Service.CanAction("fire-next")||!shell.Service.CanAction("serve")||!shell.Service.CanAction("preparations-start")||!shell.Service.CanAction("release")||!shell.Service.CanAction("review-preparations"))
             throw new Exception("Advertised affordances must enable their controls.");
-        if(prep.ReviewText!="⚠ PENDIENTE DE REVISIÓN") throw new Exception("A pending review must be stated in text, never colour only.");
-        if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparation-ready"))
-            throw new Exception("Actions the server did not advertise must stay disabled.");
+        if(prep.ReviewText!="⚠ PENDIENTE DE REVISIÓN"||Costina.Client.Labels.ReviewOutcome(prep)!="Por revisar en cocina") throw new Exception("A pending review must be stated in text, never colour only.");
+        if(shell.Service.CanAction("complete")||shell.Service.CanAction("skip")||shell.Service.CanAction("preparations-ready")||shell.Service.CanAction("preparation-start")||shell.Service.CanAction("review-preparation"))
+            throw new Exception("Actions the server did not advertise must stay disabled (and the single kitchen actions are not buttons any more).");
         if(!shell.CanOpen) throw new Exception("Session affordance must drive the open panel.");
         shell.Busy=true;
         if(shell.Service.CanAction("pause")) throw new Exception("Busy must gate every action.");
         shell.Busy=false;
         var other=new Costina.Client.BoardEntry(1,new("s2","M2",2,"InService",[],["pause"]),new("o2","M2","s2","Occupied",null,["release"]),1);
         shell.Service.Board=[entry,other]; shell.Service.SelectedEntry=other;   // destino nuevo con el detalle antiguo aun cargado
-        if(shell.Service.CanAction("pause")||shell.Service.CanAction("fire-next")||shell.Service.CanAction("serve")||shell.Service.CanAction("release")||shell.Service.CanAction("preparation-start"))
+        if(shell.Service.CanAction("pause")||shell.Service.CanAction("fire-next")||shell.Service.CanAction("serve")||shell.Service.CanAction("release")||shell.Service.CanAction("preparations-start")||shell.Service.CanAction("review-preparations"))
             throw new Exception("A selection that does not match the loaded detail must disable every action.");
         shell.Service.SelectedEntry=entry;
         if(!shell.Service.CanAction("pause")) throw new Exception("Returning to the loaded entity restores its actions.");
@@ -841,7 +843,6 @@ internal static class Program
         window.Shell.Service.Board=[entry]; window.Shell.Service.SelectedEntry=entry; window.Shell.Service.Dining=new(3,dto);
         var servedAt=new DateTimeOffset(2026,10,14,11,5,0,TimeSpan.Zero);
         window.Shell.Service.Courses=[new Costina.Client.CourseDto("c0","Bienvenida","Served",servedAt,servedAt,servedAt,null,[]),new Costina.Client.CourseDto("c1","Aperitivos","Ready",null,null,null,null,[prep],["serve"])]; window.Shell.Service.SelectedCourse=window.Shell.Service.Courses[1];
-        window.Shell.Service.Preparations=[prep];
         // C2: la ficha y la tarjeta salen de la mesa LEIDA (en servicio y sin ningun pase enviado todavia: "Sentados").
         if(window.Shell.Service.ServiceTitle!="Mesa 1 · 2 personas · En servicio"||window.Shell.Service.DetailTitle!="Mesa 1"||window.Shell.Service.DetailState!="Sentados"
             ||window.Shell.Service.Tiles.Single(t=>t.Occupied).StateLabel!="Sentados") throw new Exception("The table is named and its state is in Spanish: "+window.Shell.Service.ServiceTitle);
@@ -895,7 +896,8 @@ internal static class Program
                 Course("aperitivos","Aperitivos","Served",48,44,40,[Prep("s1-aperitivos","Aperitivos de la casa","cold",null,"Ready")]),
                 Course("mar","Mar","Served",35,31,28,[Prep("s1-mar","Zamburiñas a la plancha","hot",null,"Ready")]),
                 Course("arroz","Arroz","Served",22,18,15,[Prep("s1-arroz","Arroz de bogavante","hot",null,"Ready")]),
-                Course("pescado","Pescado","Preparing",12,null,null,[Prep("s1-rodaballo","Rodaballo al horno","hot",null,"Preparing",["preparation-ready"]),Prep("s1-salsa","Salsa de vieiras","pase",null,"Fired",["preparation-start","preparation-ready"])]),
+                Course("pescado","Pescado","Preparing",12,null,null,[Prep("s1-rodaballo","Rodaballo al horno","hot",null,"Preparing",["preparation-ready"]),Prep("s1-salsa","Salsa de vieiras","pase",null,"Fired",["preparation-start","preparation-ready"])],
+                    ["preparations-start","preparations-ready"]),
                 Course("carne","Carne","Pending",null,null,null,[Prep("s1-carne","Lomo de vaca gallega","hot",null,"Pending")],["skip"]),
                 Course("postre","Postre","Pending",null,null,null,[Prep("s1-filloas","Filloas","cold",null,"Pending")],["skip"])],
                 ["pause","declare-restriction"]),
@@ -908,7 +910,8 @@ internal static class Program
                 Course("entrantes","Entrantes","Served",60,54,50,[..Enumerable.Range(1,4).Select(g=>Prep("s4-ensalada-"+g,"Ensalada de la huerta","cold",g,"Ready"))]),
                 Course("principales","Principales","Preparing",25,null,null,[Prep("s4-merluza-1","Merluza a la gallega","hot",1,"Ready"),
                     Prep("s4-merluza-2","Merluza a la gallega","hot",2,"Preparing",["preparation-ready","review-preparation"],[nuts],true),
-                    Prep("s4-carrillera-3","Carrillera al vino","hot",3,"Ready",null,[lactose]),Prep("s4-carrillera-4","Carrillera al vino","hot",4,"Fired",["preparation-start","preparation-ready"])]),
+                    Prep("s4-carrillera-3","Carrillera al vino","hot",3,"Ready",null,[lactose]),Prep("s4-carrillera-4","Carrillera al vino","hot",4,"Fired",["preparation-start","preparation-ready"])],
+                    ["preparations-start","preparations-ready","review-preparations"]),
                 Course("postres","Postres","Pending",null,null,null,[Prep("s4-tarta-1","Tarta de queso","cold",1,"Pending"),Prep("s4-flan-2","Flan de huevo","cold",2,"Pending",null,[nuts])],["skip","choose"],choice:true)],
                 ["pause","declare-restriction","remove-restriction"],[nuts,lactose],pendingReview:true),
             Seat("s6","M6",2,"Open","DEGUSTACION",[..tastingCourses.Select((n,i)=>Course("d"+i,n,"Pending",null,null,null,[Prep("s6-"+i,n,"hot",null,"Pending")],["skip"]))],["start","cancel-unstarted","declare-restriction"]),
@@ -923,9 +926,11 @@ internal static class Program
                 ["pause","fire-next","declare-restriction"])];
         // Lo que el servidor anuncia a este PC en el nivel Puesto (dispositivo de sala con una estacion de sala; Affordances.Filter): sin
         // terminar, cancelar ni liberar, sin validar el pase (solo 'pase') y sin acciones sobre elaboraciones de otra estacion ni revisiones.
+        // E4e: las ordenes de grupo salen en el pase solo si alguna elaboracion anuncia su individual DESPUES del filtro: aqui, ninguna.
         static Costina.Client.BoardEntry AsStation(Costina.Client.BoardEntry e)=>e with {
             Service=e.Service with {Actions=[..(e.Service.Actions??[]).Where(a=>a is not ("complete" or "cancel-unstarted"))],
-                Courses=[..e.Service.Courses.Select(c=>c with {Actions=[..(c.Actions??[]).Where(a=>a!="ready")],Preparations=[..c.Preparations.Select(p=>p with {Actions=[]})]})]},
+                Courses=[..e.Service.Courses.Select(c=>c with {Actions=[..(c.Actions??[]).Where(a=>a is not ("ready" or "preparations-start" or "preparations-ready" or "review-preparations"))],
+                    Preparations=[..c.Preparations.Select(p=>p with {Actions=[]})]})]},
             Occupancy=e.Occupancy with {Actions=[]}};
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
         server.Configuration=diningConfig; server.Board=diningBoard;
@@ -987,15 +992,23 @@ internal static class Program
         if(service.DetailTitle!="Mesa 4"||service.DetailZoneOffer!="Sala principal · Menú del día"||service.DetailState!="En cocina"||!service.DetailInfo.StartsWith("4 personas · en cocina desde las ",StringComparison.Ordinal)||!service.DetailInfo.EndsWith(" (25 min)",StringComparison.Ordinal))
             throw new Exception("The panel names zone and offer, the table, its state, its people and its time: "+service.DetailZoneOffer+" / "+service.DetailInfo);
         if(!service.CourseRows.Select(r=>r.Number+" "+r.Course.Name+": "+r.State+" · "+r.Detail).SequenceEqual(["1 Entrantes: Servido · Servido a las "+Costina.Client.Labels.Clock(c2Now.AddMinutes(-50)),
-            "2 Principales: En preparación · En cocina desde las "+Costina.Client.Labels.Clock(c2Now.AddMinutes(-25))+" · 2 de 4 elaboraciones listas","3 Postres: Falta elegir plato · Han elegido 2 de 4 personas"]))
+            "2 Principales: En preparación · En cocina desde las "+Costina.Client.Labels.Clock(c2Now.AddMinutes(-25))+" · 0 de 2 platos listos","3 Postres: Falta elegir plato · Han elegido 2 de 4 personas"]))
             throw new Exception("Courses are numbered with their state (the missing choice is exact with the headcount) and their detail: "+string.Join(" | ",service.CourseRows.Select(r=>r.State+" · "+r.Detail)));
+        // E4e: la fila del pase dice lo que cocina tiene por revisar en el.
+        if(!service.CourseRows.Select(r=>r.Alert).SequenceEqual(["","⚠ 1 plato por revisar en cocina",""])) throw new Exception("A course row says what the kitchen has to review: "+string.Join(" | ",service.CourseRows.Select(r=>r.Alert)));
         if(service.PrimaryAction is not null||service.PrimaryText!="Esperando la revisión de cocina"||Named("PrimaryActionButton").IsEnabled||Actions()!=" | pause"||!service.ReasonNeeded)
             throw new Exception("Nothing announced for the big button: it waits, disabled; below, exactly the other announced actions: "+service.PrimaryText+" / "+Actions());
-        if(service.PreparationRows.Any(r=>r.Station!="Cocina caliente")||service.SelectedPreparation?.Id!="s4-merluza-2"||!service.ReviewAnnounced||!service.PreparationActionsAnnounced||!service.ReviewCommand.CanExecute("adapt"))
-            throw new Exception("Preparations name their station from the configuration and the review is offered on the one under review.");
+        // E4e: los platos AGRUPADOS («Merluza a la gallega × 2»), con su estacion por su nombre; el elegido es el que tiene algo por revisar.
+        if(!service.DishRows.Select(r=>r.Title+" ["+r.Station+"] "+r.State).SequenceEqual(["Merluza a la gallega × 2 [Cocina caliente] 1 de 2 listas","Carrillera al vino × 2 [Cocina caliente] 1 de 2 listas"])
+            ||service.SelectedDish?.Group.Name!="Merluza a la gallega"||!service.ReviewAnnounced||!service.PreparationActionsAnnounced||!service.ReviewCommand.CanExecute("adapt")
+            ||!service.ReviewLines.Select(l=>l.Text+(l.IsChecked?" [x]":"")).SequenceEqual(["Comensal 2 · ⚠ ALERGIA frutos secos (grave) [x]"]))
+            throw new Exception("Dishes are grouped and name their station from the configuration; the review is offered on the dish under review: "
+                +string.Join(" | ",service.DishRows.Select(r=>r.Title+" ["+r.Station+"] "+r.State))+" / "+string.Join(" | ",service.ReviewLines.Select(l=>l.Text)));
         var detailTexts=Texts(serviceView).ToArray();
-        foreach(var text in new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Comensal 3 · Intolerancia lactosa (leve)","Restricciones de los comensales","Cocina caliente · Comensal 2","⚠ PENDIENTE DE REVISIÓN","Esperando la revisión de cocina"})
-            if(!detailTexts.Contains(text)) throw new Exception("The panel paints '"+text+"' (restrictions whole and in words, station names, the pending review).");
+        foreach(var text in new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Comensal 3 · Intolerancia lactosa (leve)","Restricciones de los comensales","Merluza a la gallega × 2","Cocina caliente",
+                "Merluza a la gallega · Comensal 2 · ⚠ ALERGIA frutos secos (grave) · Por revisar en cocina","Carrillera al vino · Comensal 3 · ⚠ Intolerancia lactosa (leve)",
+                "⚠ 1 plato por revisar en cocina","Revisión de cocina · Merluza a la gallega × 2","Esperando la revisión de cocina"})
+            if(!detailTexts.Contains(text)) throw new Exception("The panel paints '"+text+"' (restrictions whole and in words, grouped dishes, station names, the pending review).");
         if(!detailTexts.Any(t=>t.StartsWith("SIN REVISAR POR COCINA: ",StringComparison.Ordinal))||detailTexts.Any(t=>t is "hot" or "cold"||t.StartsWith("hot ·",StringComparison.Ordinal))) throw new Exception("The pending review is said in words and stations are never coded.");
         if(service.RemoveRestrictionCommand.CanExecute(null)) throw new Exception("Removing a restriction needs one chosen.");
         var restrictionList=(ListBox)serviceView.FindName("RestrictionList"); restrictionList.SelectedIndex=0;
@@ -1033,7 +1046,7 @@ internal static class Program
         Pick("Mesa 3","s3");
         if(service.PrimaryAction!="serve"||service.PrimaryText!="Marcar servido · Entrantes"||!Named("PrimaryActionButton").IsEnabled||Actions()!="serve | pause")
             throw new Exception("A ready course puts 'Marcar servido' in the big button: "+service.PrimaryText+" / "+Actions());
-        if(!service.PreparationRows.Select(r=>r.Line).SequenceEqual(["Cocina fría · Toda la mesa","Cocina caliente · Toda la mesa"])) throw new Exception("Station names come from configuration.stations: "+string.Join(",",service.PreparationRows.Select(r=>r.Line)));
+        if(!service.DishRows.Select(r=>r.Title+" · "+r.Station).SequenceEqual(["Pulpo á feira · Cocina fría","Croquetas de la casa · Cocina caliente"])) throw new Exception("Station names come from configuration.stations: "+string.Join(",",service.DishRows.Select(r=>r.Title+" · "+r.Station)));
         var servePosts=server.Count("POST","");
         Press(Named("PrimaryActionButton"),"Marcar servido");
         Wait(()=>!window.Shell.Busy&&server.Count("POST","")>servePosts,"the big button sends the announced action");
@@ -1383,6 +1396,119 @@ internal static class Program
         Pick("Mesa 4","s4"); window.Shell.Status="";
         if(InFicha("HadBlock")||addConsumption.IsVisible) throw new Exception("Against a server without consumptions nor add-consumptions, the ficha is the C2 one.");
         ((ScrollViewer)detailScroll).ScrollToHome(); window.UpdateLayout();   // las capturas de C2 parten de la ficha desde arriba
+        // ===== E4e (plan 2026-10-26, seccion 9; plan 2026-10-15, seccion 4.5): alergias antes de enviar, en el Comedor =====
+        // Abrir con alergias es UNA orden open; la ficha agrupa los platos («Ostra × 4») con la linea de cada comensal debajo («Adaptado: …» o
+        // «Por revisar en cocina») y se revisa por plato agrupado en UNA orden review-preparations, tambien antes de enviar. Mientras el pase
+        // que va a salir espera, el boton grande dice «Esperando la revisión de cocina» e «Iniciar servicio» queda debajo. Tras cada orden, el
+        // motor simulado deja el tablero que dejaria el de verdad: la Mesa 2 abierta con su degustacion y sus platos por revisar.
+        Costina.Client.GuestRestrictionDto shellfish=new("r-marisco",3,"Allergy","marisco","Severe"),dairy=new("r-lactosa",2,"Intolerance","lactosa","Mild");
+        var decided=new Dictionary<string,Costina.Client.PreparationReviewDto>(StringComparer.Ordinal);
+        Costina.Client.BoardEntry Mesa2(long version)
+        {
+            Costina.Client.PreparationDto Dish(string dish,string name,string station,int guest)
+            {
+                var id="s2-"+dish+"-"+guest.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                Costina.Client.GuestRestrictionDto[] applies=guest switch{3=>[shellfish],2=>[dairy],_=>[]};
+                var pending=applies.Length>0&&!decided.ContainsKey(id);
+                return new(id,name,station,1,guest,true,"Pending",pending?["review-preparation"]:[],applies,pending,decided.GetValueOrDefault(id));
+            }
+            Costina.Client.CourseDto Pass(string id,string name,params (string Dish,string Name,string Station)[] dishes)
+            {
+                Costina.Client.PreparationDto[] preps=[..dishes.SelectMany(d=>Enumerable.Range(1,4).Select(g=>Dish(d.Dish,d.Name,d.Station,g)))];
+                return Course(id,name,"Pending",null,null,null,preps,["skip",..(preps.Any(p=>p.ReviewPending)?new[]{"review-preparations"}:[])]);
+            }
+            Costina.Client.CourseDto[] passes=[Pass("aperitivos","Aperitivos",("ostra","Ostra","cold"),("pan","Pan de la casa","pase")),
+                Pass("mar","Mar",("zamburina","Zamburiña a la plancha","hot")),Pass("postre","Postre",("filloas","Filloas","cold"))];
+            // Como el motor (ADR-016): fire-next solo si el pase que va a salir no tiene nada por revisar; start, con la mesa Sentados.
+            string[] actions=["start",..(passes[0].Preparations.Any(p=>p.ReviewPending)?Array.Empty<string>():["fire-next"]),"cancel-unstarted","declare-restriction","remove-restriction"];
+            return Seat("s2","M2",4,"Open","DEGUSTACION",passes,actions,[dairy,shellfish],passes.Any(c=>c.Preparations.Any(p=>p.ReviewPending))) with {Version=version};
+        }
+        int OpensPosted()=>server.Requests.Count(r=>r.Method=="POST"&&r.Path=="dining/services");
+        var e4eStart=server.Requests.Length;
+        // 1) Abrir la Mesa 2 con alergias: una fila por comensal, el comensal siempre elegido (nunca «Toda la mesa» por defecto).
+        Press(TileButton("Mesa 2"),"tile Mesa 2"); window.UpdateLayout();
+        if(!service.OpenForm||service.SelectedTable?.Id!="M2"||service.OpenAllergies.Count!=0) throw new Exception("A free table opens the form, with no allergy rows yet.");
+        service.Pax="4";
+        if(!service.GuestChoices.Select(g=>g.Label).SequenceEqual(["Comensal 1","Comensal 2","Comensal 3","Comensal 4","Toda la mesa"])) throw new Exception("The guests offered follow the people typed: "+string.Join(",",service.GuestChoices.Select(g=>g.Label)));
+        Press(Named("AddAllergyButton"),"Añadir alergia o intolerancia"); Press(Named("AddAllergyButton"),"Añadir otra alergia");
+        var allergyRows=service.OpenAllergies.ToArray();
+        if(allergyRows.Length!=2||allergyRows.Any(r=>r.Guest is not null||r.Kind!="allergy"||r.Severity!="severe")) throw new Exception("A new row has no guest chosen (never 'Toda la mesa' by default), Alergia and Grave.");
+        allergyRows[0].Substance="marisco"; allergyRows[1].Substance="lactosa";
+        var opensBefore=OpensPosted();
+        Press(Named("OpenTableButton"),"Abrir Mesa 2 sin elegir los comensales");
+        Wait(()=>!window.Shell.Busy,"the open form checks its rows");
+        if(OpensPosted()!=opensBefore||!window.Shell.Status.StartsWith("Elige para quién es cada alergia",StringComparison.Ordinal)) throw new Exception("An allergy without its guest never opens the table: "+window.Shell.Status);
+        window.Shell.Status="";
+        allergyRows[0].Guest="3"; allergyRows[1].Guest="2"; allergyRows[1].Kind="intolerance"; allergyRows[1].Severity="mild";
+        window.UpdateLayout();
+        var openTexts=Texts((FrameworkElement)serviceView.FindName("OpenPanel")).ToArray();
+        foreach(var text in new[]{"¿Alergias o intolerancias?","¿Para quién?","Comensal 3","Comensal 2","Alergia","Intolerancia","Grave","Leve","Añadir alergia o intolerancia","Abrir Mesa 2"})
+            if(!openTexts.Contains(text)) throw new Exception("The open form paints '"+text+"': "+string.Join(" | ",openTexts));
+        RefuseRaw(window,"comedor-abrir-alergias"); Save(Shot(window),"comedor-abrir-alergias.png");
+        server.OpenedServiceId="s2"; server.BoardAfterOpen=[..diningBoard,Mesa2(1)];
+        Press(Named("OpenTableButton"),"Abrir Mesa 2 con dos alergias");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Data.Id=="s2","the table is opened and its card is read");
+        var openPosts=server.Requests.Where(r=>r.Method=="POST"&&r.Path=="dining/services").ToArray();
+        if(openPosts.Length!=opensBefore+1||!openPosts[^1].Body.Contains("\"pax\":4",StringComparison.Ordinal)
+            ||!openPosts[^1].Body.Contains("\"restrictions\":[{\"guestPosition\":3,\"kind\":\"allergy\",\"substance\":\"marisco\",\"severity\":\"severe\"},{\"guestPosition\":2,\"kind\":\"intolerance\",\"substance\":\"lactosa\",\"severity\":\"mild\"}]",StringComparison.Ordinal))
+            throw new Exception("Opening with allergies is ONE open command carrying them: "+string.Join(" / ",openPosts.Select(o=>o.Body)));
+        if(service.OpenForm||service.OpenAllergies.Count!=0||window.Shell.Pending is not null) throw new Exception("Once confirmed, the form closes and its rows are gone.");
+        // 2) La ficha de la mesa recien abierta: el primer pase espera la revision de cocina; nada se envia hasta entonces.
+        if(service.PrimaryAction is not null||service.PrimaryText!="Esperando la revisión de cocina"||Named("PrimaryActionButton").IsEnabled||Actions()!=" | start,skip,cancel-unstarted!")
+            throw new Exception("While the first course waits for the kitchen the big button waits, and start stays below: "+service.PrimaryText+" / "+Actions());
+        if(!service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert).SequenceEqual(["Aperitivos: 2 platos ⚠ 4 platos por revisar en cocina","Mar: 1 plato ⚠ 2 platos por revisar en cocina","Postre: 1 plato ⚠ 2 platos por revisar en cocina"]))
+            throw new Exception("Each course counts its dishes and says what the kitchen has to review: "+string.Join(" | ",service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert)));
+        if(service.SelectedCourse?.Id!="aperitivos"||!service.DishRows.Select(r=>r.Title+": "+string.Join(" / ",r.Lines.Select(l=>l.Text+(l.Alarm?" [rojo]":"")))).SequenceEqual([
+                "Ostra × 4: Ostra · Comensal 2 · ⚠ Intolerancia lactosa (leve) · Por revisar en cocina [rojo] / Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Por revisar en cocina [rojo]",
+                "Pan de la casa × 4: Pan de la casa · Comensal 2 · ⚠ Intolerancia lactosa (leve) · Por revisar en cocina [rojo] / Pan de la casa · Comensal 3 · ⚠ ALERGIA marisco (grave) · Por revisar en cocina [rojo]"]))
+            throw new Exception("Dishes are grouped and each guest line is written below them: "+string.Join(" | ",service.DishRows.Select(r=>r.Title+": "+string.Join(" / ",r.Lines.Select(l=>l.Text)))));
+        if(service.SelectedDish?.Title!="Ostra × 4"||!service.ReviewAnnounced||service.PreparationActionsAnnounced||service.ReviewLines.Length!=2||!service.ReviewLines.All(l=>l.IsChecked))
+            throw new Exception("The review is offered on the dish under review, every guest line checked; nothing is announced to cook yet.");
+        // 3) Adaptar solo el comensal 3: se desmarca el 2. UNA orden review-preparations con la version leida.
+        service.ReviewLines[0].IsChecked=false; service.ReviewNote="vieira en lugar de ostra";
+        decided["s2-ostra-3"]=new("Adapt","vieira en lugar de ostra",c2Now); server.Board=[..diningBoard,Mesa2(2)];
+        var reviewsBefore=server.Count("POST","dining/services/s2/commands/review-preparations");
+        Press(Named("ReviewAdaptButton"),"Adaptado (comensal 3)");
+        Wait(()=>!window.Shell.Busy&&server.Count("POST","dining/services/s2/commands/review-preparations")==reviewsBefore+1&&service.Dining?.Version==2,"the adaptation is sent and the table read again");
+        if(server.Requests.Last(r=>r.Method=="POST").Body!="{\"expectedVersion\":1,\"items\":[{\"courseId\":\"aperitivos\",\"itemId\":\"s2-ostra-3\",\"decision\":\"adapt\",\"note\":\"vieira en lugar de ostra\"}]}")
+            throw new Exception("Only the checked line, with its decision and note, in ONE command: "+server.Requests.Last(r=>r.Method=="POST").Body);
+        if(service.SelectedDish?.Title!="Ostra × 4"||service.ReviewLines.Length!=1||!service.ReviewLines[0].IsChecked||service.ReviewNote.Length!=0) throw new Exception("After the review what is left comes back checked and the note is empty.");
+        // 4) «No le afecta» al comensal 2 y, en el pan, a los dos de una vez (una orden con dos decisiones).
+        service.ReviewNote="no lleva lactosa"; decided["s2-ostra-2"]=new("Unaffected","no lleva lactosa",c2Now); server.Board=[..diningBoard,Mesa2(3)];
+        Press(Named("ReviewUnaffectedButton"),"No le afecta (comensal 2)");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Version==3,"the second review is read");
+        service.SelectedDish=service.DishRows.Single(d=>d.Group.Name=="Pan de la casa");
+        if(service.ReviewLines.Length!=2) throw new Exception("The bread has two guests to review.");
+        service.ReviewNote="no lleva marisco ni lactosa"; decided["s2-pan-2"]=new("Unaffected","no lleva marisco ni lactosa",c2Now); decided["s2-pan-3"]=decided["s2-pan-2"];
+        server.Board=[..diningBoard,Mesa2(4)];
+        Press(Named("ReviewUnaffectedButton"),"No le afecta (pan, dos comensales)");
+        Wait(()=>!window.Shell.Busy&&service.Dining?.Version==4,"the bread review is read");
+        if(server.Count("POST","dining/services/s2/commands/review-preparations")!=reviewsBefore+3
+            ||server.Requests.Last(r=>r.Method=="POST").Body!="{\"expectedVersion\":3,\"items\":[{\"courseId\":\"aperitivos\",\"itemId\":\"s2-pan-2\",\"decision\":\"unaffected\",\"note\":\"no lleva marisco ni lactosa\"},{\"courseId\":\"aperitivos\",\"itemId\":\"s2-pan-3\",\"decision\":\"unaffected\",\"note\":\"no lleva marisco ni lactosa\"}]}")
+            throw new Exception("A grouped dish is reviewed in ONE command with a decision per guest: "+server.Requests.Last(r=>r.Method=="POST").Body);
+        // 5) Revisado el primer pase, el servidor anuncia enviarlo: es el boton grande. Lo de despues sigue por revisar, escrito.
+        service.SelectedDish=service.DishRows.Single(d=>d.Group.Name=="Ostra"); window.UpdateLayout();
+        if(service.PrimaryAction!="fire-next"||service.PrimaryText!="Enviar siguiente pase a cocina · Aperitivos"||!Named("PrimaryActionButton").IsEnabled||service.ReviewAnnounced
+            ||Actions()!="fire-next | start,skip,cancel-unstarted!")
+            throw new Exception("Once the first course is reviewed, sending it is the big button: "+service.PrimaryText+" / "+Actions());
+        if(!service.DishRows[0].Lines.Select(l=>l.Text+(l.Alarm?" [rojo]":"")).SequenceEqual(["Ostra · Comensal 2 · ⚠ Intolerancia lactosa (leve) · No le afecta: no lleva lactosa","Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra [rojo]"])
+            ||!service.CourseRows.Select(r=>r.Alert).SequenceEqual(["","⚠ 2 platos por revisar en cocina","⚠ 2 platos por revisar en cocina"]))
+            throw new Exception("The adapted line keeps the dish name and says what the kitchen wrote: "+string.Join(" | ",service.DishRows[0].Lines.Select(l=>l.Text)));
+        var e4eTexts=Texts(serviceView).ToArray();
+        foreach(var text in new[]{"Ostra × 4","Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra","⚠ 2 platos por revisar en cocina","Enviar siguiente pase a cocina · Aperitivos"})
+            if(!e4eTexts.Contains(text)) throw new Exception("The card paints '"+text+"'.");
+        if(server.Requests.Skip(e4eStart).Any(r=>r.Path.StartsWith("checkout/",StringComparison.Ordinal))) throw new Exception("Nothing of this reads the till.");
+        // La captura, con los platos del primer pase a la vista (la ficha se desplaza hasta ellos) y sin el aviso de arriba.
+        window.Shell.Status=""; window.UpdateLayout();
+        var comedorDishes=(FrameworkElement)serviceView.FindName("DishList"); var e4eScroll=(ScrollViewer)detailScroll;
+        e4eScroll.ScrollToVerticalOffset(e4eScroll.VerticalOffset+comedorDishes.TranslatePoint(new Point(0,0),e4eScroll).Y-30); window.UpdateLayout();
+        var dishTop=comedorDishes.TranslatePoint(new Point(0,0),e4eScroll).Y; var dishBottom=comedorDishes.TranslatePoint(new Point(0,comedorDishes.ActualHeight),e4eScroll).Y;
+        if(dishTop<-0.5||(window.ActualWidth>=1270&&dishBottom>e4eScroll.ActualHeight+0.5)) throw new Exception("The grouped dishes fit in the card at 1.280 x 860: "+dishTop+".."+dishBottom+" of "+e4eScroll.ActualHeight);
+        RefuseRaw(window,"comedor-linea-adaptada"); Save(Shot(window),"comedor-linea-adaptada.png");
+        // De vuelta al estado de C2 para lo que sigue: la Mesa 2 libre y la Mesa 4 elegida.
+        server.Board=diningBoard; server.BoardAfterOpen=null; window.Shell.Status="";
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the C2 plan again");
+        Pick("Mesa 4","s4"); ((ScrollViewer)detailScroll).ScrollToHome(); window.UpdateLayout();
         // ===== C2 (plan 2026-10-14): Inicio como panel (Main.dc.html) =====
         // Las cifras y el mini plano salen de las MISMAS tarjetas del Comedor (sin lecturas propias); los dispositivos con su conexion y la
         // conexion sencilla, del servidor simulado; sus botones abren el asistente de Dispositivos; una mesa del mini plano y "Abrir mesa"
@@ -2995,7 +3121,8 @@ internal static class Program
             window.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ContextIdle); window.UpdateLayout();
             // C1: ningun estado, tipo o actor crudo del servidor en el texto pintado de la vista. C2: las estaciones, por su nombre.
             RefuseRaw(window,tab);
-            if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Anaphylaxis (Critical)","Cocina caliente · Comensal 2","Mesa 4"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
+            if(tab=="ServiceTab"&&new[]{"Comensal 2 · ALERGIA frutos secos (grave)","Alergia · por revisar","Anaphylaxis (Critical)","Cocina caliente","Mesa 4",
+                "Merluza a la gallega · Comensal 2 · ⚠ ALERGIA frutos secos (grave) · Por revisar en cocina"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missing)
                 throw new Exception("Comedor paints the allergy in words on the panel and on the tile, and the station by its name: missing '"+missing+"'.");
             // C2b: Caja pinta la Mesa 4 leida (la de "Ver cuenta"), sus cifras y las demas tarjetas con su cobertura en palabras.
             if(tab=="CheckoutTab"&&new[]{"Mesa 4","Pago parcial","51,00 €","Pendiente 161,00 €","Pagado de más","Pagada","Registrar pago de prueba"}.FirstOrDefault(t=>!Texts(window).Contains(t)) is {} missingCaja)
@@ -3137,7 +3264,7 @@ internal static class Program
     // C1: valores crudos del servidor que nunca deben verse (estados en ingles, tipos de oferta, actores con prefijo). Como palabra
     // suelta: dentro de un codigo con guiones (el producto «menu-lab-tasting») no es un estado.
     // Revision C1: tambien tipos de estacion, servicios de oferta y codigos de accion (una orden pendiente se describe en castellano).
-    private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte|Kitchen|Pass|Room|lunch|dinner|fire-next|cancel-unstarted|add-dish|preparation-start|preparation-ready|review-preparation)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
+    private static readonly Regex RawValue=new(@"(?<![\w-])(Open|InService|Paused|Completed|Cancelled|Pending|Fired|Preparing|Ready|Served|Skipped|Occupied|Released|Closed|Unpaid|PartiallyPaid|Paid|Credit|Allergy|Intolerance|Preference|Severe|Moderate|Mild|Unaffected|Adapt|Remake|tasting|set-menu|a-la-carte|Kitchen|Pass|Room|lunch|dinner|fire-next|cancel-unstarted|add-dish|preparation-start|preparation-ready|review-preparation|preparations-start|preparations-ready|review-preparations|allergy|intolerance|preference|severe|mild)(?![\w-])|\b(user|device):",RegexOptions.CultureInvariant);
     private static void RefuseRaw(Window window,string what)
     {
         var leaked=Texts(window).Where(t=>RawValue.IsMatch(t)).ToArray();
@@ -3386,6 +3513,13 @@ internal static class Program
                 return Json(200,"{\"revoked\":true}");
             }
             var command=JsonSerializer.Deserialize<JsonElement>(body);
+            // E4e: abrir mesa (con sus alergias en la misma orden) como el motor: responde el servicio nuevo y el tablero pasa a ser BoardAfterOpen
+            // (la mesa abierta con sus platos por revisar, como los marcaria el motor). Sin BoardAfterOpen, el tablero no cambia.
+            if(path=="dining/services")
+            {
+                if(BoardAfterOpen is {} opened) Board=opened;
+                var created=Json(200,"{\"serviceId\":\""+OpenedServiceId+"\",\"version\":1,\"occupancyVersion\":1}"); created.Headers.Add("Idempotency-Key",key); return created;
+            }
             // C3b: la ronda (add-consumptions) como el motor: idempotente por clave (la misma clave devuelve lo guardado sin cobrar otra vez),
             // exige la version leida de la mesa (si no, 409 version_conflict con el eco de la clave: rechazo definitivo) y no la mueve; cada
             // linea entra en lo que lleva la mesa (nombre y formato del catalogo, sin el formato por defecto, comensal, hora). LoseNextRound
@@ -3476,6 +3610,9 @@ internal static class Program
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
         public HashSet<string> TablesInUse { get; }=[];
+        // E4e: lo que responde abrir mesa (POST dining/services) y el tablero que queda despues.
+        public string OpenedServiceId { get; set; }="s-nueva";
+        public Costina.Client.BoardEntry[]? BoardAfterOpen { get; set; }
         // C3b: el catalogo operativo (GET /catalog, sin precios), las rondas aplicadas por clave y la hora con que se anotan.
         public Costina.Client.CatalogItem[] Sellables { get; set; }=[];
         public System.Collections.Concurrent.ConcurrentDictionary<string,string> Rounds { get; }=new();

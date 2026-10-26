@@ -59,6 +59,10 @@ public static class FloorPlan
         : InKitchen(course) ? "kitchen"
         : Same(course.State, "Pending") ? "pending" : "other";
     public static int Done(DiningDto? service) => service is null ? 0 : service.Courses.Count(c => Step(c) == "done");
+    // E4e (ADR-016): el pase que importa ahora (el primero sin servir ni omitir: el que esta en cocina o, si no hay, el que va a salir)
+    // tiene platos por revisar (reviewPending, lo marca el servidor). Solo rotula el boton grande; el servidor ya no anuncia enviarlo.
+    public static bool WaitsForReview(DiningDto? service) =>
+        service?.Courses.FirstOrDefault(c => Step(c) != "done")?.Preparations.Any(p => p.ReviewPending) == true;
 
     // Aviso de restricciones de una mesa (siempre con texto): la palabra nombra lo mas alarmante y "· por revisar" se anade mientras
     // cocina no haya revisado un cambio. Alarming dice si va en rojo (alergia, grave, desconocido o por revisar).
@@ -98,17 +102,20 @@ public static class FloorPlan
 
     // Linea de detalle de un pase en la ficha: cuando se sirvio, desde cuando esta en cocina y cuanto lleva hecho, quien falta por
     // elegir... Sin el numero de personas no se sabe cuantos faltan por elegir.
+    // E4e (plan 2026-10-15, seccion 4.5): cuenta PLATOS, no lineas por comensal: «3 de 5 platos listos» (DishGroups: mismo nombre en la
+    // misma estacion; un plato esta listo cuando lo estan todas sus elaboraciones). Un menu de 8 personas y 3 platos son 3 platos, no 24.
     public static string CourseDetail(CourseDto course, int pax)
     {
         var preparations = course.Preparations;
         if (Same(course.State, "Served")) return course.ServedAt is { } served ? "Servido a las " + Labels.Clock(served) : "";
         if (Same(course.State, "Skipped")) return course.SkipReason is { Length: > 0 } reason ? "Motivo: " + reason : "";
         if (Same(course.State, "Ready")) return course.ReadyAt is { } ready ? "Listo desde las " + Labels.Clock(ready) : "";
+        var dishes = DishGroups.Of(course);
         if (InKitchen(course))
         {
             var since = course.FiredAt is { } fired ? "En cocina desde las " + Labels.Clock(fired) : "En cocina";
-            return preparations.Length == 0 ? since
-                : $"{since} · {preparations.Count(p => Same(p.State, "Ready")).ToString(CultureInfo.InvariantCulture)} de {Labels.Plural(preparations.Length, "elaboración lista", "elaboraciones listas")}";
+            return dishes.Length == 0 ? since
+                : $"{since} · {dishes.Count(d => d.AllReady).ToString(CultureInfo.InvariantCulture)} de {Labels.Plural(dishes.Length, "plato listo", "platos listos")}";
         }
         if (!Same(course.State, "Pending")) return "";
         if (course.Optional) return preparations.Length == 0 ? "Se piden platos de la carta" : Labels.Plural(preparations.Length, "plato pedido", "platos pedidos");
@@ -117,7 +124,7 @@ public static class FloorPlan
             var chosen = preparations.Where(p => p.GuestPosition is not null).Select(p => p.GuestPosition).Distinct().Count();
             return $"Han elegido {chosen.ToString(CultureInfo.InvariantCulture)} de {Labels.Plural(pax, "persona", "personas")}";
         }
-        return Labels.Plural(preparations.Length, "elaboración", "elaboraciones");
+        return Labels.Plural(dishes.Length, "plato", "platos");
     }
 
     private static bool KnownKind(string kind) => Same(kind, "Allergy") || Same(kind, "Intolerance") || Same(kind, "Preference");

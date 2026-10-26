@@ -47,6 +47,9 @@ public static class Labels
     private static readonly Vocabulary Severities = new(("Severe", "grave"), ("Moderate", "moderada"), ("Mild", "leve"));
     // Decision de cocina tras un cambio de restricciones (D3.5): la lectura (Unaffected...) y la orden (unaffected...) dan lo mismo.
     private static readonly Vocabulary Reviews = new(("Unaffected", "no afecta"), ("Adapt", "adaptada"), ("Remake", "rehecha"));
+    // E4e (plan 2026-10-15, seccion 3): lo que ve la sala, y el puesto, de la decision de cocina sobre el plato de un comensal: la
+    // decision delante del texto de cocina («Adaptado: tosta de maiz en vez de pan»). El nombre del plato no cambia.
+    private static readonly Vocabulary ReviewOutcomes = new(("Unaffected", "No le afecta"), ("Adapt", "Adaptado"), ("Remake", "Rehecho"));
     // C2: estado de una mesa en el plano del comedor (codigos de FloorPlan.State). Solo presentacion: nunca habilita nada.
     private static readonly Vocabulary TableStates = new(("free", "Libre"), ("seated", "Sentados"), ("kitchen", "En cocina"),
         ("ready", "Listo para servir"), ("eating", "Comiendo"), ("paused", "En pausa"), ("finished", "Terminado, por liberar"),
@@ -59,6 +62,8 @@ public static class Labels
         ("pause", "Pausar servicio"), ("resume", "Reanudar servicio"), ("complete", "Terminar servicio"), ("cancel-unstarted", "Cancelar mesa sin empezar"),
         ("skip", "Omitir pase"), ("ready", "Validar pase listo"), ("choose", "Elegir plato"), ("add-dish", "Pedir plato"),
         ("preparation-start", "Empezar elaboración"), ("preparation-ready", "Marcar elaboración lista"), ("review-preparation", "Revisar elaboración"),
+        // E4e: las ordenes de grupo (una orden para un plato agrupado, o para el menu de un comensal).
+        ("preparations-start", "Empezar plato"), ("preparations-ready", "Marcar plato listo"), ("review-preparations", "Revisar platos"),
         ("declare-restriction", "Declarar restricción"), ("remove-restriction", "Retirar restricción"), ("release", "Liberar mesa"),
         ("add-product", "Añadir consumo"), ("add-consumption", "Añadir consumo"), ("payment", "Registrar pago"), ("void-charge", "Anular cargo"),
         ("refund", "Devolver lo pagado de más"), ("close", "Cerrar cuenta"), ("reopen", "Reabrir cuenta"));
@@ -156,7 +161,11 @@ public static class Labels
         ("preparation_not_found", "Esa elaboración ya no existe."),
         ("preparation_not_fired", "Esa elaboración no está por empezar."),
         ("nothing_to_review", "Esa elaboración no tiene revisión pendiente."),
-        ("restrictions_unreviewed", "Cocina aún no ha revisado el cambio de restricciones."),
+        // E4e (ADR-016): «Rehacer» solo vale para lo enviado; un tipo o una gravedad que el servidor no conoce no abre la mesa.
+        ("nothing_to_remake", "Ese plato aún no ha salido a cocina: no hay nada que rehacer. Decide «No le afecta» o «Adaptado»."),
+        ("invalid_restriction", "Una alergia o intolerancia lleva un tipo o una gravedad que el servidor no conoce. No se ha abierto la mesa."),
+        // E4e (ADR-016): el pase que va a salir (o el que esta en cocina) tiene platos por revisar.
+        ("restrictions_unreviewed", "Cocina aún no ha revisado los platos de este pase afectados por una restricción: el pase espera."),
         ("restrictions_unacknowledged", "Cocina aún no ha revisado el cambio de restricciones."),
         ("restriction_not_found", "Esa restricción ya no existe."),
         ("account_closed", "La cuenta está cerrada: reábrela con motivo para cambiarla."),
@@ -197,6 +206,11 @@ public static class Labels
     public static string RestrictionKind(string kind) => RestrictionKinds[kind];
     public static string Severity(string severity) => Severities[severity];
     public static string Review(string decision) => Reviews[decision];
+    // E4e: «Por revisar en cocina» mientras cocina no decide; despues, «Adaptado: <texto de cocina>» (o «No le afecta: …», «Rehecho: …»).
+    // Una decision que no se conoce sale tal cual, con su nota. Sin restriccion ni decision, nada. Tabla comun: vocabulary-cases.json.
+    public const string ReviewPendingText = "Por revisar en cocina";
+    public static string ReviewOutcome(PreparationDto preparation) => preparation.ReviewPending ? ReviewPendingText
+        : preparation.Review is { } review ? ReviewOutcomes[review.Decision] + ": " + review.Note : "";
     public static string TableState(string state) => TableStates[state];
     public static string Realtime(string state) => RealtimeStates[state];
     // C2: hora local del puesto (el servidor sella en UTC) y minutos transcurridos ("12 min", "1 h 05 min"; nunca negativos si el
