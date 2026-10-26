@@ -12,8 +12,19 @@ Leer antes, en este orden:
 
 ## Estado
 
-- **`develop` = `9e6befe`** (Merge PR #92: el traspaso del 22-10 al día). Versión **`0.43.0-c3c`**, esquema v8.
-- **Rama `feat/e4e-alergias-antes-de-enviar`**, sacada de `9e6befe`, con E4e completo en local. Versión **`0.44.0-e4e`**, esquema v8. Commits:
+- **`develop` = `d7edb40`**: Merge PR #93, E4e mezclada el 26-10. Versión **`0.44.0-e4e`**, esquema v8, **sin vuelta atrás**.
+- **CI leída en la PR #93** (segunda vuelta, `8c90aae`):
+  - dominio 97 en Linux y en Windows, e instantáneas 88;
+  - vitest 401 y ClientChecks 277;
+  - las 15 suites HTTP, Playwright 30 y Realtime 13;
+  - servicio 12/12, escritorio en verde e **instalador 8/8**, con la comprobación nueva «an installer older than the engine that served the data stops without touching it».
+- **Fallo antiguo destapado y arreglado antes de mezclar** (`8c90aae`):
+  - NSIS pone siempre `COSTINA_TENANT/COMPANY/LOCATION` (sus valores por defecto, `costina/restaurante/local-1`, si no se le pasan), y una variable de entorno gana a `server.json`;
+  - en una actualización sin `/TENANT`, `backup` y `upgrade` trabajaban con ese ámbito y no con el de la instalación;
+  - ahora `setup-server` quita esas variables a los pasos de una **actualización**; en una instalación nueva no cambia nada;
+  - además, la comprobación del instalador recupera siempre el servicio en el `finally`.
+- **Instalador de `develop`** tras el merge: run `40309110007`, artefacto `costina-windows-installer` (`Costina-Setup-0.44.0-e4e.exe`), 8/8. Caduca el 31-10.
+- **Commits de E4e** (rama `feat/e4e-alergias-antes-de-enviar`, sacada de `9e6befe`):
   - `7676bc0` docs(plans): el plan de E4e, aprobado;
   - `da5bb0d` docs(adr): ADR-016;
   - `4af115e` feat(dining): la revisión antes de enviar, abrir con alergias y `fire-next` desde «Sentados»;
@@ -24,7 +35,7 @@ Leer antes, en este orden:
   - `4eeefb3` docs(native): el documento, AGENTS, STATUS, los planes entregados y la versión `0.44.0-e4e`;
   - el commit de este traspaso;
   - la revisión antes de subir, `fix(e4e)`: la excepción del pase mira el rol (`Affordances.PassMarksAll`; `station_http` test_09), la fila del pase en el PC cuenta platos agrupados, con restricciones distintas ninguna línea sale marcada (`DishGroups.SameRestrictions`) y las notas del pase toman su `id` de su posición.
-- **Permiso de subida y mezcla: dado el 26-10** («sube y mezcla»), para cuando la CI esté en verde. Este traspaso se escribe antes de subir: mira `git log origin/develop` para saber si ya está mezclada, con qué PR y qué dijo la CI.
+- **Subida y mezclada el 26-10**, con el permiso «sube y mezcla». **Para C3d hay que volver a pedirlo.**
 - **Las respuestas del promotor** que fija E4e:
   1. cocina decide cada plato de un comensal con alergia o intolerancia **antes** de que salga el pase, también las intolerancias leves y las preferencias (15-10, confirmado el 22-10);
   2. el pase puede marcar «Listo» por una estación con la tablet estropeada (22-10, pregunta 2).
@@ -111,5 +122,5 @@ Soy Santi, promotor de Costiña / Hospitality OS (repo público Rivadesa/Costi-a
 Antes de nada, `git fetch` y el último docs/handoff, porque otra sesión puede haber avanzado. Lee primero, en este orden: docs/handoff/2026-10-26-e4e-alergias-antes-de-enviar.md (punto de entrada), docs/native/E4e-alergias-antes-de-enviar.md, docs/ADR/ADR-016-revision-de-alergias-antes-de-enviar.md, docs/plans/2026-10-22-sala-y-cocina.md (APROBADO el 22-10; 4.3 es C3d y 4.4 C3e, con sus secciones 5 a 10 y la Revisión) y dotnet/AGENTS.md (sobre todo E4e, C3c, D6.4, D3.5 y D4.1–D4.3b).
 Reglas: un corte por PR desde `develop`; propón el alcance (plan) antes de codificar; me pides confirmación para push+PR y, aparte, para el merge (puedo darla por adelantado para un corte concreto); merge commit "Merge PR #N: ..." hecho en local y push; antes de cada push que toque dotnet/ o frontend/ corre `npm run build` y `COSTINA_E2E=1 sh tools/agent/local-tests.sh` entero, y `sh tools/agent/local-tests.sh desktop` (en un PC con una instalación real de Costina: puerto 5090, nunca como administrador, sin tocar sus servicios, puertos 5088/5089 ni carpetas, y nunca su instalador real); una sola batería a la vez; los tests de CI se LEEN en los logs; GitHub sin gh CLI (tools/agent/gh.sh, cuerpos JSON en fichero UTF-8, tools/agent/wait-ci.sh); cada corte trae doc en docs/native/ con capturas, párrafo en dotnet/AGENTS.md, docs/STATUS.md y versión en csproj Server/Desktop y frontend/pwa/package.json (+lock); commits convencionales sin acentos con la línea Co-Authored-By que indique la sesión; nunca cierres #26/#27/#28 ni toques #25; pantallas cuidadas con el tema Fluent de C1 y barra de menús clásica, y el sistema MÁS INTUITIVO; habrá Android y también iPhone y iPad: los dos caminos tienen que funcionar; seguridad alimentaria primero: ningún plato afectado por una alergia llega al comensal sin una decisión de cocina registrada; nunca metas credenciales en ninguna web; la importación en mi instalación la hago yo.
 Háblame siempre en castellano.
-Estado: E4e (alergias antes de enviar, órdenes de grupo, el pase que marca por una estación, quién abrió la mesa y las guardas contra bajar de versión; 0.44.0-e4e, esquema v8, SIN vuelta atrás) hecha en la rama feat/e4e-alergias-antes-de-enviar desde develop 9e6befe, con mi permiso «sube y mezcla» para subirla y mezclarla con la CI en verde; mira en git si ya está mezclada. Siguiente: C3d (Costiña Cocina con comandas por mesa, sección 4.3 del plan del 22-10): confírmame antes la maqueta, propón los pasos y pídeme permiso para subir y mezclar. Tengo pendiente el guion manual de E4e en un laboratorio, el guion físico de C3c con un Android, un iPhone y un iPad, las once decisiones de E4e y las doce de C3c, y los varios tamaños de copa («Copa 15 cl») de C3b.
+Estado: E4e (alergias antes de enviar, órdenes de grupo, el pase que marca por una estación, quién abrió la mesa y las guardas contra bajar de versión; 0.44.0-e4e, esquema v8, SIN vuelta atrás) mezclada en develop (d7edb40, PR #93). Siguiente: C3d (Costiña Cocina con comandas por mesa, sección 4.3 del plan del 22-10): confírmame antes la maqueta, propón los pasos y pídeme permiso para subir y mezclar. Tengo pendiente el guion manual de E4e en un laboratorio, el guion físico de C3c con un Android, un iPhone y un iPad, las once decisiones de E4e y las doce de C3c, y los varios tamaños de copa («Copa 15 cl») de C3b.
 ```
