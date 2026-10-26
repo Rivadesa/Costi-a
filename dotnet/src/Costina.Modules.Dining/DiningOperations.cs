@@ -89,15 +89,16 @@ public static class DiningOperations
     // validar o revisar un pase exige la estacion 'pase'. Un usuario con sesion (Station null)
     // no tiene restriccion: el chef en el PC decide. La estacion nunca amplia el rol, solo acota.
     // E4e (ADR-016), SIN HUECOS: las ordenes de grupo se comprueban elaboracion a elaboracion (una ajena rechaza el grupo entero, sin
-    // aplicar nada) y review-preparations es del pase, como review-preparation. Cambia D4.3a SOLO para el pase: marca (preparation(s)-
-    // start|ready) por cualquier estacion, por ejemplo la de una tablet estropeada. Su espejo es Affordances.StationKeeps/PassKeeps.
-    private static void StationAllowed(ExecutionIdentity identity,DiningService entity,string action,DiningCommand request)
+    // aplicar nada) y review-preparations es del pase, como review-preparation. Cambia D4.3a SOLO para el pase de COCINA: marca
+    // (preparation(s)-start|ready) por cualquier estacion, por ejemplo la de una tablet estropeada. Un comandero de sala que quedo en
+    // 'pase' antes de A2 sigue marcando solo lo de 'pase' (Affordances.PassMarksAll mira el rol). Su espejo es StationKeeps/PassKeeps.
+    private static void StationAllowed(ExecutionIdentity identity,string role,DiningService entity,string action,DiningCommand request)
     {
         if(identity.Station is null) return;
         var pass=string.Equals(identity.Station,Affordances.PassStation,StringComparison.Ordinal);
         if(action is "preparation-start" or "preparation-ready" or "preparations-start" or "preparations-ready")
         {
-            if(pass) return;
+            if(Affordances.PassMarksAll(role,identity.Station)) return;
             var preparations=entity.View().Courses.FirstOrDefault(c=>c.Id==request.CourseId)?.Preparations ?? [];
             var items=action.StartsWith("preparations-",StringComparison.Ordinal) ? (IEnumerable<string?>)(request.ItemIds ?? []) : [request.ItemId];
             // Una elaboracion que no existe no tiene estacion: la rechaza el dominio (preparation_not_found), sin aplicar nada.
@@ -121,10 +122,11 @@ public static class DiningOperations
             : items.Count>MaxGroupReviews ? throw new RuleViolation("too_many_items",$"At most {MaxGroupReviews} reviews per command; send the rest in another.")
             : items.Select(i => i is null ? throw new ArgumentException("A review cannot be null.")
                 : new PreparationDecision(Required(i.CourseId),Required(i.ItemId),ParseEnum<ReviewDecision>(i.Decision),Required(i.Note))).ToArray();
-    public static async Task<object> Dining(Unit unit,ExecutionIdentity identity,string id,string action,DiningCommand request)
+    // E4e (revision): role = el rol de la credencial (Requests.Role), que la matriz de estacion necesita para la excepcion del pase.
+    public static async Task<object> Dining(Unit unit,ExecutionIdentity identity,string role,string id,string action,DiningCommand request)
     {
         var stored = await unit.Dining(id); Version(stored.Version,request.ExpectedVersion);
-        StationAllowed(identity,stored.Entity,action,request);
+        StationAllowed(identity,role,stored.Entity,action,request);
         var entity=stored.Entity; var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         switch(action)
         {

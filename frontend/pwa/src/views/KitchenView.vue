@@ -62,6 +62,8 @@ const guestTable = (guest: PresendGuest) => names.value.table(guest.entry.servic
 const guestId = (guest: PresendGuest) => `${guest.entry.service.tableId}-${guest.guestPosition ?? 'all'}`
 const itemId = (guest: PresendGuest, item: PresendItem) => `${guest.entry.service.tableId}-${item.course.id}-${item.preparation.id}`
 const itemKey = (guest: PresendGuest, item: PresendItem) => `antes:${guest.entry.service.id}:${item.course.id}:${item.preparation.id}`
+// E4e (revision): el id de cada campo de nota (y su etiqueta) sale de su POSICION en la lista, unico por construccion. El id de una
+// elaboracion (<plato>-<comensal>) se repite entre mesas con la misma oferta: con el, la etiqueta de una mesa llevaba a la nota de otra.
 const rest = computed(() => new Map(presend.value.map(guest => [guest.key, restOfGuest(guest)])))
 const restNotes = reactive<Record<string, string>>({})
 function presendReview(guest: PresendGuest, item: PresendItem, decision: string, label: string): void {
@@ -93,16 +95,16 @@ function nothingElse(guest: PresendGuest): void {
     <section v-if="presend.length > 0" class="presend" aria-labelledby="presend-title" data-testid="presend">
       <h2 id="presend-title"><Icon name="alert" :size="22" :stroke="2.2" />Por revisar antes de enviar</h2>
       <p class="presend-help">Decide cada plato de estos comensales antes de que salga su pase: hasta entonces, ese pase espera.</p>
-      <article v-for="guest in presend" :key="guest.key" class="presend-guest" :data-testid="`presend-${guestId(guest)}`">
+      <article v-for="(guest, g) in presend" :key="guest.key" class="presend-guest" :data-testid="`presend-${guestId(guest)}`">
         <h3>{{ guestTable(guest) }} · {{ guestLabel(guest.guestPosition) }}</h3>
         <p v-for="restriction in guest.restrictions" :key="restriction.id" class="line-alert" :class="{ alarm: restrictionAlarming(restriction) }">
           <Icon name="alert" :size="16" :stroke="2.2" />{{ restrictionLabel(restriction) }}</p>
         <ul>
-          <li v-for="item in guest.items" :key="item.preparation.id" class="review presend-item" :data-testid="`presend-item-${itemId(guest, item)}`">
+          <li v-for="(item, i) in guest.items" :key="itemKey(guest, item)" class="review presend-item" :data-testid="`presend-item-${itemId(guest, item)}`">
             <p class="prep-title"><strong>{{ item.preparation.name }}</strong><template v-if="item.preparation.quantity > 1"> × {{ item.preparation.quantity }}</template>
               · {{ item.course.name }} · {{ names.station(item.preparation.stationId) }}</p>
-            <label class="lbl" :for="`presend-note-${item.preparation.id}`">Nota (obligatoria): no lo lleva, o el plato adaptado</label>
-            <input :id="`presend-note-${item.preparation.id}`" v-model="notes[itemKey(guest, item)]" :name="`presend-note-${item.preparation.id}`" maxlength="200" autocomplete="off" :disabled="locked" />
+            <label class="lbl" :for="`presend-note-${g}-${i}`">Nota (obligatoria): no lo lleva, o el plato adaptado</label>
+            <input :id="`presend-note-${g}-${i}`" v-model="notes[itemKey(guest, item)]" :name="`presend-note-${g}-${i}`" maxlength="200" autocomplete="off" :disabled="locked" />
             <div class="row two">
               <button v-for="option in PRESEND_DECISIONS" :key="option.decision" type="button" class="btn kbtn" :class="{ 'btn-primary': option.decision === 'adapt' }"
                 :disabled="locked || !reviewNoteOk(notes[itemKey(guest, item)] ?? '')" :data-testid="`do-presend-${option.decision}-${itemId(guest, item)}`"
@@ -111,8 +113,8 @@ function nothingElse(guest: PresendGuest): void {
           </li>
         </ul>
         <div v-if="guest.items.length > 1 && (rest.get(guest.key)?.length ?? 0) > 0" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
-          <label class="lbl" :for="`presend-rest-note-${guest.key}`">Nota para todo lo que queda (obligatoria)</label>
-          <input :id="`presend-rest-note-${guest.key}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${guestId(guest)}`" maxlength="200" autocomplete="off" :disabled="locked" />
+          <label class="lbl" :for="`presend-rest-note-${g}`">Nota para todo lo que queda (obligatoria)</label>
+          <input :id="`presend-rest-note-${g}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${g}`" maxlength="200" autocomplete="off" :disabled="locked" />
           <button type="button" class="btn kbtn wide" :disabled="locked || !reviewNoteOk(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
             @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />No le afecta a nada más · {{ plural(rest.get(guest.key)?.length ?? 0, 'plato', 'platos') }}</button>
         </div>
@@ -122,14 +124,14 @@ function nothingElse(guest: PresendGuest): void {
     <p v-if="state.readAt && tickets.length === 0" class="notice neutral" data-testid="kitchen-empty"><Icon name="chef" />No hay pases enviados a cocina para esta pantalla.</p>
 
     <ul class="tickets">
-      <li v-for="ticket in tickets" :key="ticket.key" class="ticket" :data-testid="`ticket-${ticket.entry.service.tableId}-${ticket.course.id}`">
+      <li v-for="(ticket, t) in tickets" :key="ticket.key" class="ticket" :data-testid="`ticket-${ticket.entry.service.tableId}-${ticket.course.id}`">
         <h3><span>{{ tableName(ticket) }} · {{ ticket.course.name }}</span><span class="pill" :class="ticket.course.state === 'Ready' ? 's-ready' : 's-kitchen'">{{ courseLabel(ticket.course.state) }}</span></h3>
         <p class="ticket-sub"><Icon name="clock" :size="16" />{{ plural(ticket.entry.service.pax, 'persona', 'personas') }} · {{ elapsedLabel(ticket.course.firedAt, now) }}</p>
         <p v-if="ticket.paused" class="notice" role="status"><Icon name="pause" />MESA EN PAUSA</p>
         <p v-if="ticket.pendingReviews > 0" class="line-alert alarm"><Icon name="alert" :size="16" :stroke="2.2" />{{ plural(ticket.pendingReviews, 'elaboración PENDIENTE DE REVISIÓN', 'elaboraciones PENDIENTES DE REVISIÓN') }} tras un cambio de restricciones</p>
 
         <ul>
-          <li v-for="line in ticket.lines" :key="line.preparation.id" class="prep" :data-testid="`prep-${ticket.entry.service.tableId}-${ticket.course.id}-${line.preparation.id}`">
+          <li v-for="(line, l) in ticket.lines" :key="line.preparation.id" class="prep" :data-testid="`prep-${ticket.entry.service.tableId}-${ticket.course.id}-${line.preparation.id}`">
             <!-- Lo de otra estacion se atenua (solo el rotulo); los avisos de restriccion conservan siempre toda su fuerza. -->
             <p class="prep-title" :class="{ other: !line.own }">
               <strong>{{ line.preparation.name }}</strong><template v-if="line.preparation.quantity > 1"> × {{ line.preparation.quantity }}</template>
@@ -150,8 +152,8 @@ function nothingElse(guest: PresendGuest): void {
             </div>
 
             <div v-if="can(line.preparation.actions, 'review-preparation')" class="review" :data-testid="`review-${ticket.entry.service.tableId}-${ticket.course.id}-${line.preparation.id}`">
-              <label class="lbl" :for="`note-${line.preparation.id}`">Nota de la revisión (obligatoria)</label>
-              <input :id="`note-${line.preparation.id}`" v-model="notes[lineKey(ticket, line.preparation)]" :name="`note-${line.preparation.id}`" maxlength="200" autocomplete="off" :disabled="locked" />
+              <label class="lbl" :for="`note-${t}-${l}`">Nota de la revisión (obligatoria)</label>
+              <input :id="`note-${t}-${l}`" v-model="notes[lineKey(ticket, line.preparation)]" :name="`note-${t}-${l}`" maxlength="200" autocomplete="off" :disabled="locked" />
               <div class="row">
                 <button v-for="option in REVIEW_DECISIONS" :key="option.decision" type="button" class="btn kbtn" :class="{ 'btn-primary': option.decision === 'remake' }"
                   :disabled="locked || !reviewNoteOk(notes[lineKey(ticket, line.preparation)] ?? '')"

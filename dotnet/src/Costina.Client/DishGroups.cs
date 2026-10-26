@@ -46,6 +46,16 @@ public static class DishGroups
     public static string ExceptionLine(PreparationDto preparation) => string.Join(" · ",
         new[] { preparation.Name, Labels.Guest(preparation.GuestPosition), preparation.RestrictionsText, Labels.ReviewOutcome(preparation) }.Where(p => p.Length > 0));
 
+    // E4e (revision): estas elaboraciones llevan las MISMAS restricciones? Por tipo, sustancia y gravedad, sin distinguir mayusculas ni
+    // el orden; nunca por el identificador (dos comensales con su propia intolerancia leve a la lactosa son lo mismo). El PC solo marca
+    // por defecto las lineas por revisar de un plato cuando es asi: una nota pensada para una restriccion no sale marcada para otra.
+    public static bool SameRestrictions(IEnumerable<PreparationDto> preparations) =>
+        preparations.Select(RestrictionsKey).Distinct(StringComparer.Ordinal).Count() <= 1;
+
+    private static string RestrictionsKey(PreparationDto preparation) => string.Join("\n", (preparation.Restrictions ?? [])
+        .Select(r => string.Join("\t", r.Kind.Trim(), r.Substance.Trim(), r.Severity.Trim()).ToLowerInvariant())
+        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+
     // Va en rojo lo que pide la maxima atencion: un plato por revisar o una restriccion alarmante (FloorPlan.Alarming). El resto, en ambar.
     public static bool ExceptionAlarming(PreparationDto preparation) =>
         preparation.ReviewPending || (preparation.Restrictions ?? []).Any(FloorPlan.Alarming);

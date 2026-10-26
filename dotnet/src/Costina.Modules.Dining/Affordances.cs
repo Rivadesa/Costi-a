@@ -18,7 +18,8 @@ public static class Affordances
     // C3b: add-consumptions (la ronda) es de principal y sala, como add-consumption: sala la tiene porque no esta en su lista de
     // excluidas y cocina no, porque no esta en KitchenAllowed. Es accion de SESION (DiningModule.SessionActions), sin estacion.
     // E4e: la sala queda fuera de review-preparations como de review-preparation, y conserva preparations-start|ready como conserva las
-    // individuales: lo que impide a un comandero de sala marcar platos de cocina es la estacion (StationAllowed), plato a plato.
+    // individuales: lo que impide a un comandero de sala marcar platos de cocina es la estacion (StationAllowed), plato a plato, y que
+    // la excepcion del pase (PassMarksAll) nunca es de la sala.
     public static bool Allows(string role, string action) => role switch
     {
         "main" => true,
@@ -32,13 +33,19 @@ public static class Affordances
 
     private static bool IsPass(string? station) => string.Equals(station, PassStation, StringComparison.Ordinal);
 
+    // E4e (ADR-016; revision): marcar (preparation(s)-start|ready) por CUALQUIER estacion es de un dispositivo de COCINA (o un principal
+    // antiguo) en el pase, nunca de la sala. Antes de A2 un comandero aprobado sin tocar nada quedaba en 'pase' con rol de sala, y A2 no
+    // revisa los ya emparejados: por la estacion sola, ese movil marcaria el trabajo de todas las estaciones. Falla cerrado: un rol
+    // desconocido no la tiene. La usan los dos lados de la matriz: este filtro y DiningOperations.StationAllowed.
+    public static bool PassMarksAll(string role, string? station) => IsPass(station) && role is ("kitchen" or "main");
+
     // Espejo de la matriz de estacion (D4.3; DiningOperations.StationAllowed): lo que un dispositivo no puede hacer no se anuncia.
-    // E4e (ADR-016): el pase marca por cualquier estacion; las demas, solo lo suyo.
-    private static bool StationKeeps(string action, string? station, string prepStation) => station is null
+    // E4e (ADR-016): el pase de cocina marca por cualquier estacion (PassMarksAll); las demas, y la sala en el pase, solo lo suyo.
+    private static bool StationKeeps(string action, string role, string? station, string prepStation) => station is null
         || (action is "preparation-start" or "preparation-ready"
-            ? string.Equals(prepStation, station, StringComparison.Ordinal) || IsPass(station)
+            ? string.Equals(prepStation, station, StringComparison.Ordinal) || PassMarksAll(role, station)
             // D6.4: review-preparation se anuncia EN LA ELABORACION (AllowedActions) y el comando exige la estacion
-            // 'pase' (LocalOperations.StationAllowed). Sin este filtro una estacion veia un boton que daba wrong_station.
+            // 'pase' (DiningOperations.StationAllowed). Sin este filtro una estacion veia un boton que daba wrong_station.
             : action is not "review-preparation" || IsPass(station));
     private static bool PassKeeps(string action, string? station) => station is null
         || (action is "ready" or "review-preparation" or "review-preparations" ? IsPass(station) : true);
@@ -57,7 +64,7 @@ public static class Affordances
     {
         var preparations = course.Preparations.Select(p => p with
         {
-            Actions = Keep(p.Actions, role)?.Where(a => StationKeeps(a, station, p.StationId)).ToArray()
+            Actions = Keep(p.Actions, role)?.Where(a => StationKeeps(a, role, station, p.StationId)).ToArray()
         }).ToArray();
         var groups = course.Actions is null ? []
             : Groups.Where(g => preparations.Any(p => p.Actions?.Contains(g.Individual, StringComparer.Ordinal) == true)).Select(g => g.Group);

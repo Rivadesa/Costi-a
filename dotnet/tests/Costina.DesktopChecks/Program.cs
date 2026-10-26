@@ -1456,16 +1456,24 @@ internal static class Program
         // 2) La ficha de la mesa recien abierta: el primer pase espera la revision de cocina; nada se envia hasta entonces.
         if(service.PrimaryAction is not null||service.PrimaryText!="Esperando la revisión de cocina"||Named("PrimaryActionButton").IsEnabled||Actions()!=" | start,skip,cancel-unstarted!")
             throw new Exception("While the first course waits for the kitchen the big button waits, and start stays below: "+service.PrimaryText+" / "+Actions());
-        if(!service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert).SequenceEqual(["Aperitivos: 2 platos ⚠ 4 platos por revisar en cocina","Mar: 1 plato ⚠ 2 platos por revisar en cocina","Postre: 1 plato ⚠ 2 platos por revisar en cocina"]))
-            throw new Exception("Each course counts its dishes and says what the kitchen has to review: "+string.Join(" | ",service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert)));
+        // E4e (revision): el aviso cuenta PLATOS agrupados con algo por revisar, como el detalle («1 plato»), nunca lineas por comensal.
+        if(!service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert).SequenceEqual(["Aperitivos: 2 platos ⚠ 2 platos por revisar en cocina","Mar: 1 plato ⚠ 1 plato por revisar en cocina","Postre: 1 plato ⚠ 1 plato por revisar en cocina"]))
+            throw new Exception("Each course counts its dishes and says how many of them the kitchen has to review: "+string.Join(" | ",service.CourseRows.Select(r=>r.Course.Name+": "+r.Detail+" "+r.Alert)));
         if(service.SelectedCourse?.Id!="aperitivos"||!service.DishRows.Select(r=>r.Title+": "+string.Join(" / ",r.Lines.Select(l=>l.Text+(l.Alarm?" [rojo]":"")))).SequenceEqual([
                 "Ostra × 4: Ostra · Comensal 2 · ⚠ Intolerancia lactosa (leve) · Por revisar en cocina [rojo] / Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Por revisar en cocina [rojo]",
                 "Pan de la casa × 4: Pan de la casa · Comensal 2 · ⚠ Intolerancia lactosa (leve) · Por revisar en cocina [rojo] / Pan de la casa · Comensal 3 · ⚠ ALERGIA marisco (grave) · Por revisar en cocina [rojo]"]))
             throw new Exception("Dishes are grouped and each guest line is written below them: "+string.Join(" | ",service.DishRows.Select(r=>r.Title+": "+string.Join(" / ",r.Lines.Select(l=>l.Text)))));
-        if(service.SelectedDish?.Title!="Ostra × 4"||!service.ReviewAnnounced||service.PreparationActionsAnnounced||service.ReviewLines.Length!=2||!service.ReviewLines.All(l=>l.IsChecked))
-            throw new Exception("The review is offered on the dish under review, every guest line checked; nothing is announced to cook yet.");
-        // 3) Adaptar solo el comensal 3: se desmarca el 2. UNA orden review-preparations con la version leida.
-        service.ReviewLines[0].IsChecked=false; service.ReviewNote="vieira en lugar de ostra";
+        // E4e (revision): el comensal 2 (intolerancia leve a la lactosa) y el 3 (alergia grave al marisco) llevan restricciones DISTINTAS:
+        // ninguna linea sale marcada y nada se puede enviar hasta marcar a quien va la decision (una nota pensada para uno nunca queda como
+        // decision del otro).
+        service.ReviewNote="no lleva lactosa";
+        if(service.SelectedDish?.Title!="Ostra × 4"||!service.ReviewAnnounced||service.PreparationActionsAnnounced||service.ReviewLines.Length!=2||service.ReviewLines.Any(l=>l.IsChecked)
+            ||service.ReviewCommand.CanExecute("unaffected")||service.ReviewCommand.CanExecute("adapt"))
+            throw new Exception("The review is offered on the dish under review with NO line checked, since the guests' restrictions differ; nothing is announced to cook yet: "
+                +string.Join(" | ",service.ReviewLines.Select(l=>l.Text+(l.IsChecked?" [x]":""))));
+        // 3) Adaptar solo el comensal 3: se marca el 3. UNA orden review-preparations con la version leida.
+        service.ReviewLines[1].IsChecked=true; service.ReviewNote="vieira en lugar de ostra";
+        if(!service.ReviewCommand.CanExecute("adapt")) throw new Exception("Once a guest is checked, the review can be sent.");
         decided["s2-ostra-3"]=new("Adapt","vieira en lugar de ostra",c2Now); server.Board=[..diningBoard,Mesa2(2)];
         var reviewsBefore=server.Count("POST","dining/services/s2/commands/review-preparations");
         Press(Named("ReviewAdaptButton"),"Adaptado (comensal 3)");
@@ -1478,7 +1486,8 @@ internal static class Program
         Press(Named("ReviewUnaffectedButton"),"No le afecta (comensal 2)");
         Wait(()=>!window.Shell.Busy&&service.Dining?.Version==3,"the second review is read");
         service.SelectedDish=service.DishRows.Single(d=>d.Group.Name=="Pan de la casa");
-        if(service.ReviewLines.Length!=2) throw new Exception("The bread has two guests to review.");
+        if(service.ReviewLines.Length!=2||service.ReviewLines.Any(l=>l.IsChecked)) throw new Exception("The bread has two guests to review, with different restrictions: none checked.");
+        foreach(var line in service.ReviewLines) line.IsChecked=true;   // la misma decision a los dos, marcados a mano
         service.ReviewNote="no lleva marisco ni lactosa"; decided["s2-pan-2"]=new("Unaffected","no lleva marisco ni lactosa",c2Now); decided["s2-pan-3"]=decided["s2-pan-2"];
         server.Board=[..diningBoard,Mesa2(4)];
         Press(Named("ReviewUnaffectedButton"),"No le afecta (pan, dos comensales)");
@@ -1492,10 +1501,10 @@ internal static class Program
             ||Actions()!="fire-next | start,skip,cancel-unstarted!")
             throw new Exception("Once the first course is reviewed, sending it is the big button: "+service.PrimaryText+" / "+Actions());
         if(!service.DishRows[0].Lines.Select(l=>l.Text+(l.Alarm?" [rojo]":"")).SequenceEqual(["Ostra · Comensal 2 · ⚠ Intolerancia lactosa (leve) · No le afecta: no lleva lactosa","Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra [rojo]"])
-            ||!service.CourseRows.Select(r=>r.Alert).SequenceEqual(["","⚠ 2 platos por revisar en cocina","⚠ 2 platos por revisar en cocina"]))
+            ||!service.CourseRows.Select(r=>r.Alert).SequenceEqual(["","⚠ 1 plato por revisar en cocina","⚠ 1 plato por revisar en cocina"]))
             throw new Exception("The adapted line keeps the dish name and says what the kitchen wrote: "+string.Join(" | ",service.DishRows[0].Lines.Select(l=>l.Text)));
         var e4eTexts=Texts(serviceView).ToArray();
-        foreach(var text in new[]{"Ostra × 4","Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra","⚠ 2 platos por revisar en cocina","Enviar siguiente pase a cocina · Aperitivos"})
+        foreach(var text in new[]{"Ostra × 4","Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra","⚠ 1 plato por revisar en cocina","Enviar siguiente pase a cocina · Aperitivos"})
             if(!e4eTexts.Contains(text)) throw new Exception("The card paints '"+text+"'.");
         if(server.Requests.Skip(e4eStart).Any(r=>r.Path.StartsWith("checkout/",StringComparison.Ordinal))) throw new Exception("Nothing of this reads the till.");
         // La captura, con los platos del primer pase a la vista (la ficha se desplaza hasta ellos) y sin el aviso de arriba.

@@ -7,7 +7,8 @@ Fecha: 2026-10-26. **Estado: APROBADO.** Aquí solo se baja a pasos lo que ya es
 **Entregado el 26-10**: `docs/native/E4e-alergias-antes-de-enviar.md`, con sus capturas en `docs/native/images/e4e/`. Incluye todo el alcance de abajo, con las concreciones anotadas en cada sección (la marca en los datos de la sección 8 en lugar de `Backup.Latest()`, `cancel-unstarted` que también retira, `nothing_to_remake` como 409) y estas diferencias:
 - **«No le afecta a nada más» en la pantalla del pase**, adelantado de C3d (sección «Diferido»): una orden `review-preparations` con lo que queda del comensal, solo con dos platos o más por decidir y como mucho 60.
 - **El botón grande** no pone «Iniciar servicio» mientras el pase que va a salir espera la revisión, en el PC y en Sala: se apaga con «Esperando la revisión de cocina».
-- **El puesto revisa por plato agrupado con casillas** (todas marcadas), y sigue ofreciendo «Rehacer» en un pase sin enviar para que el servidor conteste `nothing_to_remake` en castellano.
+- **El puesto revisa por plato agrupado con casillas** (todas marcadas si los comensales del plato llevan las mismas restricciones; ninguna si no, desde la revisión), y sigue ofreciendo «Rehacer» en un pase sin enviar para que el servidor conteste `nothing_to_remake` en castellano.
+- **Revisión antes de subir** (26-10): la excepción del pase mira también el rol (un comandero de sala que quedó en `pase` antes de A2 no marca por otras estaciones), la fila de cada pase en el PC cuenta platos agrupados, y los campos de nota del pase toman su `id` de su posición en la lista. Detalle en el documento del corte.
 - **Para revisar con el promotor:** once decisiones pequeñas, en «Decisiones tomadas al construir» del documento del corte.
 
 **Respuestas del promotor que fija este corte:**
@@ -76,7 +77,7 @@ Rutas cortas como en los dos planes: `Dining/` = `dotnet/src/Costina.Modules.Din
 - `StationAllowed` (`DiningOperations.cs:64-79`) comprueba `preparations-*` elaboración por elaboración y deja `review-preparations` solo al pase. Una persona con sesión (sin estación) sigue sin restricción.
 - `KitchenAllowed` (`Affordances.cs:10`) gana las tres acciones. **Por rol, cada orden de grupo vale lo mismo que su individual** (`Affordances.cs:17`): la sala queda fuera de `review-preparations`, como de `review-preparation`.
 - `StationKeeps` y `PassKeeps` (`Affordances.cs:26-33`) las reflejan.
-- **El pase puede marcar `preparation(s)-start|ready` de cualquier estación** (respuesta 2 del 22-10). Cambia D4.3a solo para el pase (`dotnet/AGENTS.md:25`); las demás estaciones siguen marcando solo lo suyo.
+- **El pase puede marcar `preparation(s)-start|ready` de cualquier estación** (respuesta 2 del 22-10). Cambia D4.3a solo para el pase (`dotnet/AGENTS.md:25`); las demás estaciones siguen marcando solo lo suyo. Revisión del 26-10: la excepción es de un dispositivo de cocina (o un principal antiguo) en el pase, nunca de uno de sala que quedó ahí antes de A2 (`Affordances.PassMarksAll`, con el rol).
 - **Consecuencia en pantalla:** mientras el paso de la PWA (sección 10) o C3d no decidan otra cosa, la pantalla del pase de Costiña Cocina pinta «Empezar» y «Marcar lista» en lo que falta de **todas** las estaciones, porque el servidor se lo anuncia. `e2e/kitchen.spec.ts` lo fija. C3d lo lleva a «Más opciones» de cada tarjeta (`plan22:666`).
 
 ### 6. Quién abrió la mesa (`plan22:585-594`)

@@ -63,7 +63,7 @@ public sealed class DiningModule : IModule
                 "add-consumption" => DiningOperations.Consumption(u, i, id, r),
                 "add-consumptions" => DiningOperations.Consumptions(u, i, id, r),
                 "add-dish" => DiningOperations.AddDish(u, i, id, r),
-                _ => DiningOperations.Dining(u, i, id, action, r)
+                _ => DiningOperations.Dining(u, i, Role(c), id, action, r)
             }),
             new RouteAccess("main", "service", "kitchen") { ActionPolicy = Affordances.Allows });
         Post("/occupancy/{id}/release", (HttpContext c, string id) =>

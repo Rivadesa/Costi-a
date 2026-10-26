@@ -68,6 +68,19 @@ describe('words the views write as they are', () => {
     for (const attribute of ['autocomplete="off"', 'autocorrect="off"', 'autocapitalize="characters"', 'spellcheck="false"'])
       expect(input, attribute).toContain(` ${attribute}`)
   })
+  it('a field and its label never take their id from a preparation id: it repeats between tables and courses (E4e revision)', () => {
+    // El id de una elaboracion es <plato>-<comensal>: dos mesas con la misma oferta lo comparten (y un plato puede repetir id en dos
+    // pases). Con el mismo id en «Por revisar antes de enviar», la etiqueta de la segunda mesa llevaba el foco a la nota de la PRIMERA y
+    // su boton, ya activo, registraba la decision de cocina en otra mesa. El id sale de la posicion en la lista, unica por construccion.
+    const bound = /:(?:id|for|name)="`[^`"]*\$\{[^}`"]*preparation\.id[^}`"]*\}[^`"]*`"/g
+    const found = files.flatMap(([name, source]) => [...template(source).matchAll(bound)].map(match => `${name}: ${match[0]}`))
+    expect(found).toEqual([])
+    const kitchen = template(files.find(([name]) => name === 'views/KitchenView.vue')![1])
+    const ids = [...kitchen.matchAll(/:id="`([^`"]*)`"/g)].map(match => match[1])
+    const labels = [...kitchen.matchAll(/:for="`([^`"]*)`"/g)].map(match => match[1])
+    expect(ids.length).toBeGreaterThan(0)
+    expect(labels).toEqual(ids)                                         // cada etiqueta apunta a SU campo
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])

@@ -820,6 +820,15 @@ await Check("dish groups: same name and station, first appearance order, excepti
     Expect(DishGroups.State(DishGroups.Of(mixed)[0])=="2 de 3 listas"&&DishGroups.Of(mixed with {Preparations=[..mixed.Preparations.Select(p=>p with {State="Ready"})]})[0].AllReady,
         "mixed states say how many are ready: "+DishGroups.State(DishGroups.Of(mixed)[0]));
     Expect(DishGroups.Of(course with {Preparations=[]}).Length==0,"a course without preparations has no dishes");
+    // E4e (revision): el PC solo marca por defecto las lineas de un plato cuando todas llevan las MISMAS restricciones (tipo, sustancia y
+    // gravedad, sin mayusculas ni orden; nunca el identificador): una decision pensada para una no sale marcada para otra distinta.
+    GuestRestrictionDto lactose2=new("r-l2",2,"Intolerance","lactosa","Mild"),lactose3=new("r-l3",3,"intolerance"," Lactosa","MILD"),gluten=new("r-g",null,"Allergy","gluten","Severe");
+    Expect(DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2]),P("a-3","A","cold",3,"Pending",null,[lactose3])]),"two guests with the same intolerance are the same, whatever their ids");
+    Expect(DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[gluten,lactose2]),P("a-3","A","cold",3,"Pending",null,[lactose3,gluten])]),"the order of the restrictions does not matter");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2]),P("a-3","A","cold",3,"Pending",null,[shellfish])]),"a mild intolerance and a severe allergy are not the same");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[gluten,lactose2]),P("a-3","A","cold",3,"Pending",null,[gluten])]),"one more restriction is not the same");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2 with {Severity="Severe"}]),P("a-3","A","cold",3,"Pending",null,[lactose3])]),"another severity is not the same");
+    Expect(DishGroups.SameRestrictions([P("a-3","A","cold",3,"Pending",null,[shellfish])])&&DishGroups.SameRestrictions([]),"one line, or none, is always the same");
     return Task.CompletedTask;});
 // C3b: tabla de casos COMUN del selector «Bodega y bebidas» y de la ronda. frontend/pwa/tests/drinks.test.ts recorre la MISMA contra
 // search.ts, drinks.ts y round.ts: si CatalogSearch, DrinksPicker o Round cambian y la PWA no (o al reves), falla una de las dos.

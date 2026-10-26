@@ -574,7 +574,7 @@
        <!-- E4e: revision por plato agrupado, tambien antes de enviar. La decision va a los comensales marcados, en UNA orden. -->
        <Border x:Name="ReviewPanel" Style="{StaticResource FormPanel}" Margin="0,6,0,0" Visibility="{Binding Service.ReviewAnnounced, Converter={StaticResource Bool2Vis}}"><StackPanel>
         <TextBlock Text="{Binding Service.ReviewTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-        <TextBlock Text="La decisión va a los comensales marcados, en una sola orden." Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,4"/>
+        <TextBlock Text="La decisión va a los comensales marcados, en una sola orden. Si sus restricciones son distintas, no sale ninguno marcado: marca a quién va." Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,4"/>
         <ItemsControl x:Name="ReviewLineList" ItemsSource="{Binding Service.ReviewLines}" Focusable="False">
          <ItemsControl.ItemTemplate>
           <DataTemplate>

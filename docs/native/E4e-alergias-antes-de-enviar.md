@@ -37,9 +37,12 @@ Respuestas del promotor que fija este corte:
 
 - **«Abrir mesa» pregunta las alergias:** apartado «¿Alergias o intolerancias?», con una fila por comensal y «Añadir alergia o intolerancia». En cada fila: «¿Para quién?» (un comensal o «Toda la mesa»), «Tipo» (Alergia por defecto), «¿A qué?» y «Gravedad» (Grave por defecto). «¿Para quién?» empieza vacío: «Toda la mesa» nunca va por defecto, y sin elegir la mesa no se abre. Todo va en **la misma orden** que abre la mesa.
 - **La ficha agrupa los platos del pase elegido:** «Ostra × 4», con su estación y su estado. Debajo, una línea por cada comensal afectado: «Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira en lugar de ostra», o «· Por revisar en cocina». En rojo si alarma o está por revisar; si no, en ámbar.
-- **Cada pase dice cuántos platos quedan por revisar:** «⚠ 2 platos por revisar en cocina», también en los pases sin enviar.
+- **Cada pase dice cuántos platos quedan por revisar:** «⚠ 1 plato por revisar en cocina», también en los pases sin enviar. Cuenta platos agrupados, como el detalle: «Ostra × 4» con dos comensales por revisar es **un** plato.
 - **La cuenta es de platos:** «0 de 2 platos listos», no de líneas por comensal.
-- **El responsable también revisa desde el PC**, por plato agrupado: las líneas por revisar salen marcadas; se escribe la nota y se elige «No le afecta» o «Adaptado». Va en una orden. Para decidir distinto a dos comensales, se desmarca uno y se decide en dos toques.
+- **El responsable también revisa desde el PC**, por plato agrupado: se marcan las líneas a las que va la decisión, se escribe la nota y se elige «No le afecta» o «Adaptado». Va en una orden.
+  - Si todos los comensales por revisar de ese plato llevan **las mismas** restricciones (tipo, sustancia y gravedad), sus líneas salen marcadas.
+  - Si no (por ejemplo, una alergia grave al marisco y una intolerancia leve a la lactosa), **no sale ninguna marcada** y nada se envía hasta marcar a mano a quién va. Así, una nota pensada para la lactosa nunca queda como la decisión de cocina sobre el marisco.
+  - Para decidir distinto a dos comensales, se marca uno, se decide, y después el otro.
 - **«Empezar plato» y «Marcar plato listo»** actúan sobre el plato agrupado entero, en una orden.
 - **El botón grande:** con la mesa «Sentados», «Enviar siguiente pase» empieza el servicio y envía el primer pase **en un toque**; «Iniciar servicio» queda debajo. Mientras el pase que va a salir espera la revisión, el botón grande se apaga y dice **«Esperando la revisión de cocina»**.
 
@@ -50,6 +53,7 @@ Respuestas del promotor que fija este corte:
 - Con dos platos o más del mismo comensal, **«No le afecta a nada más · N platos»**, con su nota: decide todo lo que queda de ese comensal **en una sola orden**. El plan lo dejaba para C3d; se adelanta aquí porque, con un menú de 7 pases, son 7 decisiones por comensal.
 - Lo enviado sigue en su comanda, como siempre: «PENDIENTE DE REVISIÓN POR COCINA», con «No afecta», «Adaptar» y «Rehacer».
 - **El pase puede marcar «Empezar» y «Marcar lista» en los platos de cualquier estación** (respuesta 2). Si se estropea la tablet de la cocina caliente, el pase marca por ella. Hasta C3d, esos botones salen en todo lo que falta de todas las estaciones; C3d los llevará a «Más opciones» de cada comanda.
+- Eso es de **la tablet de cocina del pase**. Un móvil de sala que se quedó en el pase antes de A2 (entonces, un comandero aprobado sin tocar nada quedaba ahí) sigue marcando solo lo del pase, como antes de E4e.
 - Las demás estaciones siguen igual: marcan solo lo suyo.
 
 ### En Costiña Sala (el móvil del camarero)
@@ -120,8 +124,9 @@ Estaban abiertas desde C3b, y E4e las necesitaba porque ni C3b ni E4e tienen vue
 ### Motor: la matriz de estación, sin huecos
 
 - `DiningOperations.StationAllowed` comprueba `preparations-*` elaboración por elaboración: una sola de otra estación rechaza el grupo entero con `wrong_station`, sin aplicar nada. `review-preparations` es solo del pase, como `review-preparation`.
-- `KitchenAllowed` gana las tres acciones. **Por papel, cada orden de grupo vale lo mismo que su individual:** la sala conserva `preparations-start|ready` y nunca tiene `review-preparations`. Lo que impide a un comandero de sala marcar platos de cocina es la estación. `StationKeeps` y `PassKeeps` lo reflejan.
-- **El pase marca por cualquier estación:** puede hacer `preparation(s)-start|ready` de cualquiera. Solo para el pase cambia D4.3a; las demás estaciones siguen marcando solo lo suyo. Validar y revisar siguen siendo solo del pase y de una persona con sesión (el responsable en el PC), que no tiene estación.
+- `KitchenAllowed` gana las tres acciones. **Por papel, cada orden de grupo vale lo mismo que su individual:** la sala conserva `preparations-start|ready` y nunca tiene `review-preparations`. Lo que impide a un comandero de sala marcar platos de cocina es la estación, y que la excepción del pase nunca es de la sala. `StationKeeps` y `PassKeeps` lo reflejan.
+- **El pase de cocina marca por cualquier estación:** puede hacer `preparation(s)-start|ready` de cualquiera. Solo para el pase cambia D4.3a; las demás estaciones siguen marcando solo lo suyo. Validar y revisar siguen siendo solo del pase y de una persona con sesión (el responsable en el PC), que no tiene estación.
+- **La excepción mira también el papel** (revisión): `Affordances.PassMarksAll(role, station)` es la estación `pase` **y** el papel cocina (o un principal antiguo). Antes de A2, un comandero aprobado sin tocar nada quedaba en `pase` con papel de sala, y A2 no revisa los ya emparejados: por la estación sola, ese móvil habría marcado el trabajo de todas las estaciones. Ahora marca solo lo de `pase`, como antes de E4e. La usan los dos lados de la matriz: `StationAllowed` (el rol de la credencial llega como parámetro de `DiningOperations.Dining`) y el filtro de anuncios. El hueco antiguo de A2 (ese móvil puede validar el pase) no cambia: queda como lo aceptó A2.
 
 ### Motor: quién abrió la mesa
 
@@ -149,7 +154,8 @@ Estaban abiertas desde C3b, y E4e las necesitaba porque ni C3b ni E4e tienen vue
 
 - **Abrir mesa:** el apartado «¿Alergias o intolerancias?» (`AllergyDraft`, filas en memoria). Las filas viajan en la orden `open` como `restrictions`. Sin filas, el cuerpo de siempre: un servidor anterior nunca ve el campo nuevo. El puesto solo comprueba el formato (quién y a qué); el servidor valida el resto.
 - **Ficha:** los platos agrupados con `Costina.Client/DishGroups` (mismo nombre y estación, en el orden en que aparecen; solo presentación, porque `PreparationView` no lleva el identificador del plato). `FloorPlan.CourseDetail` cuenta platos y `FloorPlan.WaitsForReview` dice si el pase que importa ahora espera la revisión.
-- **Cocina desde el puesto, por plato agrupado:** «Empezar plato» y «Marcar plato listo» son una orden de grupo con las elaboraciones del plato que anuncian la individual. La revisión (`review-preparations`) lleva la decisión y la nota a las líneas marcadas, como mucho 60. Una relectura nunca vuelve a marcar una línea desmarcada.
+- **Cocina desde el puesto, por plato agrupado:** «Empezar plato» y «Marcar plato listo» son una orden de grupo con las elaboraciones del plato que anuncian la individual. La revisión (`review-preparations`) lleva la decisión y la nota a las líneas marcadas, como mucho 60. Salen marcadas solo si todas llevan las mismas restricciones (`DishGroups.SameRestrictions`: tipo, sustancia y gravedad, sin mayúsculas ni orden, nunca el identificador); si no, ninguna. Una relectura respeta lo que se marcó o desmarcó a mano; tras una revisión confirmada, lo que queda vuelve a su marca por defecto.
+- **La fila de cada pase** cuenta los platos agrupados con algo por revisar (`DishGroups`), no las líneas por comensal.
 - **Botón grande:** mientras el pase que va a salir espera la revisión, «Iniciar servicio» no va en grande aunque el servidor lo anuncie (`PrimaryAction`): el botón grande se apaga con «Esperando la revisión de cocina».
 - **«Rehacer» sigue a la vista en un pase sin enviar.** El servidor contesta `nothing_to_remake`, ahora en castellano: el puesto no adivina reglas.
 - **Palabras** (`Labels`): `ReviewOutcome` («Por revisar en cocina», «Adaptado: …»), las tres órdenes de grupo («Empezar plato», «Marcar plato listo», «Revisar platos») y los rechazos `nothing_to_remake` e `invalid_restriction`.
@@ -162,6 +168,7 @@ Estaban abiertas desde C3b, y E4e las necesitaba porque ni C3b ni E4e tienen vue
   - `presendReviews` lista, por mesa y comensal, las elaboraciones de los pases **pendientes** con `reviewPending` y con `review-preparation` anunciada a este dispositivo. Nada se deduce: una estación no ve nada.
   - «No le afecta» y «Adaptado» envían `review-preparation`. «Rehacer» no se ofrece antes de enviar.
   - «No le afecta a nada más» (`restOfGuest`, `restBody`) envía en una orden `review-preparations` lo que queda del comensal: solo los platos cuyo pase anuncia la orden de grupo, como mucho 60 y la misma nota en cada uno.
+  - Cada campo de nota, y su etiqueta, toma el `id` de su **posición** en la lista (revisión). El identificador de una elaboración (`<plato>-<comensal>`) se repite entre mesas con la misma oferta: con él, la etiqueta de una mesa llevaba a la nota de otra, y su botón registraba la decisión en la mesa equivocada. `views.test.ts` prohíbe un `id` hecho con el de una elaboración.
 - **Costiña Sala** (`TableCard.vue`, `ficha.ts`): las líneas de excepción de los pases sin enviar, con `reviewOutcome`, y `primaryAction(actions, service)`, que no pone «Iniciar servicio» en grande mientras el pase que va a salir espera.
 - **Rechazos en castellano:** `nothing_to_remake`, `invalid_restriction` y `too_many_items`. `restrictions_unreviewed` dice la regla nueva.
 - **`data-testid` nuevos:** `presend`, `presend-<mesa>-<comensal|all>`, `presend-item-…`, `do-presend-unaffected-…`, `do-presend-adapt-…`, `presend-rest-…`, `do-presend-rest-…` y `prep-review`.
@@ -172,7 +179,7 @@ Pequeñas. Cualquiera se cambia si el promotor lo prefiere:
 1. **Cancelar una mesa sin empezar retira lo que quedaba por revisar**, como omitir un pase.
 2. **Con la mesa «Sentados», el botón grande es «Enviar siguiente pase»**, porque el servidor anuncia ahora `fire-next` y `start`. «Iniciar servicio» va debajo en el PC y en «Más opciones» en Sala.
 3. **Mientras el primer pase espera la revisión, «Iniciar servicio» tampoco va en grande:** el botón grande se apaga y dice «Esperando la revisión de cocina».
-4. **La revisión en el PC es por plato agrupado, con casillas** (todas marcadas). Para decidir distinto a dos comensales: desmarcar uno y decidir en dos toques.
+4. **La revisión en el PC es por plato agrupado, con casillas.** Salen todas marcadas si los comensales del plato llevan las mismas restricciones, y ninguna si no (revisión: una decisión pensada para una restricción no sale marcada para otra distinta). Para decidir distinto a dos comensales: marcar uno, decidir, y después el otro.
 5. **Los botones de cocina del PC son por plato** («Empezar plato», «Marcar plato listo»), no por línea.
 6. **La ficha cuenta platos** («2 platos», «1 de 3 platos listos»), en el PC y en Sala.
 7. **«No le afecta a nada más» en el pase, adelantado de C3d.** Solo sale con dos platos o más por decidir de ese comensal.
@@ -196,8 +203,8 @@ Pequeñas. Cualquiera se cambia si el promotor lo prefiere:
 ## Comprobaciones automáticas
 
 Cifras en la punta del corte, todas en este PC, una ejecución cada vez, en primer plano y sin administrador (registros en `.lab-test/`):
-- **vitest:** 400 en 19 ficheros (antes 388). `npm run build` en verde. Nuevas: `presendReviews`, `restOfGuest`, `restBody`, el botón grande que espera, la familia `reviews` y la cuenta de platos de la tabla común.
-- **ClientChecks:** 277 (antes 273): la cuenta de platos, la familia `reviews`, `DishGroups`, las palabras de las órdenes de grupo y de los rechazos nuevos.
+- **vitest:** 401 en 19 ficheros (antes 388). `npm run build` en verde. Nuevas: `presendReviews`, `restOfGuest`, `restBody`, el botón grande que espera, la familia `reviews`, la cuenta de platos de la tabla común y (revisión) que ningún campo ni etiqueta toma su `id` de una elaboración.
+- **ClientChecks:** 277 (antes 273): la cuenta de platos, la familia `reviews`, `DishGroups` (con `SameRestrictions`, en la revisión), las palabras de las órdenes de grupo y de los rechazos nuevos.
 - **Dominio (`Costina.Acceptance`):** 97 (antes 86). Entre otras:
   - una alergia al abrir deja por revisar todo el menú de ese comensal, y todo si es de toda la mesa;
   - se revisa un pase sin enviar con la mesa «Sentados»;
@@ -212,7 +219,7 @@ Cifras en la punta del corte, todas en este PC, una ejecución cada vez, en prim
 - **PersistenceChecks** (las comprobaciones de instantáneas de la CI, también aquí): 88 (antes 62). Las de D3.2, D3.5 y `0.43.0-c3c` se leen igual; una revisión en un pase pendiente con la mesa «Sentados» se guarda y se relee; en lo servido, lo omitido o una mesa cancelada se rechaza; quién abrió la mesa sobrevive a un reinicio y una mesa anterior lo lee vacío; la comparación de versiones (numérica, sin la etiqueta, lo ilegible como más nuevo) y los mensajes en los dos idiomas.
 - **HTTP**, las 14 suites en verde:
   - `restrictions_http`, 9 (antes 6): `test_07` (abrir con alergias e `invalid_restriction`), `test_08` (revisar con la mesa «Sentados», bloqueo por pase, omitir retira) y `test_09` (contrato de `review-preparations`: rechazos, todo o nada, una subida de versión y tres eventos);
-  - `station_http`, 10 (antes 8): `test_07` (un grupo con una elaboración de otra estación da `wrong_station` con el token del propio dispositivo y no aplica nada; `too_many_items`; una orden y N eventos) y `test_08` (el pase marca por otra estación);
+  - `station_http`, 11 (antes 8): `test_07` (un grupo con una elaboración de otra estación da `wrong_station` con el token del propio dispositivo y no aplica nada; `too_many_items`; una orden y N eventos), `test_08` (el pase marca por otra estación) y `test_09` (revisión: un móvil de sala que quedó en el pase antes de A2, simulado con SQL, ni ve ni puede marcar el trabajo de otra estación, plato a plato o en grupo, y no se aplica nada);
   - `affordances_http`, 8 (antes 6): `test_07` (anuncios filtrados por papel y estación con dispositivos emparejados de verdad) y `test_08` (cada orden de grupo, permitida igual que su individual);
   - `offers_http`, 8 (antes 7): `test_07`, `choose` y `add-dish` nacen por revisar, en una mesa propia que se desactiva al terminar;
   - `pwa_http`, 8 (antes 7): `test_08`, `openedBy` y `openedStation` desde un dispositivo y desde una persona, una mesa anterior legible y sin claves de dinero;
@@ -220,7 +227,7 @@ Cifras en la punta del corte, todas en este PC, una ejecución cada vez, en prim
   - las demás, sin cambios: native 11, security 6/6, desktop_reads 9, checkout 8, identity 10, pairing 18, organization 5 y catalog 10.
 - **RealtimeChecks:** 13.
 - **Playwright** contra el motor real: 30 (15 de escritorio y 15 de móvil). `kitchen.spec` empieza con la historia nueva: la mesa se abre con una intolerancia en la misma orden y Sala espera; el pase adapta un plato y despacha los otros dos con «No le afecta a nada más», y la versión sube exactamente en uno; Sala ve «Adaptado: …» y envía desde «Sentados» en una orden. `banner.spec` revisa antes el pase sin enviar, `commands.spec` envía directamente desde «Sentados» y `board.spec` usa las palabras de la sala.
-- **DesktopChecks:** en verde. Abrir con alergias en una orden, el botón grande que espera, la revisión que solo lleva las líneas marcadas, y las capturas.
+- **DesktopChecks:** en verde. Abrir con alergias en una orden, el botón grande que espera, la revisión que solo lleva las líneas marcadas, la fila del pase que cuenta platos, las líneas que no salen marcadas con restricciones distintas, y las capturas.
 - **Batería completa** (`COSTINA_E2E=1 sh tools/agent/local-tests.sh`, puerto 5090): compilación con 0 advertencias y 0 errores; dominio 97/97, ClientChecks 277, las 14 suites HTTP, Playwright 30 y Realtime 13/13.
 - **No corre en este PC:** `installer_checks.ps1`, que necesita el instalador real y administrador. Una actualización encima de datos con la marca de un motor más nuevo debe pararse sin copia nueva y con el servicio parado; al quitar la marca, el mismo instalador la completa. Su primera prueba será el workflow «Native Windows installer» de la PR.
 
@@ -248,6 +255,11 @@ Cada prueba nueva falló primero. Las roturas a propósito se restauraron desde 
   - Playwright con la PWA anterior y el motor nuevo: 4 de 30, `board.spec` y `kitchen.spec` en los dos proyectos;
   - ClientChecks con las palabras y el plano anteriores: 12 fallos;
   - DesktopChecks, tres roturas, cada una en su comprobación: abrir sin las alergias, «Iniciar servicio» en grande y la revisión que enviaba también las líneas desmarcadas.
+- **Revisión** (contra la punta anterior, `ef52d1f`):
+  - `station_http.test_09` con el motor anterior: al móvil de sala en el pase se le anunciaban `preparation-start|ready` en lo frío y lo caliente. Con solo el filtro de anuncios arreglado, la orden pasaba (200 en vez de `409 wrong_station`): cada lado de la matriz tiene su prueba;
+  - vitest: la regla nueva encontró seis atributos (`id`, `for` y `name` de las dos notas) hechos con el identificador de la elaboración;
+  - ClientChecks con `SameRestrictions` en esqueleto (siempre «iguales»): falló «una intolerancia leve y una alergia grave no son lo mismo»;
+  - DesktopChecks con el puesto anterior: primero la fila del pase («⚠ 4 platos» con 2 platos) y, arreglada esa, las dos líneas marcadas con restricciones distintas.
 
 ## Capturas
 
@@ -255,7 +267,7 @@ En `docs/native/images/e4e/`.
 
 **Puesto principal**, de DesktopChecks, con la versión `0.44.0-e4e`:
 - [Abrir mesa con alergias](images/e4e/comedor-abrir-alergias.png): «¿Alergias o intolerancias?» con el Comensal 3 (Alergia · marisco · Grave) y el Comensal 2 (Intolerancia · lactosa · Leve).
-- [La ficha con la línea adaptada](images/e4e/comedor-linea-adaptada.png): la mesa «Sentados», «Ostra × 4» y «Pan de la casa × 4» con la línea de cada comensal («Adaptado: vieira en lugar de ostra», «No le afecta: …»), el postre con «⚠ 2 platos por revisar en cocina» y «Enviar siguiente pase a cocina» en grande.
+- [La ficha con la línea adaptada](images/e4e/comedor-linea-adaptada.png): la mesa «Sentados», «Ostra × 4» y «Pan de la casa × 4» con la línea de cada comensal («Adaptado: vieira en lugar de ostra», «No le afecta: …»), el postre con «⚠ 1 plato por revisar en cocina» y «Enviar siguiente pase a cocina» en grande.
 
 **Costiña Sala y Costiña Cocina**, de `e2e/captures-e4e.spec.ts` contra el motor real:
 - [Sala esperando la revisión](images/e4e/sala-esperando-revision-375x812.png): la mesa «Sentados», las dos restricciones, el aviso rojo con la regla nueva y el botón grande apagado: «Esperando la revisión de cocina».

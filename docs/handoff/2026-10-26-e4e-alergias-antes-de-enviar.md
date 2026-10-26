@@ -22,7 +22,8 @@ Leer antes, en este orden:
   - `538749b` feat(desktop): abrir con alergias y revisar por plato agrupado en el Comedor;
   - `ab8111e` feat(pwa): el pase revisa antes de enviar y Sala espera la revisión de cocina;
   - `4eeefb3` docs(native): el documento, AGENTS, STATUS, los planes entregados y la versión `0.44.0-e4e`;
-  - el commit de este traspaso.
+  - el commit de este traspaso;
+  - la revisión antes de subir, `fix(e4e)`: la excepción del pase mira el rol (`Affordances.PassMarksAll`; `station_http` test_09), la fila del pase en el PC cuenta platos agrupados, con restricciones distintas ninguna línea sale marcada (`DishGroups.SameRestrictions`) y las notas del pase toman su `id` de su posición.
 - **Permiso de subida y mezcla: dado el 26-10** («sube y mezcla»), para cuando la CI esté en verde. Este traspaso se escribe antes de subir: mira `git log origin/develop` para saber si ya está mezclada, con qué PR y qué dijo la CI.
 - **Las respuestas del promotor** que fija E4e:
   1. cocina decide cada plato de un comensal con alergia o intolerancia **antes** de que salga el pase, también las intolerancias leves y las preferencias (15-10, confirmado el 22-10);
@@ -36,11 +37,11 @@ Leer antes, en este orden:
   - **Costiña Sala:** «Por revisar en cocina» y «Adaptado: …» desde que se sientan; «Enviar siguiente pase» en grande desde «Sentados», con «Iniciar servicio» en «Más opciones».
 - **Vuelta atrás: no hay.** Una mesa guardada por `0.44.0-e4e` no la lee `0.43.0-c3c`. Volver es restaurar la copia previa a la actualización, en un equipo limpio y con el instalador anterior. Sigue valiendo lo de C3b (cuentas) y lo de C3c (dispositivos).
 - **Cifras en la punta** (en este PC, el 26-10, tras el cambio de versión):
-  - vitest 400, en 19 ficheros; `npm run build` en verde;
+  - vitest 401, en 19 ficheros; `npm run build` en verde;
   - ClientChecks 277;
   - dominio 97;
   - PersistenceChecks 88 (las de instantáneas de la CI, también aquí);
-  - las 14 suites HTTP (packaging 15 con 1 saltada, restrictions 9, station 10, affordances 8, offers 8, pwa_http 8, pairing 18, checkout 8) y Realtime 13;
+  - las 14 suites HTTP (packaging 15 con 1 saltada, restrictions 9, station 11, affordances 8, offers 8, pwa_http 8, pairing 18, checkout 8) y Realtime 13;
   - Playwright 30 (15 de escritorio y 15 de móvil);
   - DesktopChecks en verde.
 - **Lo que solo verá la CI:** `installer_checks.ps1` con el instalador real (la actualización encima de una marca más nueva se para sin copia y con el servicio parado; al quitarla, se completa). Nunca se ha ejecutado. El workflow «Native Windows installer» salta en la PR porque cambian `Backup.cs`, `ServerSetup.cs`, `EngineVersions.cs`, `deploy/windows` y `tests/service`.

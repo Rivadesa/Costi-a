@@ -1,5 +1,6 @@
 """D4.3: matriz rol x estacion y billete efimero del hub sobre HTTP real. Ambito propio.
-E4e (ADR-016): ordenes de grupo comprobadas elaboracion a elaboracion y el pase que marca por cualquier estacion."""
+E4e (ADR-016): ordenes de grupo comprobadas elaboracion a elaboracion y el pase de cocina que marca por cualquier estacion
+(un comandero de sala que quedo en 'pase' antes de A2, no)."""
 import json
 import secrets
 import unittest
@@ -160,6 +161,25 @@ class StationChecks(unittest.TestCase):
         self.assertEqual(200, self.group(sid, self.pase, 'preparation-start', courseId='p1', itemId=hot[0])[0])
         self.assertEqual(200, self.group(sid, self.pase, 'preparations-ready', courseId='p1', itemIds=hot)[0])
         self.assertEqual(200, self.group(sid, self.pase, 'ready', courseId='p1')[0])
+
+    def test_09_a_room_handheld_left_at_the_pass_does_not_mark_for_other_stations(self):
+        # E4e (revision): marcar por cualquier estacion es del pase de COCINA, nunca de la sala. Antes de A2 un comandero aprobado sin
+        # tocar nada quedaba en 'pase' con rol de sala, y A2 no revisa los ya emparejados (se simula con SQL: hoy A2 no lo deja aprobar).
+        # Ni se le anuncia ni puede marcar el trabajo de otra estacion, plato a plato o en grupo, y no se aplica nada.
+        waiter = pair_device(h.KEYS['main'], 'comandero-antiguo-en-pase', 'kitchen', 'pase')
+        h.sql("UPDATE core.devices SET role='service' WHERE tenant='d4-station' AND name='comandero-antiguo-en-pase' AND revoked_at IS NULL")
+        self.assertEqual(['service', 'pase'], [request('/session', token=waiter)[1][k] for k in ('role', 'station')])
+        sid = h.open_table('M5'); h.mutate(sid, 'fire-next')
+        course = request('/dining/services/' + sid, token=waiter)[1]['data']['courses'][0]
+        others = [p['id'] for p in course['preparations'] if p['stationId'] != 'pase']
+        self.assertTrue(others)
+        self.assertEqual([], [a for p in course['preparations'] for a in p['actions'] if a.startswith('preparation')])
+        self.assertEqual([], [a for a in course['actions'] if a.startswith('preparations-')])
+        before = h.dining(sid)['version']
+        for action, fields in (('preparations-ready', dict(itemIds=others)), ('preparation-start', dict(itemId=others[0]))):
+            status, body = self.group(sid, waiter, action, courseId='p1', **fields)
+            self.assertEqual((409, 'wrong_station'), (status, body.get('error')), action)
+        self.assertEqual(before, h.dining(sid)['version'])
 
     def test_03b_session_names_the_station_of_a_device(self):
         # A4 (Inicio y dispositivos): la tablet rotula su cabecera con el nombre, no con el codigo.

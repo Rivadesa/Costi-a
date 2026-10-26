@@ -71,7 +71,7 @@ public sealed partial class FilterChip(string id, string name) : ObservableObjec
 { public string Id { get; } = id; public string Name { get; } = name; [ObservableProperty] private string label = name; }
 // Grupo de tarjetas por sala, fila de pase y boton de accion.
 public sealed record TileGroup(string Name, string Summary, TableTile[] Tiles);
-// E4e: Alert = cuantos platos del pase estan por revisar en cocina (rojo y escrito; vacio si ninguno).
+// E4e: Alert = cuantos platos (agrupados, DishGroups) del pase tienen algo por revisar en cocina (rojo y escrito; vacio si ninguno).
 public sealed record CourseRow(CourseDto Course, int Number, string State, string Tone, string Detail, string Alert = "")
 { public bool HasAlert => Alert.Length > 0; }
 public sealed record ActionButton(string Action, string Text, bool Danger);
@@ -81,8 +81,8 @@ public sealed record ActionButton(string Action, string Text, bool Danger);
 public sealed record DishLine(PreparationDto Preparation, string Text, bool Alarm);
 public sealed record DishRow(DishGroup Group, string Title, string Station, string State, DishLine[] Lines)
 { public bool HasLines => Lines.Length > 0; }
-// E4e: una linea por revisar del plato elegido. Se marcan (todas, por defecto) las que reciben la decision: UNA orden review-preparations
-// con la decision y la nota en cada una. Para decidir distinto a dos comensales, se desmarca y se decide en dos toques.
+// E4e: una linea por revisar del plato elegido. Se marcan las que reciben la decision: UNA orden review-preparations con la decision y la
+// nota en cada una. Por defecto, todas marcadas si llevan las mismas restricciones y ninguna si no (revision; UpdateReviewLines).
 public sealed partial class ReviewLine(PreparationDto preparation, string text) : ObservableObject
 {
     public PreparationDto Preparation { get; } = preparation;
@@ -291,7 +291,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         {
             BoardRead = false;
             Board = []; SelectedEntry = null; Tables = []; Offers = []; serviceId = null; Reason = ""; stations = null;
-            OpenForm = false; SelectedZone = ""; Filter = "all"; OpenAllergies.Clear(); uncheckedLines.Clear();
+            OpenForm = false; SelectedZone = ""; Filter = "all"; OpenAllergies.Clear(); chosenLines.Clear();
             Invalidate(); ServiceTitle = "Selecciona una mesa";
         }
         finally { rendering = false; }
@@ -389,20 +389,26 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             ?? DishRows.FirstOrDefault();
         UpdateReviewLines();
     }
-    // Las lineas que el servidor pide revisar en el plato elegido (y anuncia a este puesto), marcadas salvo las que se desmarcaron: una
-    // relectura (otro puesto, el tiempo real) no las vuelve a marcar. Tras una revision confirmada, todo lo que queda vuelve marcado.
-    private readonly HashSet<string> uncheckedLines = new(StringComparer.Ordinal);
+    // Las lineas que el servidor pide revisar en el plato elegido (y anuncia a este puesto). E4e (revision): salen marcadas solo si todas
+    // llevan las MISMAS restricciones (DishGroups.SameRestrictions); con restricciones distintas (una alergia grave y una intolerancia leve)
+    // ninguna sale marcada y cada comensal se marca a mano, para que la nota pensada para uno no quede como decision de cocina del otro.
+    // Lo marcado o desmarcado a mano se respeta en cada relectura (otro puesto, el tiempo real). Tras una revision confirmada, lo que queda
+    // vuelve a su marca por defecto.
+    private readonly Dictionary<string, bool> chosenLines = new(StringComparer.Ordinal);
     private void UpdateReviewLines()
     {
         var group = SelectedDish?.Group;
-        ReviewLines = group is null ? [] : group.Preparations.Where(p => p.ReviewPending && p.Actions?.Contains("review-preparation", StringComparer.Ordinal) == true)
-            .Select(p => new ReviewLine(p, string.Join(" · ", new[] { Labels.Guest(p.GuestPosition), p.RestrictionsText }.Where(x => x.Length > 0))) { IsChecked = !uncheckedLines.Contains(p.Id) }).ToArray();
+        var pending = group is null ? [] : group.Preparations.Where(p => p.ReviewPending && p.Actions?.Contains("review-preparation", StringComparer.Ordinal) == true).ToArray();
+        var checkedByDefault = DishGroups.SameRestrictions(pending);
+        ReviewLines = pending.Select(p => new ReviewLine(p, string.Join(" · ", new[] { Labels.Guest(p.GuestPosition), p.RestrictionsText }.Where(x => x.Length > 0)))
+            { IsChecked = chosenLines.TryGetValue(p.Id, out var chosen) ? chosen : checkedByDefault }).ToArray();
         foreach (var line in ReviewLines)
             line.PropertyChanged += (_, _) =>
             {
-                if (line.IsChecked) uncheckedLines.Remove(line.Preparation.Id); else uncheckedLines.Add(line.Preparation.Id);
+                chosenLines[line.Preparation.Id] = line.IsChecked;
                 ReviewCommand.NotifyCanExecuteChanged();
             };
+        ReviewCommand.NotifyCanExecuteChanged();
     }
     public bool CanAddDish => shell.Writable && Allowed("add-dish");
     private bool CanAddDishItem() => CanAddDish && SelectedDishItem is not null;
@@ -574,7 +580,7 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/review-preparations",
             new { expectedVersion = context.Version, items = lines.Select(l => new { courseId = SelectedCourse!.Id, itemId = l.Preparation.Id, decision, note }).ToArray() },
             "Revisión de cocina (" + Labels.Review(decision) + ") · " + dish.Title + " · " + Labels.Plural(lines.Length, "comensal", "comensales") + " · " + TableOf(context));
-        ReviewNote = ""; uncheckedLines.Clear();
+        ReviewNote = ""; chosenLines.Clear();
         await shell.RefreshAll();
         shell.Status = "Cocina ha registrado su decisión sobre " + dish.Group.Name + " (" + Labels.Plural(lines.Length, "comensal", "comensales") + "): " + Labels.Review(decision) + ".";
     });
@@ -772,8 +778,9 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
             var tone = FloorPlan.Step(course);
             var state = course.State == "Skipped" ? Labels.Course(course.State) : Labels.Course(course, pax);
             if (tone == "pending" && state == "Falta elegir plato") tone = "choose";
-            // E4e: lo que cocina tiene por revisar en este pase, tambien en uno sin enviar, escrito en su fila (nunca solo color).
-            var review = course.Preparations.Count(p => p.ReviewPending);
+            // E4e: lo que cocina tiene por revisar en este pase, tambien en uno sin enviar, escrito en su fila (nunca solo color). Revision:
+            // cuenta PLATOS agrupados con algo por revisar (DishGroups), como el detalle («1 plato»), nunca lineas por comensal.
+            var review = DishGroups.Of(course).Count(group => group.Preparations.Any(p => p.ReviewPending));
             return new CourseRow(course, index + 1, state, tone, FloorPlan.CourseDetail(course, pax),
                 review == 0 ? "" : "⚠ " + Labels.Plural(review, "plato por revisar en cocina", "platos por revisar en cocina"));
         }).ToArray();
