@@ -83,12 +83,15 @@ test('Sala: «listo para servir» shows over Bodega without covering it, vibrate
     await expect.poll(() => vibrations(page)).toBe(1)                                    // una clave nueva, con la pagina a la vista y ya tocada
 
     // 3) Alergia declarada DESPUES de validar: el pase sigue listo, pero el servidor deja de anunciar servir hasta que cocina revise.
+    //    E4e (ADR-016): tambien queda por revisar el plato del comensal en el pase sin enviar; el pase lo revisa antes de que salga.
     await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'sésamo', severity: 'Severe' })
     await expect(banner).toHaveCount(0, { timeout: 15_000 })
     expect((await courses(request, serviceId))[0].state).toBe('Ready')
-    for (const preparation of (await courses(request, serviceId))[0].preparations.filter(p => p.reviewPending)) {
+    expect((await courses(request, serviceId))[1].preparations.some(p => p.reviewPending)).toBeTruthy()
+    // Primero el pase sin enviar y al final el listo: la banda vuelve con la ULTIMA revision, asi que «Servido» lleva la version al dia (F01).
+    for (const course of (await courses(request, serviceId)).reverse()) for (const preparation of course.preparations.filter(p => p.reviewPending)) {
       const reviewed = await post(request, pass, `/dining/services/${serviceId}/commands/review-preparation`,
-        { expectedVersion: (await read(request, serviceId)).version, courseId: first.id, itemId: preparation.id, decision: 'unaffected', note: 'no lleva sésamo' })
+        { expectedVersion: (await read(request, serviceId)).version, courseId: course.id, itemId: preparation.id, decision: 'unaffected', note: 'no lleva sésamo' })
       expect(reviewed.ok(), `review -> ${reviewed.status()}`).toBeTruthy()
     }
     await expect(banner).toBeVisible({ timeout: 15_000 })                                // revisado: vuelve, y vuelve a vibrar

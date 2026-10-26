@@ -47,7 +47,13 @@ public sealed record DiningView(string Id, string TableId, int Pax, DiningState 
     bool RestrictionsPendingAck = false,
     // E4a: oferta del nucleo con la que se abrio la mesa (null en servicios anteriores).
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? OfferId = null);
+    string? OfferId = null,
+    // E4e: quien abrio la mesa (actor de la orden 'open': device:<nombre> o user:<nombre>) y desde que estacion (la del dispositivo;
+    // ninguna para una persona). Se omiten si no se saben: una mesa abierta antes de E4e no los tiene. Para «Mis mesas» (C3e).
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? OpenedBy = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? OpenedStation = null);
 public sealed record OccupancyView(string Id, string TableId, string ServiceId,
     OccupancyState State, DateTimeOffset? ReleasedAt,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]

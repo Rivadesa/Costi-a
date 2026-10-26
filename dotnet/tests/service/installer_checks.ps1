@@ -116,6 +116,41 @@ try {
         Wait-Health | Out-Null
         Assert ((Login).token) 'Login failed after in-place update.'
     }
+    # E4e: nunca baja de version. Un instalador MAS ANTIGUO que el motor que ya sirvio los datos se para sin tocarlos. Se simula con la
+    # marca de un motor mas nuevo en la base (la fila que deja cada motor al arrancar, EngineVersions), puesta con el rol propietario;
+    # despues se retira y el mismo instalador completa la actualizacion.
+    Check 'an installer older than the engine that served the data stops without touching it' {
+        $owner = @{}
+        foreach ($part in ((Get-Content "$dataRoot\config\owner.json" -Raw | ConvertFrom-Json).COSTINA_DB_OWNER -split ';')) {
+            $pair = $part -split '=', 2
+            if ($pair.Count -eq 2) { $owner[$pair[0]] = $pair[1] }
+        }
+        $psql = Join-Path $program 'pgsql\bin\psql.exe'
+        $numeric = ((Invoke-RestMethod "$base/health").version -split '-')[0] -split '\.'
+        $newer = "$($numeric[0]).$([int]$numeric[1] + 1).0-futuro"
+        $env:PGPASSWORD = $owner['Password']
+        try {
+            & $psql -h $owner['Host'] -p $owner['Port'] -U $owner['Username'] -d $owner['Database'] -At -v ON_ERROR_STOP=1 -c `
+                "INSERT INTO core.commands (tenant,company,location,actor,key,fingerprint,response) VALUES ('inst-tenant','inst-company','inst-location','engine','served-by:$newer','$newer',json_build_object('version','$newer')::text)" | Out-Null
+            Assert ($LASTEXITCODE -eq 0) 'Could not put the mark of a newer engine.'
+            $before = @(Get-ChildItem "$dataRoot\backups" -Filter '*.backup').Count
+            $code = Run-Setup @('/S', '/MODE=server')
+            Assert ($code -ne 0) 'An installer older than the engine that already served the data must stop.'
+            Assert (@(Get-ChildItem "$dataRoot\backups" -Filter '*.backup').Count -eq $before) 'The refused update wrote a backup.'
+            Assert ((Get-Service Costina).Status -ne 'Running') 'Older binaries must not serve data a newer engine served.'
+        }
+        finally {
+            & $psql -h $owner['Host'] -p $owner['Port'] -U $owner['Username'] -d $owner['Database'] -At -v ON_ERROR_STOP=1 -c `
+                "DELETE FROM core.commands WHERE actor='engine' AND key='served-by:$newer'" | Out-Null
+            Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+            # Siempre, tambien si fallo una comprobacion de arriba: sin la marca, el mismo instalador completa la actualizacion y deja
+            # el servicio en marcha para los escenarios siguientes (si no, fallarian todos por un motor parado).
+            $recovered = Run-Setup @('/S', '/MODE=server')
+        }
+        Assert ($recovered -eq 0) "Installer exit code $recovered once the newer mark is gone"
+        Wait-Health | Out-Null
+        Assert ((Login).token) 'Login failed after completing the refused update.'
+    }
 
     # Material para los dos ultimos escenarios, guardado FUERA de la raiz de datos.
     $kit = Join-Path $env:RUNNER_TEMP 'costina-kit'

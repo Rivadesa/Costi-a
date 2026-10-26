@@ -3,10 +3,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { REJECTIONS } from '../src/commands'
 import { DB_TEXTS } from '../src/db'
-import { elapsedLabel, REVIEW_DECISIONS } from '../src/kitchen'
+import { elapsedLabel, PRESEND_DECISIONS, REVIEW_DECISIONS } from '../src/kitchen'
 import {
   actionLabel, ageLabel, ageShort, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
-  preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, severityLabel, stationKindLabel, tableStateLabel,
+  preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, reviewOutcome, severityLabel, stationKindLabel, tableStateLabel,
   unpairWarning, VOCABULARY,
 } from '../src/labels'
 import { LINK_TEXT } from '../src/live'
@@ -22,6 +22,7 @@ const cases = JSON.parse(readFileSync(fileURLToPath(new URL('../../../dotnet/tes
   restrictions: Array<{ restriction: GuestRestriction; text: string }>
   minutes: Array<{ minutes: number; text: string }>
   plural: Array<{ count: number; one: string; many: string; text: string }>
+  reviews: Array<{ case: string; preparation: Preparation; text: string }>
 }
 const FAMILIES: Record<string, (value: string) => string> = {
   dining: diningLabel, course: courseLabel, preparation: preparationLabel, tableState: tableStateLabel, offerKind: offerKindLabel,
@@ -43,6 +44,14 @@ describe('vocabulary: the case table shared with the main PC (Labels.cs)', () =>
     for (const row of cases.restrictions) expect(restrictionLabel(row.restriction)).toBe(row.text)
     for (const row of cases.minutes) expect(minutesLabel(row.minutes * 60_000), String(row.minutes)).toBe(row.text)
     for (const row of cases.plural) expect(plural(row.count, row.one, row.many)).toBe(row.text)
+  })
+  // E4e: lo que la sala lee de la decision de cocina sobre un plato, igual que el puesto (Labels.ReviewOutcome).
+  it('what the room reads of a kitchen review', () => {
+    expect(cases.reviews.length).toBeGreaterThan(0)
+    for (const row of cases.reviews) {
+      expect(Object.keys(row).filter(key => !['case', 'preparation', 'text'].includes(key)), `unknown field in the shared cases: ${row.case}`).toEqual([])
+      expect(reviewOutcome(row.preparation), row.case).toBe(row.text)
+    }
   })
 })
 
@@ -73,6 +82,8 @@ const SHOWN = [
   otherActorAdvice('device:tablet'), pairPendingAdvice('tablet'), unpairWarning({ kind: 'unreadable', key: 'k' }),
   unpairWarning({ kind: 'restored', command: { key: 'k', path: '/x', body: '{}', description: 'Servir', createdAt: '', installationId: 'i', actor: 'device:tablet' } }),
   new MoneyLeakError('$.x').message, elapsedLabel(null, 0), ...REVIEW_DECISIONS.map(option => option.label),
+  // E4e: lo que la sala lee de una revision y las decisiones del pase antes de enviar.
+  ...cases.reviews.map(row => row.text), ...PRESEND_DECISIONS.map(option => option.label),
   reviewLabel({ id: 'p', name: 'x', stationId: 's', quantity: 1, guestPosition: null, mandatory: true, state: 'Fired', reviewPending: true }),
   // Los errores de IndexedDB llegan al aviso «Servidor no listo (…)» de la pantalla de arranque (startup.ts).
   ...Object.values(DB_TEXTS), ageLabel(null), ageLabel(75), ageShort(null), ageShort(5),

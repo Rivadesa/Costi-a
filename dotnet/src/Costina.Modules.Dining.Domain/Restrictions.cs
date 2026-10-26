@@ -14,13 +14,14 @@ public sealed record GuestRestriction(string Id, int? GuestPosition, Restriction
 // no afecta / se adapta (con el cambio aplicado) / se rehace. Siempre con nota y responsable.
 public enum ReviewDecision { Unaffected, Adapt, Remake }
 public sealed record PreparationReview(ReviewDecision Decision, string Note, DateTimeOffset At);
+public sealed record PreparationDecision(string CourseId, string ItemId, ReviewDecision Decision, string Note);
 
 public sealed partial class DiningService
 {
     private readonly List<GuestRestriction> restrictions = [];
 
     public IReadOnlyList<GuestRestriction> Restrictions => restrictions.AsReadOnly();
-    // Derivado, nunca un booleano suelto: hay trabajo enviado con elaboraciones sin revisar.
+    // Derivado, nunca un booleano suelto: hay elaboraciones sin revisar (desde E4e, tambien de pases sin enviar).
     public bool RestrictionsPendingAck => courses.Any(c => c.ReviewPending);
 
     // Una restriccion aplica a una elaboracion si cualquiera de las dos es de mesa entera
@@ -44,8 +45,8 @@ public sealed partial class DiningService
         var id = Guid.NewGuid().ToString("N");
         var restriction = new GuestRestriction(id, guestPosition, kind, substance, severity);
         restrictions.Add(restriction);
-        // Protocolo de revision (ADR-009, F05): cada elaboracion ya enviada a la que aplica el cambio
-        // queda pendiente de una decision explicita de cocina antes de validar, servir o disparar mas.
+        // Protocolo de revision (ADR-009, F05; ADR-016 desde E4e): cada elaboracion a la que aplica el cambio y que aun se va a
+        // cocinar, ENVIADA O NO, queda pendiente de una decision explicita de cocina antes de enviar su pase, validarlo o servirlo.
         var affected = FlagAffected(restriction);
         Emit("restriction.declared", stamp, ("restriction_id", id), ("kind", kind.ToString()),
             ("substance", substance), ("severity", severity.ToString()),
@@ -74,16 +75,43 @@ public sealed partial class DiningService
     // Acto de cocina por elaboracion: decide que pasa con ESE plato tras el cambio. Permitido en pausa,
     // como el resto de reconocimientos de trabajo ya enviado. "Rehacer" devuelve la elaboracion a
     // enviada y retira la validacion del pase si la tenia: nada sale sin una nueva validacion.
+    // E4e (ADR-016): tambien con la mesa «Sentados» y en pases sin enviar (cocina decide antes de cocinar); rehacer, solo lo enviado.
+    // E4e: la individual es el grupo de una (mismas reglas, mismo evento).
     public void ReviewPreparation(string courseId, string itemId, ReviewDecision decision, string note, CommandStamp stamp)
+        => ReviewPreparations([new(courseId, itemId, decision, note)], stamp);
+
+    // E4e: ORDEN DE GRUPO review-preparations: varias decisiones (de uno o varios pases: el menu entero de un comensal), cada una con su
+    // decision y su nota obligatoria, en UNA orden. Todo o nada: se comprueban todas con las mismas reglas que la individual antes de
+    // aplicar ninguna, y deja un restriction.reviewed por elaboracion, en el orden pedido. Vacia o con una elaboracion repetida: 422.
+    public void ReviewPreparations(IReadOnlyList<PreparationDecision> decisions, CommandStamp stamp)
     {
-        KitchenAllowed(stamp);
-        note = Guard.Text(note, nameof(note));
-        Guard.Rule(Enum.IsDefined(decision), "invalid_review", "Unknown review decision.");
-        Find(courseId).Review(itemId, decision, note, stamp);
-        Emit("restriction.reviewed", stamp, ("course_id", courseId), ("item_id", itemId),
-            ("decision", decision.ToString()), ("note", note));
+        Check(stamp);
+        Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
+            "service_not_active", "Reviews require a seated, running or paused service.");
+        ArgumentNullException.ThrowIfNull(decisions);
+        if (decisions.Count == 0) throw new ArgumentException("At least one review is required.", nameof(decisions));
+        if (decisions.Any(d => d is null)) throw new ArgumentException("A review cannot be null.", nameof(decisions));
+        if (decisions.Select(d => (d.CourseId, d.ItemId)).Distinct().Count() != decisions.Count)
+            throw new ArgumentException("A preparation can be reviewed only once per command.", nameof(decisions));
+        var checkedDecisions = decisions.Select(d =>
+        {
+            var note = Guard.Text(d.Note, nameof(d.Note));
+            Guard.Rule(Enum.IsDefined(d.Decision), "invalid_review", "Unknown review decision.");
+            var course = Find(d.CourseId);
+            course.CheckReview(d.ItemId, d.Decision);
+            return (Course: course, Decision: d, Note: note);
+        }).ToArray();
+        foreach (var (course, decision, note) in checkedDecisions)
+        {
+            course.ApplyReview(decision.ItemId, decision.Decision, note, stamp);
+            Emit("restriction.reviewed", stamp, ("course_id", decision.CourseId), ("item_id", decision.ItemId),
+                ("decision", decision.Decision.ToString()), ("note", note));
+        }
     }
 
     private int FlagAffected(GuestRestriction restriction)
         => courses.Sum(c => c.FlagForReview(position => Applies(restriction, position)));
+
+    // E4e: una elaboracion que nace para ese comensal (o sin comensal) necesita decision de cocina si le aplica alguna restriccion.
+    private bool NeedsReview(int? guestPosition) => restrictions.Any(r => Applies(r, guestPosition));
 }

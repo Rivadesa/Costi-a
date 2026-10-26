@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { asMain, bottlePng, checkScreen, command, ensureDrink, issueCode, MAIN, openTable, pairThroughTheUi, pendingPairing, read, RUN, watch, type Drink } from './support'
+import { asMain, bottlePng, checkScreen, command, ensureDrink, issueCode, MAIN, openTable, pairThroughTheUi, pendingPairing, read, reviewCourse, RUN, watch, type Drink } from './support'
 
 // C3c: las capturas de docs/native/images/c3c/ (dos aplicaciones, el enrutador, los dos caminos de instalacion, el aviso de «listo
 // para servir» y la cabecera de Costina Cocina) salen del MOTOR REAL. Solo con C3C_CAPTURES=<carpeta> y nunca en la CI:
@@ -72,6 +72,7 @@ test('captures of the two apps and both ways to install them, for the C3c doc', 
   const m4 = await openTable(request, 'M4', 4)
   await command(request, m4, 'start')
   await command(request, m4, 'declare-restriction', { guestPosition: 2, kind: 'Allergy', substance: 'frutos secos', severity: 'Severe' })
+  await reviewCourse(request, m4, 0)                                                   // E4e: el primer pase no sale sin la decision de cocina
   await command(request, m4, 'fire-next')
   await expect(phone.getByTestId('table-M5').getByTestId('tile-state')).toHaveText('En cocina', { timeout: 15_000 })
   await phone.getByTestId('table-M5').tap()

@@ -272,7 +272,20 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .review input { min-height: var(--touch-kitchen); }
 /* Las tres decisiones en una fila, a partes iguales (siguen de 64 px de alto y de mas de 64 de ancho, tambien a 375 px). */
 .review .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.review .row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .review .kbtn { min-width: 0; padding: 0 8px; }
+/* E4e: «Por revisar antes de enviar» (solo el pase), siempre encima de las comandas. Lo pendiente va en ambar; una restriccion que
+   alarma, en rojo y escrita. «No le afecta a nada más», en el verde suave del acento (es una decision, no un aviso). */
+.presend { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; padding: 14px; border-radius: 16px; background: var(--warn-soft); border: 1.5px solid var(--warn-line); }
+.presend h2 { display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 700; color: var(--warn-text); }
+.presend-help { font-size: 15px; }
+.presend-guest { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.presend-guest h3 { font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
+.presend-guest > ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 10px; }
+.review.presend-item { border-color: var(--warn-line); background: var(--warn-soft); }
+.review.presend-item .lbl { color: var(--warn-text); }
+.review.rest { border-color: var(--accent-line); background: var(--accent-soft); }
+.review.rest .lbl { color: var(--accent-text); }
 
 /* ---------- Emparejar, sin conexion y opciones ---------- */
 .pair-card { width: 100%; max-width: 36rem; margin: 8px auto 0; display: flex; flex-direction: column; gap: 14px; }

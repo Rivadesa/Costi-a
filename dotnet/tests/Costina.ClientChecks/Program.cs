@@ -515,7 +515,9 @@ static string Kebab(string name)=>string.Concat(name.Select((c,i)=>i>0&&char.IsU
 static string[] Lower<T>() where T:struct,Enum=>Enum.GetNames<T>().Select(n=>n.ToLowerInvariant()).ToArray();
 string[] actions=["open","start","fire-next","serve","pause","resume","complete","cancel-unstarted","skip","ready","choose","add-dish",
     "preparation-start","preparation-ready","review-preparation","declare-restriction","remove-restriction","release",
-    "add-product","add-consumption","payment","void-charge","refund","close","reopen"];
+    "add-product","add-consumption","payment","void-charge","refund","close","reopen",
+    // E4e: las ordenes de grupo (un plato agrupado, o el menu de un comensal, en una orden).
+    "preparations-start","preparations-ready","review-preparations"];
 var vocabulary=new (string Family,string[] Codes,Func<string,string> Label)[]{
     ("servicio",Enum.GetNames<DiningState>(),Labels.Dining),
     ("pase",Enum.GetNames<CourseState>(),Labels.Course),
@@ -589,7 +591,9 @@ await Check("vocabulary: server rejections in clear Spanish; an unknown one keep
         "service_finished","not_found","duplicate_code","table_in_use","reserved_station","reserved_tariff","offer_unavailable","price_missing","image_invalid","image_too_large",
         "station_kind_mismatch","device_role_not_allowed","storage_conflict","operation_unconfirmed","request_failed","too_many_items",
         // C3b: los diferidos de E3.3.1 y los de la ronda (add-consumptions).
-        "reserved_category","nothing_to_do","product_ids_required","use_add_dish","too_many_lines","duplicate_consumption"})
+        "reserved_category","nothing_to_do","product_ids_required","use_add_dish","too_many_lines","duplicate_consumption",
+        // E4e (ADR-016): rehacer lo que no ha salido y abrir con un tipo o una gravedad que el servidor no conoce.
+        "nothing_to_remake","invalid_restriction"})
     {
         var text=Labels.Rejection(code);
         Expect(text!=code&&!text.Contains("(código",StringComparison.Ordinal)&&!text.Contains('_'),"rejection without a sentence: "+code+" -> "+text);
@@ -682,10 +686,11 @@ await Check("floor plan: tile state, time, progress and alert come from the read
         &&FloorPlan.Alert(D("InService") with {RestrictionsPendingAck=true})=="Restricción · por revisar"&&FloorPlan.Alert(D("InService") with {Restrictions=[odd],RestrictionsPendingAck=true})=="Anaphylaxis (Critical) · por revisar"
         &&FloorPlan.AlertWord(D("InService") with {Restrictions=[allergy],RestrictionsPendingAck=true})=="Alergia","a change kitchen has not reviewed is said, after the word");
     var ready=new PreparationDto("p1","Merluza","hot",1,1,true,"Ready"); var fired=new PreparationDto("p2","Merluza","hot",1,2,true,"Fired");
-    Expect(FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2)=="En cocina desde las "+Labels.Clock(now.AddMinutes(-12))+" · 1 de 2 elaboraciones listas","kitchen detail: "+FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2));
+    // E4e: cuenta PLATOS (las dos merluzas son un plato, que no esta listo hasta que lo estan las dos).
+    Expect(FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2)=="En cocina desde las "+Labels.Clock(now.AddMinutes(-12))+" · 0 de 1 plato listo","kitchen detail: "+FloorPlan.CourseDetail(C("Fired",12,preps:[ready,fired]),2));
     Expect(FloorPlan.CourseDetail(C("Served",30,25,20),2)=="Servido a las "+Labels.Clock(now.AddMinutes(-20))&&FloorPlan.CourseDetail(C("Ready",12,3),2)=="Listo desde las "+Labels.Clock(now.AddMinutes(-3)),"served and ready");
     Expect(FloorPlan.CourseDetail(C("Pending",preps:[ready],choice:true),4)=="Han elegido 1 de 4 personas"&&FloorPlan.CourseDetail(C("Pending",optional:true),2)=="Se piden platos de la carta"
-        &&FloorPlan.CourseDetail(C("Pending",preps:[ready,fired],optional:true),2)=="2 platos pedidos"&&FloorPlan.CourseDetail(C("Pending",preps:[ready]),2)=="1 elaboración","pending detail");
+        &&FloorPlan.CourseDetail(C("Pending",preps:[ready,fired],optional:true),2)=="2 platos pedidos"&&FloorPlan.CourseDetail(C("Pending",preps:[ready]),2)=="1 plato","pending detail");
     Expect(FloorPlan.CourseDetail(new CourseDto("c","Primeros","Skipped",null,null,null,"sin hambre",[]),2)=="Motivo: sin hambre"&&FloorPlan.CourseDetail(C("Plating"),2)=="","skipped and unknown");
     return Task.CompletedTask;});
 // C3a: tablas de casos COMUNES con el comandero (dotnet/tests/fixtures, copiadas junto al ejecutable). frontend/pwa/tests/floor.test.ts y
@@ -776,6 +781,54 @@ await Check("vocabulary (shared cases): guests, restrictions, minutes and plural
         var text=Labels.Plural(row.GetProperty("count").GetInt32(),row.GetProperty("one").GetString()!,row.GetProperty("many").GetString()!);
         Expect(text==row.GetProperty("text").GetString(),"plural: "+text);
     }
+    return Task.CompletedTask;});
+// E4e: lo que la sala y el puesto leen de la decision de cocina sobre un plato («Por revisar en cocina», «Adaptado: …»). La MISMA tabla
+// la recorre vitest contra reviewOutcome (labels.ts). Un campo que este lado no conoce es un fallo.
+await Check("vocabulary (shared cases): what the room reads of a kitchen review",()=>{
+    var rows=vocabularyCases.RootElement.GetProperty("reviews").EnumerateArray().ToArray();
+    Expect(rows.Length>0,"no review cases");
+    foreach(var row in rows)
+    {
+        var unknown=row.EnumerateObject().Select(p=>p.Name).Where(name=>name is not ("case" or "preparation" or "text")).ToArray();
+        Expect(unknown.Length==0,"unknown field in the shared cases: "+string.Join(",",unknown));
+        var text=Labels.ReviewOutcome(row.GetProperty("preparation").Deserialize<PreparationDto>(ApiClient.Json)!);
+        Expect(text==row.GetProperty("text").GetString(),$"{row.GetProperty("case").GetString()}: '{text}', the shared case says '{row.GetProperty("text").GetString()}'");
+    }
+    return Task.CompletedTask;});
+// E4e: platos agrupados de la ficha del Comedor («Ostra × 7») con las lineas de los comensales aparte, escritas. Solo presentacion: el
+// boton de un plato solo lleva lo que el servidor anuncia en cada elaboracion.
+await Check("dish groups: same name and station, first appearance order, exceptions apart and written",()=>{
+    GuestRestrictionDto shellfish=new("r1",3,"Allergy","marisco","Severe"),coriander=new("r2",2,"Preference","cilantro","Mild");
+    PreparationDto P(string id,string name,string station,int? guest,string state,string[]? actions=null,GuestRestrictionDto[]? restrictions=null,bool pending=false,PreparationReviewDto? review=null)
+        =>new(id,name,station,1,guest,true,state,actions??[],restrictions??[],pending,review);
+    var course=new CourseDto("p1","Aperitivos","Pending",null,null,null,null,[
+        P("ostra-1","Ostra","cold",1,"Pending",["review-preparation"]),P("pan-1","Pan","pase",1,"Pending"),
+        P("ostra-2","Ostra","cold",2,"Pending",null,[coriander],review:new("Unaffected","no lleva cilantro",DateTimeOffset.UnixEpoch)),
+        P("ostra-3","Ostra","cold",3,"Pending",["review-preparation"],[shellfish],true),
+        P("pan-3","Pan","pase",3,"Pending",["review-preparation"],[shellfish],review:new("Adapt","pan de maíz",DateTimeOffset.UnixEpoch)),
+        P("pan-hot","Pan","hot",null,"Pending")]);
+    var groups=DishGroups.Of(course);
+    Expect(string.Join(" | ",groups.Select(g=>DishGroups.Title(g)+" ["+g.StationId+"]"))=="Ostra × 3 [cold] | Pan × 2 [pase] | Pan [hot]","groups: "+string.Join(" | ",groups.Select(DishGroups.Title)));
+    Expect(string.Join(" | ",groups[0].Exceptions.Select(DishGroups.ExceptionLine))=="Ostra · Comensal 2 · ⚠ Preferencia cilantro (leve) · No le afecta: no lleva cilantro | Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Por revisar en cocina",
+        "exception lines: "+string.Join(" | ",groups[0].Exceptions.Select(DishGroups.ExceptionLine)));
+    Expect(DishGroups.ExceptionLine(course.Preparations[4])=="Pan · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: pan de maíz","an adapted line keeps the dish name: "+DishGroups.ExceptionLine(course.Preparations[4]));
+    Expect(!DishGroups.ExceptionAlarming(course.Preparations[2])&&DishGroups.ExceptionAlarming(course.Preparations[3])&&DishGroups.ExceptionAlarming(course.Preparations[4]),
+        "red for a pending review or an alarming restriction; a reviewed mild preference is not");
+    Expect(groups[0].Announcing("review-preparation").SequenceEqual(["ostra-1","ostra-3"])&&groups[2].Announcing("review-preparation").Length==0,"a group button carries only what announces the single action");
+    Expect(DishGroups.State(groups[0])=="Sin enviar"&&!groups[0].AllReady,"state of the dish: "+DishGroups.State(groups[0]));
+    var mixed=new CourseDto("p2","Mar","Preparing",null,null,null,null,[P("z-1","Zamburiña","hot",1,"Ready"),P("z-2","Zamburiña","hot",2,"Preparing"),P("z-3","Zamburiña","hot",3,"Ready")]);
+    Expect(DishGroups.State(DishGroups.Of(mixed)[0])=="2 de 3 listas"&&DishGroups.Of(mixed with {Preparations=[..mixed.Preparations.Select(p=>p with {State="Ready"})]})[0].AllReady,
+        "mixed states say how many are ready: "+DishGroups.State(DishGroups.Of(mixed)[0]));
+    Expect(DishGroups.Of(course with {Preparations=[]}).Length==0,"a course without preparations has no dishes");
+    // E4e (revision): el PC solo marca por defecto las lineas de un plato cuando todas llevan las MISMAS restricciones (tipo, sustancia y
+    // gravedad, sin mayusculas ni orden; nunca el identificador): una decision pensada para una no sale marcada para otra distinta.
+    GuestRestrictionDto lactose2=new("r-l2",2,"Intolerance","lactosa","Mild"),lactose3=new("r-l3",3,"intolerance"," Lactosa","MILD"),gluten=new("r-g",null,"Allergy","gluten","Severe");
+    Expect(DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2]),P("a-3","A","cold",3,"Pending",null,[lactose3])]),"two guests with the same intolerance are the same, whatever their ids");
+    Expect(DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[gluten,lactose2]),P("a-3","A","cold",3,"Pending",null,[lactose3,gluten])]),"the order of the restrictions does not matter");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2]),P("a-3","A","cold",3,"Pending",null,[shellfish])]),"a mild intolerance and a severe allergy are not the same");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[gluten,lactose2]),P("a-3","A","cold",3,"Pending",null,[gluten])]),"one more restriction is not the same");
+    Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2 with {Severity="Severe"}]),P("a-3","A","cold",3,"Pending",null,[lactose3])]),"another severity is not the same");
+    Expect(DishGroups.SameRestrictions([P("a-3","A","cold",3,"Pending",null,[shellfish])])&&DishGroups.SameRestrictions([]),"one line, or none, is always the same");
     return Task.CompletedTask;});
 // C3b: tabla de casos COMUN del selector «Bodega y bebidas» y de la ronda. frontend/pwa/tests/drinks.test.ts recorre la MISMA contra
 // search.ts, drinks.ts y round.ts: si CatalogSearch, DrinksPicker o Round cambian y la PWA no (o al reves), falla una de las dos.

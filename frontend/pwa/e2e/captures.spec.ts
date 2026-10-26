@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { checkScreen, command, MAIN, openTable, pairThroughTheUi, read, watch } from './support'
+import { checkScreen, command, MAIN, openTable, pairThroughTheUi, read, reviewCourse, watch } from './support'
 
 // C3a: las capturas de docs/native/images/c3a/ salen del MOTOR REAL, no de una maqueta. Solo con C3A_CAPTURES=<carpeta> y nunca en
 // la CI: playwright.config.ts corre entonces SOLO este spec. Prepara M1 y M3..M8 a su gusto (M2 la deja abierta pwa_http.py), asi que
@@ -48,6 +48,7 @@ async function stage(request: APIRequestContext): Promise<void> {
   const m5 = await openTable(request, 'M5', 4)
   await command(request, m5, 'declare-restriction', { guestPosition: 2, kind: 'Allergy', substance: 'frutos secos', severity: 'Severe' })
   await command(request, m5, 'declare-restriction', { guestPosition: 3, kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' })
+  await reviewCourse(request, m5, 0); await reviewCourse(request, m5, 1)               // E4e: ningun pase sale sin la decision de cocina
   await command(request, m5, 'start'); await command(request, m5, 'fire-next')
   await command(request, m5, 'serve', { courseId: await finishCourse(request, m5, 0) })
   // M6: en pausa, con su pase en cocina.

@@ -4,7 +4,8 @@
     "el comandero usa las mismas palabras que el puesto y no pueden separarse sin que falle una de las dos pruebas.",
     "families: valor del servidor -> texto. Ni mayusculas ni guiones cuentan; un valor desconocido vuelve TAL CUAL (los casos en crudo lo comprueban).",
     "action solo lleva las acciones OPERATIVAS: las de caja (pago, cobro, cuenta) nunca se rotulan en el comandero.",
-    "vitest comprueba ademas que labels.ts no tiene ninguna palabra que no este aqui."
+    "vitest comprueba ademas que labels.ts no tiene ninguna palabra que no este aqui.",
+    "E4e: reviews = lo que la sala y el puesto leen de la decision de cocina sobre un plato (Labels.ReviewOutcome / reviewOutcome); un campo desconocido falla."
   ],
   "families": {
     "dining": {
@@ -49,9 +50,38 @@
       "skip": "Omitir pase", "ready": "Validar pase listo", "choose": "Elegir plato", "add-dish": "Pedir plato",
       "preparation-start": "Empezar elaboración", "preparation-ready": "Marcar elaboración lista", "review-preparation": "Revisar elaboración",
       "declare-restriction": "Declarar restricción", "remove-restriction": "Retirar restricción", "release": "Liberar mesa",
-      "add-consumption": "Añadir consumo", "FireNext": "Enviar siguiente pase a cocina", "teleport": "teleport"
+      "add-consumption": "Añadir consumo", "FireNext": "Enviar siguiente pase a cocina", "teleport": "teleport",
+      "preparations-start": "Empezar plato", "preparations-ready": "Marcar plato listo", "review-preparations": "Revisar platos"
     }
   },
+  "reviews": [
+    { "case": "E4e: mientras cocina no decide, la sala y el puesto leen «Por revisar en cocina»",
+      "preparation": { "id": "ostra-3", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending", "reviewPending": true },
+      "text": "Por revisar en cocina" },
+    { "case": "adaptado: la decision delante del texto de cocina; el nombre del plato no cambia",
+      "preparation": { "id": "ostra-3", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending",
+        "review": { "decision": "Adapt", "note": "vieira en lugar de ostra", "at": "2026-10-26T20:00:00Z" } },
+      "text": "Adaptado: vieira en lugar de ostra" },
+    { "case": "no le afecta, tambien escrito",
+      "preparation": { "id": "pan-2", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired",
+        "review": { "decision": "Unaffected", "note": "no lleva sésamo", "at": "2026-10-26T20:00:00Z" } },
+      "text": "No le afecta: no lleva sésamo" },
+    { "case": "rehecho (solo lo enviado)",
+      "preparation": { "id": "pan-2", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired",
+        "review": { "decision": "Remake", "note": "sin frutos secos", "at": "2026-10-26T20:00:00Z" } },
+      "text": "Rehecho: sin frutos secos" },
+    { "case": "una decision que no se conoce sale TAL CUAL, con su nota",
+      "preparation": { "id": "pan-2", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired",
+        "review": { "decision": "Substitute", "note": "pan de maíz", "at": "2026-10-26T20:00:00Z" } },
+      "text": "Substitute: pan de maíz" },
+    { "case": "una revision pendiente manda sobre una decision anterior (la retirada de una restriccion vuelve a pedir decision)",
+      "preparation": { "id": "pan-2", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending", "reviewPending": true,
+        "review": { "decision": "Adapt", "note": "pan de maíz", "at": "2026-10-26T20:00:00Z" } },
+      "text": "Por revisar en cocina" },
+    { "case": "sin revision ni decision, nada",
+      "preparation": { "id": "pan-1", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
+      "text": "" }
+  ],
   "guests": [
     { "position": null, "text": "Toda la mesa" },
     { "position": 1, "text": "Comensal 1" },

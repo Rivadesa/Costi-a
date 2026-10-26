@@ -85,7 +85,7 @@ Section "Motor del restaurante (servicio de Windows + PostgreSQL)" SecServer
   Pop $0
   ${If} $0 != 0
     DetailPrint "setup-server devolvio $0"
-    MessageBox MB_ICONSTOP "No se pudo configurar el servidor (codigo $0). Revisa los detalles. Los datos existentes no se han tocado. Si era una actualizacion, el servicio queda parado hasta completarla: vuelve a ejecutar el instalador cuando se haya corregido la causa." /SD IDOK
+    MessageBox MB_ICONSTOP "No se pudo configurar el servidor (codigo $0). Revisa los detalles. Los datos existentes no se han tocado. Si era una actualizacion, el servicio queda parado hasta completarla: vuelve a ejecutar el instalador cuando se haya corregido la causa. Si este instalador es mas antiguo que el Costina que ya usaba estos datos, nunca se aplica: vuelve a instalar esa version o una mas nueva." /SD IDOK
     SetErrorLevel 2
     Abort
   ${EndIf}

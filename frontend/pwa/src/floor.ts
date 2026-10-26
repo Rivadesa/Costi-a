@@ -1,5 +1,5 @@
 import { clockLabel, minutesLabel, plural, restrictionKindLabel, severityLabel, tableStateLabel } from './labels'
-import type { Course, Dining, GuestRestriction } from './types'
+import type { Course, Dining, GuestRestriction, Preparation } from './types'
 
 // C3a: plano de mesas del comandero. Copia SIN DOM de Costina.Client/FloorPlan.cs (C2, puesto principal): las dos
 // implementaciones recorren la MISMA tabla de casos (dotnet/tests/fixtures/floorplan-cases.json, en vitest y en ClientChecks),
@@ -120,17 +120,31 @@ export function alert(service: Dining | null | undefined): string {
 export const alertIsAlarming = (service: Dining | null | undefined): boolean =>
   !!service && (service.restrictionsPendingAck === true || (service.restrictions ?? []).some(restrictionAlarming))
 
+// E4e: los PLATOS de un pase (espejo de DishGroups.Of del puesto): el mismo nombre en la misma estacion (comparacion exacta), en el orden
+// en que aparece por primera vez. Solo presentacion: un plato esta listo cuando lo estan todas sus elaboraciones.
+export function dishGroups(course: Course): Preparation[][] {
+  const groups = new Map<string, Preparation[]>()
+  for (const preparation of course.preparations) {
+    const key = JSON.stringify([preparation.name, preparation.stationId])
+    const group = groups.get(key)
+    if (group) group.push(preparation); else groups.set(key, [preparation])
+  }
+  return [...groups.values()]
+}
+
 // Linea de detalle de un pase en la ficha: cuando se sirvio, desde cuando esta en cocina y cuanto lleva hecho, quien falta por
 // elegir... Sin el numero de personas no se sabe cuantos faltan por elegir.
+// E4e (plan 2026-10-15, seccion 4.5): cuenta PLATOS, no lineas por comensal («3 de 5 platos listos»), como el puesto.
 export function courseDetail(course: Course, pax: number): string {
   const preparations = course.preparations
   if (same(course.state, 'Served')) return course.servedAt ? `Servido a las ${clockLabel(course.servedAt)}` : ''
   if (same(course.state, 'Skipped')) return course.skipReason ? `Motivo: ${course.skipReason}` : ''
   if (same(course.state, 'Ready')) return course.readyAt ? `Listo desde las ${clockLabel(course.readyAt)}` : ''
+  const dishes = dishGroups(course)
   if (inKitchen(course)) {
     const since = course.firedAt ? `En cocina desde las ${clockLabel(course.firedAt)}` : 'En cocina'
-    return preparations.length === 0 ? since
-      : `${since} · ${preparations.filter(p => same(p.state, 'Ready')).length} de ${plural(preparations.length, 'elaboración lista', 'elaboraciones listas')}`
+    const ready = dishes.filter(group => group.every(p => same(p.state, 'Ready'))).length
+    return dishes.length === 0 ? since : `${since} · ${ready} de ${plural(dishes.length, 'plato listo', 'platos listos')}`
   }
   if (!same(course.state, 'Pending')) return ''
   if (course.optional === true) return preparations.length === 0 ? 'Se piden platos de la carta' : plural(preparations.length, 'plato pedido', 'platos pedidos')
@@ -138,5 +152,5 @@ export function courseDetail(course: Course, pax: number): string {
     const chosen = new Set(preparations.filter(p => p.guestPosition !== null && p.guestPosition !== undefined).map(p => p.guestPosition)).size
     return `Han elegido ${chosen} de ${plural(pax, 'persona', 'personas')}`
   }
-  return plural(preparations.length, 'elaboración', 'elaboraciones')
+  return plural(dishes.length, 'plato', 'platos')
 }

@@ -16,6 +16,7 @@ on:
       - 'dotnet/src/Costina.Server/LanHttp.cs'
       - 'dotnet/src/Costina.Server/Backup.cs'
       - 'dotnet/src/Costina.Server/StatusReport.cs'
+      - 'dotnet/src/Costina.Core.Persistence/EngineVersions.cs'   # E4e: la guarda contra bajar de version (backup, upgrade, arranque)
       - '.github/workflows/dotnet-installer.yml'
   push:
     branches: [develop]

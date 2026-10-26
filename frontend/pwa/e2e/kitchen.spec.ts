@@ -7,14 +7,65 @@ import { checkDevice, checkScreen, command, databaseOf, deviceContext, deviceNam
 const deviceToken = (page: Page) => storedToken(page, databaseOf('cocina'))
 
 test('a station marks only its own work, the pass reviews and validates, and everything is enabled by the server alone', async ({ browser, request }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(300_000)
   expect(MAIN, 'E2E_MAIN_TOKEN is required').not.toBe('')
   const TABLE = lane().kitchen.id, TABLE_NAME = lane().kitchen.name
   const leaks: string[] = [], violations: string[] = []
+  const version = async () => (await read(request, serviceId)).version
 
-  // Sala (por API) abre la mesa, inicia y envia el primer pase: elaboraciones frias (cold) y calientes (hot), una POR COMENSAL.
-  const serviceId = await openTable(request, TABLE, 2)
-  await command(request, serviceId, 'start'); await command(request, serviceId, 'fire-next')
+  // 0) E4e (ADR-016), REVISAR ANTES DE ENVIAR. La mesa se abre con una intolerancia del comensal 2 en la MISMA orden: elaboraciones frias
+  //    (cold) y calientes (hot), una POR COMENSAL, y las del comensal 2, de todo el menu, por revisar. Sala lo ve («Por revisar en cocina») y
+  //    su boton grande espera; el pase decide antes de enviar: «Adaptado» un plato (una orden) y «No le afecta a nada más» el resto (UNA
+  //    orden); Sala ve «Adaptado: …» y envia el primer pase desde Sentados (una orden).
+  const serviceId = await openTable(request, TABLE, 2, 'LAB-TASTING', [{ guestPosition: 2, kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' }])
+  const salaContext = await deviceContext(browser); const salaPage = await salaContext.newPage(); watch(salaPage, leaks, violations)
+  await pairThroughTheUi(salaPage, request, deviceName('sala-pase'), 'service', 'sala-1')
+  await press(salaPage.getByTestId(`table-${TABLE}`))
+  const salaCard = salaPage.getByTestId('detail')
+  await expect(salaCard.getByTestId('detail-state')).toHaveText('Sentados', { timeout: 15_000 })
+  await expect(salaCard.getByTestId('courses')).toContainText('Por revisar en cocina')
+  await expect(salaCard.getByTestId('courses')).toContainText('Intolerancia lactosa (leve)')
+  await expect(salaPage.getByTestId('do-wait')).toHaveText('Esperando la revisión de cocina')
+  await expect(salaPage.getByTestId('do-wait')).toBeDisabled()
+  await expect(salaPage.getByTestId('do-fire-next')).toHaveCount(0)                        // el servidor no anuncia enviar lo que espera
+  await checkScreen(salaPage, 'waiting for the kitchen review')
+
+  const passContext = await deviceContext(browser); const passPage = await passContext.newPage(); watch(passPage, leaks, violations)
+  await pairThroughTheUi(passPage, request, deviceName('pase'), 'kitchen', 'pase')
+  await expect(passPage.getByTestId('kitchen')).toBeVisible(); await checkDevice(passPage)
+  const guest = passPage.getByTestId(`presend-${TABLE}-2`)
+  await expect(guest).toBeVisible({ timeout: 15_000 })
+  await expect(guest).toContainText(`${TABLE_NAME} · Comensal 2`)
+  await expect(guest).toContainText('Intolerancia lactosa (leve)')
+  await expect(guest.locator('[data-testid^="presend-item-"]')).toHaveCount(3)              // los tres platos del comensal 2, de los dos pases
+  await expect(passPage.getByTestId(`presend-${TABLE}-1`)).toHaveCount(0)
+  await checkScreen(passPage, 'pass before sending', true)
+  const adapted = passPage.getByTestId(`presend-item-${TABLE}-p1-caliente-2`)
+  for (const button of await adapted.locator('button').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
+  await adapted.locator('input').fill('aceite de oliva en vez de mantequilla')
+  let before = await version()
+  await press(passPage.getByTestId(`do-presend-adapt-${TABLE}-p1-caliente-2`))
+  await expect(adapted).toHaveCount(0, { timeout: 15_000 })
+  expect(await version()).toBe(before + 1)
+  const rest = passPage.getByTestId(`presend-rest-${TABLE}-2`)
+  await expect(rest).toContainText('No le afecta a nada más · 2 platos')
+  await expect(passPage.getByTestId(`do-presend-rest-${TABLE}-2`)).toBeDisabled()
+  await rest.locator('input').fill('no lleva lactosa')
+  before = await version()
+  await press(passPage.getByTestId(`do-presend-rest-${TABLE}-2`))
+  await expect(guest).toHaveCount(0, { timeout: 15_000 })
+  const reviewed = await read(request, serviceId)
+  expect(reviewed.version).toBe(before + 1)                                                  // UNA orden para los dos platos
+  expect(reviewed.data.courses.flatMap(current => current.preparations).filter(preparation => preparation.reviewPending)).toEqual([])
+  await expect(salaCard.getByTestId('courses')).toContainText('Adaptado: aceite de oliva en vez de mantequilla', { timeout: 15_000 })
+  await expect(salaPage.getByTestId('do-fire-next')).toBeVisible()
+  before = await version()
+  await press(salaPage.getByTestId('do-fire-next'))
+  await expect(salaCard.getByTestId('detail-state')).toHaveText('En cocina', { timeout: 15_000 })
+  expect(await version()).toBe(before + 1)                                                   // empieza y envia en UNA orden
+  await checkScreen(salaPage, 'adapted before sending')
+  await salaContext.close()
+
   const course = (await read(request, serviceId)).data.courses[0]
   const cold = course.preparations.find(p => p.stationId === 'cold')!, hot = course.preparations.find(p => p.stationId === 'hot')!
   const id = (action: string, preparationId: string) => `do-${action}-${TABLE}-${course.id}-${preparationId}`
@@ -61,14 +112,13 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(coldTicket).toContainText('ALERGIA marisco (grave)')
   await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                               // en NINGUNA mesa: el servidor no se lo anuncia a una estacion
 
-  // 5) PASE (otro dispositivo): todo es suyo para mirar, nada de marcar elaboraciones; revisa con nota OBLIGATORIA.
-  const passContext = await deviceContext(browser); const passPage = await passContext.newPage(); watch(passPage, leaks, violations)
-  await pairThroughTheUi(passPage, request, deviceName('pase'), 'kitchen', 'pase')
-  await expect(passPage.getByTestId('kitchen')).toBeVisible(); await checkDevice(passPage)
+  // 5) PASE (el dispositivo del paso 0): todo es suyo para mirar; revisa con nota OBLIGATORIA. E4e (ADR-016): tambien puede marcar por
+  //    una estacion con la tablet estropeada, asi que el servidor le anuncia lo que falta de CUALQUIER estacion (lo ya listo de la fria, no).
   const passTicket = passPage.getByTestId(`ticket-${TABLE}-${course.id}`)
   await expect(passTicket).toBeVisible({ timeout: 15_000 })
   await expect(passTicket).not.toContainText('(otra estación)')
-  await expect(passPage.locator(`[data-testid^="do-preparation-"][data-testid*="-${TABLE}-"]`)).toHaveCount(0)
+  await expect(passPage.getByTestId(id('preparation-ready', hot.id))).toBeVisible()
+  await expect(passPage.getByTestId(id('preparation-ready', cold.id))).toHaveCount(0)
   await expect(passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)            // con revisiones pendientes el servidor no anuncia validar
   await checkScreen(passPage, 'pass', true)
   const reviews = passTicket.locator('[data-testid^="review-"]')

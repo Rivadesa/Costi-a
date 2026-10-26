@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-15. **Estado: APROBADO por el promotor el 15-10-2026.** Contestó las siete preguntas del resumen; las respuestas y lo que cambian están en la sección 10, y las decisiones en la 9. El orden de entrega pasa a ser E4d, E3.3, C3a, C3b, E4e, C3c, **E4f, E4c**, E4g.
 
-> **Nota del 22-10: el orden que queda lo sustituye otro plan.** E4d, E3.3, C3a y C3b están entregados. A partir de ahí manda `docs/plans/2026-10-22-sala-y-cocina.md`, APROBADO por el promotor el 22-10: C3c (dos aplicaciones, Costiña Sala y Costiña Cocina), E4e, C3d (Costiña Cocina), C3e (Costiña Sala), E4f, E4c y E4g, con versiones nuevas a partir de `0.43.0-c3c`. El C3c de la sección 4.6 se reparte entre C3d (cocina) y C3e (sala), y el nombre «C3c» pasa a las dos aplicaciones. Lo aprobado aquí para E4e, E4f, E4c y E4g sigue valiendo con las concreciones de ese plan.
+> **Nota del 22-10: el orden que queda lo sustituye otro plan.** E4d, E3.3, C3a y C3b están entregados (y E4e, el 26-10, como `0.44.0-e4e`: ver la sección 4.5). A partir de ahí manda `docs/plans/2026-10-22-sala-y-cocina.md`, APROBADO por el promotor el 22-10: C3c (dos aplicaciones, Costiña Sala y Costiña Cocina), E4e, C3d (Costiña Cocina), C3e (Costiña Sala), E4f, E4c y E4g, con versiones nuevas a partir de `0.43.0-c3c`. El C3c de la sección 4.6 se reparte entre C3d (cocina) y C3e (sala), y el nombre «C3c» pasa a las dos aplicaciones. Lo aprobado aquí para E4e, E4f, E4c y E4g sigue valiendo con las concreciones de ese plan.
 
 **Maqueta del comandero:** `docs/plans/maquetas/2026-10-15-comandero.html`. Se abre en el navegador y tiene pestañas para abrir mesa, mesa, bodega, ronda, combinados, menú cerrado, carta y PC. Capturas en `docs/plans/maquetas/2026-10-15-comandero/`.
 
@@ -585,6 +585,8 @@ Lleva también la petición del promotor del 15-10 de añadir una consumición d
 **Capturas** a 375 × 812 y a 820 × 1180: Bebidas (accesos rápidos, búsqueda y ronda) y lo que lleva la mesa. Del puesto, en DesktopChecks, la ficha de una mesa abierta en el nivel Puesto: `comedor-consumicion.png` (selector abierto, una búsqueda y una ronda sin enviar) y `comedor-lo-que-lleva.png` (selector cerrado, «Lo que lleva la mesa» con la ronda confirmada y «Anulado en Caja»).
 
 ### 4.5. E4e — Alergias adaptadas antes de enviar y cocina por plato (`0.43.0-e4e`, sin cambio de esquema)
+
+**Entregado el 26-10 como `0.44.0-e4e`** (el plan del 22-10 puso C3c delante): `docs/native/E4e-alergias-antes-de-enviar.md`, con su ADR, `docs/ADR/ADR-016-revision-de-alergias-antes-de-enviar.md`, y los pasos de `docs/plans/2026-10-26-e4e-alergias-antes-de-enviar.md`. Todo lo de abajo, con estas diferencias: «Rehacer» en un pase sin enviar da 409, no 422 (todas las reglas del dominio salen como 409); cancelar una mesa sin empezar también retira lo pendiente; el mínimo de la PWA vive en la pantalla del pase de Costiña Cocina y trae ya «No le afecta a nada más»; y el corte suma lo del plan del 22-10: el pase marca por cualquier estación, quién abrió la mesa y las guardas contra bajar de versión.
 
 **Este corte cambia una regla de seguridad documentada (D3.5, `dotnet/AGENTS.md:17`) y necesita el sí del promotor** (pregunta abierta 1). La regla nueva se escribe en un ADR propio («revisión de alergias antes de enviar»), que sustituye en ese punto a D3.5.
 

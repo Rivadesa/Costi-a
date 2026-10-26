@@ -14,11 +14,18 @@ public sealed partial class DiningService : Aggregate
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
 
+    // E4e: quien abrio la mesa, tomado de la identidad de la orden 'open' (actor y estacion del dispositivo; una persona no tiene
+    // estacion). Solo se escribe al abrir y nunca cambia; null en mesas abiertas antes de E4e. No es atribucion a una persona (C3e).
+    public string? OpenedBy { get; }
+    public string? OpenedStation { get; }
+
     public DiningService(string id, BusinessScope scope, string tableId, int pax,
-        IReadOnlyList<CourseDefinition> definitions, string? offerId = null) : base(id, scope)
+        IReadOnlyList<CourseDefinition> definitions, string? offerId = null, string? openedBy = null, string? openedStation = null) : base(id, scope)
     {
         TableId = Guard.Text(tableId, nameof(tableId));
         OfferId = string.IsNullOrWhiteSpace(offerId) ? null : offerId;
+        OpenedBy = string.IsNullOrWhiteSpace(openedBy) ? null : openedBy;
+        OpenedStation = string.IsNullOrWhiteSpace(openedStation) ? null : openedStation;
         Guard.Rule(pax > 0, "invalid_pax", "Pax must be positive.");
         Pax = pax;
         ArgumentNullException.ThrowIfNull(definitions);
@@ -37,31 +44,63 @@ public sealed partial class DiningService : Aggregate
         Emit("service.started", stamp);
     }
 
+    // E4e (ADR-016): el bloqueo por revisiones es del pase que VA A SALIR, no global: un pase revisado sale aunque otro posterior
+    // siga esperando. Y desde «Sentados» (Open) la misma orden empieza el servicio y envia el primer pase, todo o nada: si el pase
+    // no puede salir (revision, eleccion o grupo vacio), no cambia nada y la mesa sigue sentada. 'start' sigue existiendo.
     public string FireNext(CommandStamp stamp)
     {
         Check(stamp);
-        Guard.Rule(State == DiningState.InService, "service_not_running", "Service must be running to fire a course.");
-        Guard.Rule(!RestrictionsPendingAck, "restrictions_unreviewed", "Kitchen must review every affected preparation before firing more work.");
-        Guard.Rule(!courses.Any(c => c.Active), "active_course", "Another course is still active.");
-        var course = courses.FirstOrDefault(c => c.State == CourseState.Pending)
-            ?? throw new RuleViolation("no_pending_course", "There are no pending courses.");
-        course.Fire(stamp);   // choice_missing si un comensal no ha elegido (menu cerrado)
+        Guard.Rule(State is DiningState.InService or DiningState.Open, "service_not_running", "Service must be seated or running to fire a course.");
+        var active = courses.FirstOrDefault(c => c.Active);
+        // Con un pase en cocina que espera revision se dice eso, como en D3.5; sin revisiones, que hay otro pase en marcha.
+        Guard.Rule(active is null || !active.ReviewPending, "restrictions_unreviewed", "Kitchen must review every affected preparation of the course in the kitchen first.");
+        Guard.Rule(active is null, "active_course", "Another course is still active.");
+        var course = NextCourse() ?? throw new RuleViolation("no_pending_course", "There are no pending courses.");
+        Guard.Rule(!course.ReviewPending, "restrictions_unreviewed", "Kitchen must review every affected preparation of this course before it is sent.");
+        var starting = State == DiningState.Open;
+        course.Fire(stamp);   // choice_missing si un comensal no ha elegido (menu cerrado), course_empty en un grupo vacio: antes de cambiar nada
+        if (starting) { State = DiningState.InService; StartedAt = stamp.At; Emit("service.started", stamp); }
         Emit("course.fired", stamp, ("course_id", course.Id));
         return course.Id;
     }
 
-    public void StartPreparation(string courseId, string itemId, CommandStamp stamp)
+    // El pase que saldria con fire-next: el primero pendiente.
+    private CourseExecution? NextCourse() => courses.FirstOrDefault(c => c.State == CourseState.Pending);
+
+    public void StartPreparation(string courseId, string itemId, CommandStamp stamp) => StartPreparations(courseId, [itemId], stamp);
+
+    public void ReadyPreparation(string courseId, string itemId, CommandStamp stamp) => ReadyPreparations(courseId, [itemId], stamp);
+
+    // E4e: ORDEN DE GRUPO (preparations-start|ready): varias elaboraciones de UN pase en una sola orden. Todo o nada tambien en memoria
+    // (CourseExecution comprueba todas antes de tocar ninguna) y un evento por elaboracion con los tipos de siempre, en el orden pedido.
+    // La individual es el grupo de una. Lista vacia o con una elaboracion repetida: peticion mal formada (422).
+    public void StartPreparations(string courseId, IReadOnlyList<string> itemIds, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Find(courseId).StartPreparation(itemId);
-        Emit("course_item.started", stamp, ("course_id", courseId), ("item_id", itemId));
+        var ids = GroupIds(itemIds);
+        Find(courseId).StartPreparations(ids);
+        foreach (var id in ids) Emit("course_item.started", stamp, ("course_id", courseId), ("item_id", id));
     }
 
-    public void ReadyPreparation(string courseId, string itemId, CommandStamp stamp)
+    public void ReadyPreparations(string courseId, IReadOnlyList<string> itemIds, CommandStamp stamp)
     {
         KitchenAllowed(stamp);
-        Find(courseId).ReadyPreparation(itemId);
-        Emit("course_item.ready", stamp, ("course_id", courseId), ("item_id", itemId));
+        var ids = GroupIds(itemIds);
+        Find(courseId).ReadyPreparations(ids);
+        foreach (var id in ids) Emit("course_item.ready", stamp, ("course_id", courseId), ("item_id", id));
+    }
+
+    // Los identificadores van TAL CUAL (sin recortar): la matriz de estacion los busca exactos y un espacio de mas no puede esconder
+    // la estacion de una elaboracion.
+    private static IReadOnlyList<string> GroupIds(IReadOnlyList<string> itemIds)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        if (itemIds.Count == 0) throw new ArgumentException("At least one preparation is required.", nameof(itemIds));
+        var ids = itemIds.ToArray();
+        if (ids.Any(string.IsNullOrWhiteSpace)) throw new ArgumentException("A preparation id cannot be blank.", nameof(itemIds));
+        if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
+            throw new ArgumentException("A preparation can appear only once per command.", nameof(itemIds));
+        return ids;
     }
 
     public void ValidateReady(string courseId, CommandStamp stamp)
@@ -84,7 +123,7 @@ public sealed partial class DiningService : Aggregate
         Check(stamp);
         Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
             "service_finished", "A finished service cannot be changed.");
-        Find(courseId).Choose(guest, dish);
+        Find(courseId).Choose(guest, dish, NeedsReview(guest));   // E4e: para un comensal con restriccion nace por revisar
         Emit("course.chosen", stamp, ("course_id", courseId), ("guest", guest.ToString()), ("dish_id", dish.Id));
     }
 
@@ -94,7 +133,8 @@ public sealed partial class DiningService : Aggregate
         Check(stamp);
         Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
             "service_finished", "A finished service cannot be changed.");
-        Find(courseId).AddDish(dish);
+        // E4e: un plato para un comensal con restriccion, o sin comensal (para compartir: le aplica cualquiera), nace por revisar.
+        Find(courseId).AddDish(dish, NeedsReview(dish.GuestPosition));
         Emit("course.dish_added", stamp, ("course_id", courseId), ("item_id", dish.Id), ("quantity", dish.Quantity.ToString()));
     }
 
@@ -103,8 +143,9 @@ public sealed partial class DiningService : Aggregate
         Check(stamp);
         Guard.Rule(State is DiningState.Open or DiningState.InService or DiningState.Paused,
             "service_finished", "A finished service cannot be changed.");
-        Find(courseId).Skip(reason);
-        Emit("course.skipped", stamp, ("course_id", courseId), ("reason", reason.Trim()));
+        // E4e: omitir retira las revisiones pendientes de ese pase; el evento las cuenta solo si habia alguna (lo de siempre no cambia).
+        var withdrawn = Find(courseId).Skip(reason);
+        Emit("course.skipped", stamp, WithWithdrawn([("course_id", courseId), ("reason", reason.Trim())], withdrawn));
     }
 
     public void Pause(string reason, CommandStamp stamp)
@@ -140,13 +181,19 @@ public sealed partial class DiningService : Aggregate
         reason = Guard.Text(reason, nameof(reason));
         Guard.Rule(State == DiningState.Open && courses.All(c => !c.Active),
             "service_already_started", "Cancellation of an active kitchen service needs a separate recall workflow.");
+        // E4e: nada se va a cocinar: las revisiones pendientes se retiran (si no, la mesa cancelada quedaria «por revisar» para siempre).
+        var withdrawn = courses.Sum(c => c.WithdrawReviews());
         State = DiningState.Cancelled;
-        Emit("service.cancelled", stamp, ("reason", reason));
+        Emit("service.cancelled", stamp, WithWithdrawn([("reason", reason)], withdrawn));
     }
+
+    private static (string Key, string Value)[] WithWithdrawn((string Key, string Value)[] data, int withdrawn)
+        => withdrawn > 0 ? [.. data, ("reviews_withdrawn", withdrawn.ToString(System.Globalization.CultureInfo.InvariantCulture))] : data;
 
     public DiningView View() => new(Id, TableId, Pax, State,
         Array.AsReadOnly(courses.Select(c => c.View()).ToArray()),
-        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck, OfferId: OfferId);
+        Restrictions: restrictions.AsReadOnly(), RestrictionsPendingAck: RestrictionsPendingAck, OfferId: OfferId,
+        OpenedBy: OpenedBy, OpenedStation: OpenedStation);
     private CourseExecution Find(string id) => courses.FirstOrDefault(c => c.Id == id)
         ?? throw new RuleViolation("course_not_found", "Course not found.");
     private void KitchenAllowed(CommandStamp stamp)

@@ -6,20 +6,30 @@ using static Costina.Core.Persistence.CommandGuards;
 namespace Costina.Modules.Dining;
 
 // E4a: la mesa se abre con una OFERTA del nucleo (offerId); menuId sigue aceptado una version como alias.
-public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null);
+// E4e: Restrictions = las alergias de la mesa en la MISMA orden (campo nuevo y opcional: una apertura de hoy vale igual).
+public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null,IReadOnlyList<RestrictionRequest>? Restrictions=null);
+// E4e: una restriccion tal como llega al abrir. Todo anulable para decir QUE falta: sin comensal = toda la mesa.
+public sealed record RestrictionRequest(int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null);
 // C3b: Lines = la RONDA de add-consumptions (campo nuevo y opcional: la ruta rechaza campos desconocidos y una orden de hoy vale igual).
+// E4e: ItemIds = las elaboraciones de preparations-start|ready (de un pase: CourseId) e Items = las decisiones de review-preparations.
+// Campos nuevos y opcionales: una orden de hoy vale igual.
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
     string? Decision=null,string? Note=null,string? ProductId=null,int Quantity=1,string? PresentationId=null,string? DishId=null,
-    IReadOnlyList<ConsumptionLine>? Lines=null);
+    IReadOnlyList<ConsumptionLine>? Lines=null,IReadOnlyList<string>? ItemIds=null,IReadOnlyList<ReviewItem>? Items=null);
 // C3b: una linea de la ronda tal como llega. Todo es anulable para poder decir QUE falta y en QUE linea (422 con su indice).
 public sealed record ConsumptionLine(string? ProductId=null,string? PresentationId=null,int? Quantity=null,int? GuestPosition=null);
+// E4e: una decision de review-preparations tal como llega: la elaboracion (pase y plato), la decision y su nota, las cuatro obligatorias.
+public sealed record ReviewItem(string? CourseId=null,string? ItemId=null,string? Decision=null,string? Note=null);
 public sealed record ReleaseCommand(long ExpectedVersion,string Reason);
 
 public static class DiningOperations
 {
     // C3b: tope de una ronda (lineas) y de cada linea (cantidad). Una ronda mayor se manda en otra orden.
     public const int MaxRoundLines=30, MaxLineQuantity=99;
+    // E4e: topes de las ordenes de grupo (too_many_items): elaboraciones de preparations-start|ready y decisiones de review-preparations
+    // (60 con su nota caben en Requests.MaxCommandBody, 32 KiB).
+    public const int MaxGroupPreparations=200, MaxGroupReviews=60;
     public static async Task<object> Open(Unit unit,ExecutionIdentity identity,OpenRequest request)
     {
         var table = await unit.ActiveTable(Required(request.TableId));   // E2: mesa de la organizacion del nucleo, activa
@@ -33,7 +43,19 @@ public static class DiningOperations
         // E4b: en una carta los pases son grupos vacios y opcionales: los platos se piden con add-dish y se cobran al pedirlos.
         var courses = offerCourses.Select(c => new CourseDefinition(c.Id,c.Name,choice || carte ? [] : c.Dishes.SelectMany(d =>
             Enumerable.Range(1,request.Pax).Select(n => new PreparationDefinition(d.Id+"-"+n,d.Name,d.StationId,1,n))).ToArray(),choice,carte)).ToArray();
-        var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses,offer.Id);
+        // E4e: quien abrio la mesa (para «Mis mesas» de C3e): el actor de esta orden (device:<nombre> o user:<nombre>) y la estacion del
+        // dispositivo (una persona no tiene). Va en la instantanea, sin columna ni evento nuevo: service.created ya lleva el actor.
+        var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses,offer.Id,identity.ActorId,identity.Station);
+        // E4e (ADR-016): las alergias de la mesa en la MISMA orden y transaccion (una sola orden incierta). Cada una marca por revisar lo
+        // que le aplica de todo el menu, como declare-restriction; una mala (invalid_restriction, invalid_guest, duplicada) no abre nada.
+        foreach(var restriction in request.Restrictions ?? [])
+        {
+            if(restriction is null) throw new ArgumentException("A restriction cannot be null.");
+            dining.DeclareRestriction(restriction.GuestPosition,RestrictionValue<RestrictionKind>(restriction.Kind),restriction.Substance ?? "",
+                RestrictionValue<RestrictionSeverity>(restriction.Severity),stamp);
+        }
+        // Sus restriction.declared van en la auditoria DETRAS de service.created (el agregado los emitiria antes, al guardarse).
+        var declared = dining.PendingEvents.ToArray(); dining.ClearPendingEvents();
         // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu (producto del catalogo, por persona, a la
         // tarifa de la sala; E3) por el contrato de la Unit, en la misma transaccion. El precio queda congelado con su origen.
         var account = new SettlementAccount(Guid.NewGuid().ToString("N"),identity.Scope,id);
@@ -51,36 +73,60 @@ public static class DiningOperations
         await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
             new DomainEvent(Guid.NewGuid(),"service.created",id,identity.Scope,identity.ActorId,stamp.At,
-                new Dictionary<string,string>{{"table_id",table.Id}}),
+                new Dictionary<string,string>{{"table_id",table.Id}})}.Concat(declared).Concat(new[] {
             new DomainEvent(Guid.NewGuid(),"table.occupied",occupancy.Id,identity.Scope,identity.ActorId,stamp.At,
                 new Dictionary<string,string>{{"service_id",id},{"table_id",table.Id}}),
             new DomainEvent(Guid.NewGuid(),"account.opened",account.Id,identity.Scope,identity.ActorId,stamp.At,
-                new Dictionary<string,string>{{"service_id",id}})});
+                new Dictionary<string,string>{{"service_id",id}})}));
         return new { serviceId=id,version=1,occupancyVersion=1 };
     }
+    // E4e: tipo y gravedad de una restriccion al abrir: solo un nombre conocido (sin distinguir mayusculas), nunca un numero.
+    // Un valor desconocido o vacio da invalid_restriction. declare-restriction sigue como hoy (422 invalid_request, ParseEnum).
+    private static T RestrictionValue<T>(string? value) where T : struct, Enum
+        => Enum.GetNames<T>().FirstOrDefault(n => string.Equals(n,value?.Trim(),StringComparison.OrdinalIgnoreCase)) is { } name
+            ? Enum.Parse<T>(name) : throw new RuleViolation("invalid_restriction","Unknown restriction kind or severity.");
     // Matriz de estacion (D4.3, F06): un dispositivo solo marca elaboraciones de SU estacion, y
     // validar o revisar un pase exige la estacion 'pase'. Un usuario con sesion (Station null)
     // no tiene restriccion: el chef en el PC decide. La estacion nunca amplia el rol, solo acota.
-    private static void StationAllowed(ExecutionIdentity identity,DiningService entity,string action,DiningCommand request)
+    // E4e (ADR-016), SIN HUECOS: las ordenes de grupo se comprueban elaboracion a elaboracion (una ajena rechaza el grupo entero, sin
+    // aplicar nada) y review-preparations es del pase, como review-preparation. Cambia D4.3a SOLO para el pase de COCINA: marca
+    // (preparation(s)-start|ready) por cualquier estacion, por ejemplo la de una tablet estropeada. Un comandero de sala que quedo en
+    // 'pase' antes de A2 sigue marcando solo lo de 'pase' (Affordances.PassMarksAll mira el rol). Su espejo es StationKeeps/PassKeeps.
+    private static void StationAllowed(ExecutionIdentity identity,string role,DiningService entity,string action,DiningCommand request)
     {
         if(identity.Station is null) return;
-        if(action is "preparation-start" or "preparation-ready")
+        var pass=string.Equals(identity.Station,Affordances.PassStation,StringComparison.Ordinal);
+        if(action is "preparation-start" or "preparation-ready" or "preparations-start" or "preparations-ready")
         {
-            var station=entity.View().Courses.FirstOrDefault(c=>c.Id==request.CourseId)?
-                .Preparations.FirstOrDefault(p=>p.Id==request.ItemId)?.StationId;
-            if(station is not null && !string.Equals(station,identity.Station,StringComparison.Ordinal))
-                throw new RuleViolation("wrong_station","This device's station cannot mark that preparation.");
+            if(Affordances.PassMarksAll(role,identity.Station)) return;
+            var preparations=entity.View().Courses.FirstOrDefault(c=>c.Id==request.CourseId)?.Preparations ?? [];
+            var items=action.StartsWith("preparations-",StringComparison.Ordinal) ? (IEnumerable<string?>)(request.ItemIds ?? []) : [request.ItemId];
+            // Una elaboracion que no existe no tiene estacion: la rechaza el dominio (preparation_not_found), sin aplicar nada.
+            foreach(var item in items)
+                if(preparations.FirstOrDefault(p=>p.Id==item)?.StationId is { } station && !string.Equals(station,identity.Station,StringComparison.Ordinal))
+                    throw new RuleViolation("wrong_station","This device's station cannot mark that preparation.");
         }
-        else if(action is "ready" or "review-preparation")
+        else if(action is "ready" or "review-preparation" or "review-preparations")
         {
-            if(!string.Equals(identity.Station,"pase",StringComparison.Ordinal))
-                throw new RuleViolation("wrong_station","Course validation and review belong to the 'pase' station.");
+            if(!pass) throw new RuleViolation("wrong_station","Course validation and review belong to the 'pase' station.");
         }
     }
-    public static async Task<object> Dining(Unit unit,ExecutionIdentity identity,string id,string action,DiningCommand request)
+    // E4e: elaboraciones de una orden de grupo: de 1 a MaxGroupPreparations (vacia = 422; mas = too_many_items). Repetidas: el dominio.
+    private static IReadOnlyList<string> GroupItems(IReadOnlyList<string>? itemIds)
+        => itemIds is not { Count: > 0 } ? throw new ArgumentException("itemIds is required: at least one preparation.")
+            : itemIds.Count>MaxGroupPreparations ? throw new RuleViolation("too_many_items",$"At most {MaxGroupPreparations} preparations per command; send the rest in another.")
+            : itemIds.Select(Required).ToArray();
+    // E4e: decisiones de review-preparations: de 1 a MaxGroupReviews, cada una con pase, elaboracion, decision conocida y nota (422 si falta).
+    private static IReadOnlyList<PreparationDecision> GroupReviews(IReadOnlyList<ReviewItem>? items)
+        => items is not { Count: > 0 } ? throw new ArgumentException("items is required: at least one review.")
+            : items.Count>MaxGroupReviews ? throw new RuleViolation("too_many_items",$"At most {MaxGroupReviews} reviews per command; send the rest in another.")
+            : items.Select(i => i is null ? throw new ArgumentException("A review cannot be null.")
+                : new PreparationDecision(Required(i.CourseId),Required(i.ItemId),ParseEnum<ReviewDecision>(i.Decision),Required(i.Note))).ToArray();
+    // E4e (revision): role = el rol de la credencial (Requests.Role), que la matriz de estacion necesita para la excepcion del pase.
+    public static async Task<object> Dining(Unit unit,ExecutionIdentity identity,string role,string id,string action,DiningCommand request)
     {
         var stored = await unit.Dining(id); Version(stored.Version,request.ExpectedVersion);
-        StationAllowed(identity,stored.Entity,action,request);
+        StationAllowed(identity,role,stored.Entity,action,request);
         var entity=stored.Entity; var stamp=new CommandStamp(identity.Scope,identity.ActorId,DateTimeOffset.UtcNow);
         switch(action)
         {
@@ -88,6 +134,9 @@ public static class DiningOperations
             case "fire-next": entity.FireNext(stamp); break;
             case "preparation-start": entity.StartPreparation(Required(request.CourseId),Required(request.ItemId),stamp); break;
             case "preparation-ready": entity.ReadyPreparation(Required(request.CourseId),Required(request.ItemId),stamp); break;
+            // E4e: ordenes de grupo, UNA orden (una subida de version) con un evento por elaboracion.
+            case "preparations-start": entity.StartPreparations(Required(request.CourseId),GroupItems(request.ItemIds),stamp); break;
+            case "preparations-ready": entity.ReadyPreparations(Required(request.CourseId),GroupItems(request.ItemIds),stamp); break;
             case "ready": entity.ValidateReady(Required(request.CourseId),stamp); break;
             case "serve": entity.Serve(Required(request.CourseId),stamp); break;
             case "skip": entity.Skip(Required(request.CourseId),Required(request.Reason),stamp); break;
@@ -109,6 +158,7 @@ public static class DiningOperations
             case "remove-restriction": entity.RemoveRestriction(Required(request.RestrictionId),Required(request.Reason),stamp); break;
             case "review-preparation": entity.ReviewPreparation(Required(request.CourseId),Required(request.ItemId),
                 ParseEnum<ReviewDecision>(request.Decision),Required(request.Note),stamp); break;
+            case "review-preparations": entity.ReviewPreparations(GroupReviews(request.Items),stamp); break;
             default: throw new StoreNotFound();
         }
         await unit.Save(entity,stored.Version);

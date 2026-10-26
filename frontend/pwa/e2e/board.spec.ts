@@ -40,7 +40,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await expect(detail.getByTestId('detail-state')).toHaveText('En cocina')
   await expect(detail.getByTestId('restrictions')).toContainText('Comensal 1 · ALERGIA marisco (grave)')
   await expect(detail.getByTestId('restrictions-pending')).toContainText('SIN REVISAR POR COCINA')
-  await expect(detail.getByTestId('courses')).toContainText('PENDIENTE DE REVISIÓN POR COCINA')   // en cada elaboracion afectada
+  await expect(detail.getByTestId('courses')).toContainText('Por revisar en cocina')   // en cada elaboracion afectada (E4e: las palabras de la sala)
   await expect(detail.getByTestId('courses')).toContainText('Cocina fría')                 // el NOMBRE de la estacion, no su codigo
   await expect(detail).not.toContainText(new RegExp(`cold|${table.id}`))
   await checkScreen(page, 'table card')

@@ -203,15 +203,23 @@
       "alert": "Alergia", "alarming": true }
   ],
   "courses": [
-    { "case": "en cocina con su hora y lo que lleva hecho", "pax": 2,
+    { "case": "E4e: en cocina cuenta PLATOS, no lineas por comensal; un plato esta listo cuando lo estan todas sus elaboraciones", "pax": 2,
       "course": { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
         { "id": "p1", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" },
         { "id": "p2", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired" } ] },
-      "label": "En cocina", "detail": "En cocina desde las {firedAt} · 1 de 2 elaboraciones listas" },
+      "label": "En cocina", "detail": "En cocina desde las {firedAt} · 0 de 1 plato listo" },
+    { "case": "E4e: tres platos, uno con todas sus elaboraciones listas; el mismo nombre en otra estacion es otro plato", "pax": 2,
+      "course": { "id": "c2", "name": "Principal", "state": "Preparing", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "ostra-1", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" },
+        { "id": "ostra-2", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Ready" },
+        { "id": "salsa-1", "name": "Salsa", "stationId": "pase", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" },
+        { "id": "salsa-2", "name": "Salsa", "stationId": "pase", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Preparing" },
+        { "id": "salsa-caliente", "name": "Salsa", "stationId": "hot", "quantity": 1, "guestPosition": null, "mandatory": true, "state": "Fired" } ] },
+      "label": "En preparación", "detail": "En cocina desde las {firedAt} · 1 de 3 platos listos" },
     { "case": "en preparacion, una sola elaboracion", "pax": 1,
       "course": { "id": "c2", "name": "Principal", "state": "Preparing", "firedAt": "2026-10-15T20:28:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
         { "id": "p1", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready" } ] },
-      "label": "En preparación", "detail": "En cocina desde las {firedAt} · 1 de 1 elaboración lista" },
+      "label": "En preparación", "detail": "En cocina desde las {firedAt} · 1 de 1 plato listo" },
     { "case": "en cocina sin hora ni elaboraciones", "pax": 2,
       "course": { "id": "c2", "name": "Principal", "state": "Fired", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
       "label": "En cocina", "detail": "En cocina" },
@@ -257,13 +265,20 @@
     { "case": "pase del menu sin enviar, una elaboracion", "pax": 1,
       "course": { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
         { "id": "tarta-1", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" } ] },
-      "label": "Sin enviar", "detail": "1 elaboración" },
-    { "case": "pase del menu sin enviar, varias elaboraciones", "pax": 3,
+      "label": "Sin enviar", "detail": "1 plato" },
+    { "case": "E4e: pase del menu sin enviar, la tarta de los tres comensales es UN plato", "pax": 3,
       "course": { "id": "c3", "name": "Postre", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
         { "id": "tarta-1", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
         { "id": "tarta-2", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending" },
         { "id": "tarta-3", "name": "Tarta", "stationId": "cold", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending" } ] },
-      "label": "Sin enviar", "detail": "3 elaboraciones" },
+      "label": "Sin enviar", "detail": "1 plato" },
+    { "case": "E4e: pase del menu sin enviar con dos platos por comensal", "pax": 2,
+      "course": { "id": "c1", "name": "Aperitivos", "state": "Pending", "firedAt": null, "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [
+        { "id": "ostra-1", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
+        { "id": "croqueta-1", "name": "Croqueta", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending" },
+        { "id": "ostra-2", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending", "reviewPending": true },
+        { "id": "croqueta-2", "name": "Croqueta", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending" } ] },
+      "label": "Sin enviar", "detail": "2 platos" },
     { "case": "estado de pase desconocido: tal cual y sin detalle", "pax": 2,
       "course": { "id": "c2", "name": "Principal", "state": "Plating", "firedAt": "2026-10-15T20:35:00Z", "readyAt": null, "servedAt": null, "skipReason": null, "preparations": [] },
       "label": "Plating", "detail": "" },

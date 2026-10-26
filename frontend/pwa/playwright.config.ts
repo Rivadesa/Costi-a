@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
 // el unico navegador que instala la CI; cada uno con sus mesas y sus nombres de dispositivo (e2e/support.ts, carriles).
 // Con C3A_CAPTURES=<carpeta> (nunca en la CI) solo corre e2e/captures.spec.ts, que guarda alli las capturas de la documentacion; con
 // C3B_CAPTURES=<carpeta>, solo e2e/captures-c3b.spec.ts (Bodega y bebidas); con C3C_CAPTURES=<carpeta>, solo e2e/captures-c3c.spec.ts (las
-// dos aplicaciones y como se instalan).
+// dos aplicaciones y como se instalan); con E4E_CAPTURES=<carpeta>, solo e2e/captures-e4e.spec.ts (revisar las alergias antes de enviar).
 const MOBILE = {
   ...devices['Pixel 7'],
   viewport: { width: 375, height: 812 }, screen: { width: 375, height: 812 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
@@ -14,7 +14,8 @@ const MOBILE = {
 const captures = (process.env.C3A_CAPTURES ?? '') !== ''
 const capturesC3b = (process.env.C3B_CAPTURES ?? '') !== ''
 const capturesC3c = (process.env.C3C_CAPTURES ?? '') !== ''
-const CAPTURE_SPECS = /captures(-c3b|-c3c)?\.spec\.ts$/
+const capturesE4e = (process.env.E4E_CAPTURES ?? '') !== ''
+const CAPTURE_SPECS = /captures(-c3b|-c3c|-e4e)?\.spec\.ts$/
 
 export default defineConfig({
   testDir: 'e2e',
@@ -29,8 +30,10 @@ export default defineConfig({
       ? [{ name: 'captures-c3b', testMatch: /captures-c3b\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
       : capturesC3c
         ? [{ name: 'captures-c3c', testMatch: /captures-c3c\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
-        : [
-            { name: 'desktop', testIgnore: CAPTURE_SPECS, use: { ...devices['Desktop Chrome'] } },
-            { name: 'mobile', testIgnore: CAPTURE_SPECS, use: MOBILE },
-          ],
+        : capturesE4e
+          ? [{ name: 'captures-e4e', testMatch: /captures-e4e\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
+          : [
+              { name: 'desktop', testIgnore: CAPTURE_SPECS, use: { ...devices['Desktop Chrome'] } },
+              { name: 'mobile', testIgnore: CAPTURE_SPECS, use: MOBILE },
+            ],
 })

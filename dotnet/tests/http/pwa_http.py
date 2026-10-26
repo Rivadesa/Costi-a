@@ -220,4 +220,31 @@ class Pwa(unittest.TestCase):
         self.assertEqual(['water'], [c['productId'] for c in older(tasting)])          # sin el producto-menu
         finish_and_release(tasting)
 
+    def test_08_who_opened_the_table_reaches_every_device_without_money(self):
+        # E4e: la mesa recuerda quien la abrio (openedBy, el actor de la orden 'open') y desde que estacion (openedStation, la del
+        # dispositivo), en el JSON de su instantanea, sin columna nueva. Una persona no tiene estacion: la clave no sale. Una mesa
+        # guardada antes de E4e se lee igual, sin las dos claves. Nada de esto lleva dinero. Una mesa cada vez (ver test_07).
+        name = 'movil-' + secrets.token_hex(3)
+        issued = h.ok('/auth/pairings', {})
+        claimed = h.ok('/auth/pairings/claim', {'code': issued['code'], 'deviceName': name}, role='anonimo')
+        h.ok('/auth/pairings/' + claimed['pairingId'] + '/approve', {'role': 'service', 'station': 'sala-1'})
+        h.KEYS[name] = h.ok('/auth/pairings/' + claimed['pairingId'] + '/collect', {'pollSecret': claimed['pollSecret']}, role='anonimo')['deviceToken']
+        status, body = h.request('/dining/services', {'tableId': free_table(), 'pax': 2, 'offerId': 'LAB-TASTING'}, role=name)
+        self.assertEqual(200, status, body)
+        sid = json.loads(body)['serviceId']
+        for role in ('service', 'kitchen', 'main', name):
+            status, body = h.request('/dining/board', role=role)
+            self.assertEqual(list(money_keys(json.loads(body))), [], role)
+            service = next(b for b in json.loads(body) if b['service']['id'] == sid)['service']
+            self.assertEqual(('device:' + name, 'sala-1'), (service.get('openedBy'), service.get('openedStation')), role)
+        h.sql("UPDATE dining.services SET payload=payload-'openedBy'-'openedStation' WHERE tenant='d6-pwa' AND id='" + sid + "'")
+        older = h.ok('/dining/services/' + sid, role='service')['data']
+        self.assertEqual((None, None), (older.get('openedBy'), older.get('openedStation')))
+        finish_and_release(sid)
+        person = open_table(free_table())                                              # el token principal de las pruebas: una persona
+        opened = h.ok('/dining/services/' + person, role='service')['data']
+        self.assertEqual('user:lab-main', opened.get('openedBy')); self.assertNotIn('openedStation', opened)
+        self.assertEqual(list(money_keys(opened)), [])
+        finish_and_release(person)
+
 if __name__ == '__main__': unittest.main(verbosity=2)

@@ -7,9 +7,9 @@ import type { DrinkProduct, RoundItem } from '../drinks'
 import { commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
 import { courseDetail, courseStep, isTileCode, restrictionAlarming, tileLabel, tileState } from '../floor'
 import type { IconName } from '../icons'
-import { clockLabel, courseLabel, courseStateLabel, currentCourse, guestLabel, offerKindLabel, plural, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
+import { clockLabel, courseLabel, courseStateLabel, currentCourse, guestLabel, offerKindLabel, plural, preparationLabel, restrictionLabel, reviewOutcome } from '../labels'
 import { Round, type Settlement } from '../round'
-import type { BoardEntry, Course, GuestRestriction } from '../types'
+import type { BoardEntry, Course, GuestRestriction, Preparation } from '../types'
 import DishPanel from './DishPanel.vue'
 import DrinksPanel from './DrinksPanel.vue'
 import Icon from './Icon.vue'
@@ -140,7 +140,8 @@ const substance = ref('')
 const problem = ref('')
 const reason = ref('')
 const actions = computed(() => tableActions(props.entry))
-const primary = computed(() => primaryAction(actions.value))
+// E4e: con el pase que va a salir esperando la revision de cocina, «Iniciar servicio» no va en grande (sigue en «Más opciones»).
+const primary = computed(() => primaryAction(actions.value, service.value))
 const secondary = computed(() => actions.value.filter(action => action !== primary.value))
 const canRemove = computed(() => has('remove-restriction') && restrictions.value.length > 0)
 // Un solo campo de motivo: junto al boton grande si este lo pide; si no, en «Más opciones».
@@ -188,7 +189,14 @@ function pillTone(course: Course): string {
   return `s-${step}`
 }
 // Las elaboraciones se ven en lo que esta en cocina o listo (y en un estado que no se conoce): lo demas va resumido en su linea.
-const showPreparations = (course: Course) => course.preparations.length > 0 && ['kitchen', 'ready', 'other'].includes(courseStep(course))
+// E4e (ADR-016): de un pase SIN ENVIAR se ven las de los comensales con restriccion o con decision de cocina («Por revisar en cocina»,
+// «Adaptado: …»): cocina las decide antes de que salga el pase, y el camarero lo ve desde que se sientan.
+const exception = (preparation: Preparation) => preparation.reviewPending === true || preparation.review != null || (preparation.restrictions?.length ?? 0) > 0
+function shownPreparations(course: Course): Preparation[] {
+  const step = courseStep(course)
+  if (['kitchen', 'ready', 'other'].includes(step)) return course.preparations
+  return step === 'pending' ? course.preparations.filter(exception) : []
+}
 </script>
 
 <template>
@@ -269,14 +277,14 @@ const showPreparations = (course: Course) => course.preparations.length > 0 && [
             <span class="cp-t">
               <span class="cp-head"><b>{{ course.name }}</b><span class="pill" :class="pillTone(course)">{{ courseState(course) }}</span></span>
               <small v-if="courseDetail(course, service.pax)">{{ courseDetail(course, service.pax) }}</small>
-              <ul v-if="showPreparations(course)" class="preps">
-                <li v-for="preparation in course.preparations" :key="preparation.id" class="prep-line" :data-testid="`prep-${preparation.id}`">
+              <ul v-if="shownPreparations(course).length > 0" class="preps">
+                <li v-for="preparation in shownPreparations(course)" :key="preparation.id" class="prep-line" :data-testid="`prep-${preparation.id}`">
                   <span><b>{{ preparation.name }}</b><template v-if="preparation.quantity > 1"> × {{ preparation.quantity }}</template> · {{ preparationLabel(preparation.state) }}</span>
                   <span class="meta">{{ guestLabel(preparation.guestPosition) }} · {{ names.station(preparation.stationId) }}</span>
                   <span v-for="restriction in preparation.restrictions ?? []" :key="restriction.id" class="line-alert" :class="{ alarm: restrictionAlarming(restriction) }">
                     <Icon name="alert" :size="15" :stroke="2.2" />{{ restrictionLabel(restriction) }}</span>
-                  <span v-if="reviewLabel(preparation)" class="line-alert" :class="{ alarm: preparation.reviewPending }">
-                    <Icon :name="preparation.reviewPending ? 'alert' : 'checkCircle'" :size="15" :stroke="2.2" />{{ reviewLabel(preparation) }}</span>
+                  <span v-if="reviewOutcome(preparation)" class="line-alert" :class="{ alarm: preparation.reviewPending }" data-testid="prep-review">
+                    <Icon :name="preparation.reviewPending ? 'alert' : 'checkCircle'" :size="15" :stroke="2.2" />{{ reviewOutcome(preparation) }}</span>
                 </li>
               </ul>
             </span>

@@ -29,9 +29,10 @@ export async function command(request: APIRequestContext, serviceId: string, act
   const response = await asMain(request, `/dining/services/${serviceId}/commands/${action}`, { expectedVersion: (await read(request, serviceId)).version, ...fields })
   expect(response.ok(), `${action} -> ${response.status()}`).toBeTruthy()
 }
-// El PC principal abre una mesa. menuId: el alias de antes de E4a, como manda la PWA.
-export async function openTable(request: APIRequestContext, tableId: string, pax: number, offerId = 'LAB-TASTING'): Promise<string> {
-  const response = await asMain(request, '/dining/services', { tableId, pax, offerId, menuId: offerId })
+// El PC principal abre una mesa. menuId: el alias de antes de E4a, como manda la PWA. E4e: con alergias, en la MISMA orden open.
+export type Restriction = { guestPosition: number | null; kind: string; substance: string; severity: string }
+export async function openTable(request: APIRequestContext, tableId: string, pax: number, offerId = 'LAB-TASTING', restrictions?: Restriction[]): Promise<string> {
+  const response = await asMain(request, '/dining/services', { tableId, pax, offerId, menuId: offerId, ...(restrictions ? { restrictions } : {}) })
   expect(response.ok(), `open ${tableId} -> ${response.status()}`).toBeTruthy()
   return (await response.json()).serviceId as string
 }
@@ -195,6 +196,14 @@ export async function loseResponses(page: Page, pattern: string): Promise<{ lost
   const lost = new Promise<void>(resolve => { first = resolve })
   await page.route(pattern, async route => { try { await route.fetch(); await route.abort('connectionreset') } finally { first() } })
   return { lost }
+}
+
+// E4e (ADR-016): un pase con platos por revisar no sale. El PC principal (persona, sin estacion) decide los de ese pase para que pueda
+// salir; lo usan las capturas que declaran alergias antes de enviar.
+export async function reviewCourse(request: APIRequestContext, serviceId: string, index: number, note = 'no le afecta'): Promise<void> {
+  const course = (await read(request, serviceId)).data.courses[index]
+  for (const preparation of course.preparations.filter(p => p.reviewPending))
+    await command(request, serviceId, 'review-preparation', { courseId: course.id, itemId: preparation.id, decision: 'unaffected', note })
 }
 
 // El PC principal deja una mesa libre: omite lo pendiente, termina y libera (como finish_and_release de pwa_http.py).

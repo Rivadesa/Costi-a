@@ -44,6 +44,10 @@ DATOS DE DEMOSTRACION
 ACTUALIZAR
   Ejecuta el instalador nuevo encima. Para los servicios, hace una COPIA DE SEGURIDAD, actualiza
   el esquema de forma explicita y vuelve a arrancar. Un arranque normal nunca migra datos.
+  NUNCA BAJA DE VERSION (desde 0.44.0): un instalador mas antiguo que el Costina que ya sirvio
+  estos datos se para sin tocarlos, y sus binarios no arrancan. Vuelve a instalar esa version o
+  una mas nueva. Volver a una version anterior exige restaurar, en un equipo limpio y con el
+  instalador anterior, la copia hecha justo antes de actualizar.
 
 CAMBIAR DE EQUIPO
   En el equipo nuevo: instalador, modo servidor, MISMOS identificadores de negocio, y elegir el

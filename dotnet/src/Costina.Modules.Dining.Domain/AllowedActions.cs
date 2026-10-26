@@ -15,8 +15,9 @@ public sealed partial class DiningService
         var pending = RestrictionsPendingAck;
         var actions = new List<string>();
         if (State == DiningState.Open && courses.Count > 0) actions.Add("start");
-        if (State == DiningState.InService && !pending && !courses.Any(c => c.Active)
-            && courses.Any(c => c.State == CourseState.Pending)) actions.Add("fire-next");
+        // E4e (ADR-016): desde «Sentados» tambien, y solo lo frena una revision pendiente del pase que va a salir (como FireNext).
+        if (State is DiningState.InService or DiningState.Open && !courses.Any(c => c.Active)
+            && NextCourse() is { ReviewPending: false }) actions.Add("fire-next");
         if (State == DiningState.InService) actions.Add("pause");
         if (State == DiningState.Paused) actions.Add("resume");
         if (active && courses.All(c => c.Terminal)) actions.Add("complete");
@@ -26,7 +27,7 @@ public sealed partial class DiningService
             actions.Add("remove-restriction");
         return new(Id, TableId, Pax, State,
             Array.AsReadOnly(courses.Select(c => c.ViewWithActions(State, restrictions)).ToArray()),
-            actions.AsReadOnly(), restrictions.AsReadOnly(), pending, OfferId);
+            actions.AsReadOnly(), restrictions.AsReadOnly(), pending, OfferId, OpenedBy, OpenedStation);
     }
 }
 
@@ -49,13 +50,15 @@ internal sealed partial class CourseExecution
         // E4b: en un grupo pendiente de una carta se piden platos.
         if (serviceState is DiningState.Open or DiningState.InService or DiningState.Paused
             && State == CourseState.Pending && Optional) actions.Add("add-dish");
+        // E4e (ADR-016): se revisa tambien con la mesa sentada y en un pase sin enviar, mientras no este servido ni omitido.
+        bool reviewable = serviceState is DiningState.Open or DiningState.InService or DiningState.Paused && !Terminal;
         var items = preparations.Select(p =>
         {
             var itemActions = new List<string>();
             if (kitchenActive && preparing && p.State == PreparationState.Fired) itemActions.Add("preparation-start");
             if (kitchenActive && preparing && p.State is PreparationState.Fired or PreparationState.Preparing)
                 itemActions.Add("preparation-ready");
-            if (kitchenActive && Active && p.ReviewPending) itemActions.Add("review-preparation");
+            if (reviewable && p.ReviewPending) itemActions.Add("review-preparation");
             return p.View() with { Actions = itemActions.AsReadOnly(),
                 Restrictions = restrictions.Where(r => DiningService.Applies(r, p.Definition.GuestPosition)).ToArray() };
         }).ToArray();

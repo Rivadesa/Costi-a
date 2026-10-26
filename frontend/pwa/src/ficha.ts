@@ -1,5 +1,5 @@
 import { EATING, KITCHEN, READY, tileSince, tileState } from './floor'
-import { actionLabel, clockLabel, minutesLabel, plural } from './labels'
+import { actionLabel, clockLabel, currentCourse, minutesLabel, plural } from './labels'
 import type { BoardEntry, Course, Dining } from './types'
 
 // C3a: ficha de una mesa en el comandero, sin DOM. Que botones salen, cual va en grande y con que texto, y que orden se envia. NINGUNA
@@ -39,17 +39,30 @@ export function tableActions(entry: BoardEntry): TableAction[] {
   return list
 }
 
-export function primaryAction(actions: readonly TableAction[]): TableAction | null {
+// E4e (ADR-016): el pase que importa ahora (el primero sin servir ni omitir: el que esta en cocina o, si no hay, el que va a salir) tiene
+// platos por revisar. Lo dice el servidor en cada elaboracion (reviewPending); aqui solo se lee, para rotular el boton grande.
+export const waitsForReview = (service: Dining): boolean =>
+  currentCourse(service)?.preparations.some(preparation => preparation.reviewPending === true) === true
+
+// E4e: mientras el pase que va a salir espera la revision de cocina, «Iniciar servicio» no va en grande aunque el servidor lo anuncie
+// (sigue en «Más opciones»): el boton grande queda apagado y dice «Esperando la revisión de cocina», como el puesto. Sin la mesa
+// (service), el orden de siempre.
+export function primaryAction(actions: readonly TableAction[], service?: Dining): TableAction | null {
+  const waiting = service !== undefined && waitsForReview(service)
   for (const action of PRIMARY_ORDER) {
+    if (waiting && action === 'start') continue
     const found = actions.find(candidate => candidate.action === action)
     if (found) return found
   }
   return null
 }
 
-// Sin accion principal anunciada, el boton grande queda apagado y dice que se espera (ServiceViewModel.WaitingText).
+// Sin accion principal anunciada, el boton grande queda apagado y dice que se espera (ServiceViewModel.WaitingText). E4e: la revision de
+// cocina solo se espera si es del pase que importa ahora (con un pase en cocina y una alergia en el postre, se espera a cocina). Un
+// servidor anterior a D3.5, sin marcas por elaboracion, solo da el aviso global: tambien se espera la revision.
 export function waitingText(service: Dining): string {
-  if (service.restrictionsPendingAck === true) return 'Esperando la revisión de cocina'
+  const marked = service.courses.some(course => course.preparations.some(preparation => preparation.reviewPending === true))
+  if (waitsForReview(service) || (service.restrictionsPendingAck === true && !marked)) return 'Esperando la revisión de cocina'
   return tileState(service) === KITCHEN ? 'Esperando a cocina' : 'Sin acciones para esta mesa ahora'
 }
 
@@ -111,4 +124,5 @@ export function dishesHint(service: Dining, offer: string): string {
 export const coursesTitle = (service: Dining): string => service.courses.length === 0 ? 'Pases'
   : `Pases · ${service.courses.filter(course => course.state === 'Served' || course.state === 'Skipped').length} de ${service.courses.length} hechos`
 
-export const PENDING_REVIEW_TEXT = 'SIN REVISAR POR COCINA: cada elaboración «Pendiente de revisión» necesita su decisión (no afecta, adaptar o rehacer) antes de validar, servir o enviar otro pase.'
+// E4e (ADR-016): cocina decide cada plato afectado ANTES de que salga su pase; el bloqueo es de ese pase, no de toda la mesa.
+export const PENDING_REVIEW_TEXT = 'SIN REVISAR POR COCINA: cocina decide cada plato «Por revisar en cocina» antes de que salga su pase; mientras tanto, ese pase espera y no se valida ni se sirve.'

@@ -216,23 +216,62 @@
        <Border Style="{StaticResource ToneChip}" Tag="{Binding Service.OpenTone}" Margin="0,5,0,0" VerticalAlignment="Top"><TextBlock Text="{Binding Service.OpenState}"/></Border>
       </WrapPanel>
      </StackPanel>
-     <StackPanel Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
+     <TextBlock DockPanel.Dock="Top" Text="Este acceso no abre mesas." Style="{StaticResource Body}" Visibility="{Binding CanOpen, Converter={StaticResource NotBool2Vis}}"/>
+     <!-- E4e: con las alergias el formulario puede no caber: se desplaza (el boton de abrir va al final, con lo que se abre). -->
+     <ScrollViewer x:Name="OpenScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Padding="0,0,12,0" Margin="0,0,-8,0"
+                   Visibility="{Binding CanOpen, Converter={StaticResource Bool2Vis}}">
+     <StackPanel>
       <TextBlock Text="Mesa" Style="{StaticResource FieldLabel}"/>
       <ComboBox x:Name="OpenTableBox" ItemsSource="{Binding Service.Tables}" SelectedItem="{Binding Service.SelectedTable}" HorizontalAlignment="Stretch" Margin="0,0,0,12"/>
       <TextBlock Text="Menú o carta" Style="{StaticResource FieldLabel}"/>
       <ComboBox x:Name="OpenOfferBox" ItemsSource="{Binding Service.Offers}" SelectedItem="{Binding Service.SelectedOffer}" HorizontalAlignment="Stretch" Margin="0,0,0,12" ToolTip="Oferta vigente: degustación, menú cerrado o carta"/>
       <TextBlock Text="Personas" Style="{StaticResource FieldLabel}"/>
       <TextBox x:Name="OpenPaxBox" Text="{Binding Service.Pax, UpdateSourceTrigger=PropertyChanged}" Width="96" HorizontalAlignment="Left" Margin="0,0,0,14"/>
+      <!-- E4e (plan 2026-10-15, seccion 4.5): «¿Alergias o intolerancias?», una fila por comensal, en la MISMA orden que abre la mesa. El
+           comensal se elige siempre («Toda la mesa» es una opcion mas, nunca la de por defecto); Alergia y Grave por defecto. -->
+      <TextBlock Text="¿Alergias o intolerancias?" Style="{StaticResource FieldLabel}"/>
+      <TextBlock Text="Cocina decide cada plato de esos comensales antes de que salga su pase." Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+      <ItemsControl x:Name="OpenAllergyList" ItemsSource="{Binding Service.OpenAllergies}" Focusable="False">
+       <ItemsControl.ItemTemplate>
+        <DataTemplate>
+         <Border Style="{StaticResource FormPanel}" Margin="0,0,0,8" Padding="10,8,10,10" AutomationProperties.Name="Alergia o intolerancia">
+          <Grid>
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+           <StackPanel><TextBlock Text="¿Para quién?" Style="{StaticResource FieldLabel}"/>
+            <ComboBox ItemsSource="{Binding DataContext.Service.GuestChoices, RelativeSource={RelativeSource AncestorType=UserControl}}" DisplayMemberPath="Label" SelectedValuePath="Key"
+                      SelectedValue="{Binding Guest}" HorizontalAlignment="Stretch" AutomationProperties.Name="Para quién" ToolTip="Un comensal, o toda la mesa"/></StackPanel>
+           <StackPanel Grid.Column="2"><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
+            <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Kind}" HorizontalAlignment="Stretch" AutomationProperties.Name="Tipo">
+             <ComboBoxItem Tag="allergy">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
+            </ComboBox></StackPanel>
+           <Button Grid.Column="3" Grid.RowSpan="2" Style="{StaticResource Ghost}" VerticalAlignment="Top" Margin="6,18,-6,0" Padding="8,6" ToolTip="Quitar esta fila"
+                   AutomationProperties.Name="Quitar esta fila" Command="{Binding DataContext.Service.RemoveAllergyCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+            <Path Style="{StaticResource IconSmall}" Data="{StaticResource IconClose}"/>
+           </Button>
+           <StackPanel Grid.Row="1" Margin="0,6,0,0"><TextBlock Text="¿A qué?" Style="{StaticResource FieldLabel}"/>
+            <TextBox Text="{Binding Substance, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="A qué" ToolTip="Por ejemplo, gluten o marisco"/></StackPanel>
+           <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,6,0,0"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
+            <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Severity}" HorizontalAlignment="Stretch" AutomationProperties.Name="Gravedad">
+             <ComboBoxItem Tag="severe">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
+            </ComboBox></StackPanel>
+          </Grid>
+         </Border>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Button x:Name="AddAllergyButton" Style="{StaticResource Ghost}" Command="{Binding Service.AddAllergyCommand}" Content="Añadir alergia o intolerancia" ContentTemplate="{StaticResource PlusText}"
+              HorizontalAlignment="Left" Margin="-8,0,0,12"/>
       <ContentControl Style="{StaticResource WarnBar}" Margin="0,0,0,10" Visibility="{Binding Service.OpenWarning, Converter={StaticResource Text2Vis}}">
        <TextBlock Text="{Binding Service.OpenWarning}" TextWrapping="Wrap"/>
       </ContentControl>
       <Button x:Name="OpenTableButton" Style="{StaticResource Primary}" Command="{Binding Service.OpenCommand}" MinHeight="46" FontSize="15" Margin="0" HorizontalAlignment="Stretch"
               Content="{Binding Service.OpenButtonText}" ContentTemplate="{StaticResource ButtonText}"/>
-      <TextBlock Text="La mesa se abre con la oferta elegida; sus pases y su cuenta los lleva el servidor." Style="{StaticResource Subtle}" Margin="0,10,0,0"/>
+      <TextBlock Text="La mesa se abre con la oferta elegida; sus pases y su cuenta los lleva el servidor." Style="{StaticResource Subtle}" Margin="0,10,0,0" TextWrapping="Wrap"/>
       <Button Style="{StaticResource Ghost}" Content="{Binding Service.BackText}" Command="{Binding Service.CancelOpenCommand}" HorizontalAlignment="Left" Margin="-8,8,0,0"
               Visibility="{Binding Service.BackText, Converter={StaticResource Text2Vis}}"/>
      </StackPanel>
-     <TextBlock Text="Este acceso no abre mesas." Style="{StaticResource Body}" Visibility="{Binding CanOpen, Converter={StaticResource NotBool2Vis}}"/>
+     </ScrollViewer>
     </DockPanel>
 
     <!-- Detalle de la mesa ocupada elegida -->
@@ -338,7 +377,7 @@
           </DataTemplate>
          </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock Text="SIN REVISAR POR COCINA: cocina aún no ha revisado el cambio de restricciones." FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,2"
+        <TextBlock Text="SIN REVISAR POR COCINA: hay platos «Por revisar en cocina»." FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,2"
                    Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}"/>
         </StackPanel>
        </DockPanel>
@@ -384,7 +423,7 @@
          <ListBox x:Name="RestrictionList" Style="{StaticResource RestrictionChips}" ItemsSource="{Binding Service.Restrictions}" SelectedItem="{Binding Service.SelectedRestriction}" Margin="0,10,0,0"
                   Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}"/>
          <TextBlock Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="{Binding Service.RestrictionsPendingAck, Converter={StaticResource Bool2Vis}}"
-                    Text="SIN REVISAR POR COCINA: cada elaboración «Pendiente de revisión» necesita su decisión (no afecta, adaptar o rehacer) antes de validar, servir o enviar otro pase."/>
+                    Text="SIN REVISAR POR COCINA: cocina decide cada plato «Por revisar en cocina» antes de que salga su pase; mientras tanto, ese pase espera y no se valida ni se sirve."/>
          <!-- Declarar abre el formulario debajo; retirar actua sobre la pastilla elegida, con el motivo de abajo. -->
          <WrapPanel Margin="0,10,0,0">
           <ToggleButton x:Name="DeclareToggle" Content="Declarar una restricción" MinHeight="28" Padding="10,2,10,3" FontSize="12" Margin="0,0,8,0"/>
@@ -428,6 +467,8 @@
            <StackPanel VerticalAlignment="Center">
             <TextBlock Text="{Binding Course.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding Detail}" Style="{StaticResource Subtle}" Visibility="{Binding Detail, Converter={StaticResource Text2Vis}}"/>
+            <!-- E4e: lo que cocina tiene por revisar en este pase (tambien sin enviar), escrito y en rojo. -->
+            <TextBlock Text="{Binding Alert}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource DangerText}" TextWrapping="Wrap" Visibility="{Binding HasAlert, Converter={StaticResource Bool2Vis}}"/>
            </StackPanel>
           </DockPanel>
          </DataTemplate>
@@ -492,47 +533,63 @@
         <TextBlock Text="{x:Static vm:DrinksViewModel.HadFoot}" Style="{StaticResource Subtle}" Margin="0,6,0,0" Visibility="{Binding Service.Drinks.HasHadList, Converter={StaticResource Bool2Vis}}"/>
        </StackPanel>
 
-       <!-- Elaboraciones del pase elegido: estacion por su NOMBRE (configuration.stations), comensal, estado, restricciones y revision. -->
-       <StackPanel Margin="0,8,0,0" Visibility="{Binding Service.HasPreparations, Converter={StaticResource Bool2Vis}}">
+       <!-- E4e (plan 2026-10-15, seccion 4.5): los PLATOS agrupados del pase elegido («Ostra × 7»), con su estacion por su NOMBRE y su
+            estado, y debajo la linea de cada comensal con restriccion o con decision de cocina, escrita: en rojo lo que alarma o esta
+            por revisar, en ambar lo demas (nunca solo color). -->
+       <StackPanel Margin="0,8,0,0" Visibility="{Binding Service.HasDishes, Converter={StaticResource Bool2Vis}}">
         <TextBlock Text="{Binding Service.PreparationsTitle}" Style="{StaticResource Section}"/>
-        <ListBox x:Name="PreparationList" Style="{StaticResource PlainList}" ItemsSource="{Binding Service.PreparationRows}" SelectedValuePath="Preparation" SelectedValue="{Binding Service.SelectedPreparation}">
+        <ListBox x:Name="DishList" Style="{StaticResource PlainList}" ItemsSource="{Binding Service.DishRows}" SelectedItem="{Binding Service.SelectedDish}">
          <ListBox.ItemTemplate>
           <DataTemplate>
-           <StackPanel>
+           <StackPanel AutomationProperties.Name="{Binding Title}">
             <DockPanel>
-             <Border DockPanel.Dock="Right" Style="{StaticResource StateChip}" Margin="8,1,0,0"><TextBlock Text="{Binding Preparation.StateLabel}"/></Border>
-             <TextBlock Text="{Binding Preparation.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+             <Border DockPanel.Dock="Right" Style="{StaticResource StateChip}" Margin="8,1,0,0"><TextBlock Text="{Binding State}"/></Border>
+             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
             </DockPanel>
-            <TextBlock Text="{Binding Line}" FontSize="12" Foreground="{StaticResource InkSoft}" TextWrapping="Wrap" FontWeight="Normal"/>
-            <TextBlock Text="{Binding Preparation.RestrictionsText}" FontSize="12" Foreground="{StaticResource DangerText}" TextWrapping="Wrap" FontWeight="Normal" Margin="0,2,0,0"
-                       Visibility="{Binding Preparation.RestrictionsText, Converter={StaticResource Text2Vis}}"/>
-            <!-- Una revision pendiente es una senal de seguridad por plato: en rojo y seminegrita, ademas de su texto (nunca solo color). -->
-            <TextBlock Text="{Binding Preparation.ReviewText}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="{Binding Preparation.ReviewText, Converter={StaticResource Text2Vis}}">
-             <TextBlock.Style>
-              <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource InkSoft}"/><Setter Property="FontWeight" Value="Normal"/>
-               <Style.Triggers><DataTrigger Binding="{Binding Preparation.ReviewPending}" Value="True"><Setter Property="Foreground" Value="{StaticResource DangerText}"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers>
-              </Style>
-             </TextBlock.Style>
-            </TextBlock>
+            <TextBlock Text="{Binding Station}" FontSize="12" Foreground="{StaticResource InkSoft}" TextWrapping="Wrap" FontWeight="Normal"/>
+            <ItemsControl ItemsSource="{Binding Lines}" Focusable="False" Visibility="{Binding HasLines, Converter={StaticResource Bool2Vis}}">
+             <ItemsControl.ItemTemplate>
+              <DataTemplate>
+               <TextBlock Text="{Binding Text}" FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0" FontWeight="SemiBold">
+                <TextBlock.Style>
+                 <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource WarnText}"/>
+                  <Style.Triggers><DataTrigger Binding="{Binding Alarm}" Value="True"><Setter Property="Foreground" Value="{StaticResource DangerText}"/></DataTrigger></Style.Triggers>
+                 </Style>
+                </TextBlock.Style>
+               </TextBlock>
+              </DataTemplate>
+             </ItemsControl.ItemTemplate>
+            </ItemsControl>
            </StackPanel>
           </DataTemplate>
          </ListBox.ItemTemplate>
         </ListBox>
        </StackPanel>
 
-       <!-- Cocina y pase: lo que el servidor anuncia sobre la elaboracion elegida (solo cocina o responsable lo reciben). -->
+       <!-- Cocina y pase: lo que el servidor anuncia sobre el plato elegido (solo cocina o responsable lo reciben), en UNA orden de grupo. -->
        <WrapPanel Margin="0,6,0,0" Visibility="{Binding Service.PreparationActionsAnnounced, Converter={StaticResource Bool2Vis}}">
-        <Button Content="Empezar elaboración" Command="{Binding Service.ActCommand}" CommandParameter="preparation-start"/>
-        <Button Content="Marcar elaboración lista" Command="{Binding Service.ActCommand}" CommandParameter="preparation-ready"/>
+        <Button x:Name="DishStartButton" Content="Empezar plato" Command="{Binding Service.ActCommand}" CommandParameter="preparations-start"/>
+        <Button x:Name="DishReadyButton" Content="Marcar plato listo" Command="{Binding Service.ActCommand}" CommandParameter="preparations-ready"/>
        </WrapPanel>
-       <Border Style="{StaticResource FormPanel}" Margin="0,6,0,0" Visibility="{Binding Service.ReviewAnnounced, Converter={StaticResource Bool2Vis}}"><StackPanel>
-        <TextBlock Text="Revisión de cocina de la elaboración elegida" FontWeight="SemiBold" TextWrapping="Wrap"/>
-        <TextBlock Text="Nota de revisión (obligatoria)" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
-        <TextBox Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" ToolTip="Obligatoria: qué se ha revisado o cambiado tras el cambio de restricciones"/>
+       <!-- E4e: revision por plato agrupado, tambien antes de enviar. La decision va a los comensales marcados, en UNA orden. -->
+       <Border x:Name="ReviewPanel" Style="{StaticResource FormPanel}" Margin="0,6,0,0" Visibility="{Binding Service.ReviewAnnounced, Converter={StaticResource Bool2Vis}}"><StackPanel>
+        <TextBlock Text="{Binding Service.ReviewTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="La decisión va a los comensales marcados, en una sola orden. Si sus restricciones son distintas, no sale ninguno marcado: marca a quién va." Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,4"/>
+        <ItemsControl x:Name="ReviewLineList" ItemsSource="{Binding Service.ReviewLines}" Focusable="False">
+         <ItemsControl.ItemTemplate>
+          <DataTemplate>
+           <CheckBox IsChecked="{Binding IsChecked}" Margin="0,2,0,2" AutomationProperties.Name="{Binding Text}">
+            <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+           </CheckBox>
+          </DataTemplate>
+         </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="Nota (obligatoria): no lo lleva, o el plato adaptado" Style="{StaticResource FieldLabel}" Margin="0,6,0,4"/>
+        <TextBox x:Name="ReviewNoteBox" Text="{Binding Service.ReviewNote, UpdateSourceTrigger=PropertyChanged}" ToolTip="Obligatoria: por ejemplo «no lleva marisco» o «tosta de maíz en vez de pan»"/>
         <UniformGrid Columns="3" Margin="0,6,-8,0">
-         <Button Content="No afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected" HorizontalAlignment="Stretch"/>
-         <Button Content="Adaptar" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt" HorizontalAlignment="Stretch"/>
-         <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake" HorizontalAlignment="Stretch"/>
+         <Button x:Name="ReviewUnaffectedButton" Content="No le afecta" Command="{Binding Service.ReviewCommand}" CommandParameter="unaffected" HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
+         <Button x:Name="ReviewAdaptButton" Content="Adaptado" Command="{Binding Service.ReviewCommand}" CommandParameter="adapt" HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
+         <Button Content="Rehacer" Command="{Binding Service.ReviewCommand}" CommandParameter="remake" HorizontalAlignment="Stretch" Margin="0,0,8,0" ToolTip="Solo para lo que ya ha salido a cocina"/>
         </UniformGrid>
        </StackPanel></Border>
        <TextBlock Text="Seguimiento operativo: sin precios, cuenta ni pagos." Style="{StaticResource Subtle}" Margin="0,12,0,0"/>
