@@ -143,9 +143,11 @@ try {
             & $psql -h $owner['Host'] -p $owner['Port'] -U $owner['Username'] -d $owner['Database'] -At -v ON_ERROR_STOP=1 -c `
                 "DELETE FROM core.commands WHERE actor='engine' AND key='served-by:$newer'" | Out-Null
             Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+            # Siempre, tambien si fallo una comprobacion de arriba: sin la marca, el mismo instalador completa la actualizacion y deja
+            # el servicio en marcha para los escenarios siguientes (si no, fallarian todos por un motor parado).
+            $recovered = Run-Setup @('/S', '/MODE=server')
         }
-        $code = Run-Setup @('/S', '/MODE=server')
-        Assert ($code -eq 0) "Installer exit code $code once the newer mark is gone"
+        Assert ($recovered -eq 0) "Installer exit code $recovered once the newer mark is gone"
         Wait-Health | Out-Null
         Assert ((Login).token) 'Login failed after completing the refused update.'
     }

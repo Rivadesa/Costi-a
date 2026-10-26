@@ -103,6 +103,10 @@ public static class ServerSetup
             }
             else
             {
+                // E4e: en una actualizacion manda el ambito YA PROVISIONADO (server.json), no el que trae el instalador: NSIS pone siempre
+                // COSTINA_TENANT/COMPANY/LOCATION (los suyos por defecto si no se le pasan) y una variable de entorno gana al fichero. Sin
+                // esto backup y upgrade trabajaban con otro ambito (y la guarda de version buscaba la marca donde no esta).
+                foreach(var scoped in new[]{"COSTINA_TENANT","COSTINA_COMPANY","COSTINA_LOCATION"}) environment[scoped]=null;
                 if(await Registered(ServiceInstaller.Name)) await StopAsync(ServiceInstaller.Name);
                 // Actualizacion EXPLICITA: primero una copia verificable, despues el esquema. Si la copia falla, no se toca nada.
                 // E4e: NUNCA BAJA DE VERSION. Si un motor mas nuevo que estos binarios ya sirvio estos datos (su marca en la base,
@@ -179,7 +183,8 @@ public static class ServerSetup
         var info=new ProcessStartInfo(Self){UseShellExecute=false,RedirectStandardOutput=true,RedirectStandardError=true,CreateNoWindow=true};
         info.ArgumentList.Add(command);
         if(argument is not null) info.ArgumentList.Add(argument);
-        foreach(var (name,value) in environment) info.Environment[name]=value;
+        // Un valor null QUITA la variable heredada (el hijo lee entonces la configuracion de la instalacion).
+        foreach(var (name,value) in environment) { if(value is null) info.Environment.Remove(name); else info.Environment[name]=value; }
         using var process=Process.Start(info) ?? throw new InvalidOperationException("Cannot start "+command);
         var output=process.StandardOutput.ReadToEndAsync(); var error=process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
