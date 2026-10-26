@@ -18,9 +18,13 @@ namespace Costina.Server;
 // en un segundo destino. Las copias contienen datos del negocio y hashes de credenciales: sensibles.
 // Manifiesto: Format 2 (E1b) con claves "esquema.tabla"; Format 1 (un solo esquema native_d1, claves "tabla") sigue
 // restaurandose: se verifica con su propia forma y despues upgrade lleva la base a v2.
+// E4e: ServerVersion es la de los binarios que HICIERON la copia; ServedBy (campo aditivo, siempre escrito desde E4e) son los motores
+// que habian SERVIDO esos datos (EngineVersions), leidos en la misma instantanea. No coinciden en la copia que setup-server toma con los
+// binarios NUEVOS justo antes de actualizar: guarda datos que solo sirvio la version anterior, y por eso es la que permite volver atras.
+// Un manifiesto anterior a E4e no lo trae (null): entonces cuenta ServerVersion. Una lista vacia = solo motores anteriores a la marca.
 public sealed record BackupManifest(int Format, DateTimeOffset CreatedAt, string ServerVersion, string InstallationId,
     string TenantId, string CompanyId, string LocationId, string File, long SizeBytes, string Sha256,
-    SortedDictionary<string, TableDigest> Tables);
+    SortedDictionary<string, TableDigest> Tables, IReadOnlyList<string>? ServedBy = null);
 
 public sealed class BackupHealth
 {
@@ -78,7 +82,7 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
         var temporary = Path.Combine(Folder, name + ".tmp");
         try
         {
-            SortedDictionary<string, TableDigest> tables; string installation;
+            SortedDictionary<string, TableDigest> tables; string installation; IReadOnlyList<string> servedBy;
             await using (var source = NpgsqlDataSource.Create(runtimeConnection))
             await using (var connection = await source.OpenConnectionAsync(ct))
             await using (var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct))
@@ -88,6 +92,12 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
                     snapshot = (string)(await export.ExecuteScalarAsync(ct))!;
                 await using (var identity = new NpgsqlCommand(format == 1 ? "SELECT id::text FROM native_d1.installation" : "SELECT id::text FROM core.installation", connection, transaction))
                     installation = (string)(await identity.ExecuteScalarAsync(ct))!;
+                // E4e: unos binarios mas antiguos que el motor que ya sirvio estos datos no los copian: sus manifiestos dirian que los
+                // hizo una version anterior y su restauracion no sabria leerlos. Antes de escribir nada (es el primer paso de setup-server
+                // sobre una raiz existente: el instalador se detiene aqui).
+                servedBy = await EngineVersions.ServedByAsync(connection, transaction, scope, ct);
+                if (EngineVersions.Newest(servedBy) is { } newest && EngineVersions.Newer(newest, serverVersion))
+                    throw new InvalidDataException(EngineVersions.Refusal(newest, serverVersion));
                 tables = await BackupDigest.ComputeAsync(connection, transaction, schemas, qualify: format != 1, ct: ct);
                 // La transaccion sigue abierta mientras pg_dump copia: la copia y las huellas ven exactamente lo mismo.
                 await RunTool("pg_dump", builder, ["--format=custom", ..schemas.Select(s => "--schema=" + PostgresStore.CheckedSchema(s)), "--snapshot=" + snapshot, "--no-password", "--file=" + temporary], ct);
@@ -98,7 +108,7 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
             string sha;
             await using (var stream = File.OpenRead(temporary)) sha = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant();
             var manifest = new BackupManifest(format, createdAt, serverVersion, installation, scope.TenantId, scope.CompanyId, scope.LocationId,
-                name, new FileInfo(temporary).Length, sha, tables);
+                name, new FileInfo(temporary).Length, sha, tables, servedBy);
             var final = Path.Combine(Folder, name);
             File.Move(temporary, final);
             File.WriteAllText(final + ".json", JsonSerializer.Serialize(manifest, Json));
@@ -148,6 +158,12 @@ public sealed class BackupRunner(ServerSettings settings, BusinessScope scope, s
         var manifest = JsonSerializer.Deserialize<BackupManifest>(await File.ReadAllTextAsync(backupFile + ".json", ct), Json)
             ?? throw new InvalidDataException("Unreadable backup manifest.");
         if (manifest.Format is not (1 or ManifestFormat)) throw new InvalidDataException($"Unsupported backup manifest format {manifest.Format}. Nothing was restored.");
+        // E4e: una copia de datos que ya sirvio un motor MAS NUEVO que estos binarios no se restaura (no sabrian leerlos), antes de tocar
+        // nada. Cuenta quien sirvio los datos (ServedBy), no quien hizo la copia: la que los binarios nuevos toman justo antes de actualizar
+        // se restaura con los anteriores (es la vuelta atras). Sin ServedBy (manifiesto anterior a E4e) cuenta ServerVersion.
+        var newest = manifest.ServedBy is { } servedBy ? EngineVersions.Newest(servedBy) : manifest.ServerVersion;
+        if (newest is not null && EngineVersions.Newer(newest, serverVersion))
+            throw new InvalidDataException(EngineVersions.RestoreRefusal(newest, serverVersion));
         await using (var stream = File.OpenRead(backupFile))
             if (Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant() != manifest.Sha256)
                 throw new InvalidDataException("Backup checksum mismatch: the file is damaged or was altered. Nothing was restored.");

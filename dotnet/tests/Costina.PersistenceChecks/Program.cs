@@ -137,4 +137,21 @@ catch(PostgresException) { Check(attempts==DeviceStore.IssueAttempts,"collisions
 attempts=0;
 try { await DeviceStore.IssueFreshAsync(()=>"OTRO",_=>{ attempts++; throw new PostgresException("other","ERROR","ERROR",PostgresErrorCodes.ForeignKeyViolation); }); Check(false,"other errors must fail"); }
 catch(PostgresException) { Check(attempts==1,"any other storage error is not retried"); }
+// E4e (plan 2026-10-26, seccion 8): nunca bajar de version. Solo cuenta la parte numerica (mayor.menor.parche), comparada como
+// numeros y no como texto; una version ilegible cuenta como MAS NUEVA (falla cerrado). Puro, sin base de datos.
+Check(!EngineVersions.Newer("0.44.0-e4e","0.44.0-e4e") && !EngineVersions.Newer("0.44.0-c3d","0.44.0-e4e") && !EngineVersions.Newer("0.44.0","0.44.0-e4e+abc"),
+    "the same numeric version is not newer, whatever its label");
+Check(EngineVersions.Newer("0.45.0-c3d","0.44.0-e4e") && EngineVersions.Newer("1.0.0","0.99.99") && EngineVersions.Newer("0.44.1","0.44.0-e4e"),
+    "a higher major, minor or patch is newer");
+Check(EngineVersions.Newer("0.44.10","0.44.9-e4e") && !EngineVersions.Newer("0.44.9-e4e","0.44.10") && EngineVersions.Newer("0.100.0","0.99.0"),
+    "versions compare as numbers, not as text");
+Check(!EngineVersions.Newer("0.43.0-c3c","0.44.0-e4e") && !EngineVersions.Newer("0.26.0-e1","0.44.0-e4e") && !EngineVersions.Newer("0.7.0-d3.4","0.44.0-e4e"),
+    "an older engine is not newer");
+foreach(var unreadable in new[]{"","raro","0.44","0.44.x","v0.44.0","0.44.0.1"," 0.44.0","-0.44.0","0.+44.0"})
+    Check(EngineVersions.Newer(unreadable,"0.44.0-e4e"),"unreadable version '"+unreadable+"' counts as newer (fails closed)");
+Check(EngineVersions.Newest(["0.42.0-c3b","0.44.10","0.44.9-e4e"])=="0.44.10" && EngineVersions.Newest([]) is null,"the newest engine of a list, none when empty");
+Check(EngineVersions.Newest(["0.44.0-e4e","raro","0.45.0"])=="raro","an unreadable version is the newest of its list");
+var refusal=EngineVersions.Refusal("0.45.0-c3d","0.44.0-e4e"); var restoreRefusal=EngineVersions.RestoreRefusal("0.45.0-c3d","0.44.0-e4e");
+Check(new[]{refusal,restoreRefusal}.All(m=>m.Contains("0.45.0-c3d") && m.Contains("0.44.0-e4e") && m.Contains("mas nuevo") && m.Contains("newer")),
+    "the refusals name both versions, in Spanish and in English");
 Console.WriteLine($"D1 snapshots: {checks}/{checks} passed.");

@@ -99,6 +99,27 @@ Abiertas desde C3b, y necesarias antes de E4e porque ni C3b ni E4e tienen vuelta
 - **Límite:** solo protege desde E4e. Un instalador anterior no tiene la guarda: nunca hay que instalarlo encima de datos de E4e.
 - Pruebas: `packaging_http` (una copia de un motor más nuevo se rechaza al restaurar y al actualizar) y el workflow del instalador, que salta solo porque cambian `ServerSetup` y `Backup` (`AGENTS.md:55`).
 
+**Concreción al codificar (paso 4): la señal es una marca en los propios datos, no `Backup.Latest()`.**
+- **Por qué.** `ServerVersion` del manifiesto es la versión de los binarios que **hicieron** la copia, no la del motor que **sirvió** los datos. Las dos difieren justo en la copia que `setup-server` toma con los binarios **nuevos** antes de actualizar. Con `Backup.Latest()`:
+  - tras un `upgrade` fallido, reinstalar la versión anterior se rechazaría, aunque ningún motor nuevo haya tocado los datos;
+  - la vuelta atrás documentada (restaurar con los binarios anteriores la copia previa a la actualización) quedaría bloqueada, porque esa copia dice que la hizo la versión nueva.
+- **La marca** (`Core.Persistence/EngineVersions.cs`): cada motor en modo instalación deja al arrancar **una** fila idempotente en `core.commands`, con actor `engine`, clave `served-by:<versión>`, la versión en `fingerprint` y `{"version":…}` como respuesta. Es como la marca de demo de D5.6:
+  - viaja con las copias y no cambia el esquema;
+  - no es una orden de dominio: no lleva evento, auditoría ni aviso;
+  - nadie la puede pedir por `GET /commands`;
+  - el laboratorio no la deja, para que cambiar de rama sobre la misma base de pruebas no lo bloquee.
+- **Dónde se niega**, antes de escribir nada, con el mensaje en castellano (sin tildes, por la consola del instalador) y en inglés:
+  - en el **arranque** (el servicio). El instalador copia los binarios antes de que `setup-server` se niegue, y el servicio de Windows apuntaría a ellos en el siguiente arranque;
+  - en **`backup`**, dentro de su instantánea. Es el primer paso de `setup-server` sobre una raíz existente: ahí para con `SETUP FAILED`, sin copia y sin `upgrade`;
+  - en **`upgrade`**, `load-demo` e `init-lab` sobre un esquema existente;
+  - en **`create-user`, `first-user` e `import-catalog`**.
+- **El manifiesto gana `servedBy`** (aditivo y siempre escrito): los motores que habían servido los datos, leídos en la misma instantánea. **`restore` compara `servedBy`**, y `ServerVersion` solo si el manifiesto es anterior a E4e (no lo trae). Así la copia previa a una actualización se restaura con los binarios anteriores, y la diaria de un motor más nuevo no.
+- **Una versión ilegible cuenta como más nueva** (falla cerrado) y se muestra tal cual.
+- **Pruebas:**
+  - `PersistenceChecks`: la comparación, que es numérica y no de texto, y lo ilegible;
+  - `packaging_http.test_06h`: `backup`, `upgrade`, `create-user` y el arranque se niegan sin escribir; `restore` rechaza la copia diaria de un motor más nuevo y un manifiesto antiguo que lo dice; la copia previa a una actualización sí se restaura;
+  - `installer_checks.ps1` (solo en la CI, con el instalador real): una actualización encima de datos con la marca de un motor más nuevo se para sin copia y con el servicio parado; al retirar la marca, el mismo instalador la completa.
+
 ### 9. Puesto principal (WPF; `plan15:625-635`)
 
 - **Comedor, abrir mesa:** «¿Alergias o intolerancias?» con una fila por comensal (comensal explícito, «Toda la mesa» como opción y nunca por defecto; Alergia y Grave por defecto). Una sola orden `open`.

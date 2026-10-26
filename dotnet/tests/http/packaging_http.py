@@ -711,6 +711,95 @@ class Packaging(unittest.TestCase):
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def test_06h_older_binaries_never_take_over_data_a_newer_engine_served(self):
+        """E4e (plan 2026-10-26, section 8): C3b and E4e have no way back, so binaries OLDER than the engine that already served the
+        data never touch it. The signal lives in the data: every engine in installation mode leaves, when it starts, one idempotent
+        core.commands row (actor 'engine', key 'served-by:<version>'), which travels with the backups. On an existing data root the
+        installer's setup-server runs `backup` and then `upgrade`: both refuse before writing anything, and so do a normal start (the
+        Windows service still points at the older binaries the installer copied) and the console commands. `restore` refuses a copy of
+        data a newer engine served before touching the database, while the copy NEWER binaries take right before an update (the
+        documented way back) still restores with the older ones."""
+        env = clean_env()
+        owner = self.config('owner.json')['COSTINA_DB_OWNER']
+        scope_sql = "tenant='d5-tenant' AND company='d5-company' AND location='d5-location'"
+        marks = lambda: psql_as(BOOTSTRAP, f"SELECT string_agg(fingerprint, ',' ORDER BY created_at, key) FROM core.commands WHERE {scope_sql} AND actor='engine'").stdout.strip()
+        backups = lambda: sorted(p.name for p in (DATA / 'backups').glob('costina-*.backup'))
+        # 1. The earlier stories started this installation several times with these binaries: one mark, and the backup names it.
+        made = cli('backup', env=env)
+        self.assertEqual(made.returncode, 0, made.stdout + made.stderr)
+        latest = DATA / 'backups' / backups()[-1]
+        manifest = json.loads(Path(str(latest) + '.json').read_text(encoding='utf8'))
+        own = manifest['serverVersion']
+        self.assertEqual((marks(), manifest.get('servedBy')), (own, [own]))
+        major, minor = (int(part) for part in own.split('-')[0].split('.')[:2])
+        newer = f'{major}.{minor + 1}.0-futuro'                               # always newer than these binaries, whatever the version
+        target = 'costina_newer_d1_test'
+        drop = lambda: psql_as(BOOTSTRAP, f'DROP DATABASE IF EXISTS {target} WITH (FORCE)')
+        drop()
+        done = psql_as(owner, "INSERT INTO core.commands (tenant,company,location,actor,key,fingerprint,response) VALUES "
+                              f"('d5-tenant','d5-company','d5-location','engine','served-by:{newer}','{newer}',json_build_object('version','{newer}')::text)")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        try:
+            # 2. The installer's steps on an existing data root, in its order: nothing is written.
+            before = backups()
+            refused = cli('backup', env=env)
+            output = refused.stdout + refused.stderr
+            self.assertNotEqual(refused.returncode, 0, output)
+            for expected in (newer, own, 'mas nuevo', 'newer', 'nothing was changed'):
+                self.assertIn(expected, output)
+            self.assertNotIn('   at ', output)                                 # a reason, not a stack trace
+            self.assertEqual(backups(), before)                                # no copy was written
+            for args, stdin in ((('upgrade',), None), (('create-user', 'otra', 'main'), PASSWORD)):
+                refused = cli(*args, env=env, stdin=stdin)
+                self.assertNotEqual(refused.returncode, 0, args)
+                self.assertIn(newer, refused.stdout + refused.stderr, args)
+            self.assertEqual(psql_as(BOOTSTRAP, "SELECT count(*) FROM core.users WHERE username='otra'").stdout.strip(), '0')
+            # 3. A normal start (the service) stops before listening: older binaries never serve this data.
+            started = subprocess.Popen(['dotnet', str(SERVER)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try: output, _ = started.communicate(timeout=60)
+            except subprocess.TimeoutExpired:
+                started.kill(); started.communicate()
+                self.fail('older binaries started serving data a newer engine served')
+            self.assertNotEqual(started.returncode, 0); self.assertIn(newer, output)
+            self.assertEqual(marks(), own + ',' + newer)                       # the refused start left no mark
+
+            # 4. restore, on a clean installation (another data root and an EMPTY database), checks the manifest before anything else.
+            clean = Path(tempfile.mkdtemp(prefix='costina-newer-')); (clean / 'config').mkdir()
+            self.assertEqual(psql_as(BOOTSTRAP, f'CREATE DATABASE {target} OWNER costina_owner').returncode, 0)
+            self.assertEqual(psql_as(BOOTSTRAP, f'GRANT CONNECT ON DATABASE {target} TO costina_runtime').returncode, 0)
+            for name in ('server.json', 'owner.json'):
+                config = {k: v.replace('Database=' + DATABASE, 'Database=' + target) for k, v in self.config(name).items()}
+                (clean / 'config' / name).write_text(json.dumps(config), encoding='utf8')
+            fresh = clean_env(COSTINA_DATA=str(clean))
+            elsewhere = BOOTSTRAP.replace('Database=' + DATABASE, 'Database=' + target)
+            kit = Path(tempfile.mkdtemp(prefix='costina-newer-kit-'))
+            def copy(name, **changes):
+                (kit / name).write_bytes(latest.read_bytes())                  # the same bytes: the checksum still matches
+                written = {k: v for k, v in (manifest | changes).items() if v is not None}
+                Path(str(kit / name) + '.json').write_text(json.dumps(written), encoding='utf8')
+                return str(kit / name)
+            for name, changes in (('daily-of-a-newer-engine.backup', {'serverVersion': newer, 'servedBy': [own, newer]}),
+                                  ('older-format-from-a-newer-engine.backup', {'serverVersion': newer, 'servedBy': None})):
+                refused = cli('restore', copy(name, **changes), env=fresh)
+                output = refused.stdout + refused.stderr
+                self.assertNotEqual(refused.returncode, 0, (name, output))
+                for expected in (newer, own, 'mas nuevo', 'newer', 'nothing was restored'):
+                    self.assertIn(expected, output, name)
+                self.assertEqual(psql_as(elsewhere, "SELECT to_regclass('core.users') IS NULL").stdout.strip(), 't', name)   # untouched
+            # The way back: the copy NEWER binaries took right before updating holds data only this engine served. It restores.
+            back = cli('restore', copy('before-the-update.backup', serverVersion=newer), env=fresh)
+            self.assertEqual(back.returncode, 0, back.stdout + back.stderr)
+            self.assertIn('Restored and verified', back.stdout)
+            self.assertEqual(psql_as(elsewhere, f"SELECT string_agg(fingerprint, ',') FROM core.commands WHERE {scope_sql} AND actor='engine'").stdout.strip(), own)
+        finally:
+            drop()
+            undone = psql_as(owner, f"DELETE FROM core.commands WHERE {scope_sql} AND actor='engine' AND key='served-by:{newer}'")
+            self.assertEqual(undone.returncode, 0, undone.stderr)
+        # 5. Back on binaries at least as new as every mark (here: the mark is gone), the installation serves again.
+        with Server(env):
+            with urllib.request.urlopen(BASE + '/health', timeout=5) as r: self.assertEqual(json.loads(r.read())['version'], own)
+        self.assertEqual(marks(), own)
+
     def test_07_export_role_connections_for_the_rest_of_the_battery(self):
         target = os.environ.get('GITHUB_ENV')
         if not target: self.skipTest('Not running under GitHub Actions')

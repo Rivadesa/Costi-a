@@ -105,6 +105,9 @@ public static class ServerSetup
             {
                 if(await Registered(ServiceInstaller.Name)) await StopAsync(ServiceInstaller.Name);
                 // Actualizacion EXPLICITA: primero una copia verificable, despues el esquema. Si la copia falla, no se toca nada.
+                // E4e: NUNCA BAJA DE VERSION. Si un motor mas nuevo que estos binarios ya sirvio estos datos (su marca en la base,
+                // EngineVersions), backup se niega antes de escribir la copia y aqui se para con SETUP FAILED sin tocar los datos.
+                // upgrade y el arranque del servicio se niegan igual: los binarios ya copiados por el instalador no los sirven.
                 await Child("backup",environment);
                 await Child("upgrade",environment);
             }

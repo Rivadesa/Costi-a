@@ -91,6 +91,9 @@ if(administrative)
     }
     if(args[0] == "upgrade" && !exists)
         throw new InvalidOperationException("There is no schema to upgrade; run init on a new installation.");
+    // E4e: unos binarios mas antiguos que el motor que ya sirvio estos datos no los actualizan ni les anaden nada (setup-server corre
+    // backup y despues upgrade: los dos se niegan antes de escribir). El esquema sigue en v8, asi que su version no lo detecta.
+    if(exists) await ownerStore.RefuseNewerEngineAsync(scope,BuildInfo.Version);
     // D5.6: datos de DEMOSTRACION en una instalacion, de forma explicita y solo sobre una configuracion vacia.
     // La instalacion queda marcada como demo (/health, /session, cliente) y no debe reutilizarse con datos reales.
     if(args[0] == "load-demo")
@@ -122,6 +125,7 @@ var store = new PostgresStore(source);
 if(args.Length == 3 && args[0] == "create-user")
 {
     await store.CheckAsync(schemaNames);
+    await store.RefuseNewerEngineAsync(scope,BuildInfo.Version);   // E4e: ni una orden de consola de binarios mas antiguos
     var password = Console.ReadLine() ?? "";
     var created = await new IdentityStore(source,scope).CreateUserAsync(args[1],password,args[2]);
     Console.WriteLine($"User created with role {args[2]} (id {created}). Tokens are issued only at login.");
@@ -132,6 +136,7 @@ if(args.Length == 3 && args[0] == "create-user")
 if(args.Length == 1 && args[0] == "first-user")
 {
     await store.CheckAsync(schemaNames);
+    await store.RefuseNewerEngineAsync(scope,BuildInfo.Version);
     if(Console.IsInputRedirected) throw new InvalidOperationException("first-user is interactive; scripts use create-user with the password on stdin.");
     string Hidden(string prompt)
     {
@@ -162,6 +167,7 @@ if(args.Length == 1 && args[0] == "first-user")
 if(args.Length == 2 && args[0] == "import-catalog")
 {
     await store.CheckAsync(schemaNames);
+    await store.RefuseNewerEngineAsync(scope,BuildInfo.Version);
     var csv = Path.GetFullPath(args[1]);
     var content = await File.ReadAllBytesAsync(csv);
     var rows = CatalogImport.Parse(System.Text.Encoding.UTF8.GetString(content));
@@ -217,6 +223,11 @@ if(await store.RuntimeOverprivilegedAsync())
     if(!laboratory) throw new InvalidOperationException("COSTINA_DB must use the provisioned runtime role: this connection can alter the schema or the audit trail.");
     notices.Add("AVISO: laboratorio de un solo rol; la conexion del motor puede alterar el esquema. Una instalacion usa provision.");
 }
+// E4e: NUNCA BAJAR DE VERSION. Si un motor mas nuevo ya sirvio estos datos, estos binarios no arrancan (el instalador copia los binarios
+// antes de que setup-server se niegue: el servicio de Windows apuntaria a ellos en el siguiente arranque). Si no, una instalacion deja la
+// marca de esta version antes de servir. El laboratorio no la deja: cambiar de rama sobre la misma base de pruebas no debe bloquearlo.
+await store.RefuseNewerEngineAsync(scope,BuildInfo.Version);
+if(!laboratory) await store.RecordServedByAsync(scope,BuildInfo.Version);
 var installation = await store.InstallationAsync();
 // E1b: modulos activos de ESTA instalacion, leidos de la base. En una instalacion COSTINA_MODULES no manda (solo laboratorio/CI).
 var modules = await ActiveModules(store);

@@ -115,6 +115,32 @@ public sealed partial class PostgresStore(NpgsqlDataSource dataSource)
         return Equals(await command.ExecuteScalarAsync(ct), true);
     }
 
+    // E4e (EngineVersions): motores que han servido los datos de este ambito; vacia si solo los sirvieron motores anteriores a la marca.
+    public async Task<IReadOnlyList<string>> ServedByAsync(BusinessScope scope, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        return await EngineVersions.ServedByAsync(connection, null, scope, ct);
+    }
+
+    // E4e: unos binarios mas antiguos que el motor que ya sirvio estos datos se niegan ANTES de escribir nada.
+    public async Task RefuseNewerEngineAsync(BusinessScope scope, string version, CancellationToken ct = default)
+    {
+        if (EngineVersions.Newest(await ServedByAsync(scope, ct)) is { } newest && EngineVersions.Newer(newest, version))
+            throw new InvalidDataException(EngineVersions.Refusal(newest, version));
+    }
+
+    // E4e: el motor que va a servir deja su marca (una fila por version, idempotente; el rol de ejecucion solo inserta en core.commands).
+    public async Task RecordServedByAsync(BusinessScope scope, string version, CancellationToken ct = default)
+    {
+        await using var command = dataSource.CreateCommand(
+            "INSERT INTO core.commands (tenant,company,location,actor,key,fingerprint,response) VALUES (@tenant,@company,@location,@actor,@key,@version,@response) ON CONFLICT DO NOTHING");
+        command.Parameters.AddWithValue("tenant", scope.TenantId); command.Parameters.AddWithValue("company", scope.CompanyId);
+        command.Parameters.AddWithValue("location", scope.LocationId);
+        command.Parameters.AddWithValue("actor", EngineVersions.Actor); command.Parameters.AddWithValue("key", EngineVersions.KeyPrefix + version);
+        command.Parameters.AddWithValue("version", version); command.Parameters.AddWithValue("response", Wire.Encode(new { version }));
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task<bool> HasConfigurationAsync(BusinessScope scope, CancellationToken ct = default)
     {
         await using var command = dataSource.CreateCommand(
