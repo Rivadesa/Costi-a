@@ -4,6 +4,12 @@ Fecha: 2026-10-26. **Estado: APROBADO.** Aquí solo se baja a pasos lo que ya es
 - la sección 4.5 de `docs/plans/2026-10-15-menus-carta-y-bodega.md` (`plan15:587-656`), aprobada el 15-10;
 - la sección 4.2 de `docs/plans/2026-10-22-sala-y-cocina.md` (`plan22:545-606`), aprobada el 22-10 con «Si a todo, la 5, va haber android y apple».
 
+**Entregado el 26-10**: `docs/native/E4e-alergias-antes-de-enviar.md`, con sus capturas en `docs/native/images/e4e/`. Incluye todo el alcance de abajo, con las concreciones anotadas en cada sección (la marca en los datos de la sección 8 en lugar de `Backup.Latest()`, `cancel-unstarted` que también retira, `nothing_to_remake` como 409) y estas diferencias:
+- **«No le afecta a nada más» en la pantalla del pase**, adelantado de C3d (sección «Diferido»): una orden `review-preparations` con lo que queda del comensal, solo con dos platos o más por decidir y como mucho 60.
+- **El botón grande** no pone «Iniciar servicio» mientras el pase que va a salir espera la revisión, en el PC y en Sala: se apaga con «Esperando la revisión de cocina».
+- **El puesto revisa por plato agrupado con casillas** (todas marcadas), y sigue ofreciendo «Rehacer» en un pase sin enviar para que el servidor conteste `nothing_to_remake` en castellano.
+- **Para revisar con el promotor:** once decisiones pequeñas, en «Decisiones tomadas al construir» del documento del corte.
+
 **Respuestas del promotor que fija este corte:**
 - **cocina decide cada plato de un comensal con alergia o intolerancia antes de que salga el pase**, y el pase espera; también las intolerancias leves y las preferencias, que cocina despacha con un toque (preguntas 1 y 2 del 15-10, `plan15:902-903`, confirmadas el 22-10, `plan22:875`);
 - **el pase puede marcar «Listo» por una estación con la tablet estropeada** (pregunta 2 del 22-10, `plan22:889-893`);

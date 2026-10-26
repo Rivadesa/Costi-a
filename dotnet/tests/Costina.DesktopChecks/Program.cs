@@ -622,7 +622,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.43.0-c3c",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.44.0-e4e",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -1174,7 +1174,7 @@ internal static class Program
         Costina.Client.ConsumptionDto[] mesa4Had=[new("had-vino","vino-casa","botella","Vino de la casa","Botella",1,null,c2Now.AddMinutes(-50)),
             new("had-agua","agua","botella-1-l","Agua mineral","Botella 1 L",2,null,c2Now.AddMinutes(-50)),new("had-cafe","cafe","unit","Café solo",null,1,null,c2Now.AddMinutes(-20),true)];
         Costina.Client.BoardEntry[] c3bBoard=[..diningBoard.Select(AsStation).Select(b=>b with {Consumptions=b.Service.Id=="s4"?mesa4Had:[]})];
-        var puestoSession=new Costina.Client.SessionInfo("service","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.43.0-c3c",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
+        var puestoSession=new Costina.Client.SessionInfo("service","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.44.0-e4e",Actor:"device:pc-principal",StationName:"Sala 1",Modules:["dining"]);
         var roundFolder=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"costina-checks-"+Guid.NewGuid().ToString("N"));
         var drinks=service.Drinks; var drinksPicker=(FrameworkElement)serviceView.FindName("DrinksPicker"); var pickerTray=(FrameworkElement)drinksPicker.FindName("PickerRound");
         var fichaPanel=(FrameworkElement)serviceView.FindName("TablePanel"); var addConsumption=Named("AddConsumptionButton");
@@ -1375,7 +1375,7 @@ internal static class Program
         if(window.ActualWidth>=1270&&(hadTop<-0.5||hadBottom>detailScroll.ActualHeight+0.5)) throw new Exception("«Lo que lleva la mesa» fits in the ficha at 1.280 x 860: "+hadTop+".."+hadBottom+" of "+detailScroll.ActualHeight);
         Save(Shot(window),"comedor-lo-que-lleva.png");
         // Tambien para el responsable: sin precios (GET /catalog, nunca /checkout/catalog) y sin contrasena que pedir.
-        window.Shell.AssumeResponsible(new("main","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.43.0-c3c",Actor:"user:jefa",Modules:["dining"]));
+        window.Shell.AssumeResponsible(new("main","t","c","l",["open","add-consumption","add-consumptions"],"inst-checks","0.44.0-e4e",Actor:"user:jefa",Modules:["dining"]));
         server.Board=[..server.Board.Select(b=>b with {Service=diningBoard.Single(d=>d.Service.Id==b.Service.Id).Service,Occupancy=diningBoard.Single(d=>d.Service.Id==b.Service.Id).Occupancy})];
         Await(window.Shell.RefreshCommand.ExecuteAsync(null),"the responsible reads the plan");
         Pick("Mesa 4","s4");

@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-22. **Estado: APROBADO por el promotor el 22-10-2026**, con sus palabras: «Si a todo, la 5, va haber android y apple». Acepta las cuatro propuestas de la sección 10 y contesta la quinta: habrá Android y también iPhone y iPad. Las respuestas, y en qué corte entra cada una, están en las secciones 9 y 10. **Da permiso para subir y mezclar C3c** cuando la CI esté en verde; para E4e, C3d y C3e se vuelve a pedir. La revisión crítica contra el código está hecha (sección «Revisión», al final), y la maqueta está corregida según esa revisión.
 
-**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). Siguiente: E4e.
+**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). **E4e entregado el 26-10** (`docs/native/E4e-alergias-antes-de-enviar.md`; ver la sección 4.2), con el permiso de subida y mezcla del promotor («sube y mezcla»). Siguiente: C3d.
 
 **Maqueta:** `docs/plans/maquetas/2026-10-22-sala-y-cocina.html` (se abre en el navegador; pestañas: instalar, mis mesas, mesa, estación, pase, aviso y servido) y capturas en `docs/plans/maquetas/2026-10-22-sala-y-cocina/`.
 
@@ -543,6 +543,12 @@ Una PR por corte. Las versiones siguen a `0.42.0-c3b`.
 - **Guion físico corto** (sección 7).
 
 ### 4.2. E4e: alergias antes de enviar, órdenes de grupo y quién abrió la mesa (`0.44.0-e4e`, sin cambio de esquema)
+
+**Entregado el 26-10**: `docs/native/E4e-alergias-antes-de-enviar.md`, con sus capturas en `docs/native/images/e4e/`, su ADR, `docs/ADR/ADR-016-revision-de-alergias-antes-de-enviar.md`, y los pasos de `docs/plans/2026-10-26-e4e-alergias-antes-de-enviar.md`. Incluye todo el alcance de abajo (la pregunta 2 se contestó que sí: el pase marca por cualquier estación), con estas diferencias:
+- **La guarda del instalador** no compara con la última copia, sino con una marca que cada motor deja en los propios datos (`served-by:<versión>`), y `restore` rechaza también una copia de un motor más nuevo. La última copia la hacen los programas nuevos justo antes de actualizar, y con ella se habría bloqueado la vuelta atrás.
+- **«No le afecta a nada más»** ya está en la pantalla del pase de Costiña Cocina, adelantado de C3d (sección 4.3).
+- **Hasta C3d**, el pase ve «Empezar» y «Marcar lista» en lo que falta de todas las estaciones; C3d lo lleva a «Más opciones» de cada tarjeta.
+- **Para revisar con el promotor:** once decisiones pequeñas, en «Decisiones tomadas al construir» del documento del corte.
 
 **Se queda todo lo aprobado** en la sección 4.5 del plan del 15-10 (`plan:583-652`):
 - la revisión antes de enviar (puntos 1-3);
