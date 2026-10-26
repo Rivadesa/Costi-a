@@ -70,6 +70,41 @@ describe('words of the buttons', () => {
   })
 })
 
+// E4e (ADR-016): cocina decide cada plato afectado ANTES de que salga su pase. Mientras el pase que va a salir espera esa revision, el
+// servidor no anuncia «Enviar siguiente pase» y el boton grande queda apagado con «Esperando la revisión de cocina», como en el puesto;
+// «Iniciar servicio», que el servidor sigue anunciando con la mesa Sentados, va en «Más opciones».
+describe('waiting for the kitchen review before sending', () => {
+  const review = (reviewPending: boolean) => ({ id: `p-${String(reviewPending)}`, name: 'Ostra', stationId: 'cold', quantity: 1, guestPosition: 3, mandatory: true,
+    state: 'Pending' as const, reviewPending })
+  const seated = (first: boolean, second: boolean, actions = ['start', 'cancel-unstarted']) => dining(actions,
+    [course('c1', 'Aperitivos', 'Pending', ['skip'], { preparations: [review(first)] }), course('c2', 'Mar', 'Pending', ['skip'], { preparations: [review(second)] })],
+    { state: 'Open', restrictionsPendingAck: first || second })
+  it('the first course waits for the review: no big start, the button says so and start stays in «Más opciones»', () => {
+    const service = seated(true, true)
+    const actions = tableActions(entry(service))
+    expect(primaryAction(actions, service)).toBeNull()
+    expect(waitingText(service)).toBe('Esperando la revisión de cocina')
+    expect(actions.map(action => action.testId)).toContain('do-start')
+    // Sin la mesa, el orden de siempre (otros usos de primaryAction).
+    expect(primaryAction(actions)?.action).toBe('start')
+  })
+  it('once the first course is reviewed the server announces fire-next, which is the big button, even with a later course waiting', () => {
+    const service = seated(false, true, ['start', 'fire-next', 'cancel-unstarted'])
+    expect(primaryAction(tableActions(entry(service)), service)?.label).toBe('Enviar siguiente pase · Aperitivos')
+  })
+  it('a course in the kitchen with an allergy in a later course waits for the kitchen, not for the review', () => {
+    const service = dining(['pause'], [course('c1', 'Aperitivos', 'Fired', [], { preparations: [{ ...review(false), state: 'Fired' }] }),
+      course('c2', 'Mar', 'Pending', ['skip'], { preparations: [review(true)] })], { restrictionsPendingAck: true })
+    expect(waitingText(service)).toBe('Esperando a cocina')
+    expect(waitingText({ ...service, courses: [{ ...service.courses[0], preparations: [{ ...review(true), state: 'Fired' }] }, service.courses[1]] }))
+      .toBe('Esperando la revisión de cocina')
+  })
+  it('nothing to review: start is still the big button of a seated table', () => {
+    const service = seated(false, false)
+    expect(primaryAction(tableActions(entry(service)), service)?.action).toBe('start')
+  })
+})
+
 describe('the command of a button (F01)', () => {
   it('carries the version READ for this table, the course and the table NAME in its description', () => {
     const row = entry(dining(['fire-next', 'pause'], [course('c1', 'Entrantes', 'Ready', ['serve'])]))

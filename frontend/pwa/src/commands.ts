@@ -62,7 +62,11 @@ const SLOT_GONE = 'Esta orden no se ha enviado: había otra guardada en este dis
 // C3a: con tildes, y sin palabras de caja (el comandero nunca dice «cuenta», «pago», «saldo» ni «precio»).
 export const REJECTIONS: Record<string, string> = {
   version_conflict: 'Otro puesto cambió esta mesa a la vez. Se ha vuelto a leer: revisa y repite si sigue haciendo falta.',
-  restrictions_unreviewed: 'Hay elaboraciones pendientes de revisión por cocina tras un cambio de restricciones.',
+  // E4e (ADR-016): el pase que va a salir, o el que esta en cocina, tiene platos por revisar.
+  restrictions_unreviewed: 'Cocina aún no ha revisado los platos de este pase afectados por una restricción: el pase espera.',
+  nothing_to_remake: 'Ese plato aún no ha salido a cocina: no hay nada que rehacer. Decide «No le afecta» o «Adaptado».',
+  invalid_restriction: 'Una alergia o intolerancia lleva un tipo o una gravedad que el servidor no conoce. No se ha abierto la mesa.',
+  too_many_items: 'Demasiados platos para una sola orden: decide el resto en otra.',
   restrictions_unacknowledged: 'Cocina aún no ha revisado el cambio de restricciones.',
   wrong_station: 'Esta acción no corresponde a la estación de este dispositivo.',
   account_closed: 'Esta mesa ya está cerrada en Caja: avisa en el PC principal.',

@@ -3,7 +3,8 @@ import { computed, reactive } from 'vue'
 import type { Session } from '../api'
 import { Names, useConfiguration } from '../configuration'
 import { restrictionAlarming } from '../floor'
-import { elapsedLabel, kitchenTickets, PASS_STATION, REVIEW_DECISIONS, reviewNoteOk, type KitchenLine, type KitchenTicket } from '../kitchen'
+import { elapsedLabel, kitchenTickets, PASS_STATION, PRESEND_DECISIONS, presendReviews, restBody, restOfGuest, REVIEW_DECISIONS, reviewNoteOk,
+  type KitchenLine, type KitchenTicket, type PresendGuest, type PresendItem } from '../kitchen'
 import { courseLabel, guestLabel, plural, preparationLabel, restrictionLabel, reviewLabel } from '../labels'
 import { useOperations } from '../operations'
 import type { Preparation } from '../types'
@@ -16,6 +17,10 @@ import StatusPanel from './StatusPanel.vue'
 // C3a: el aspecto nuevo, botones de 64 px y los NOMBRES de mesa y estacion (de /configuration, releida cada 5 minutos). La agrupacion
 // por plato llega en C3d.
 // C3c (Costina Cocina, lo minimo hasta C3d): sin el parrafo de ayuda de arriba; la cabecera ya dice «Costiña Cocina · <estacion>».
+// E4e (ADR-016, lo minimo hasta C3d): arriba, «Por revisar antes de enviar»: por mesa y comensal, los platos de los pases SIN ENVIAR que
+// el servidor le pide revisar a este dispositivo (solo al pase). Cada plato con «No le afecta» o «Adaptado» y su nota obligatoria (una
+// orden review-preparation), y «No le afecta a nada más», que da esa decision a todo lo que queda del comensal en UNA orden
+// review-preparations. «Rehacer» no se ofrece aqui: solo vale para lo que ya salio.
 const props = defineProps<{ token: string; session: Session }>()
 const emit = defineEmits<{ unauthorized: [] }>()
 
@@ -50,11 +55,69 @@ function review(ticket: KitchenTicket, preparation: Preparation, decision: strin
   notes[key] = ''
 }
 function refreshAll(): void { void live.refresh(); void reload() }
+
+// ---- E4e: «Por revisar antes de enviar» ----
+const presend = computed(() => presendReviews(state.entries))
+const guestTable = (guest: PresendGuest) => names.value.table(guest.entry.service.tableId)
+const guestId = (guest: PresendGuest) => `${guest.entry.service.tableId}-${guest.guestPosition ?? 'all'}`
+const itemId = (guest: PresendGuest, item: PresendItem) => `${guest.entry.service.tableId}-${item.course.id}-${item.preparation.id}`
+const itemKey = (guest: PresendGuest, item: PresendItem) => `antes:${guest.entry.service.id}:${item.course.id}:${item.preparation.id}`
+const rest = computed(() => new Map(presend.value.map(guest => [guest.key, restOfGuest(guest)])))
+const restNotes = reactive<Record<string, string>>({})
+function presendReview(guest: PresendGuest, item: PresendItem, decision: string, label: string): void {
+  const key = itemKey(guest, item)
+  const note = (notes[key] ?? '').trim()
+  if (!reviewNoteOk(note)) return
+  const service = guest.entry.service
+  void run(`/dining/services/${encodeURIComponent(service.id)}/commands/review-preparation`,
+    { expectedVersion: guest.entry.version, courseId: item.course.id, itemId: item.preparation.id, decision, note },
+    `Revisión antes de enviar (${label}) de ${item.preparation.name} · ${guestLabel(guest.guestPosition)} · ${item.course.name} · ${guestTable(guest)}`)
+  notes[key] = ''
+}
+function nothingElse(guest: PresendGuest): void {
+  const note = (restNotes[guest.key] ?? '').trim()
+  const items = rest.value.get(guest.key) ?? []
+  if (!reviewNoteOk(note) || items.length === 0) return
+  const service = guest.entry.service
+  void run(`/dining/services/${encodeURIComponent(service.id)}/commands/review-preparations`, restBody(guest, note),
+    `No le afecta a nada más (${plural(items.length, 'plato', 'platos')}) · ${guestLabel(guest.guestPosition)} · ${guestTable(guest)}`)
+  restNotes[guest.key] = ''
+}
 </script>
 
 <template>
   <section class="kitchen" data-testid="kitchen">
     <StatusPanel :state="state" :runner-state="runnerState" :age="age" :stale="stale" @retry="retry" @reconcile="reconcile" @discard="discard" @refresh="refreshAll" />
+
+    <!-- E4e: lo que el pase decide antes de enviar, siempre arriba. Tipo, sustancia y gravedad escritos; nunca atenuado. -->
+    <section v-if="presend.length > 0" class="presend" aria-labelledby="presend-title" data-testid="presend">
+      <h2 id="presend-title"><Icon name="alert" :size="22" :stroke="2.2" />Por revisar antes de enviar</h2>
+      <p class="presend-help">Decide cada plato de estos comensales antes de que salga su pase: hasta entonces, ese pase espera.</p>
+      <article v-for="guest in presend" :key="guest.key" class="presend-guest" :data-testid="`presend-${guestId(guest)}`">
+        <h3>{{ guestTable(guest) }} · {{ guestLabel(guest.guestPosition) }}</h3>
+        <p v-for="restriction in guest.restrictions" :key="restriction.id" class="line-alert" :class="{ alarm: restrictionAlarming(restriction) }">
+          <Icon name="alert" :size="16" :stroke="2.2" />{{ restrictionLabel(restriction) }}</p>
+        <ul>
+          <li v-for="item in guest.items" :key="item.preparation.id" class="review presend-item" :data-testid="`presend-item-${itemId(guest, item)}`">
+            <p class="prep-title"><strong>{{ item.preparation.name }}</strong><template v-if="item.preparation.quantity > 1"> × {{ item.preparation.quantity }}</template>
+              · {{ item.course.name }} · {{ names.station(item.preparation.stationId) }}</p>
+            <label class="lbl" :for="`presend-note-${item.preparation.id}`">Nota (obligatoria): no lo lleva, o el plato adaptado</label>
+            <input :id="`presend-note-${item.preparation.id}`" v-model="notes[itemKey(guest, item)]" :name="`presend-note-${item.preparation.id}`" maxlength="200" autocomplete="off" :disabled="locked" />
+            <div class="row two">
+              <button v-for="option in PRESEND_DECISIONS" :key="option.decision" type="button" class="btn kbtn" :class="{ 'btn-primary': option.decision === 'adapt' }"
+                :disabled="locked || !reviewNoteOk(notes[itemKey(guest, item)] ?? '')" :data-testid="`do-presend-${option.decision}-${itemId(guest, item)}`"
+                @click="presendReview(guest, item, option.decision, option.label)">{{ option.label }}</button>
+            </div>
+          </li>
+        </ul>
+        <div v-if="guest.items.length > 1 && (rest.get(guest.key)?.length ?? 0) > 0" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
+          <label class="lbl" :for="`presend-rest-note-${guest.key}`">Nota para todo lo que queda (obligatoria)</label>
+          <input :id="`presend-rest-note-${guest.key}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${guestId(guest)}`" maxlength="200" autocomplete="off" :disabled="locked" />
+          <button type="button" class="btn kbtn wide" :disabled="locked || !reviewNoteOk(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
+            @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />No le afecta a nada más · {{ plural(rest.get(guest.key)?.length ?? 0, 'plato', 'platos') }}</button>
+        </div>
+      </article>
+    </section>
 
     <p v-if="state.readAt && tickets.length === 0" class="notice neutral" data-testid="kitchen-empty"><Icon name="chef" />No hay pases enviados a cocina para esta pantalla.</p>
 

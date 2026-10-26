@@ -29,9 +29,10 @@ export async function command(request: APIRequestContext, serviceId: string, act
   const response = await asMain(request, `/dining/services/${serviceId}/commands/${action}`, { expectedVersion: (await read(request, serviceId)).version, ...fields })
   expect(response.ok(), `${action} -> ${response.status()}`).toBeTruthy()
 }
-// El PC principal abre una mesa. menuId: el alias de antes de E4a, como manda la PWA.
-export async function openTable(request: APIRequestContext, tableId: string, pax: number, offerId = 'LAB-TASTING'): Promise<string> {
-  const response = await asMain(request, '/dining/services', { tableId, pax, offerId, menuId: offerId })
+// El PC principal abre una mesa. menuId: el alias de antes de E4a, como manda la PWA. E4e: con alergias, en la MISMA orden open.
+export type Restriction = { guestPosition: number | null; kind: string; substance: string; severity: string }
+export async function openTable(request: APIRequestContext, tableId: string, pax: number, offerId = 'LAB-TASTING', restrictions?: Restriction[]): Promise<string> {
+  const response = await asMain(request, '/dining/services', { tableId, pax, offerId, menuId: offerId, ...(restrictions ? { restrictions } : {}) })
   expect(response.ok(), `open ${tableId} -> ${response.status()}`).toBeTruthy()
   return (await response.json()).serviceId as string
 }
