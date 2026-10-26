@@ -197,6 +197,14 @@ export async function loseResponses(page: Page, pattern: string): Promise<{ lost
   return { lost }
 }
 
+// E4e (ADR-016): un pase con platos por revisar no sale. El PC principal (persona, sin estacion) decide los de ese pase para que pueda
+// salir; lo usan las capturas que declaran alergias antes de enviar.
+export async function reviewCourse(request: APIRequestContext, serviceId: string, index: number, note = 'no le afecta'): Promise<void> {
+  const course = (await read(request, serviceId)).data.courses[index]
+  for (const preparation of course.preparations.filter(p => p.reviewPending))
+    await command(request, serviceId, 'review-preparation', { courseId: course.id, itemId: preparation.id, decision: 'unaffected', note })
+}
+
 // El PC principal deja una mesa libre: omite lo pendiente, termina y libera (como finish_and_release de pwa_http.py).
 export async function release(request: APIRequestContext, serviceId: string): Promise<void> {
   for (const course of (await read(request, serviceId)).data.courses)

@@ -560,7 +560,19 @@ internal static class Program
                     s.ValidateReady("course-1", Stamp);
                     s.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
                     s.ReviewPreparation("course-1", "sauce", ReviewDecision.Unaffected, "sin marisco", Stamp);
-                    s.ReviewPreparation("course-1", "fish", ReviewDecision.Remake, "cambiar por verduras", Stamp); }) };
+                    s.ReviewPreparation("course-1", "fish", ReviewDecision.Remake, "cambiar por verduras", Stamp); }),
+                // E4e (ADR-016): revisar con la mesa sentada y en pases sin enviar; el bloqueo de fire-next es del pase que sale.
+                ("seated-reviewed", s => { s.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+                    s.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "vieira", Stamp);
+                    s.ReviewPreparation("course-1", "sauce", ReviewDecision.Unaffected, "sin marisco", Stamp); }),
+                ("started-pending-unsent", s => { s.Start(Stamp);
+                    s.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp); }),
+                ("served-then-pending", s => { s.Start(Stamp); ServeCurrent(s, s.FireNext(Stamp));
+                    s.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp); }),
+                ("skipped-after-pending", s => { s.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+                    s.Skip("course-1", "x", Stamp); }),
+                ("cancelled-after-pending", s => { s.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+                    s.CancelUnstarted("x", Stamp); }) };
             foreach (var (name, build) in stages)
             {
                 DiningService At() { var s = Service(); build(s); return s; }
@@ -629,11 +641,137 @@ internal static class Program
             Equal(0L, account.TotalCents); Equal(0L, account.PaidCents); Equal(30000L, account.RefundedCents);
             account.Close(Stamp); Equal(AccountState.Closed, account.State);
         });
-        Test("declaring before firing needs no kitchen acknowledgement", () => {
+        // E4e (ADR-016): cocina decide cada plato afectado ANTES de que salga su pase; el bloqueo es por pase.
+        Test("an allergy declared while seated marks every affected preparation, sent or not", () => {
             var service = Service();
+            service.ClearPendingEvents();
             service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
-            True(!service.RestrictionsPendingAck); service.Start(Stamp);
+            True(service.RestrictionsPendingAck, "A seated table with an allergy waits for the kitchen.");
+            var courses = service.View(true).Courses;
+            True(courses[0].Preparations.Single(p => p.Id == "sauce").ReviewPending, "Whole-table sauce is affected by guest 1.");
+            True(!courses[0].Preparations.Single(p => p.Id == "fish").ReviewPending, "Guest 2 fish is not affected by guest 1.");
+            True(courses[1].Preparations.Single().ReviewPending, "The unsent dessert (whole table) is affected too.");
+            True(courses[0].Preparations.Single(p => p.Id == "sauce").Actions!.Contains("review-preparation"), "Reviewable while seated.");
+            Equal("2", service.PendingEvents.Single().Data["affected_preparations"]);
+            True(!service.View(true).Actions!.Contains("fire-next"));
+            Rule("restrictions_unreviewed", () => service.FireNext(Stamp));
+            Equal(DiningState.Open, service.State);
+            service.Start(Stamp);
+            Rule("restrictions_unreviewed", () => service.FireNext(Stamp));
+        });
+        Test("a whole-table restriction marks every preparation of every course that is not served or skipped", () => {
+            var service = Service(); service.Start(Stamp); ServeCurrent(service, service.FireNext(Stamp));
+            service.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
+            var courses = service.View().Courses;
+            True(courses[0].Preparations.All(p => !p.ReviewPending), "A served course is never marked.");
+            True(courses[1].Preparations.All(p => p.ReviewPending), "A mild preference is reviewed like any restriction.");
+        });
+        Test("the kitchen reviews an unsent course with the table seated and fire-next starts and sends it in one command", () => {
+            var service = Service();
+            service.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "vieira en vez de merluza", Stamp);
+            service.ReviewPreparation("course-1", "sauce", ReviewDecision.Unaffected, "no lleva marisco", Stamp);
+            Equal(DiningState.Open, service.State);
+            var actions = service.View(true).Actions!;
+            True(actions.Contains("fire-next") && actions.Contains("start"), "Seated: send the first course or just start.");
+            service.ClearPendingEvents();
             Equal("course-1", service.FireNext(Stamp));
+            Equal(DiningState.InService, service.State); Equal(Time, service.StartedAt);
+            Equal("service.started,course.fired", string.Join(",", service.PendingEvents.Select(e => e.Type)));
+            var fish = service.View().Courses[0].Preparations.Single(p => p.Id == "fish");
+            Equal("Fish for PAX 2", fish.Name);   // el nombre del plato no cambia: la adaptacion va en la nota
+            Equal((ReviewDecision.Adapt, "vieira en vez de merluza"), (fish.Review!.Decision, fish.Review.Note));
+            True(service.RestrictionsPendingAck, "The unsent dessert still waits for its decision.");
+        });
+        Test("a reviewed course goes out while a later one still waits, and an unreviewed one does not", () => {
+            var service = Service(); service.Start(Stamp);
+            service.DeclareRestriction(null, RestrictionKind.Intolerance, "lactosa", RestrictionSeverity.Mild, Stamp);
+            Rule("restrictions_unreviewed", () => service.FireNext(Stamp));
+            service.ReviewPreparation("course-1", "fish", ReviewDecision.Unaffected, "no lleva lacteos", Stamp);
+            service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa sin nata", Stamp);
+            True(service.View(true).Actions!.Contains("fire-next"));
+            Equal("course-1", service.FireNext(Stamp));
+            ServeCurrent(service, "course-1");
+            True(!service.View(true).Actions!.Contains("fire-next"));
+            Rule("restrictions_unreviewed", () => service.FireNext(Stamp));
+            service.ReviewPreparation("course-2", "dessert", ReviewDecision.Adapt, "sorbete en vez de helado", Stamp);
+            Equal("course-2", service.FireNext(Stamp));
+        });
+        Test("fire-next from a seated table is all or nothing", () => {
+            var unreviewed = Service();
+            unreviewed.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            unreviewed.ClearPendingEvents();
+            Rule("restrictions_unreviewed", () => unreviewed.FireNext(Stamp));
+            Equal(DiningState.Open, unreviewed.State); True(unreviewed.StartedAt is null && unreviewed.PendingEvents.Count == 0);
+            var choice = new DiningService("s", Scope, "M1", 2, [new("primeros", "Primeros", [], ChoiceRequired: true)], "LAB-DAILY");
+            Rule("choice_missing", () => choice.FireNext(Stamp));
+            Equal(DiningState.Open, choice.State); True(choice.StartedAt is null && choice.PendingEvents.Count == 0);
+            var carte = new DiningService("s", Scope, "M1", 2, [new("entrantes", "Entrantes", [], Optional: true)], "LAB-CARTA");
+            Rule("course_empty", () => carte.FireNext(Stamp));
+            Equal(DiningState.Open, carte.State);
+            var paused = Service(); paused.Start(Stamp); paused.Pause("x", Stamp);
+            Rule("service_not_running", () => paused.FireNext(Stamp));
+        });
+        Test("remake is only for work already sent", () => {
+            var service = Service();
+            service.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            Rule("nothing_to_remake", () => service.ReviewPreparation("course-1", "fish", ReviewDecision.Remake, "otra merluza", Stamp));
+            True(service.View().Courses[0].Preparations.Single(p => p.Id == "fish").ReviewPending, "A refused remake decides nothing.");
+            service.ClearPendingEvents();
+            service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "vieira", Stamp);
+            Equal("restriction.reviewed", service.PendingEvents.Single().Type);
+        });
+        Test("a choice or a dish ordered for a guest with a restriction is born pending review", () => {
+            var menu = new DiningService("s", Scope, "M1", 2, [new("primeros", "Primeros", [], ChoiceRequired: true)], "LAB-DAILY");
+            menu.DeclareRestriction(1, RestrictionKind.Allergy, "gluten", RestrictionSeverity.Severe, Stamp);
+            menu.Choose("primeros", 1, new("sopa", "Sopa", "hot"), Stamp);
+            menu.Choose("primeros", 2, new("sopa", "Sopa", "hot"), Stamp);
+            True(menu.View().Courses[0].Preparations.Single(p => p.GuestPosition == 1).ReviewPending, "Guest 1's choice waits for the kitchen.");
+            True(!menu.View().Courses[0].Preparations.Single(p => p.GuestPosition == 2).ReviewPending, "Guest 2 has no restriction.");
+            menu.ReviewPreparation("primeros", "sopa-1", ReviewDecision.Unaffected, "sopa sin gluten", Stamp);
+            menu.Choose("primeros", 1, new("ensalada", "Ensalada", "cold"), Stamp);   // cambia de idea: el plato nuevo vuelve a necesitar revision
+            var replaced = menu.View().Courses[0].Preparations.Single(p => p.GuestPosition == 1);
+            True(replaced.Id == "ensalada-1" && replaced.ReviewPending && replaced.Review is null);
+            Rule("restrictions_unreviewed", () => menu.FireNext(Stamp));
+            var carte = new DiningService("s", Scope, "M1", 2, [new("entrantes", "Entrantes", [], Optional: true)], "LAB-CARTA");
+            carte.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            carte.AddDish("entrantes", new("croquetas-unit-1", "Croquetas", "cold", 2, 2), Stamp);   // para el comensal 2: no le aplica
+            carte.AddDish("entrantes", new("croquetas-unit-2", "Croquetas", "cold", 1, 1), Stamp);   // para el comensal 1
+            carte.AddDish("entrantes", new("pulpo-unit-1", "Pulpo", "hot"), Stamp);                  // para compartir: le aplica cualquiera
+            Equal("croquetas-unit-2,pulpo-unit-1", string.Join(",", carte.View().Courses[0].Preparations.Where(p => p.ReviewPending).Select(p => p.Id)));
+        });
+        Test("skipping a course or cancelling an unstarted table withdraws its pending reviews", () => {
+            var service = Service();
+            service.DeclareRestriction(null, RestrictionKind.Allergy, "gluten", RestrictionSeverity.Severe, Stamp);
+            service.ReviewPreparation("course-2", "dessert", ReviewDecision.Adapt, "tarta sin gluten", Stamp);
+            service.DeclareRestriction(1, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
+            service.ClearPendingEvents();
+            service.Skip("course-2", "no quieren postre", Stamp);
+            var dessert = service.View().Courses[1].Preparations.Single();
+            True(!dessert.ReviewPending && dessert.Review!.Note == "tarta sin gluten", "Withdrawn, and the decision taken stays.");
+            Equal("1", service.PendingEvents.Single().Data["reviews_withdrawn"]);
+            True(service.RestrictionsPendingAck, "Course 1 still waits.");
+            var plain = Service(); plain.ClearPendingEvents(); plain.Skip("course-2", "x", Stamp);
+            True(!plain.PendingEvents.Single().Data.ContainsKey("reviews_withdrawn"), "A skip without reviews leaves the event as before.");
+            var cancelled = Service();
+            cancelled.DeclareRestriction(null, RestrictionKind.Allergy, "gluten", RestrictionSeverity.Severe, Stamp);
+            cancelled.ClearPendingEvents();
+            cancelled.CancelUnstarted("no vienen", Stamp);
+            True(!cancelled.RestrictionsPendingAck); Equal("3", cancelled.PendingEvents.Single().Data["reviews_withdrawn"]);
+            Equal(DiningState.Cancelled, DiningService.Restore(cancelled.Snapshot()).State);
+        });
+        Test("a seated table with reviews on unsent courses is saved and read back", () => {
+            var service = Service();
+            service.DeclareRestriction(2, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
+            service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "vieira", Stamp);
+            var snapshot = service.Snapshot();
+            var restored = DiningService.Restore(snapshot);
+            Equal(JsonSerializer.Serialize(snapshot, Json), JsonSerializer.Serialize(restored.Snapshot(), Json));
+            True(restored.RestrictionsPendingAck && restored.View().Courses[1].Preparations.Single().ReviewPending);
+            Equal(ReviewDecision.Adapt, restored.View().Courses[0].Preparations.Single(p => p.Id == "fish").Review!.Decision);
+            Rule("invalid_snapshot", () => DiningService.Restore(snapshot with { State = DiningState.Cancelled }));
+            Rule("invalid_snapshot", () => DiningService.Restore(snapshot with { Courses = [snapshot.Courses[0],
+                snapshot.Courses[1] with { State = CourseState.Skipped, SkipReason = "x" }] }));
         });
         Test("restriction change after firing blocks kitchen flow until every affected preparation is reviewed", () => {
             var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
@@ -648,9 +786,13 @@ internal static class Program
             Rule("restrictions_unreviewed", () => service.ValidateReady("course-1", Stamp));
             Rule("nothing_to_review", () => service.ReviewPreparation("course-1", "fish", ReviewDecision.Unaffected, "x", Stamp));
             service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa sin marisco", Stamp);
-            True(!service.RestrictionsPendingAck);
+            True(service.View().Courses[0].Preparations.All(p => !p.ReviewPending));
             Equal(ReviewDecision.Adapt, service.View().Courses[0].Preparations.Single(p => p.Id == "sauce").Review!.Decision);
             service.ValidateReady("course-1", Stamp); service.Serve("course-1", Stamp);
+            // E4e: el postre (mesa entera) tambien quedo marcado aunque no se habia enviado; sale cuando cocina decide.
+            Rule("restrictions_unreviewed", () => service.FireNext(Stamp));
+            service.ReviewPreparation("course-2", "dessert", ReviewDecision.Unaffected, "no lleva marisco", Stamp);
+            True(!service.RestrictionsPendingAck);
             Equal("course-2", service.FireNext(Stamp));
         });
         Test("ready course loses serve until reviewed and remake withdraws its validation", () => {
@@ -665,8 +807,8 @@ internal static class Program
             service.ReviewPreparation("course-1", "sauce", ReviewDecision.Unaffected, "sin marisco", Stamp);
             Rule("restrictions_unreviewed", () => service.Serve("course-1", Stamp)); // fish sigue pendiente
             service.ReviewPreparation("course-1", "fish", ReviewDecision.Remake, "cambiar por verduras", Stamp);
-            True(!service.RestrictionsPendingAck);
             course = service.View(true).Courses.Single(c => c.Id == "course-1");
+            True(course.Preparations.All(p => !p.ReviewPending));
             Equal(CourseState.Preparing, course.State); True(course.ReadyAt is null);
             Equal(PreparationState.Fired, course.Preparations.Single(p => p.Id == "fish").State);
             Equal(ReviewDecision.Remake, course.Preparations.Single(p => p.Id == "fish").Review!.Decision);
@@ -677,7 +819,7 @@ internal static class Program
             var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
             service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Severe, Stamp);
             service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa aparte", Stamp);
-            True(!service.RestrictionsPendingAck);
+            True(service.View().Courses[0].Preparations.All(p => !p.ReviewPending));
             service.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
             True(service.View().Courses[0].Preparations.All(p => p.ReviewPending), "A whole-table change affects every sent preparation again.");
             Rule("restrictions_unreviewed", () => service.ValidateReady("course-1", Stamp));
@@ -686,14 +828,19 @@ internal static class Program
             var service = Service(); service.Start(Stamp); service.FireNext(Stamp);
             var restored = DiningService.Restore(service.Snapshot() with { RestrictionsPendingAck = true });
             True(restored.RestrictionsPendingAck && restored.View().Courses[0].Preparations.All(p => p.ReviewPending));
-            True(restored.View().Courses[1].Preparations.All(p => !p.ReviewPending), "Unsent courses never carry reviews.");
-            var snapshot = service.Snapshot(); var unsent = snapshot.Courses[1];
-            Rule("invalid_snapshot", () => DiningService.Restore(snapshot with { Courses = [snapshot.Courses[0],
-                unsent with { Preparations = [unsent.Preparations[0] with { ReviewPending = true }] }] }));
+            // La compatibilidad D3.2 marca solo lo ENVIADO; el marcado de E4e (tambien lo no enviado) no se aplica a un acuse viejo.
+            True(restored.View().Courses[1].Preparations.All(p => !p.ReviewPending), "The D3.2 compatibility marks only sent courses.");
+            // E4e: una revision pendiente en un pase SERVIDO sigue siendo ilegible (en uno sin enviar ya no: ver la instantanea sentada).
+            var served = Service(); served.Start(Stamp); ServeCurrent(served, served.FireNext(Stamp));
+            var snapshot = served.Snapshot(); var done = snapshot.Courses[0];
+            Rule("invalid_snapshot", () => DiningService.Restore(snapshot with { Courses = [
+                done with { Preparations = [done.Preparations[0] with { ReviewPending = true }, done.Preparations[1]] }, snapshot.Courses[1]] }));
         });
         Test("removal after firing also requires a review of the preparations it applied to", () => {
             var service = Service();
             var id = service.DeclareRestriction(null, RestrictionKind.Preference, "sin cilantro", RestrictionSeverity.Mild, Stamp);
+            service.ReviewPreparation("course-1", "fish", ReviewDecision.Unaffected, "no lleva cilantro", Stamp);
+            service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa sin cilantro", Stamp);
             service.Start(Stamp); service.FireNext(Stamp);
             service.RemoveRestriction(id, "El cliente lo retira", Stamp);
             True(service.RestrictionsPendingAck && service.Restrictions.Count == 0);
@@ -706,8 +853,7 @@ internal static class Program
             service.DeclareRestriction(1, RestrictionKind.Allergy, "Marisco", RestrictionSeverity.Severe, Stamp);
             Rule("duplicate_restriction", () => service.DeclareRestriction(1, RestrictionKind.Allergy, "marisco", RestrictionSeverity.Mild, Stamp));
             Rule("restriction_not_found", () => service.RemoveRestriction("missing", "x", Stamp));
-            Rule("nothing_to_review", () => { service.Start(Stamp); service.FireNext(Stamp);
-                service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "x", Stamp); });
+            Rule("nothing_to_review", () => service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, "x", Stamp));   // comensal 2: no le aplica
             Rule("invalid_review", () => { service.DeclareRestriction(2, RestrictionKind.Allergy, "apio", RestrictionSeverity.Severe, Stamp);
                 service.ReviewPreparation("course-1", "fish", (ReviewDecision)9, "x", Stamp); });
             Throws<ArgumentException>(() => service.ReviewPreparation("course-1", "fish", ReviewDecision.Adapt, " ", Stamp));
@@ -735,7 +881,7 @@ internal static class Program
             var declared = service.PendingEvents.Single();
             Equal("restriction.declared", declared.Type);
             Equal("marisco", declared.Data["substance"]); Equal("Severe", declared.Data["severity"]);
-            Equal("1", declared.Data["affected_preparations"]);
+            Equal("2", declared.Data["affected_preparations"]);   // E4e: la salsa enviada y el postre sin enviar (mesa entera)
             service.ClearPendingEvents();
             service.ReviewPreparation("course-1", "sauce", ReviewDecision.Adapt, "salsa aparte", Stamp);
             var reviewed = service.PendingEvents.Single();

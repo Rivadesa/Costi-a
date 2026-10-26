@@ -6,7 +6,10 @@ using static Costina.Core.Persistence.CommandGuards;
 namespace Costina.Modules.Dining;
 
 // E4a: la mesa se abre con una OFERTA del nucleo (offerId); menuId sigue aceptado una version como alias.
-public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null);
+// E4e: Restrictions = las alergias de la mesa en la MISMA orden (campo nuevo y opcional: una apertura de hoy vale igual).
+public sealed record OpenRequest(string TableId,int Pax,string? OfferId=null,string? MenuId=null,IReadOnlyList<RestrictionRequest>? Restrictions=null);
+// E4e: una restriccion tal como llega al abrir. Todo anulable para decir QUE falta: sin comensal = toda la mesa.
+public sealed record RestrictionRequest(int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null);
 // C3b: Lines = la RONDA de add-consumptions (campo nuevo y opcional: la ruta rechaza campos desconocidos y una orden de hoy vale igual).
 public sealed record DiningCommand(long ExpectedVersion,string? CourseId=null,string? ItemId=null,string? Reason=null,
     int? GuestPosition=null,string? Kind=null,string? Substance=null,string? Severity=null,string? RestrictionId=null,
@@ -34,6 +37,16 @@ public static class DiningOperations
         var courses = offerCourses.Select(c => new CourseDefinition(c.Id,c.Name,choice || carte ? [] : c.Dishes.SelectMany(d =>
             Enumerable.Range(1,request.Pax).Select(n => new PreparationDefinition(d.Id+"-"+n,d.Name,d.StationId,1,n))).ToArray(),choice,carte)).ToArray();
         var dining = new DiningService(id,identity.Scope,table.Id,request.Pax,courses,offer.Id);
+        // E4e (ADR-016): las alergias de la mesa en la MISMA orden y transaccion (una sola orden incierta). Cada una marca por revisar lo
+        // que le aplica de todo el menu, como declare-restriction; una mala (invalid_restriction, invalid_guest, duplicada) no abre nada.
+        foreach(var restriction in request.Restrictions ?? [])
+        {
+            if(restriction is null) throw new ArgumentException("A restriction cannot be null.");
+            dining.DeclareRestriction(restriction.GuestPosition,RestrictionValue<RestrictionKind>(restriction.Kind),restriction.Substance ?? "",
+                RestrictionValue<RestrictionSeverity>(restriction.Severity),stamp);
+        }
+        // Sus restriction.declared van en la auditoria DETRAS de service.created (el agregado los emitiria antes, al guardarse).
+        var declared = dining.PendingEvents.ToArray(); dining.ClearPendingEvents();
         // La cuenta es del NUCLEO (ventas): el modulo la abre en la mesa y le apunta el menu (producto del catalogo, por persona, a la
         // tarifa de la sala; E3) por el contrato de la Unit, en la misma transaccion. El precio queda congelado con su origen.
         var account = new SettlementAccount(Guid.NewGuid().ToString("N"),identity.Scope,id);
@@ -51,13 +64,18 @@ public static class DiningOperations
         await unit.Save(dining,null); await unit.Save(occupancy,null); await unit.Save(account,null,table.Id);
         await unit.Events(new[] {
             new DomainEvent(Guid.NewGuid(),"service.created",id,identity.Scope,identity.ActorId,stamp.At,
-                new Dictionary<string,string>{{"table_id",table.Id}}),
+                new Dictionary<string,string>{{"table_id",table.Id}})}.Concat(declared).Concat(new[] {
             new DomainEvent(Guid.NewGuid(),"table.occupied",occupancy.Id,identity.Scope,identity.ActorId,stamp.At,
                 new Dictionary<string,string>{{"service_id",id},{"table_id",table.Id}}),
             new DomainEvent(Guid.NewGuid(),"account.opened",account.Id,identity.Scope,identity.ActorId,stamp.At,
-                new Dictionary<string,string>{{"service_id",id}})});
+                new Dictionary<string,string>{{"service_id",id}})}));
         return new { serviceId=id,version=1,occupancyVersion=1 };
     }
+    // E4e: tipo y gravedad de una restriccion al abrir: solo un nombre conocido (sin distinguir mayusculas), nunca un numero.
+    // Un valor desconocido o vacio da invalid_restriction. declare-restriction sigue como hoy (422 invalid_request, ParseEnum).
+    private static T RestrictionValue<T>(string? value) where T : struct, Enum
+        => Enum.GetNames<T>().FirstOrDefault(n => string.Equals(n,value?.Trim(),StringComparison.OrdinalIgnoreCase)) is { } name
+            ? Enum.Parse<T>(name) : throw new RuleViolation("invalid_restriction","Unknown restriction kind or severity.");
     // Matriz de estacion (D4.3, F06): un dispositivo solo marca elaboraciones de SU estacion, y
     // validar o revisar un pase exige la estacion 'pase'. Un usuario con sesion (Station null)
     // no tiene restriccion: el chef en el PC decide. La estacion nunca amplia el rol, solo acota.

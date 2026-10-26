@@ -59,17 +59,19 @@ internal sealed partial class CourseExecution
     // Comensales sin plato elegido en un pase de menu cerrado (vacio si no exige eleccion).
     public IReadOnlyList<int> MissingChoices() => !ChoiceRequired ? []
         : Enumerable.Range(1, pax).Where(g => preparations.All(p => p.Definition.GuestPosition != g)).ToArray();
-    internal void Choose(int guest, PreparationDefinition dish)
+    // E4e (ADR-016): reviewPending = al comensal le aplica alguna restriccion: el plato nuevo nace por revisar (tambien al cambiar de idea,
+    // porque sustituye la elaboracion y su decision anterior era de otro plato).
+    internal void Choose(int guest, PreparationDefinition dish, bool reviewPending = false)
     {
         Guard.Rule(ChoiceRequired, "no_choice", "This course has no choice to make.");
         Guard.Rule(State == CourseState.Pending, "course_not_pending", "Choices close once the course is fired.");
         Guard.Rule(guest >= 1 && guest <= pax, "invalid_guest", "Guest outside this service.");
         preparations.RemoveAll(p => p.Definition.GuestPosition == guest);
         preparations.Add(new Preparation(dish with { Id = Guard.Text(dish.Id, nameof(dish.Id)) + "-" + guest, Name = Guard.Text(dish.Name, nameof(dish.Name)),
-            StationId = Guard.Text(dish.StationId, nameof(dish.StationId)), GuestPosition = guest, Quantity = 1 }));
+            StationId = Guard.Text(dish.StationId, nameof(dish.StationId)), GuestPosition = guest, Quantity = 1 }) { ReviewPending = reviewPending });
     }
 
-    internal void AddDish(PreparationDefinition dish)
+    internal void AddDish(PreparationDefinition dish, bool reviewPending = false)
     {
         Guard.Rule(Optional, "no_dishes", "Dishes are added only to the groups of an a la carte offer.");
         Guard.Rule(State == CourseState.Pending, "course_not_pending", "Dishes are added while the course is pending; fire the next one.");
@@ -77,7 +79,8 @@ internal sealed partial class CourseExecution
         Guard.Rule(dish.Quantity > 0, "invalid_quantity", "Quantity must be positive.");
         var id = Guard.Text(dish.Id, nameof(dish.Id));
         Guard.Rule(preparations.All(p => p.Definition.Id != id), "duplicate_preparation", "Preparation IDs must be unique within a course.");
-        preparations.Add(new Preparation(dish with { Id = id, Name = Guard.Text(dish.Name, nameof(dish.Name)), StationId = Guard.Text(dish.StationId, nameof(dish.StationId)) }));
+        preparations.Add(new Preparation(dish with { Id = id, Name = Guard.Text(dish.Name, nameof(dish.Name)), StationId = Guard.Text(dish.StationId, nameof(dish.StationId)) })
+            { ReviewPending = reviewPending });
     }
 
     public void Fire(CommandStamp stamp)
@@ -127,20 +130,32 @@ internal sealed partial class CourseExecution
         ServedAt = stamp.At;
     }
 
-    public void Skip(string reason)
+    // Devuelve cuantas revisiones pendientes retira (E4e): lo que no se va a cocinar no se revisa.
+    public int Skip(string reason)
     {
         reason = Guard.Text(reason, nameof(reason));
         // D0 deliberately does not recall a fired kitchen command. That needs acknowledgement.
         Guard.Rule(State == CourseState.Pending, "course_not_pending", "Only unsent courses can be skipped in D0.");
         State = CourseState.Skipped;
         SkipReason = reason;
+        return WithdrawReviews();
     }
 
-    // Marca para revision las elaboraciones YA enviadas a las que aplica el cambio. Un pase no
-    // enviado no necesita revision: al dispararse, cada elaboracion proyecta las restricciones vigentes.
+    // E4e (ADR-016): retira las revisiones pendientes de un pase que ya no se va a cocinar (omitido, o la mesa cancelada sin empezar).
+    // Las decisiones ya tomadas (Review) se quedan; el evento de quien lo pide cuenta las retiradas.
+    internal int WithdrawReviews()
+    {
+        var count = 0;
+        foreach (var p in preparations.Where(p => p.ReviewPending)) { p.ReviewPending = false; count++; }
+        return count;
+    }
+
+    // E4e (ADR-016): marca para revision las elaboraciones a las que aplica el cambio en TODO pase que aun se va a cocinar: sin enviar,
+    // en cocina o listo sin servir. Antes (D3.5) solo lo enviado, y un pase sin enviar salia sin ninguna decision de cocina registrada.
+    // Lo servido u omitido no se marca. La compatibilidad con D3.2 (Snapshots) sigue marcando solo los pases activos.
     internal int FlagForReview(Func<int?, bool> applies)
     {
-        if (!Active) return 0;
+        if (Terminal) return 0;
         var count = 0;
         foreach (var p in preparations.Where(p => applies(p.Definition.GuestPosition)))
         { p.ReviewPending = true; count++; }
@@ -149,9 +164,13 @@ internal sealed partial class CourseExecution
 
     internal void Review(string id, ReviewDecision decision, string note, CommandStamp stamp)
     {
-        Guard.Rule(Active, "course_not_preparing", "Course is not available for review.");
+        // E4e: tambien en un pase sin enviar (se decide antes de cocinar); nunca en uno servido u omitido.
+        Guard.Rule(!Terminal, "course_not_preparing", "Course is not available for review.");
         var item = Find(id);
         Guard.Rule(item.ReviewPending, "nothing_to_review", "This preparation has no pending restriction review.");
+        // Rehacer es solo para lo que ya esta en cocina: un plato sin enviar se adapta o no le afecta.
+        Guard.Rule(decision != ReviewDecision.Remake || Active, "nothing_to_remake",
+            "Only work already sent to the kitchen can be remade: adapt it or mark it unaffected.");
         item.ReviewPending = false;
         item.Review = new(decision, note, stamp.At);
         if (decision != ReviewDecision.Remake) return;

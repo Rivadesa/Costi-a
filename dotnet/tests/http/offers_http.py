@@ -305,5 +305,37 @@ class Offers(unittest.TestCase):
             self.assertEqual(command('offers-reorder', role=role, offerIds=[oid])[0], 403)
         self.assertEqual(h.sql("SELECT count(*) FROM core.audit WHERE tenant='d1-tenant' AND action='offer.offer_updated' AND aggregate_id='" + carta['id'] + "'"), '1')
 
+    def test_07_a_dish_born_for_a_guest_with_a_restriction_waits_for_the_kitchen(self):
+        # E4e (ADR-016): lo que nace para un comensal con restriccion (choose, add-dish) o para compartir nace por revisar.
+        # Va DETRAS de test_05, que cuenta los course.chosen de todo el ambito. Mesa propia de la ejecucion: a estas alturas las del
+        # laboratorio (y OFF1, la de reserva de free_table) estan ocupadas por las suites anteriores; se desactiva al terminar.
+        table = 'E4E-' + datetime.datetime.now().strftime('%H%M%S%f')
+        self.assertEqual(request('/organization/commands/table-create', dict(id=table, name='Mesa ' + table, capacity=4, zoneId='sala'))[0], 200)
+        try: self.born_pending(table)
+        finally: self.assertEqual(request('/organization/commands/table-deactivate', dict(id=table))[0], 200)
+
+    def born_pending(self, table):
+        status, body = open_with(table, 'LAB-DAILY', restrictions=[dict(guestPosition=1, kind='allergy', substance='gluten', severity='severe')])
+        self.assertEqual(status, 200, body); sid = json.loads(body)['serviceId']
+        for guest in (1, 2): h.mutate(sid, 'choose', courseId='primeros', guestPosition=guest, dishId='sopa')
+        self.assertEqual([('sopa-1', True), ('sopa-2', False)], [(p['id'], p['reviewPending']) for p in h.dining(sid)['data']['courses'][0]['preparations']])
+        status, body = h.request('/dining/services/' + sid + '/commands/fire-next', dict(expectedVersion=h.dining(sid)['version']))
+        self.assertEqual((409, 'restrictions_unreviewed'), (status, json.loads(body)['error']))
+        h.ok('/dining/services/' + sid + '/commands/review-preparation', dict(expectedVersion=h.dining(sid)['version'], courseId='primeros',
+             itemId='sopa-1', decision='adapt', note='sopa sin pan'), role='kitchen')
+        h.mutate(sid, 'choose', courseId='primeros', guestPosition=1, dishId='ensalada')                     # cambia de idea: otra vez por revisar
+        self.assertEqual(('ensalada-1', True), next((p['id'], p['reviewPending']) for p in h.dining(sid)['data']['courses'][0]['preparations'] if p['guestPosition'] == 1))
+        self.assertNotIn('fire-next', h.dining(sid)['data']['actions'])
+        self.release(sid)                                                                                     # cancelar sin empezar retira lo pendiente
+        self.assertFalse(h.dining(sid)['data']['restrictionsPendingAck'])
+        status, body = open_with(table, 'LAB-CARTA', restrictions=[dict(guestPosition=1, kind='allergy', substance='marisco', severity='severe')])
+        self.assertEqual(status, 200, body); sid = json.loads(body)['serviceId']
+        h.mutate(sid, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit', guestPosition=2)   # comensal 2: no le aplica
+        h.mutate(sid, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit', guestPosition=1)
+        h.mutate(sid, 'add-dish', courseId='entrantes', productId='croquetas', presentationId='unit')                    # para compartir
+        self.assertEqual([('croquetas-unit-1', False), ('croquetas-unit-2', True), ('croquetas-unit-3', True)],
+                         [(p['id'], p['reviewPending']) for p in h.dining(sid)['data']['courses'][0]['preparations']])
+        self.release(sid)
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

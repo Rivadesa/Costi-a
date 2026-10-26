@@ -52,6 +52,7 @@ Check(!json.Contains("paid",StringComparison.OrdinalIgnoreCase) && !json.Contain
 // D3.2: restricciones por comensal persisten en el snapshot; el acuse pendiente sobrevive reinicios.
 var dres=new DiningService("sr",scope,"M2",2,[new("p1","Pase",[new("a","Plato","hot",GuestPosition:1)])]);
 dres.DeclareRestriction(1,RestrictionKind.Allergy,"marisco",RestrictionSeverity.Severe,stamp);
+dres.ReviewPreparation("p1","a",ReviewDecision.Unaffected,"no lleva marisco",stamp);   // E4e: el pase no sale sin la decision de cocina
 dres.Start(stamp); dres.FireNext(stamp);
 dres.DeclareRestriction(null,RestrictionKind.Preference,"sin cilantro",RestrictionSeverity.Mild,stamp);
 var dres2=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(dres.Snapshot())));
@@ -70,6 +71,23 @@ Check(DiningService.Restore(legacy).Restrictions.Count==0,"pre-D3.2 payload with
 Rejected(()=>DiningService.Restore(dres.Snapshot() with {Restrictions=[new("id",5,RestrictionKind.Allergy,"x",RestrictionSeverity.Severe)]}),"restriction outside pax rejected");
 var openSnap=new DiningService("so",scope,"M3",1,[new("c","c",[new("p","p","cold")])]).Snapshot();
 Rejected(()=>DiningService.Restore(openSnap with {RestrictionsPendingAck=true}),"pending acknowledgement on inactive service rejected");
+// E4e (ADR-016): una mesa SENTADA con revisiones en pases sin enviar se guarda y se vuelve a leer. Un motor anterior no la lee: sin vuelta atras.
+var seated=new DiningService("se",scope,"M5",2,[new("p1","Aperitivo",[new("ostra-1","Ostra","cold",GuestPosition:1),new("ostra-2","Ostra","cold",GuestPosition:2)]),
+    new("p2","Principal",[new("merluza-1","Merluza","hot",GuestPosition:1)])]);
+seated.DeclareRestriction(1,RestrictionKind.Allergy,"marisco",RestrictionSeverity.Severe,stamp);
+seated.ReviewPreparation("p1","ostra-1",ReviewDecision.Adapt,"vieira",stamp);
+var seated2=DiningService.Restore(Wire.Decode<DiningSnapshot>(Wire.Encode(seated.Snapshot())));
+Check(seated2.State==DiningState.Open && seated2.RestrictionsPendingAck && seated2.View().Courses[1].Preparations[0].ReviewPending,"seated table with a review pending on an unsent course survives restart");
+Check(Wire.Encode(seated2.Snapshot())==Wire.Encode(seated.Snapshot()),"seated review round trip is lossless");
+Check(seated2.View().Courses[0].Preparations.Single(p=>p.Id=="ostra-1").Review?.Note=="vieira" && !seated2.View().Courses[0].Preparations.Single(p=>p.Id=="ostra-2").ReviewPending,"decision taken on an unsent course persists");
+Rejected(()=>DiningService.Restore(seated.Snapshot() with {State=DiningState.Cancelled}),"pending review on a cancelled table rejected");
+// Una mesa guardada por 0.43.0-c3c (antes de E4e), tal cual la escribia aquel motor: se lee igual y su pase sin enviar NO queda marcado
+// (una mesa abierta al actualizar conserva su estado; se marcara con el siguiente cambio de restricciones).
+const string c3c = """{"id":"s35","scope":{"tenantId":"tenant","companyId":"company","locationId":"location"},"tableId":"M4","pax":2,"state":"InService","startedAt":"2026-10-20T20:15:00+00:00","completedAt":null,"courses":[{"id":"p1","name":"Aperitivo","state":"Fired","firedAt":"2026-10-20T20:15:00+00:00","readyAt":null,"servedAt":null,"skipReason":null,"preparations":[{"id":"ostra-1","name":"Ostra","stationId":"cold","quantity":1,"guestPosition":1,"mandatory":true,"state":"Fired","reviewPending":false,"review":{"decision":"Adapt","note":"vieira en vez de ostra","at":"2026-10-20T20:15:00+00:00"}},{"id":"pan","name":"Pan","stationId":"hot","quantity":1,"guestPosition":null,"mandatory":true,"state":"Fired","reviewPending":true}],"choiceRequired":false,"optional":false},{"id":"p2","name":"Principal","state":"Pending","firedAt":null,"readyAt":null,"servedAt":null,"skipReason":null,"preparations":[{"id":"merluza-2","name":"Merluza","stationId":"hot","quantity":1,"guestPosition":2,"mandatory":true,"state":"Pending","reviewPending":false}],"choiceRequired":false,"optional":false}],"restrictions":[{"id":"c514b92645784f6fa5e0f7b9e03fc0a9","guestPosition":1,"kind":"Allergy","substance":"marisco","severity":"Severe"},{"id":"5d61480c7c3e4a8c9c6677dea4e3295f","guestPosition":null,"kind":"Preference","substance":"sin cilantro","severity":"Mild"}],"restrictionsPendingAck":true,"offerId":"LAB-TASTING"}""";
+var c3cTable=DiningService.Restore(Wire.Decode<DiningSnapshot>(c3c)).View();
+Check(c3cTable.RestrictionsPendingAck && c3cTable.Restrictions!.Count==2 && c3cTable.Courses[0].Preparations.Single(p=>p.Id=="pan").ReviewPending
+    && c3cTable.Courses[0].Preparations.Single(p=>p.Id=="ostra-1").Review?.Decision==ReviewDecision.Adapt && !c3cTable.Courses[1].Preparations[0].ReviewPending,
+    "a 0.43.0-c3c payload restores unchanged and its unsent course stays unmarked");
 // D3.1: las affordances se calculan al leer y NUNCA entran en los payloads persistidos.
 foreach(var payload in new[]{Wire.Encode(d.Snapshot()),Wire.Encode(restored.Snapshot()),Wire.Encode(a2.Snapshot()),Wire.Encode(o.Snapshot())})
     Check(!payload.Contains("actions",StringComparison.OrdinalIgnoreCase),"snapshot payload has no affordances");

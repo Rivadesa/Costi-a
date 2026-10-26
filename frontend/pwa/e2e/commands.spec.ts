@@ -36,10 +36,13 @@ test('a waiter runs a table from the handheld; lost responses and network cuts n
   const board = await (await asMain(request, '/dining/board')).json() as Array<{ service: { id: string; tableId: string } }>
   const serviceId = board.find(entry => entry.service.tableId === table.id)!.service.id
   await checkScreen(page, 'table card')
-  await press(page.getByTestId('do-start'))
+  // E4e: con la mesa Sentados el servidor anuncia ya «Enviar siguiente pase» (empieza y envia en UNA orden), que es el boton grande;
+  // «Empezar» sigue existiendo, en «Más opciones».
   await expect(page.getByTestId('do-fire-next')).toBeVisible({ timeout: 15_000 })
+  const beforeFirst = (await read(request, serviceId)).version
   await press(page.getByTestId('do-fire-next'))
   await expect(detail.getByTestId('detail-state')).toHaveText('En cocina', { timeout: 15_000 })
+  expect((await read(request, serviceId)).version).toBe(beforeFirst + 1)
   await expect(page.getByTestId('do-wait')).toBeDisabled()                                 // nada que hacer: el boton grande dice que se espera
   // Un dispositivo de SALA no ve acciones de cocina ni de cierre: el servidor no se las anuncia.
   await expect(page.getByTestId('actions')).not.toContainText(/Validar|Terminar|Liberar|elaboraci[oó]n lista/i)

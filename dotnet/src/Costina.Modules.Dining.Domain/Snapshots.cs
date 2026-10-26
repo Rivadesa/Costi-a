@@ -52,14 +52,22 @@ public sealed partial class DiningService
                 "invalid_snapshot", "Duplicate persisted restriction identity.");
             result.restrictions.Add(restriction);
         }
-        Guard.Rule(!value.RestrictionsPendingAck
+        // E4e (ADR-016): una revision pendiente se admite con la mesa «Sentados» (y en pases sin enviar, ver CourseExecution.Restore),
+        // nunca en una mesa terminada o cancelada. SIN VUELTA ATRAS: un motor anterior a E4e no lee estas mesas (invalid_snapshot);
+        // bajar de version exige restaurar la copia previa con los binarios anteriores. Las instantaneas de antes se leen igual.
+        var marked = result.courses.Any(c => c.ReviewPending);
+        Guard.Rule(!marked || value.State is DiningState.Open or DiningState.InService or DiningState.Paused,
+            "invalid_snapshot", "Pending review on a finished service.");
+        // Un acuse global SIN marcas solo lo escribia D3.2, y siempre con la mesa en servicio o en pausa.
+        Guard.Rule(!value.RestrictionsPendingAck || marked
             || value.State is DiningState.InService or DiningState.Paused,
             "invalid_snapshot", "Pending acknowledgement requires an active service.");
         // Compatibilidad D3.2: un payload con acuse global pendiente pero sin marcas por elaboracion
         // (anterior a D3.5) deja pendientes TODAS las elaboraciones del pase enviado: revisar de mas
-        // es seguro; dar por revisado lo que nadie decidio, no.
-        if (value.RestrictionsPendingAck && !result.courses.Any(c => c.ReviewPending))
-            foreach (var course in result.courses) course.FlagForReview(_ => true);
+        // es seguro; dar por revisado lo que nadie decidio, no. Solo los pases ACTIVOS: el marcado de E4e
+        // (tambien lo no enviado) no se aplica a lo que decidio un motor anterior.
+        if (value.RestrictionsPendingAck && !marked)
+            foreach (var course in result.courses.Where(c => c.Active)) course.FlagForReview(_ => true);
         result.State = value.State; result.StartedAt = value.StartedAt; result.CompletedAt = value.CompletedAt;
         return result;
     }
@@ -77,8 +85,9 @@ internal sealed partial class CourseExecution
         foreach (var item in value.Preparations)
         {
             Guard.Rule(Enum.IsDefined(item.State), "invalid_snapshot", "Unknown preparation state.");
-            Guard.Rule(!item.ReviewPending || (fired && value.State != CourseState.Served),
-                "invalid_snapshot", "Review pending on a preparation that is not in the kitchen.");
+            // E4e (ADR-016): tambien en un pase sin enviar; nunca en uno servido u omitido (ya no se cocina).
+            Guard.Rule(!item.ReviewPending || value.State is not (CourseState.Served or CourseState.Skipped),
+                "invalid_snapshot", "Review pending on a preparation that will not be cooked.");
             Guard.Rule(item.Review is null || (Enum.IsDefined(item.Review.Decision) && !string.IsNullOrWhiteSpace(item.Review.Note)),
                 "invalid_snapshot", "Malformed persisted preparation review.");
             var preparation = result.Find(item.Id);

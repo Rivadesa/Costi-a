@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Browser, type BrowserContextOptions, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { asMain, bottlePng, catalogCommand, checkScreen, command, ensureCategory, ensureDrink, MAIN, openTable, pairThroughTheUi, read, watch, type Drink } from './support'
+import { asMain, bottlePng, catalogCommand, checkScreen, command, ensureCategory, ensureDrink, MAIN, openTable, pairThroughTheUi, read, reviewCourse, watch, type Drink } from './support'
 
 // C3b: las capturas de docs/native/images/c3b/ salen del MOTOR REAL, no de la maqueta. Solo con C3B_CAPTURES=<carpeta> y nunca en la
 // CI: playwright.config.ts corre entonces SOLO este spec. Monta una bodega parecida a la de la maqueta (familias bajo «Bodega y
@@ -54,6 +54,7 @@ async function stage(request: APIRequestContext): Promise<string> {
   const m4 = await openTable(request, 'M4', 4)
   await command(request, m4, 'declare-restriction', { guestPosition: 2, kind: 'Allergy', substance: 'frutos secos', severity: 'Severe' })
   await command(request, m4, 'declare-restriction', { guestPosition: 3, kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' })
+  await reviewCourse(request, m4, 0); await reviewCourse(request, m4, 1)               // E4e: ningun pase sale sin la decision de cocina
   await command(request, m4, 'start'); await command(request, m4, 'fire-next')
   const course = (await read(request, m4)).data.courses[0]
   for (const preparation of course.preparations) {
