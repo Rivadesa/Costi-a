@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { REJECTIONS } from '../src/commands'
 import { DB_TEXTS } from '../src/db'
-import { elapsedLabel, PRESEND_DECISIONS, REVIEW_DECISIONS } from '../src/kitchen'
+import { DONE_BAND, elapsedText, PRESEND_DECISIONS, REVIEW_DECISIONS, REVIEW_PENDING_AT_PASS } from '../src/cocina'
+import { elapsedLabel } from '../src/kitchen'
 import {
   actionLabel, ageLabel, ageShort, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
   preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, reviewOutcome, severityLabel, stationKindLabel, tableStateLabel,
@@ -84,6 +85,8 @@ const SHOWN = [
   new MoneyLeakError('$.x').message, elapsedLabel(null, 0), ...REVIEW_DECISIONS.map(option => option.label),
   // E4e: lo que la sala lee de una revision y las decisiones del pase antes de enviar.
   ...cases.reviews.map(row => row.text), ...PRESEND_DECISIONS.map(option => option.label),
+  // C3d: las palabras nuevas de Costina Cocina (el resto, en cocina.test.ts, que mira todos los literales de cocina.ts).
+  REVIEW_PENDING_AT_PASS, DONE_BAND, elapsedText(null, 0),
   reviewLabel({ id: 'p', name: 'x', stationId: 's', quantity: 1, guestPosition: null, mandatory: true, state: 'Fired', reviewPending: true }),
   // Los errores de IndexedDB llegan al aviso «Servidor no listo (…)» de la pantalla de arranque (startup.ts).
   ...Object.values(DB_TEXTS), ageLabel(null), ageLabel(75), ageShort(null), ageShort(5),

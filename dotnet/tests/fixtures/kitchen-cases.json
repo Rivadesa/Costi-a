@@ -1,0 +1,132 @@
+{
+  "about": [
+    "C3d: tabla de casos COMUN de los platos agrupados de cocina. La leen ClientChecks (Costina.Client/DishGroups.cs, el Comedor del puesto) y vitest (frontend/pwa/src/cocina.ts, Costiña Cocina):",
+    "si una de las dos implementaciones cambia y la otra no, falla su prueba. Para cambiar una regla, se cambia aqui y en las DOS implementaciones.",
+    "preparations = las elaboraciones de un pase tal como llegan en /dining/board, en su orden. dishes = los platos esperados, en orden:",
+    "name y station: un plato es el mismo nombre en la misma estacion (comparacion exacta), en el orden de su primera aparicion; quantity suma las cantidades de todas sus elaboraciones;",
+    "preparations = sus elaboraciones; exceptions = las que van APARTE, bajo el plato y nunca atenuadas: por revisar, con una decision que cambia el plato (todo lo que no es «No le afecta»,",
+    "tambien una decision que no se conoce) o con una restriccion de un comensal concreto. restrictions = las que se escriben en su linea: las de un comensal; las de TODA LA MESA",
+    "salen una sola vez arriba (cabecera de la comanda en cocina, franja de restricciones en el PC), nunca repetidas en cada linea;",
+    "state = el estado del plato con las palabras de siempre (el de todas sus elaboraciones si coinciden; si no, cuantas estan listas); ready = todas listas."
+  ],
+  "groups": [
+    { "case": "mismo nombre y misma estacion juntos, en el orden de la primera aparicion; el mismo nombre en otra estacion es otro plato",
+      "preparations": [
+        { "id": "ostra-1", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "pan-1", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "ostra-2", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Pending",
+          "restrictions": [{ "id": "r-cilantro", "guestPosition": 2, "kind": "Preference", "substance": "cilantro", "severity": "Mild" }],
+          "reviewPending": false, "review": { "decision": "Unaffected", "note": "no lleva cilantro", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "ostra-3", "name": "Ostra", "stationId": "cold", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending",
+          "restrictions": [{ "id": "r-marisco", "guestPosition": 3, "kind": "Allergy", "substance": "marisco", "severity": "Severe" }], "reviewPending": true, "review": null },
+        { "id": "pan-3", "name": "Pan", "stationId": "pase", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Pending",
+          "restrictions": [{ "id": "r-marisco", "guestPosition": 3, "kind": "Allergy", "substance": "marisco", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Adapt", "note": "pan de maíz", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "pan-hot", "name": "Pan", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Pending", "restrictions": [], "reviewPending": false, "review": null }
+      ],
+      "dishes": [
+        { "name": "Ostra", "station": "cold", "quantity": 3, "preparations": ["ostra-1", "ostra-2", "ostra-3"],
+          "exceptions": [{ "id": "ostra-2", "restrictions": ["r-cilantro"] }, { "id": "ostra-3", "restrictions": ["r-marisco"] }], "state": "Sin enviar", "ready": false },
+        { "name": "Pan", "station": "pase", "quantity": 2, "preparations": ["pan-1", "pan-3"], "exceptions": [{ "id": "pan-3", "restrictions": ["r-marisco"] }], "state": "Sin enviar", "ready": false },
+        { "name": "Pan", "station": "hot", "quantity": 1, "preparations": ["pan-hot"], "exceptions": [], "state": "Sin enviar", "ready": false }
+      ] },
+    { "case": "la cantidad suma las de todas sus elaboraciones, tambien la de un plato para toda la mesa",
+      "preparations": [
+        { "id": "merluza-1", "name": "Merluza á galega", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "merluza-2", "name": "Merluza á galega", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "merluza-x", "name": "Merluza á galega", "stationId": "hot", "quantity": 2, "guestPosition": null, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null }
+      ],
+      "dishes": [
+        { "name": "Merluza á galega", "station": "hot", "quantity": 4, "preparations": ["merluza-1", "merluza-2", "merluza-x"], "exceptions": [], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "comparacion exacta: otra mayuscula u otro espacio es otro plato (el nombre llega tal cual del menu)",
+      "preparations": [
+        { "id": "a", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "b", "name": "merluza", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "c", "name": "Merluza ", "stationId": "hot", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "d", "name": "Merluza", "stationId": "Hot", "quantity": 1, "guestPosition": 4, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": false, "review": null }
+      ],
+      "dishes": [
+        { "name": "Merluza", "station": "hot", "quantity": 1, "preparations": ["a"], "exceptions": [], "state": "Por empezar", "ready": false },
+        { "name": "merluza", "station": "hot", "quantity": 1, "preparations": ["b"], "exceptions": [], "state": "Por empezar", "ready": false },
+        { "name": "Merluza ", "station": "hot", "quantity": 1, "preparations": ["c"], "exceptions": [], "state": "Por empezar", "ready": false },
+        { "name": "Merluza", "station": "Hot", "quantity": 1, "preparations": ["d"], "exceptions": [], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "toda la mesa: su restriccion nunca se repite en la linea; un «No le afecta» bajo ella no es una excepcion, lo adaptado si, y la restriccion de un comensal se escribe",
+      "preparations": [
+        { "id": "m-1", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Unaffected", "note": "no lleva gluten", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "m-2", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" },
+                           { "id": "r-frutos", "guestPosition": 2, "kind": "Allergy", "substance": "frutos secos", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Adapt", "note": "sin almendra", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "m-3", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Adapt", "note": "sin harina", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "m-4", "name": "Merluza", "stationId": "hot", "quantity": 1, "guestPosition": 4, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Unaffected", "note": "no lleva gluten", "at": "2026-10-27T20:00:00Z" } }
+      ],
+      "dishes": [
+        { "name": "Merluza", "station": "hot", "quantity": 4, "preparations": ["m-1", "m-2", "m-3", "m-4"],
+          "exceptions": [{ "id": "m-2", "restrictions": ["r-frutos"] }, { "id": "m-3", "restrictions": [] }], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "por revisar va siempre aparte: con una restriccion de toda la mesa y tambien sin ninguna (una restriccion retirada vuelve a pedir decision)",
+      "preparations": [
+        { "id": "p-1", "name": "Pulpo á feira", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }], "reviewPending": true, "review": null },
+        { "id": "p-2", "name": "Pulpo á feira", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired", "restrictions": [], "reviewPending": true,
+          "review": { "decision": "Adapt", "note": "sin pimentón", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "p-3", "name": "Pulpo á feira", "stationId": "hot", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }], "reviewPending": false, "review": null }
+      ],
+      "dishes": [
+        { "name": "Pulpo á feira", "station": "hot", "quantity": 3, "preparations": ["p-1", "p-2", "p-3"],
+          "exceptions": [{ "id": "p-1", "restrictions": [] }, { "id": "p-2", "restrictions": [] }], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "un plato para compartir (sin comensal) recibe la restriccion de cualquiera: va aparte, con la del comensal escrita y sin la de toda la mesa",
+      "preparations": [
+        { "id": "tabla", "name": "Tabla de quesos", "stationId": "cold", "quantity": 1, "guestPosition": null, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-marisco", "guestPosition": 3, "kind": "Allergy", "substance": "marisco", "severity": "Severe" },
+                           { "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Unaffected", "note": "no lleva marisco ni gluten", "at": "2026-10-27T20:00:00Z" } }
+      ],
+      "dishes": [
+        { "name": "Tabla de quesos", "station": "cold", "quantity": 1, "preparations": ["tabla"], "exceptions": [{ "id": "tabla", "restrictions": ["r-marisco"] }], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "«Rehecho» y una decision que no se conoce van aparte: nunca se esconde lo que cambia el plato o no se entiende",
+      "preparations": [
+        { "id": "x-1", "name": "Vieira", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Remake", "note": "rehecha sin rebozado", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "x-2", "name": "Vieira", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "Substitute", "note": "otra cosa", "at": "2026-10-27T20:00:00Z" } },
+        { "id": "x-3", "name": "Vieira", "stationId": "hot", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Fired",
+          "restrictions": [{ "id": "r-gluten", "guestPosition": null, "kind": "Allergy", "substance": "gluten", "severity": "Severe" }],
+          "reviewPending": false, "review": { "decision": "unaffected", "note": "no lleva gluten", "at": "2026-10-27T20:00:00Z" } }
+      ],
+      "dishes": [
+        { "name": "Vieira", "station": "hot", "quantity": 3, "preparations": ["x-1", "x-2", "x-3"],
+          "exceptions": [{ "id": "x-1", "restrictions": [] }, { "id": "x-2", "restrictions": [] }], "state": "Por empezar", "ready": false }
+      ] },
+    { "case": "estado del plato: el de todas si coinciden; si no, cuantas estan listas; ready solo con todas listas",
+      "preparations": [
+        { "id": "z-1", "name": "Zamburiña", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "z-2", "name": "Zamburiña", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Preparing", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "z-3", "name": "Zamburiña", "stationId": "hot", "quantity": 1, "guestPosition": 3, "mandatory": true, "state": "Ready", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "c-1", "name": "Croquetas de lacón", "stationId": "hot", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Ready", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "c-2", "name": "Croquetas de lacón", "stationId": "hot", "quantity": 1, "guestPosition": 2, "mandatory": true, "state": "Ready", "restrictions": [], "reviewPending": false, "review": null },
+        { "id": "e-1", "name": "Empanada", "stationId": "cold", "quantity": 1, "guestPosition": 1, "mandatory": true, "state": "Preparing", "restrictions": [], "reviewPending": false, "review": null }
+      ],
+      "dishes": [
+        { "name": "Zamburiña", "station": "hot", "quantity": 3, "preparations": ["z-1", "z-2", "z-3"], "exceptions": [], "state": "2 de 3 listas", "ready": false },
+        { "name": "Croquetas de lacón", "station": "hot", "quantity": 2, "preparations": ["c-1", "c-2"], "exceptions": [], "state": "Lista", "ready": true },
+        { "name": "Empanada", "station": "cold", "quantity": 1, "preparations": ["e-1"], "exceptions": [], "state": "En preparación", "ready": false }
+      ] },
+    { "case": "un pase sin elaboraciones no tiene platos",
+      "preparations": [],
+      "dishes": [] }
+  ]
+}
