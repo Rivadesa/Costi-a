@@ -716,6 +716,15 @@ Necesita E4e (órdenes de grupo y revisión antes de enviar) y la maqueta aproba
 
 ### 4.4. C3e: Costiña Sala, mis mesas y abrir y servir el menú (`0.46.0-c3e`, sin cambio de esquema ni de motor)
 
+**Entregado el 27-10**: `docs/native/C3e-costina-sala.md`, con sus capturas en `docs/native/images/c3e/`, su ADR, `docs/ADR/ADR-018-mis-mesas-por-dispositivo.md`, y los pasos de `docs/plans/2026-10-27-c3e-costina-sala.md`. Incluye todo el alcance de abajo, con estas concreciones:
+- **Qué es «mía»:** como abajo; un dato vacío de quién la abrió vale como no sabido, así que también es «mía». Es presentación y no atribución a una persona (ADR-018).
+- **Un requisito de uso:** el puesto del PC y todos los móviles de Costiña Sala van en la misma estación de sala; si no, lo que se abre en el PC como puesto no sale en «Mis mesas» ni avisa. Lo comprueba «Antes de instalar» del documento del corte.
+- **La banda** deja fuera la mesa cuya ficha está a la vista, porque su botón grande ya dice «Servido · …»; en «Carta y menús» y en «Bodega y bebidas» sí sale.
+- **Abrir mesa:** una fila por alergia con su comensal, no una fila fija por comensal (como el PC y la maqueta del 15-10); el paso a paso de las personas solo tras «Más…»; el menú del día se propone aunque sea un menú con elección, como el PC. Son tres toques sin alergias; una alergia añade los suyos. Si el servidor rechaza la apertura, la hoja se queda con sus filas y dice por qué encima de «Abrir».
+- **Los platos agrupados**, con la línea adaptada aparte, van en la tarjeta «Pases» de la ficha, como dibuja la maqueta; «Carta y menús» se queda para elegir y pedir, con los platos como botones y una orden por toque hasta E4g.
+- **Las pruebas de navegador:** el proyecto nuevo `sala-vertical` (820 × 1180) corre solo `mesas.spec`, que también corre en el móvil; los dos usan M5 y la liberan en `finally`. La banda solo en su móvil se vio en rojo antes de su arreglo.
+- **Para revisar con el promotor:** las doce decisiones pequeñas del plan del corte y las tomadas al construir, en el documento del corte.
+
 Es la mitad del camarero del C3c aprobado (`plan:656-672`), más «Mis mesas».
 
 **«Mis mesas» primero y «Todas» después**

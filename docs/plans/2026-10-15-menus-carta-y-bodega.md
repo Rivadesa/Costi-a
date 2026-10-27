@@ -659,7 +659,15 @@ Lleva también la petición del promotor del 15-10 de añadir una consumición d
 
 ### 4.6. C3c — Comandero y cocina: abrir mesa y servir el menú (`0.44.0-c3c`, sin cambio del motor)
 
-**La mitad de cocina, entregada el 27-10 en C3d** (`0.45.0-c3d`), cambiada según el plan del 22-10 (sección 4.3): cada estación ve solo lo suyo, con un único «Listo» y sin «Empezar», y el pase ve la mesa entera con el progreso de cada estación. Ver `docs/native/C3d-costina-cocina.md`. La mitad del camarero va en C3e.
+**La mitad de cocina, entregada el 27-10 en C3d** (`0.45.0-c3d`), cambiada según el plan del 22-10 (sección 4.3): cada estación ve solo lo suyo, con un único «Listo» y sin «Empezar», y el pase ve la mesa entera con el progreso de cada estación. Ver `docs/native/C3d-costina-cocina.md`.
+
+**La mitad del camarero, entregada el 27-10 en C3e** (`0.46.0-c3e`), según el plan del 22-10 (sección 4.4), que le suma «Mis mesas» por dispositivo y estación (`docs/ADR/ADR-018-mis-mesas-por-dispositivo.md`). Ver `docs/native/C3e-costina-sala.md`. Como aquí, con estas diferencias:
+- **Abrir mesa:** el menú propuesto es el primero vigente aunque sea un menú con elección, como el PC; los demás menús con elección, bajo «Más opciones». Cada fila de «¿Alergias o intolerancias?» es una alergia con su comensal, como el puesto. Si el servidor rechaza la apertura, la hoja se queda con sus filas.
+- **Los platos agrupados** («Merluza á galega (1 adaptada) × 4»), con la línea adaptada aparte y en rojo, van en la tarjeta «Pases» de la ficha, como la maqueta del 22-10; «Carta y menús» se queda para elegir y pedir.
+- **El botón grande** dice «Enviar siguiente pase · Aperitivos» o «Servido · Principal». Mientras se espera la revisión de cocina, queda apagado y «Iniciar servicio» va en «Más opciones».
+- **Las alergias** van por alergia, las de toda la mesa primero, cada una con sus platos y su estado; un pase ya servido dice «Servido a las …», nunca una decisión de cocina. «Retirar» pide el motivo en su propia tarjeta.
+- **Menú con elección y carta:** los platos como botones, una orden por toque hasta E4g; si el móvil no tiene la oferta de esa mesa, lo dice y manda al PC principal.
+- **Las pruebas de navegador** en 820 × 1180 corren en un proyecto propio, `sala-vertical`, con la historia de «Mis mesas» (también en el móvil).
 
 **Comandero:**
 - **Abrir mesa:** al tocar una mesa libre se abre una hoja con:
