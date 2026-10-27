@@ -9,7 +9,8 @@ import Icon from './Icon.vue'
 // bandeja de la ronda, porque se queda hasta «Servido» o «Visto». Si hay varias, la mas antigua arriba y «+N más». Solo PRESENTACION:
 // que pases salen lo decide sala.ts con lo que anuncia el servidor; «Servido» existe solo si el servidor anuncia serve en ese pase y
 // la orden la manda BoardView (la orden incierta de siempre). Los data-testid de la banda no empiezan por «do-»: la ficha de la misma
-// mesa puede estar debajo con su propio boton de servir.
+// mesa puede estar debajo con su propio boton de servir (en Carta o Bodega; C3e: con la ficha de esa mesa a la vista, BoardView no le
+// pasa su aviso, porque el boton grande ya dice «Servido · Primero»).
 const props = defineProps<{ notices: ReadyNotice[]; names: Names; locked: boolean }>()
 const emit = defineEmits<{ serve: [notice: ReadyNotice]; view: [notice: ReadyNotice]; seen: [notice: ReadyNotice] }>()
 

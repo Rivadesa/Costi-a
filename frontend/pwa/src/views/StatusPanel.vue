@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RunnerState } from '../commands'
-import { ageLabel, ageShort, blockedTitle, otherActorAdvice } from '../labels'
+import { ageLabel, ageShort, blockedTitle, foreignAdvice, otherActorAdvice } from '../labels'
 import { LINK_TEXT, type LiveState } from '../live'
 import Icon from './Icon.vue'
 
@@ -10,6 +10,10 @@ import Icon from './Icon.vue'
 // frase "reintentarla es segura" solo se dice donde es cierta. Las tres causas de bloqueo (otro nombre, otra instalacion,
 // ilegible) se ven con su titulo y solo con los botones que les corresponden. C3a: el aspecto nuevo, los mismos textos y botones.
 // C3d: un hueco en la fila del enlace para lo que cada pantalla quiera tener siempre a la vista (en cocina, las comandas y la hora).
+// C3e (plan 2026-10-27, paso 3; arrastrado de C3b): la orden de OTRA instalacion dice que era (blocked-description), como la de otro
+// nombre, y el aviso honesto (foreignAdvice, blocked-advice): este servidor solo dice si a el le consta. Se sigue pudiendo preguntar
+// (un servidor restaurado puede tener la clave) y descartar. Es el panel comun: Costina Sala y Costina Cocina lo ensenan igual, sin
+// prop que lo apague y sin nada propio de la sala (los textos hablan del PC principal, que tienen las dos).
 defineProps<{ state: LiveState; runnerState: RunnerState; age: number | null; stale: boolean }>()
 defineEmits<{ retry: []; reconcile: []; discard: []; refresh: [] }>()
 </script>
@@ -39,8 +43,13 @@ defineEmits<{ retry: []; reconcile: []; discard: []; refresh: [] }>()
     <section v-else-if="runnerState.blocked" class="pending" role="alert" data-testid="blocked">
       <h2 data-testid="blocked-title"><Icon name="alert" />{{ blockedTitle(runnerState.blocked) }}</h2>
       <template v-if="runnerState.blocked.reason === 'actor'">
-        <p><strong>{{ runnerState.blocked.description }}</strong></p>
+        <p data-testid="blocked-description"><strong>{{ runnerState.blocked.description }}</strong></p>
         <p data-testid="blocked-advice">{{ otherActorAdvice(runnerState.blocked.actor) }}</p>
+      </template>
+      <!-- C3e: la de otra instalacion, con lo que era y el aviso de que este servidor solo habla por si mismo. -->
+      <template v-else-if="runnerState.blocked.reason === 'foreign'">
+        <p v-if="runnerState.blocked.description" data-testid="blocked-description"><strong>{{ runnerState.blocked.description }}</strong></p>
+        <p data-testid="blocked-advice">{{ foreignAdvice() }}</p>
       </template>
       <p>Hay una orden guardada que no se puede reenviar. No se admiten órdenes nuevas hasta decidir qué hacer con ella.</p>
       <div class="row">
