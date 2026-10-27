@@ -25,7 +25,8 @@ test('a waiter runs a table from the handheld; lost responses and network cuts n
   await press(page.getByTestId('pax-3'))
   await press(page.getByTestId('pax-2'))
   await expect(page.getByTestId('pax-2')).toHaveAttribute('aria-checked', 'true')
-  await expect(sheet.locator('input[name=pax]')).toHaveValue('2')
+  // C3e: el numero de personas solo sale tras «Más…» (mas de 8); lo elegido se lee en el boton y en el resumen de encima de «Abrir».
+  await expect(page.getByTestId('open-summary')).toHaveText('2 personas · Menú de ensayo')
   await press(page.getByTestId('offer-LAB-TASTING'))
   await checkScreen(page, 'open sheet')
   await press(page.getByTestId('do-open'))
@@ -59,7 +60,9 @@ test('a waiter runs a table from the handheld; lost responses and network cuts n
   await expect(serve).toBeVisible({ timeout: 15_000 })
   await expect(detail.getByTestId('detail-state')).toHaveText('Listo para servir')
   await press(serve)
-  await expect(detail.getByTestId(`course-${first.id}`)).toContainText('Servido', { timeout: 15_000 })
+  // C3e: lo servido sale de la lista de pases y se recoge en la linea de servidos de arriba (pases.ts).
+  await expect(detail.getByTestId('courses-served').getByTestId(`served-${first.id}`)).toContainText('Servido', { timeout: 15_000 })
+  await expect(detail.getByTestId(`course-${first.id}`)).toHaveCount(0)
   await expect(detail.getByTestId('detail-state')).toHaveText('Comiendo')
 
   // 3) RESPUESTA PERDIDA de verdad: el servidor APLICA la pausa pero la respuesta nunca llega al comandero.

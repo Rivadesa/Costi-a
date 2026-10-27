@@ -1,5 +1,8 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
-import { checkDevice, checkScreen, command, deviceName, lane, MAIN, openTable, pairByApi, pairThroughTheUi, post, press, read, release, watch } from './support'
+import { expect, test, type APIRequestContext, type Locator } from '@playwright/test'
+import {
+  checkDevice, checkScreen, command, deviceName, finishAndRelease, kitchenValidates, lane, MAIN, openTable, pairByApi, pairThroughTheUi, post, press, read,
+  recordVibrations, vibrations, watch,
+} from './support'
 
 // C3c (plan 2026-10-22, seccion 4.1): el aviso de «listo para servir» de Costina Sala contra el MOTOR REAL, en los dos proyectos. La
 // cocina valida un pase (por API, con el token de la tablet del pase) y el camarero, con «Bodega y bebidas» abierto en esa mesa, ve la
@@ -12,27 +15,10 @@ import { checkDevice, checkScreen, command, deviceName, lane, MAIN, openTable, p
 type Course = { id: string; name: string; state: string; readyAt: string | null; preparations: Array<{ id: string; state: string; reviewPending?: boolean }> }
 const courses = async (request: APIRequestContext, serviceId: string) => (await read(request, serviceId)).data.courses as unknown as Course[]
 
-async function recordVibrations(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const calls: unknown[] = []
-    Object.defineProperty(window, 'vibrations', { value: calls })
-    Navigator.prototype.vibrate = function (pattern: VibratePattern) { calls.push(pattern); return true }
-  })
-}
-const vibrations = (page: Page) => page.evaluate(() => (window as unknown as { vibrations: unknown[] }).vibrations.length)
-
 // La banda OCUPA su sitio: lo de debajo empieza donde ella acaba, y la bandeja (fija abajo) no la pisa.
 async function apart(upper: Locator, lower: Locator, what: string): Promise<void> {
   const [a, b] = [await upper.boundingBox(), await lower.boundingBox()]
   expect(a && b ? Math.round(a.y + a.height) <= Math.round(b.y) : false, `the banner covers ${what}`).toBeTruthy()
-}
-
-// Cocina termina un pase: las estaciones por API como el PC principal y la VALIDACION con el token de la tablet del pase.
-async function kitchenValidates(request: APIRequestContext, serviceId: string, courseId: string, pass: string): Promise<void> {
-  for (const preparation of (await courses(request, serviceId)).find(course => course.id === courseId)!.preparations.filter(p => p.state !== 'Ready'))
-    await command(request, serviceId, 'preparation-ready', { courseId, itemId: preparation.id })
-  const validated = await post(request, pass, `/dining/services/${serviceId}/commands/ready`, { expectedVersion: (await read(request, serviceId)).version, courseId })
-  expect(validated.ok(), `ready by the pass -> ${validated.status()}`).toBeTruthy()
 }
 
 test('Sala: «listo para servir» shows over Bodega without covering it, vibrates once, «Servido» from the banner is ONE command; «Ver mesa», green tile and «Visto»', async ({ page, request }) => {
@@ -141,21 +127,6 @@ test('Sala: «listo para servir» shows over Bodega without covering it, vibrate
     passed = true
   } finally {
     // La mesa queda libre para board.spec.ts. Si la prueba ya fallo, un fallo aqui no tapa el de verdad.
-    try { await finish(request, serviceId) } catch (error) { if (passed) throw error }
+    try { await finishAndRelease(request, serviceId) } catch (error) { if (passed) throw error }
   }
 })
-
-// El PC principal termina lo que quede en cocina, sirve lo listo y libera la mesa (release de support.ts omite lo no enviado).
-async function finish(request: APIRequestContext, serviceId: string): Promise<void> {
-  for (const course of await courses(request, serviceId)) {
-    if (!['Fired', 'Preparing', 'Ready'].includes(course.state)) continue
-    for (const preparation of course.preparations.filter(p => p.reviewPending))
-      await command(request, serviceId, 'review-preparation', { courseId: course.id, itemId: preparation.id, decision: 'unaffected', note: 'fin de la prueba' })
-    if (course.state !== 'Ready') {
-      for (const preparation of course.preparations.filter(p => p.state !== 'Ready')) await command(request, serviceId, 'preparation-ready', { courseId: course.id, itemId: preparation.id })
-      await command(request, serviceId, 'ready', { courseId: course.id })
-    }
-    await command(request, serviceId, 'serve', { courseId: course.id })
-  }
-  await release(request, serviceId)
-}
