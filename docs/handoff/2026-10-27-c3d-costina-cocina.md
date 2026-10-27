@@ -12,16 +12,15 @@ Leer antes, en este orden:
 
 ## Estado
 
-- **`develop` = `d4f095b`** (Merge PR #94: el traspaso del 26-10 al día). Versión **`0.44.0-e4e`**, esquema v8.
-- **Rama `feat/c3d-costina-cocina`**, sacada de `d4f095b`, con C3d completo en local. Versión **`0.45.0-c3d`**, esquema v8. Commits:
+- **`develop` = `2bcb243`** (Merge PR #95: C3d). Versión **`0.45.0-c3d`**, esquema v8. **C3d está mezclada** desde la rama `feat/c3d-costina-cocina` (punta `4890ca0`, la verificada en la CI; `git diff --stat` entre ella y el merge, vacío), con el permiso del 27-10 («si, adelante»). Commits:
   - `0033019` docs(plans): el plan de C3d, aprobado;
   - `b9b90ff` feat(pwa): `cocina.ts`, la lógica de Costiña Cocina, con la tabla común de platos `kitchen-cases.json` y `DishGroups` alineado;
   - `3c1b4b0` feat(pwa): la pantalla nueva, cada estación con lo suyo y el pase con la mesa entera, «Empezar turno», el sonido y la pantalla encendida; se retira `kitchen.ts`;
   - `68d5b1e` test(pwa): el proyecto `tableta` de Playwright, `kitchen.spec` reescrito y las capturas;
   - `4422e6d` docs(native): el documento, ADR-017, AGENTS, STATUS, los planes entregados y la versión `0.45.0-c3d`;
-  - el commit de este traspaso;
-  - `fix(pwa): C3d revision - ...`, lo que pidieron las revisiones de seguridad, aspecto y pruebas: lo enviado por revisar en ámbar, la nota que sobrevive a un `version_conflict`, «Esperando al camarero» siempre a la vista en el pase, 64 px para los atajos, «Más opciones», «Actualizar» y la orden sin confirmar, y las capturas rehechas (la del pase entero pasa a ser la del pase desplazado).
-- **Permiso de subida y mezcla: dado el 27-10** («si, adelante»), para cuando la CI esté en verde. Este traspaso se escribe antes de subir: mira `git log origin/develop` para saber si ya está mezclada, con qué PR y qué dijo la CI.
+  - `829bbe6` docs(handoff): este traspaso;
+  - `4890ca0` fix(pwa): lo que pidieron las revisiones de seguridad, aspecto y pruebas: lo enviado por revisar en ámbar, la nota que sobrevive a un `version_conflict`, «Esperando al camarero» siempre a la vista en el pase, 64 px para los atajos, «Más opciones», «Actualizar» y la orden sin confirmar, y las capturas rehechas (la del pase entero pasa a ser la del pase desplazado).
+- **Instalador de `develop`:** `Costina-Setup-0.45.0-c3d.exe`, run 40485991618, artefacto `costina-windows-installer` 12725676698 (caduca el 01-11). Comprobaciones del instalador: 8 de 8.
 - **Las respuestas del promotor** que fija C3d (22-10):
   1. en las estaciones, solo «Listo», sin «Empezar»;
   2. el pase puede marcar el trabajo de una estación como listo, en «Más opciones» de cada comanda;
@@ -46,9 +45,13 @@ Leer antes, en este orden:
   - Playwright 29 (14 de escritorio, 14 de móvil y 1 de `tableta`), en 2,7 min;
   - DesktopChecks en verde;
   - la batería completa con `COSTINA_E2E=1`, `rc=0` en 312 s tras la revisión; `pwa_http` tardó 165 s (registro en `.lab-test/c3d-rev-battery.log` y `.lab-test/c3d-rev-battery-pwa_http.log`).
-- **Lo que solo verá la CI:**
-  - el proyecto `tableta` corre por primera vez en la CI, en el job `postgres-http`. Ese job tiene 20 minutos y tardaba unos 17; con una prueba de navegador menos que en E4e no se ha subido `timeout-minutes` (`.github/workflows/dotnet-d1.yml`). Si roza el límite, se sube con su comentario;
-  - el workflow «Native Windows installer» no salta en la PR (C3d no toca nada de lo que invoca el instalador); corre al mezclar en `develop`.
+- **CI leída en los logs** (PR #95, punta `4890ca0`, 27-10):
+  - D0: 97/97 en Ubuntu y en Windows;
+  - `desktop`: vitest 467 en 20 ficheros, ClientChecks 288 y DesktopChecks en verde;
+  - `windows-service` 12 y `windows-compile` en verde;
+  - `postgres-http`: dominio 97, PersistenceChecks 88, las 14 suites HTTP (pwa_http 8 en 167 s), Playwright 29 en 2,7 min con **`[tableta] kitchen.spec` en 10,9 s** (la primera vez en la CI) y Realtime 13;
+  - en `develop` (`2bcb243`): D0 en los dos sistemas y el instalador, con sus comprobaciones 8 de 8.
+- **El tiempo del job `postgres-http` no lo marcan las pruebas.** Tardó 16 min 40 s de sus 20, pero **10 de esos minutos fueron `npx playwright install --with-deps chromium`** bajando 25,9 MB de los repositorios de Ubuntu a 43 kB/s. Las pruebas en sí van en unos 6 minutos: las dos ejecuciones de E4e tardaron 6 y 7 minutos en total. Los 17 minutos de C3c y su cancelación a los 12 tuvieron con toda probabilidad la misma causa. No se ha subido `timeout-minutes` (`.github/workflows/dotnet-d1.yml`).
 
 ## Novedad del entorno y trampas
 
@@ -59,6 +62,7 @@ Leer antes, en este orden:
 - **El `version_conflict` de `kitchen.spec`** se provoca interceptando el primer `preparations-ready` de la tablet fría (`route`): antes de dejarlo pasar, el PC empieza el plato caliente por API.
 - **Capturas de C3d:** se rehacen con `C3D_CAPTURES` (`e2e/captures-c3d.spec.ts`), sobre una base nueva, con el motor compilado con el build actual de la PWA y con `psql` en el `PATH` (lo pone `local-tests.sh`): atrasan `firedAt` y `readyAt` en la base para los colores del tiempo. El comando está en el documento del corte. Las capturas de cortes anteriores (`C3A_CAPTURES`, `C3C_CAPTURES`, `E4E_CAPTURES`) no se han vuelto a ejecutar con la cocina nueva.
 - **Vite y la instalación real:** el servidor de desarrollo de Vite lleva su proxy a 5088, el puerto de la instalación real de este PC. Para mirar la pantalla sin la batería, el corte usó un arnés en el `scratchpad` servido solo por el enrutado de peticiones de Playwright, nunca `npm run dev`.
+- **Si `postgres-http` se cancela por tiempo**, mirar primero cuánto tardó el paso `playwright install --with-deps` antes de subir el límite o recortar pruebas: si fue la descarga, basta con volver a lanzar el job. Guardar en caché el navegador y sus dependencias del sistema evitaría esa espera; es un arreglo de la CI aparte, todavía sin hacer.
 - **Problemas de antes, sin tocar:** `npm run build` no comprueba los tipos de `e2e/` (un `tsc` a mano encuentra un error antiguo en `banner.spec.ts:19`), y la prueba de `pairing.spec` del móvil que sobrevive a una recarga tarda entre 3 y 18 s, lo que mueve `pwa_http` unos 15 s de una ejecución a otra.
 - **Sigue valiendo** lo del traspaso anterior: PersistenceChecks corre también en este PC sin base; la batería entera, una sola a la vez y en primer plano (unos 5 o 6 minutos); `local-tests.sh desktop` solo enseña las dos últimas líneas; las ADR viven en dos carpetas que en Windows son la misma (ADR-014 a ADR-017 y una ADR-007 en `docs/ADR/`); las roturas a propósito se devuelven desde una copia en el `scratchpad`, nunca con `git checkout`.
 
@@ -86,7 +90,7 @@ Leer antes, en este orden:
 
 ## Siguiente trabajo, en orden
 
-1. **Subir y mezclar C3d** con el permiso del 27-10, cuando la CI esté en verde: PR desde `feat/c3d-costina-cocina` a `develop`, leer la CI en los logs (sobre todo el tiempo del job `postgres-http` con el proyecto `tableta` y su `kitchen.spec`), merge «Merge PR #N: …» en local y push. Después, el instalador de `develop` (`Costina-Setup-0.45.0-c3d.exe`).
+1. ~~Subir y mezclar C3d~~: **hecho el 27-10** (PR #95, `develop` `2bcb243`, instalador `0.45.0-c3d` en el run 40485991618).
 2. **C3e: Costiña Sala, mis mesas y abrir y servir el menú** (`0.46.0-c3e`, sin cambio de esquema ni de motor; sección 4.4 del plan del 22-10, ya aprobado).
    - «Mis mesas» primero y «Todas» después, con `openedBy` y `openedStation` (presentación, nunca atribución a una persona); las libres al final; el aviso de «listo para servir», solo de «Mis mesas».
    - Abrir con alergias desde Sala en una sola orden `open` con `restrictions`, en tres toques con el menú del día.
@@ -108,5 +112,5 @@ Soy Santi, promotor de Costiña / Hospitality OS (repo público Rivadesa/Costi-a
 Antes de nada, `git fetch` y el último docs/handoff, porque otra sesión puede haber avanzado. Lee primero, en este orden: docs/handoff/2026-10-27-c3d-costina-cocina.md (punto de entrada), docs/native/C3d-costina-cocina.md, docs/ADR/ADR-017-la-estacion-ve-solo-lo-suyo.md, docs/plans/2026-10-22-sala-y-cocina.md (APROBADO el 22-10; 4.4 es C3e, con sus secciones 5 a 10 y la Revisión) y dotnet/AGENTS.md (sobre todo C3d, E4e, C3c, C3a y D6.4).
 Reglas: un corte por PR desde `develop`; propón el alcance (plan) antes de codificar; me pides confirmación para push+PR y, aparte, para el merge (puedo darla por adelantado para un corte concreto); merge commit "Merge PR #N: ..." hecho en local y push; antes de cada push que toque dotnet/ o frontend/ corre `npm run build` y `COSTINA_E2E=1 sh tools/agent/local-tests.sh` entero, y `sh tools/agent/local-tests.sh desktop` (en un PC con una instalación real de Costina: puerto 5090, nunca como administrador, sin tocar sus servicios, puertos 5088/5089 ni carpetas, nunca su instalador real ni `npm run dev`); una sola batería a la vez; los tests de CI se LEEN en los logs; GitHub sin gh CLI (tools/agent/gh.sh, cuerpos JSON en fichero UTF-8, tools/agent/wait-ci.sh); cada corte trae doc en docs/native/ con capturas, párrafo en dotnet/AGENTS.md, docs/STATUS.md y versión en csproj Server/Desktop y frontend/pwa/package.json (+lock); commits convencionales sin acentos con la línea Co-Authored-By que indique la sesión; nunca cierres #26/#27/#28 ni toques #25; pantallas cuidadas con el tema Fluent de C1 y barra de menús clásica, y el sistema MÁS INTUITIVO; habrá Android y también iPhone y iPad: los dos caminos tienen que funcionar; seguridad alimentaria primero: ningún plato afectado por una alergia llega al comensal sin una decisión de cocina registrada, y las alergias nunca se esconden ni se atenúan; nunca metas credenciales en ninguna web; la importación en mi instalación la hago yo.
 Háblame siempre en castellano.
-Estado: C3d (Costiña Cocina con comandas por mesa: cada estación solo con lo suyo y un «Listo», el pase con la mesa entera, ámbar a los 15 y a los 25 minutos, sonido tras «Empezar turno»; 0.45.0-c3d, sin cambio de esquema ni de motor) hecho en la rama feat/c3d-costina-cocina, con mi permiso de subida y mezcla del 27-10: mira en origin/develop si ya está mezclado. Siguiente: C3e (Costiña Sala con «Mis mesas», sección 4.4 del plan del 22-10): propón los pasos y pídeme permiso para subir y mezclar. Tengo pendientes el guion manual de C3d (tres tablets y un móvil, en un laboratorio), el de E4e, el guion físico de C3c con un Android, un iPhone y un iPad, las dieciocho decisiones de C3d, las once de E4e y las doce de C3c, y los varios tamaños de copa («Copa 15 cl») de C3b.
+Estado: C3d (Costiña Cocina con comandas por mesa: cada estación solo con lo suyo y un «Listo», el pase con la mesa entera, ámbar a los 15 y a los 25 minutos, sonido tras «Empezar turno»; 0.45.0-c3d, sin cambio de esquema ni de motor) mezclado en develop el 27-10 (PR #95, develop 2bcb243, CI leída e instalador en el run 40485991618). Siguiente: C3e (Costiña Sala con «Mis mesas», sección 4.4 del plan del 22-10): propón los pasos y pídeme permiso para subir y mezclar. Tengo pendientes el guion manual de C3d (tres tablets y un móvil, en un laboratorio), el de E4e, el guion físico de C3c con un Android, un iPhone y un iPad, las dieciocho decisiones de C3d, las once de E4e y las doce de C3c, y los varios tamaños de copa («Copa 15 cl») de C3b.
 ```
