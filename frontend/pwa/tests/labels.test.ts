@@ -3,10 +3,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { REJECTIONS } from '../src/commands'
 import { DB_TEXTS } from '../src/db'
-import { elapsedLabel, PRESEND_DECISIONS, REVIEW_DECISIONS } from '../src/kitchen'
+import { CONFLICT_TEXT, DONE_BAND, elapsedText, exceptionLine, NOTE_SHORTCUTS, PRESEND_DECISIONS, REVIEW_DECISIONS, REVIEW_PENDING_AT_PASS } from '../src/cocina'
 import {
   actionLabel, ageLabel, ageShort, blockedTitle, courseLabel, diningLabel, guestLabel, minutesLabel, offerKindLabel, otherActorAdvice, pairPendingAdvice, plural,
-  preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewLabel, reviewOutcome, severityLabel, stationKindLabel, tableStateLabel,
+  preparationLabel, restrictionKindLabel, restrictionLabel, reviewDecisionLabel, reviewOutcome, severityLabel, stationKindLabel, tableStateLabel,
   unpairWarning, VOCABULARY,
 } from '../src/labels'
 import { LINK_TEXT } from '../src/live'
@@ -65,11 +65,12 @@ describe('vocabulary of the handheld', () => {
   it('nothing read is ever shown as an empty word, and an absent value is empty', () => {
     expect(diningLabel(null)).toBe(''); expect(courseLabel(undefined)).toBe(''); expect(diningLabel('Closing')).toBe('Closing')
   })
-  it('a kitchen review is always written, with accents', () => {
+  it('the kitchen writes a review with the words of Sala and the PC (C3d): «Adaptado: …», and «Por revisar en el pase» while pending', () => {
     const base: Preparation = { id: 'p1', name: 'Tosta', stationId: 'cold', quantity: 1, guestPosition: 3, mandatory: true, state: 'Fired' }
-    expect(reviewLabel({ ...base, reviewPending: true })).toBe('PENDIENTE DE REVISIÓN POR COCINA')
-    expect(reviewLabel({ ...base, review: { decision: 'Adapt', note: 'pan de maíz', at: '2026-10-20T12:00:00Z' } })).toBe('Revisada: adaptada — pan de maíz')
-    expect(reviewLabel(base)).toBe('')
+    const adapted: Preparation = { ...base, review: { decision: 'Adapt', note: 'pan de maíz', at: '2026-10-20T12:00:00Z' } }
+    expect(exceptionLine(adapted).text).toBe(`Comensal 3 · ${reviewOutcome(adapted)}`)
+    expect(reviewOutcome(adapted)).toBe('Adaptado: pan de maíz')
+    expect(exceptionLine({ ...base, reviewPending: true }).text).toBe('Comensal 3 · Por revisar en el pase')
   })
 })
 
@@ -81,10 +82,11 @@ const SHOWN = [
   blockedTitle({ reason: 'actor', actor: 'device:tablet' }), blockedTitle({ reason: 'foreign' }), blockedTitle({ reason: 'unreadable' }),
   otherActorAdvice('device:tablet'), pairPendingAdvice('tablet'), unpairWarning({ kind: 'unreadable', key: 'k' }),
   unpairWarning({ kind: 'restored', command: { key: 'k', path: '/x', body: '{}', description: 'Servir', createdAt: '', installationId: 'i', actor: 'device:tablet' } }),
-  new MoneyLeakError('$.x').message, elapsedLabel(null, 0), ...REVIEW_DECISIONS.map(option => option.label),
+  new MoneyLeakError('$.x').message, ...REVIEW_DECISIONS.map(option => option.label),
   // E4e: lo que la sala lee de una revision y las decisiones del pase antes de enviar.
   ...cases.reviews.map(row => row.text), ...PRESEND_DECISIONS.map(option => option.label),
-  reviewLabel({ id: 'p', name: 'x', stationId: 's', quantity: 1, guestPosition: null, mandatory: true, state: 'Fired', reviewPending: true }),
+  // C3d: las palabras nuevas de Costina Cocina (el resto, en cocina.test.ts, que mira todos los literales de cocina.ts).
+  REVIEW_PENDING_AT_PASS, DONE_BAND, elapsedText(null, 0), CONFLICT_TEXT, ...NOTE_SHORTCUTS.map(shortcut => shortcut.label),
   // Los errores de IndexedDB llegan al aviso «Servidor no listo (…)» de la pantalla de arranque (startup.ts).
   ...Object.values(DB_TEXTS), ageLabel(null), ageLabel(75), ageShort(null), ageShort(5),
 ]

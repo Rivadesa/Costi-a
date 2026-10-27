@@ -122,7 +122,9 @@ export const alertIsAlarming = (service: Dining | null | undefined): boolean =>
 
 // E4e: los PLATOS de un pase (espejo de DishGroups.Of del puesto): el mismo nombre en la misma estacion (comparacion exacta), en el orden
 // en que aparece por primera vez. Solo presentacion: un plato esta listo cuando lo estan todas sus elaboraciones.
-export function dishGroups(course: Course): Preparation[][] {
+// C3d: Costina Cocina agrupa con esta misma funcion (cocina.ts, dishes), tambien solo lo de una estacion; la regla la fija la tabla comun
+// dotnet/tests/fixtures/kitchen-cases.json.
+export function dishGroups(course: Pick<Course, 'preparations'>): Preparation[][] {
   const groups = new Map<string, Preparation[]>()
   for (const preparation of course.preparations) {
     const key = JSON.stringify([preparation.name, preparation.stationId])

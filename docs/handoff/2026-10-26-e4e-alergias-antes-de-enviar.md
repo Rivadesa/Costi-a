@@ -1,5 +1,7 @@
 # Traspaso 2026-10-26: E4e (alergias antes de enviar, órdenes de grupo y quién abrió la mesa); siguiente, C3d
 
+> **Ya no es el punto de entrada:** desde el 27-10 lo es `docs/handoff/2026-10-27-c3d-costina-cocina.md`. C3d (`0.45.0-c3d`, Costiña Cocina con comandas por mesa) está hecho, con el permiso «si, adelante» del promotor. Este documento sigue valiendo para E4e, sus once decisiones, su guion manual y sus trampas; su nota de las mesas de las pruebas está desfasada (desde C3d, M8 es del proyecto `tableta` y M5 queda libre).
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-22-c3c-dos-apps.md`. El anterior sigue valiendo para C3c, sus doce decisiones, su guion físico y las trampas de las dos aplicaciones.
 
 Leer antes, en este orden:

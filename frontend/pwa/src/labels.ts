@@ -97,15 +97,11 @@ export function restrictionLabel(restriction: GuestRestriction): string {
   return `${guestLabel(restriction.guestPosition)} · ${restrictionKindLabel(restriction.kind)} ${restriction.substance} (${severityLabel(restriction.severity)})`
 }
 
-export function reviewLabel(preparation: Preparation): string {
-  if (preparation.reviewPending) return 'PENDIENTE DE REVISIÓN POR COCINA'
-  return preparation.review ? `Revisada: ${reviewDecisionLabel(preparation.review.decision)} — ${preparation.review.note}` : ''
-}
-
 // E4e (plan 2026-10-15, seccion 3): lo que la SALA lee de la decision de cocina sobre el plato de un comensal (espejo de
 // Labels.ReviewOutcome del puesto; tabla comun vocabulary-cases.json, «reviews»): «Por revisar en cocina» mientras cocina no decide y,
 // despues, la decision delante del texto de cocina («Adaptado: tosta de maíz»). El nombre del plato no cambia. Una decision que no se
-// conoce sale tal cual. La cocina conserva su rotulo (reviewLabel) hasta C3d.
+// conoce sale tal cual. C3d: Costina Cocina dice lo mismo («Adaptado: …»), y «Por revisar en el pase» mientras el pase no decide
+// (cocina.ts, exceptionLine); el rotulo antiguo de la cocina («PENDIENTE DE REVISIÓN POR COCINA», «Revisada: …») se retira.
 export const REVIEW_PENDING_TEXT = 'Por revisar en cocina'
 const REVIEW_OUTCOMES = vocabulary({ Unaffected: 'No le afecta', Adapt: 'Adaptado', Remake: 'Rehecho' })
 export function reviewOutcome(preparation: Preparation): string {

@@ -830,6 +830,37 @@ await Check("dish groups: same name and station, first appearance order, excepti
     Expect(!DishGroups.SameRestrictions([P("a-2","A","cold",2,"Pending",null,[lactose2 with {Severity="Severe"}]),P("a-3","A","cold",3,"Pending",null,[lactose3])]),"another severity is not the same");
     Expect(DishGroups.SameRestrictions([P("a-3","A","cold",3,"Pending",null,[shellfish])])&&DishGroups.SameRestrictions([]),"one line, or none, is always the same");
     return Task.CompletedTask;});
+// C3d: tabla de casos COMUN de los platos agrupados de cocina. frontend/pwa/tests/cocina.test.ts recorre la MISMA contra cocina.ts
+// (Costina Cocina): mismo nombre y estacion, cantidades sumadas, las excepciones aparte y en su linea solo las restricciones de un
+// comensal (las de toda la mesa salen una vez arriba). Si DishGroups cambia y la PWA no (o al reves), falla una de las dos. Un apartado
+// o un campo que este lado no conoce es un fallo, nunca se salta.
+using var kitchenCases=JsonDocument.Parse(File.ReadAllText(Path.Combine(sharedCases,"kitchen-cases.json")));
+await Check("kitchen dishes (shared cases): every section of the table is known here",()=>{ Only(kitchenCases.RootElement,"about","groups"); return Task.CompletedTask; });
+foreach(var row in kitchenCases.RootElement.GetProperty("groups").EnumerateArray())
+    await Check("kitchen dishes (shared cases): "+row.GetProperty("case").GetString(),()=>{
+        Only(row,"case","preparations","dishes");
+        foreach(var dish in row.GetProperty("dishes").EnumerateArray())
+        {
+            Only(dish,"name","station","quantity","preparations","exceptions","state","ready");
+            foreach(var exception in dish.GetProperty("exceptions").EnumerateArray()) Only(exception,"id","restrictions");
+        }
+        var course=new CourseDto("c1","Principal","Fired",null,null,null,null,row.GetProperty("preparations").Deserialize<PreparationDto[]>(ApiClient.Json)!);
+        Same(DishGroups.Of(course).Select(g=>new{name=g.Name,station=g.StationId,quantity=g.Quantity,preparations=g.Preparations.Select(p=>p.Id),
+                exceptions=g.Exceptions.Select(p=>new{id=p.Id,restrictions=DishGroups.LineRestrictions(p).Select(r=>r.Id)}),state=DishGroups.State(g),ready=g.AllReady}),
+            row.GetProperty("dishes"),"dishes");
+        return Task.CompletedTask;});
+// C3d: la linea de un comensal en el Comedor escribe solo las restricciones de un comensal (las de toda la mesa ya estan en la franja de
+// restricciones de la ficha) y, en un plato para compartir, de quien son. Lo adaptado por una alergia de toda la mesa sigue en rojo.
+await Check("dish groups (C3d): a guest line writes only a guest's restrictions, and whose they are on a shared dish",()=>{
+    GuestRestrictionDto gluten=new("r-g",null,"Allergy","gluten","Severe"),shellfish=new("r1",3,"Allergy","marisco","Severe");
+    var own=new PreparationDto("m-3","Merluza","hot",1,3,true,"Fired",[],[gluten,shellfish],false,new("Adapt","sin almejas",DateTimeOffset.UnixEpoch));
+    Expect(DishGroups.ExceptionLine(own)=="Merluza · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: sin almejas","own line: "+DishGroups.ExceptionLine(own));
+    var shared=new PreparationDto("tabla","Tabla de quesos","cold",1,null,true,"Fired",[],[shellfish,gluten],true);
+    Expect(DishGroups.ExceptionLine(shared)=="Tabla de quesos · Toda la mesa · ⚠ ALERGIA marisco (grave) del Comensal 3 · Por revisar en cocina","shared line: "+DishGroups.ExceptionLine(shared));
+    var adapted=new PreparationDto("m-2","Merluza","hot",1,2,true,"Fired",[],[gluten],false,new("Adapt","sin harina",DateTimeOffset.UnixEpoch));
+    Expect(DishGroups.ExceptionLine(adapted)=="Merluza · Comensal 2 · Adaptado: sin harina"&&DishGroups.ExceptionAlarming(adapted),
+        "an adaptation for a whole-table allergy is written without repeating it, and stays red: "+DishGroups.ExceptionLine(adapted));
+    return Task.CompletedTask;});
 // C3b: tabla de casos COMUN del selector «Bodega y bebidas» y de la ronda. frontend/pwa/tests/drinks.test.ts recorre la MISMA contra
 // search.ts, drinks.ts y round.ts: si CatalogSearch, DrinksPicker o Round cambian y la PWA no (o al reves), falla una de las dos.
 // Un campo, una orden de ronda o un resultado que este lado no conoce es un fallo, nunca se salta.

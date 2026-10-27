@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -81,11 +81,88 @@ describe('words the views write as they are', () => {
     expect(ids.length).toBeGreaterThan(0)
     expect(labels).toEqual(ids)                                         // cada etiqueta apunta a SU campo
   })
+  it('Costiña Cocina: a station has only «Listo», never «Empezar» (promoter, 22-10); kitchen.ts is retired (C3d)', () => {
+    const kitchen = files.find(([name]) => name === 'views/KitchenView.vue')![1]
+    expect(kitchen).not.toMatch(/preparations?-start/)
+    expect(shown(kitchen).filter(text => /Empezar/.test(text) && text !== 'Empezar turno')).toEqual([])
+    expect(kitchen).not.toMatch(/from '\.\.\/kitchen'/)
+    expect(existsSync(folder('../src/kitchen.ts'))).toBe(false)
+  })
+  // Revision de C3d: la nota se borraba en el mismo toque, antes de saber el resultado; tras un version_conflict, «toca otra vez» obligaba a
+  // escribirla de nuevo. Ahora cada nota (las tres revisiones de la pantalla) se borra SOLO tras su resultado, si la orden se aplico o
+  // quedo pendiente (cocina.ts, noteSpent; kitchen.spec lo prueba con un version_conflict de verdad).
+  it('Costiña Cocina clears a review note only after its outcome, never in the same tap (C3d revision)', () => {
+    const kitchen = files.find(([name]) => name === 'views/KitchenView.vue')![1]
+    const clearing = kitchen.split('\n').filter(line => /\b(?:notes|restNotes)\[[^\]]+\]\s*=\s*''/.test(line))
+    expect(clearing).toHaveLength(3)
+    expect(clearing.filter(line => !/if \(noteSpent\(outcome\)\)/.test(line))).toEqual([])
+    expect(kitchen).not.toMatch(/void send\([^)]*'review-preparations?'/)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])
     const icon = files.find(([name]) => name === 'views/AppIcon.vue')![1]
     expect(icon).toMatch(/v-html="body"/)
     expect(icon).toMatch(/const body = computed\(\(\) => iconBody\(props\.app\)\)/)
+  })
+})
+
+// C3d (plan 2026-10-22, seccion 4.3): Costiña Cocina se lee a uno o dos metros, en una tablet horizontal de 1180 x 820. La hoja de la
+// cocina va en su propio bloque de style.css; aqui se miden sus reglas sin abrir un navegador (la E2E mide los botones de verdad).
+describe('Costiña Cocina reads at one or two metres (style.css)', () => {
+  const css = readFileSync(folder('../src/style.css')).toString('utf8').replace(/\r\n/g, '\n')
+  const start = css.indexOf('/* ---------- C3d: Costiña Cocina'), end = css.indexOf('/* ---------- Fin de Costiña Cocina')
+  const block = start >= 0 && end > start ? css.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '') : ''
+  const rules = [...block.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(match => ({ selectors: match[1].split(',').map(text => text.trim()), body: match[2] }))
+  const value = (selector: string, property: string) => {
+    const found = rules.filter(rule => rule.selectors.includes(selector)).map(rule => rule.body.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`))?.[1].trim()).filter(Boolean)
+    return found.at(-1) ?? ''
+  }
+  it('has its own block', () => { expect(rules.length).toBeGreaterThan(20) })
+  it('ticket title 24 px, dishes 22 px with the quantity at 28 px, the allergy line 18 px bold and the time 18 px', () => {
+    expect(value('.tk-name', 'font-size')).toBe('24px')
+    expect([value('.dg-n b', 'font-size'), value('.pd-n', 'font-size')]).toEqual(['22px', '22px'])
+    expect([value('.dg-q', 'font-size'), value('.pd-q', 'font-size')]).toEqual(['28px', '28px'])
+    expect([value('.k-al', 'font-size'), value('.k-al', 'font-weight')]).toEqual(['18px', '700'])
+    expect(value('.tmr', 'font-size')).toBe('18px')
+  })
+  it('the kitchen buttons are 64 px high', () => {
+    expect(css).toMatch(/--touch-kitchen: 64px/)
+    // Revision de C3d: tambien los atajos de la nota, «Más opciones», «Actualizar» y los botones de la orden sin confirmar.
+    for (const selector of ['.todo', '.listo', '.pase-go', '.k-btn', '.k-chip', '.k-more > summary', '.kitchen .status .refresh', '.kitchen .status-panels .btn'])
+      expect(value(selector, 'min-height'), selector).toBe('var(--touch-kitchen)')
+    for (const selector of ['.kitchen .status .refresh', '.kitchen .status-panels .btn']) expect(value(selector, 'font-size'), selector).toBe('17px')
+  })
+  // Revision de C3d: lo enviado por revisar se pintaba en rojo aunque la restriccion no alarmara (una intolerancia leve). Lo pendiente es
+  // ambar, antes y despues de enviar; el rojo es solo de la linea de la alergia que alarma, encima.
+  it('a review still to decide is amber, before and after sending: red is only the alarming allergy line above it', () => {
+    for (const selector of ['.review.presend-item', '.review.k-review']) {
+      expect([value(selector, 'border-color'), value(selector, 'background')], selector).toEqual(['var(--warn-line)', 'var(--warn-soft)'])
+      expect(value(`${selector} .lbl`, 'color'), selector).toBe('var(--warn-text)')
+    }
+  })
+  // Revision de C3d: con algo por revisar, «Esperando al camarero» caia bajo la pantalla de 1180 x 820 y verlo desplazaba las comandas.
+  // Desde 1000 px, la columna lateral se queda a la vista (sticky, del alto de la pantalla), «Por revisar» se desplaza dentro y «Esperando
+  // al camarero» se queda al pie, tambien al abrir la pagina (sticky abajo).
+  it('on the pass the side column stays in view: «Por revisar» scrolls inside it and «Esperando al camarero» stays at its foot', () => {
+    expect([value('.pside', 'position'), value('.pside', 'top'), value('.pside', 'max-height')]).toEqual(['sticky', '8px', 'calc(100dvh - 16px)'])
+    expect([value('.side-presend', 'min-height'), value('.side-presend > .presend', 'min-height'), value('.side-presend > .presend', 'overflow-y')]).toEqual(['0', '0', 'auto'])
+    expect([value('.side-waiting', 'position'), value('.side-waiting', 'bottom'), value('.side-waiting', 'flex')]).toEqual(['sticky', '0', 'none'])
+    expect(value('.side-waiting', 'background')).toBe('var(--bg)')
+  })
+  it('nothing operational under 16 px', () => {
+    const sizes = rules.flatMap(rule => [...rule.body.matchAll(/font-size\s*:\s*([\d.]+)px/g)].map(match => [rule.selectors.join(', '), Number(match[1])] as const))
+    expect(sizes.length).toBeGreaterThan(20)
+    expect(sizes.filter(([, size]) => size < 16)).toEqual([])
+  })
+  // Capturas de C3d: una fila de «Hecho» con alergias es mas alta; centrada, estiraba a las otras filas y bajaba la etiqueta.
+  it('the «Hecho» band aligns its rows at the top: a row with allergies stretches no other', () => {
+    expect([value('.done-band', 'align-items'), value('.db-list', 'align-items')]).toEqual(['flex-start', 'flex-start'])
+    expect([value('.db-l', 'min-height'), value('.db-empty', 'min-height'), value('.hrow', 'min-height')]).toEqual(['56px', '56px', '56px'])
+  })
+  it('the time is never red: neutral, amber and dark amber with white text', () => {
+    expect(value('.tmr.t-amber', 'background')).toBe('var(--time-amber-bg)')
+    expect([value('.tmr.t-late', 'background'), value('.tmr.t-late', 'color')]).toEqual(['var(--time-late-bg)', '#FFFFFF'])
+    expect(block.match(/\.tmr[^{]*\{[^}]*\}/g)?.join('') ?? '').not.toMatch(/danger/)
   })
 })

@@ -5,10 +5,14 @@ namespace Costina.Client;
 // puesto. Todo es PRESENTACION de lo leido:
 //  - un plato es el mismo nombre en la misma estacion (comparacion exacta), en el orden en que aparece por primera vez: PreparationView
 //    no lleva el identificador del plato del menu, y su sufijo cambia segun la oferta. Su cantidad suma las de sus elaboraciones;
-//  - las elaboraciones de un comensal con restriccion, o con una decision de cocina, son las EXCEPCIONES: van aparte, debajo del plato,
-//    escritas (comensal, tipo, sustancia, gravedad y la decision), nunca escondidas en el grupo ni solo con color;
+//  - las EXCEPCIONES van aparte, debajo del plato, escritas (comensal, tipo, sustancia, gravedad y la decision), nunca escondidas en el
+//    grupo ni solo con color (IsException);
 //  - nada habilita nada: un boton de plato existe porque el servidor anuncia la orden de grupo en el pase, y solo lleva las
-//    elaboraciones que anuncian la individual (Announcing). La cocina agrupara igual en C3d (tabla comun kitchen-cases.json).
+//    elaboraciones que anuncian la individual (Announcing).
+// C3d (plan 2026-10-27; plan 2026-10-22, seccion 4.3): Costina Cocina agrupa con la MISMA regla, comprobada por las dos partes con la
+// tabla comun dotnet/tests/fixtures/kitchen-cases.json (ClientChecks y frontend/pwa/tests/cocina.test.ts, contra cocina.ts). Una
+// restriccion de TODA LA MESA sale una sola vez arriba (en el PC, la franja de restricciones de la ficha) y nunca se repite en cada
+// linea: si no, «Merluza × 4» serian cuatro lineas rojas iguales.
 public sealed record DishGroup(string Name, string StationId, int Quantity, PreparationDto[] Preparations)
 {
     // Un plato esta listo cuando lo estan todas sus elaboraciones («3 de 5 platos listos», FloorPlan.CourseDetail).
@@ -25,8 +29,15 @@ public static class DishGroups
         .Select(g => new DishGroup(g.Key.Name, g.Key.StationId, g.Sum(p => p.Quantity), g.ToArray()))
         .ToArray();
 
+    // Va aparte (C3d, tabla comun): lo que esta por revisar, una decision que cambia el plato (todo lo que no es «No le afecta», tambien
+    // una decision que no se conoce: nunca se esconde lo que no se entiende) o una restriccion de un comensal concreto. Un «No le afecta»
+    // bajo una restriccion de toda la mesa no cambia el plato y la restriccion ya esta arriba: no es una excepcion.
     public static bool IsException(PreparationDto preparation) =>
-        preparation.ReviewPending || preparation.Review is not null || preparation.Restrictions is { Length: > 0 };
+        preparation.ReviewPending || preparation.Review is { } review && !Same(review.Decision, "Unaffected") || LineRestrictions(preparation).Length > 0;
+
+    // Las restricciones que se escriben en la linea del comensal: las de un comensal. Las de toda la mesa salen una vez arriba.
+    public static GuestRestrictionDto[] LineRestrictions(PreparationDto preparation) =>
+        (preparation.Restrictions ?? []).Where(r => r.GuestPosition is not null).ToArray();
 
     // «Ostra × 7»; con una sola, el nombre.
     public static string Title(DishGroup group) =>
@@ -42,9 +53,13 @@ public static class DishGroups
     }
 
     // La linea del comensal (plan 2026-10-15, seccion 4.5): «Ostra · Comensal 3 · ⚠ ALERGIA marisco (grave) · Adaptado: vieira», o
-    // «· Por revisar en cocina» mientras cocina no decide.
+    // «· Por revisar en cocina» mientras cocina no decide. C3d: solo las restricciones de un comensal (LineRestrictions) y, en un plato
+    // para compartir, de quien son: «Tabla · Toda la mesa · ⚠ ALERGIA marisco (grave) del Comensal 3».
     public static string ExceptionLine(PreparationDto preparation) => string.Join(" · ",
-        new[] { preparation.Name, Labels.Guest(preparation.GuestPosition), preparation.RestrictionsText, Labels.ReviewOutcome(preparation) }.Where(p => p.Length > 0));
+        new[] { preparation.Name, Labels.Guest(preparation.GuestPosition), LineText(preparation), Labels.ReviewOutcome(preparation) }.Where(p => p.Length > 0));
+
+    private static string LineText(PreparationDto preparation) => string.Join("  ·  ", LineRestrictions(preparation).Select(r =>
+        $"⚠ {r.KindLabel} {r.Substance} ({r.SeverityLabel})" + (r.GuestPosition == preparation.GuestPosition ? "" : " del " + Labels.Guest(r.GuestPosition))));
 
     // E4e (revision): estas elaboraciones llevan las MISMAS restricciones? Por tipo, sustancia y gravedad, sin distinguir mayusculas ni
     // el orden; nunca por el identificador (dos comensales con su propia intolerancia leve a la lactosa son lo mismo). El PC solo marca

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError, NetworkError } from '../src/api'
-import { ageLabel, boardSummary, pendingReviews, restrictionLabel, reviewLabel } from '../src/labels'
+import { ageLabel, boardSummary, pendingReviews, restrictionLabel } from '../src/labels'
 import { LiveBoard, type HubLike, type LiveState } from '../src/live'
 import type { BoardEntry, Dining, Preparation } from '../src/types'
 
@@ -30,10 +30,7 @@ describe('labels never rely on colour', () => {
     expect(restrictionLabel({ id: 'r', guestPosition: 2, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })).toBe('Comensal 2 · ALERGIA marisco (grave)')
     expect(restrictionLabel({ id: 'r', guestPosition: null, kind: 'Preference', substance: 'sin picante', severity: 'Mild' })).toBe('Toda la mesa · Preferencia sin picante (leve)')
   })
-  it('says when kitchen still has to review, and what it decided', () => {
-    expect(reviewLabel(preparation({ reviewPending: true }))).toBe('PENDIENTE DE REVISIÓN POR COCINA')
-    expect(reviewLabel(preparation({ review: { decision: 'Remake', note: 'sin frutos secos', at: '' } }))).toBe('Revisada: rehecha — sin frutos secos')
-    expect(reviewLabel(preparation())).toBe('')
+  it('counts what kitchen still has to review (C3d: what it decided is written by cocina.ts, exceptionLine)', () => {
     expect(pendingReviews(dining({ courses: [{ ...dining().courses[0], preparations: [preparation({ reviewPending: true }), preparation({ id: 'b' })] }] }))).toBe(1)
   })
   it('summarises the current course and formats data age', () => {
