@@ -196,9 +196,9 @@ async function open(request: CommandRequest): Promise<void> {
         </p>
       </div>
       <div class="board-scope" role="tablist" aria-label="Qué mesas ver" @keydown="scopeKey">
-        <button id="board-tab-mine" ref="tabMine" type="button" role="tab":aria-selected="scope === 'mine'" aria-controls="board-panel"
+        <button id="board-tab-mine" ref="tabMine" type="button" role="tab" :aria-selected="scope === 'mine'" aria-controls="board-panel"
           :tabindex="scope === 'mine' ? 0 : -1" data-testid="board-scope-mine" @click="scope = 'mine'">Mis mesas</button>
-        <button id="board-tab-all" ref="tabAll" type="button" role="tab":aria-selected="scope === 'all'" aria-controls="board-panel"
+        <button id="board-tab-all" ref="tabAll" type="button" role="tab" :aria-selected="scope === 'all'" aria-controls="board-panel"
           :tabindex="scope === 'all' ? 0 : -1" data-testid="board-scope-all" @click="scope = 'all'">Todas</button>
       </div>
       <div id="board-panel" role="tabpanel" :aria-labelledby="scope === 'mine' ? 'board-tab-mine' : 'board-tab-all'">
