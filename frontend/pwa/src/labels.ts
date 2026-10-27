@@ -143,6 +143,13 @@ export function otherActorAdvice(actor: string): string {
   return `Se hizo cuando este dispositivo se llamaba ${name}, y ahora está emparejado con otro nombre. Con el nombre actual no se puede reenviar ni preguntar por ella: el servidor la trataría como una orden nueva. Para saber si se aplicó, compruébalo en el PC principal, o desvincula este dispositivo (Opciones) y vuelve a emparejarlo con el nombre ${name}. Después, si hace falta, descártala.`
 }
 
+// C3e (plan 2026-10-27, paso 2; arrastrado de C3b): una orden de OTRA instalacion del servidor (reinstalado o restaurado). Jamas se
+// reenvia, pero se puede preguntar: un servidor restaurado puede tener la clave. Su «no consta» solo habla por este servidor, asi que
+// antes de descartarla se comprueba en el PC principal. Lo muestra el panel comun (StatusPanel): Costina Sala y Costina Cocina.
+export function foreignAdvice(): string {
+  return 'Se hizo con otra instalación del servidor (reinstalado o restaurado en otro equipo). Este servidor solo puede decir si a él le consta. Antes de descartarla, comprueba en el PC principal si se aplicó.'
+}
+
 // D6.7: al emparejar, el nombre con que se hizo la orden guardada (si es de un dispositivo): con ESE nombre se puede comprobar.
 export function pendingDeviceName(load: PendingLoad | null): { name: string; description: string } | null {
   if (load?.kind !== 'restored' || !load.command.actor.startsWith('device:')) return null

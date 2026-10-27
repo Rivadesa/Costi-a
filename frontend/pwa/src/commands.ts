@@ -33,8 +33,11 @@ export type Outcome =
   | { kind: 'unauthorized' }
 
 // Orden guardada que NO se puede reenviar. 'actor' (D6.7) dice con que actor se hizo y que era, para explicar como comprobarla.
+// C3e (plan 2026-10-27, paso 2; arrastrado de C3b): 'foreign' tambien guarda que era, para que el panel comun (Sala y Cocina) la
+// nombre como ya hace con la de otro nombre. Siempre sale de una orden legible, asi que su clave nunca es null.
 export type BlockedCommand =
-  | { key: string | null; reason: 'unreadable' | 'foreign' }
+  | { key: string | null; reason: 'unreadable' }
+  | { key: string; reason: 'foreign'; description: string }
   | { key: string; reason: 'actor'; actor: string; description: string }
 
 export interface RunnerState {
@@ -58,6 +61,10 @@ const UNRESOLVED = 'Hay una orden sin resolver: no se admite otra.'
 const OTHER_TAB = 'Hay otra orden sin resolver en este dispositivo (de otra pestaña o ventana). Esta no se ha enviado: resuelve antes aquella.'
 const BLOCKED_SLOT = 'Hay una orden guardada en este dispositivo que no se puede reenviar (mírala arriba). Esta no se ha enviado.'
 const SLOT_GONE = 'Esta orden no se ha enviado: había otra guardada en este dispositivo, que ya se ha resuelto. Repítela si sigue haciendo falta.'
+// Respuesta «no consta» de reconcile(). C3e (plan 2026-10-27, paso 2): con una orden de OTRA instalacion este servidor solo habla por
+// si mismo; el «no consta» de siempre invitaba a descartarla y repetirla. Comun a Sala y Cocina, como el runner.
+const NOT_FOUND = 'Al servidor no le consta esa orden.'
+const FOREIGN_NOT_FOUND = 'A este servidor no le consta esa orden. Eso no dice nada de la instalación donde se hizo: compruébalo en el PC principal antes de descartarla.'
 
 // C3a: con tildes, y sin palabras de caja (el comandero nunca dice «cuenta», «pago», «saldo» ni «precio»).
 export const REJECTIONS: Record<string, string> = {
@@ -77,6 +84,22 @@ export const REJECTIONS: Record<string, string> = {
   duplicate_consumption: 'Esa orden ya se había usado en esta mesa con otras bebidas. No se ha añadido nada: revisa lo que lleva la mesa.',
   product_unavailable: 'Ese producto ya no está a la venta. No se ha añadido nada.',
   price_missing: 'Ese producto no se puede servir todavía: avisa en el PC principal. No se ha añadido nada.',
+  // C3e (plan 2026-10-27, paso 2): abrir, elegir, pedir, enviar y servir desde Costina Sala; antes caian en el texto generico con el
+  // codigo. Comunes: Costina Cocina los ve igual si le llegan. Parten de los del PC (Client/Labels.cs) y dicen que hacer; el PC no
+  // rotula duplicate_restriction. offer_unpriced NO copia el del PC, que nombra la caja (ADR-007). Todos existen en el motor.
+  table_occupied: 'Esa mesa ya está ocupada: otro puesto la abrió antes. No se ha abierto otra vez.',
+  offer_unavailable: 'Ese menú o carta ya no se ofrece ahora. Se ha vuelto a leer la lista: elige otro.',
+  invalid_guest: 'Ese comensal no está en la mesa. No se ha aplicado nada.',
+  duplicate_restriction: 'Esa alergia o intolerancia ya estaba anotada para ese comensal. No se ha aplicado nada.',
+  // Hasta E4g el motor anuncia fire-next aunque falte elegir o el pase este vacio: estos dos lo dicen (plan 2026-10-27, Diferido).
+  choice_missing: 'Falta que algún comensal elija plato: elígelo en «Carta y menús».',
+  course_empty: 'Ese pase no tiene platos pedidos: pide alguno en «Carta y menús» u omítelo.',
+  course_not_pending: 'Ese pase ya se envió a cocina.',
+  course_not_ready: 'Ese pase aún no está listo.',
+  offer_unpriced: 'Ese menú aún no se puede abrir: avísalo en el PC principal. No se ha abierto la mesa.',
+  table_inactive: 'Esa mesa ya no está activa: se ha quitado en el PC principal. No se ha abierto.',
+  // 422: datos que el servidor no admite (al abrir, mas personas de las que caben en la mesa).
+  invalid_request: 'El servidor no admite esos datos: vuelve a leer la mesa y revísalos. No se ha aplicado nada.',
 }
 
 export class CommandRunner {
@@ -96,7 +119,7 @@ export class CommandRunner {
     this.state.pending = null; this.state.blocked = null
     if (loaded.kind === 'restored') {
       const command = loaded.command
-      if (command.installationId !== this.deps.identity.installationId) this.state.blocked = { key: command.key, reason: 'foreign' }
+      if (command.installationId !== this.deps.identity.installationId) this.state.blocked = { key: command.key, reason: 'foreign', description: command.description }
       // D6.7: hecha con OTRO nombre de dispositivo. Nunca pendiente ni "fallo de red": ni se reintenta sola ni con el boton.
       else if (command.actor !== this.deps.identity.actor) this.state.blocked = { key: command.key, reason: 'actor', actor: command.actor, description: command.description }
       else {
@@ -140,6 +163,8 @@ export class CommandRunner {
   // Pregunta al servidor por la clave (solo el mismo actor). Si consta, la orden SE APLICO y se cierra.
   // Si no consta, la orden normal sigue pendiente (un reintento identico es seguro); una ilegible o de otra
   // instalacion queda habilitada para descarte explicito. La de otro actor no se pregunta (D6.7): se explica.
+  // C3e (plan 2026-10-27, paso 2): la de otra instalacion SI se pregunta (un servidor restaurado puede tener la clave), pero su
+  // «no consta» dice que solo habla por este servidor y manda comprobarla en el PC principal antes de descartarla.
   async reconcile(): Promise<'applied' | 'not_found' | 'unknown'> {
     const blocked = this.state.blocked
     if (blocked?.reason === 'actor') { this.state.notice = otherActorAdvice(blocked.actor); return 'unknown' }
@@ -153,7 +178,7 @@ export class CommandRunner {
         this.state.notice = 'El servidor confirma que esa orden SÍ se aplicó. No la repitas.'
         return 'applied'
       }
-      if (lookup.kind === 'absent') this.state.notice = 'Al servidor no le consta esa orden.'
+      if (lookup.kind === 'absent') this.state.notice = blocked?.reason === 'foreign' ? FOREIGN_NOT_FOUND : NOT_FOUND
       return lookup.kind === 'absent' ? 'not_found' : 'unknown'
     } finally { this.state.busy = false }
   }

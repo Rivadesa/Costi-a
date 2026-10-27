@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CommandRunner, type RunnerState } from '../src/commands'
+import { CommandRunner, REJECTIONS, type RunnerState } from '../src/commands'
 import { run as transaction, STORES } from '../src/db'
-import { blockedTitle, deviceNameOf, otherActorAdvice, pairPendingAdvice, pendingDeviceName, unpairWarning } from '../src/labels'
+import { blockedTitle, deviceNameOf, foreignAdvice, otherActorAdvice, pairPendingAdvice, pendingDeviceName, unpairWarning } from '../src/labels'
 import { MoneyLeakError } from '../src/money-guard'
 import { indexedDbPendingStore, parsePending, type PendingCommand, type PendingLoad, type PendingStore } from '../src/pending'
 
@@ -123,6 +123,33 @@ describe('durable uncertain command', () => {
     const closed = await said('account_closed')
     expect(closed).toContain('Caja'); expect(closed).not.toMatch(/€|precio|saldo|pago|cuenta/i)
   })
+  // C3e (plan 2026-10-27, paso 2): los rechazos de abrir, elegir, pedir, enviar y servir que hoy caian en el texto generico con
+  // el codigo. REJECTIONS es comun: Costina Cocina los ve igual. Cada uno con su estado real del motor (RuleViolation y la
+  // ocupacion unica, 409; datos que no admite, como mas personas de las que caben, 422) y sin palabras de caja: offer_unpriced no
+  // copia el del PC, que dice «precio».
+  it('C3e: each new rejection code has its own text, with accents and without checkout words, also through the runner', async () => {
+    const C3E: Array<[string, number, string]> = [
+      ['table_occupied', 409, 'Esa mesa ya está ocupada: otro puesto la abrió antes. No se ha abierto otra vez.'],
+      ['offer_unavailable', 409, 'Ese menú o carta ya no se ofrece ahora. Se ha vuelto a leer la lista: elige otro.'],
+      ['invalid_guest', 409, 'Ese comensal no está en la mesa. No se ha aplicado nada.'],
+      ['duplicate_restriction', 409, 'Esa alergia o intolerancia ya estaba anotada para ese comensal. No se ha aplicado nada.'],
+      ['choice_missing', 409, 'Falta que algún comensal elija plato: elígelo en «Carta y menús».'],
+      ['course_empty', 409, 'Ese pase no tiene platos pedidos: pide alguno en «Carta y menús» u omítelo.'],
+      ['course_not_pending', 409, 'Ese pase ya se envió a cocina.'],
+      ['course_not_ready', 409, 'Ese pase aún no está listo.'],
+      ['offer_unpriced', 409, 'Ese menú aún no se puede abrir: avísalo en el PC principal. No se ha abierto la mesa.'],
+      ['table_inactive', 409, 'Esa mesa ya no está activa: se ha quitado en el PC principal. No se ha abierto.'],
+      ['invalid_request', 422, 'El servidor no admite esos datos: vuelve a leer la mesa y revísalos. No se ha aplicado nada.'],
+    ]
+    for (const [code, status, text] of C3E) {
+      expect(REJECTIONS[code], code).toBe(text)
+      expect(text, code).not.toMatch(/€|precio|saldo|pago|cuenta|cents|amount/i)
+      const rejected = runner(new MemoryStore(), [{ status, body: { error: code } }, { status: 200, body: { key: '$key', found: false } }])
+      expect(await rejected.run.send(...SERVE), code).toEqual({ kind: 'rejected', status, code })
+      expect(rejected.state.notice, code).toBe(text)
+      expect(rejected.state.pending, code).toBeNull()
+    }
+  })
   // C3b: la ronda (add-consumptions) rechaza con {error, line}: el indice (desde 0) de la linea mala llega a quien la envio, para
   // senalarla en la bandeja. Solo un entero desde 0; cualquier otra cosa no es una linea.
   it('a rejected round carries the index of the bad line the server names, and nothing that is not one', async () => {
@@ -175,7 +202,7 @@ describe('durable uncertain command', () => {
   it('never resends a command from ANOTHER installation or an unreadable one; they block until an explicit decision', async () => {
     const foreign = new MemoryStore(); foreign.value = { key: 'k-foreign', path: '/dining/services/x/commands/serve', body: '{}', description: 'vieja', createdAt: '', installationId: 'inst-OTRA', actor: IDENTITY.actor }
     const a = runner(foreign, [{ status: 200 }]); await a.run.restore()
-    expect(a.state.blocked).toEqual({ key: 'k-foreign', reason: 'foreign' }); expect(a.run.blocksMutations).toBe(true)
+    expect(a.state.blocked).toEqual({ key: 'k-foreign', reason: 'foreign', description: 'vieja' }); expect(a.run.blocksMutations).toBe(true)
     expect(await a.run.retry()).toBeNull(); expect(a.seen).toHaveLength(0)
     const broken = new MemoryStore(); broken.value = { key: 'k-broken', path: 'sin-barra', body: '{no json' }
     const b = runner(broken, []); await b.run.restore()
@@ -380,7 +407,54 @@ describe('D6.7: the uncertain command is safe from another device name and from 
     expect(advice).not.toMatch(/^Se hizo con el nombre «tablet-vieja»: empareja/)
     await put(order('k-old', { installationId: 'inst-ANTERIOR' }))                      // mismo nombre, servidor instalado de nuevo
     const { run, state } = tab([]); await run.restore()
-    expect(state.blocked).toEqual({ key: 'k-old', reason: 'foreign' }); expect(state.pending).toBeNull()
+    expect(state.blocked).toEqual({ key: 'k-old', reason: 'foreign', description: 'Añadir Agua · M1' }); expect(state.pending).toBeNull()
     expect(unpairWarning({ kind: 'restored', command: saved })).toContain('mismo servidor')
+  })
+})
+
+// C3e (plan 2026-10-27, paso 2; arrastrado de C3b): «Preguntar al servidor» con una orden de OTRA instalacion. Antes el panel no
+// decia que orden era y el «Al servidor no le consta esa orden.» invitaba a descartarla y repetirla. Es el runner COMUN: vale igual
+// para Costina Sala y para Costina Cocina (mismo StatusPanel y mismo CommandRunner).
+describe('C3e: the command from another installation, in Sala and in Cocina', () => {
+  const FOREIGN_NOT_FOUND = 'A este servidor no le consta esa orden. Eso no dice nada de la instalación donde se hizo: compruébalo en el PC principal antes de descartarla.'
+  const foreignOrder = () => ({ key: 'k-foreign', path: '/dining/services/s4/commands/serve', body: '{"expectedVersion":7,"courseId":"c2"}',
+    description: 'Marcar servido · Principal · Mesa 4', createdAt: '2026-10-27T21:00:00Z', installationId: 'inst-ANTERIOR', actor: IDENTITY.actor })
+
+  it('keeps its description for the panel, is still asked about (a restored server may have the key), and its "not found" speaks only for this server', async () => {
+    const store = new MemoryStore(); store.value = foreignOrder()
+    const { run, seen, state } = runner(store, [{ status: 200, body: { key: '$key', found: false } }, { status: 200, body: { key: '$key', found: true, response: { version: 8 } } }])
+    await run.restore()
+    expect(state.blocked).toEqual({ key: 'k-foreign', reason: 'foreign', description: 'Marcar servido · Principal · Mesa 4' })
+    expect(state.pending).toBeNull(); expect(run.blocksMutations).toBe(true)
+    expect(await run.retry()).toBeNull()                                  // jamas se reenvia
+    expect(await run.reconcile()).toBe('not_found')
+    expect(state.notice).toBe(FOREIGN_NOT_FOUND)
+    expect(state.notice).not.toMatch(/€|precio|saldo|pago|cuenta|cents|amount/i)
+    expect(state.blocked?.reason).toBe('foreign'); expect(store.log).toEqual([])   // «no consta» no borra nada: decide la persona
+    expect(seen.map(request => request.method)).toEqual(['GET']); expect(seen[0].url).toContain('/commands/k-foreign')
+    expect(await run.reconcile()).toBe('applied')                         // un servidor restaurado SI la tiene: se cierra como aplicada
+    expect(state.blocked).toBeNull(); expect(state.notice).toContain('SÍ se aplicó'); expect(store.log).toEqual(['clear'])
+    expect(seen.map(request => request.method)).toEqual(['GET', 'GET'])
+  })
+
+  it('a send that finds a foreign order in the slot adopts it with its description', async () => {
+    const store = new MemoryStore()
+    const { run, seen, state } = runner(store, [{ status: 200, body: { version: 5 } }])
+    store.value = foreignOrder()                                          // la dejo otra sesion despues de leer el hueco vacio
+    await expect(run.send(...SERVE)).rejects.toThrow('sin resolver')
+    expect(seen).toHaveLength(0)
+    expect(state.blocked).toEqual({ key: 'k-foreign', reason: 'foreign', description: 'Marcar servido · Principal · Mesa 4' })
+  })
+
+  it('control: an own pending command not found still says the usual line (an identical retry is safe)', async () => {
+    const { run, state } = runner(new MemoryStore(), ['network', { status: 200, body: { key: '$key', found: false } }])
+    await run.send(...SERVE)
+    expect(await run.reconcile()).toBe('not_found')
+    expect(state.notice).toBe('Al servidor no le consta esa orden.'); expect(state.pending).not.toBeNull()
+  })
+
+  it('foreignAdvice says what happened, that this server only speaks for itself, and to check in the PC before discarding', () => {
+    expect(foreignAdvice()).toBe('Se hizo con otra instalación del servidor (reinstalado o restaurado en otro equipo). Este servidor solo puede decir si a él le consta. Antes de descartarla, comprueba en el PC principal si se aplicó.')
+    expect(foreignAdvice()).not.toMatch(/€|precio|saldo|pago|cuenta|cents|amount|es seguro/i)
   })
 })

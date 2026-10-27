@@ -97,7 +97,7 @@ describe('a station sees only its own work', () => {
   })
   it('the allergy goes apart under its dish, written and never dimmed, and the dish says how many are adapted', () => {
     const [merluza] = tickets.find(ticket => ticket.entry.service.tableId === 'M4')!.dishes
-    expect(merluza.exceptions.map(exceptionLine).map(line => [line.text, line.alarming, line.pending]))
+    expect(merluza.exceptions.map(preparation => exceptionLine(preparation)).map(line => [line.text, line.alarming, line.pending]))
       .toEqual([['Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra', true, false]])
     expect(dishNote(merluza)).toBe('(1 adaptada)')
   })
@@ -144,6 +144,14 @@ describe('a station sees only its own work', () => {
       .toBe('Toda la mesa · ALERGIA marisco (grave) del Comensal 3 · Por revisar en el pase')
     expect(exceptionLine(prep('o-1', 'Ostra', 'cold', 1, { restrictions: [CORIANDER], review: { decision: 'Unaffected', note: 'no lleva cilantro', at: AT } })))
       .toMatchObject({ text: 'Comensal 1 · Preferencia cilantro (leve) · No le afecta: no lleva cilantro', alarming: false, pending: false })
+  })
+  it('C3e: the second parameter of exceptionLine is additive: Costina Sala says «Por revisar en cocina»; the kitchen keeps «Por revisar en el pase»', () => {
+    const pending = prep('m-3', 'Merluza', 'hot', 3, { restrictions: [SHELLFISH], reviewPending: true })
+    expect(exceptionLine(pending, 'Por revisar en cocina')).toMatchObject({ text: 'Comensal 3 · ALERGIA marisco (grave) · Por revisar en cocina', pending: true, alarming: true })
+    expect(exceptionLine(pending).text).toBe('Comensal 3 · ALERGIA marisco (grave) · Por revisar en el pase')
+    // Solo cambia la palabra de lo que esta por revisar: una decision ya tomada se escribe igual.
+    const decided = prep('m-2', 'Merluza', 'hot', 2, { restrictions: [NUTS], review: { decision: 'Adapt', note: 'sin almendra', at: AT } })
+    expect(exceptionLine(decided, 'Por revisar en cocina')).toEqual(exceptionLine(decided))
   })
   it('the dish note counts adapted, remade and pending lines', () => {
     const dish = dishes([

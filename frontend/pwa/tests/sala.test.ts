@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { clockLabel } from '../src/labels'
-import { buzz, moreText, noticeSince, noticeTitle, READY_TEXT, readyKey, readyNotices, ReadyWatch, serveLabel, serveRequest, VIBRATION, type Vibrator } from '../src/sala'
+import { buzz, isMine, mineEntries, moreText, noticeSince, noticeTitle, READY_TEXT, readyKey, readyNotices, ReadyWatch, serveLabel, serveRequest, VIBRATION, type Vibrator, type Who } from '../src/sala'
 import type { BoardEntry, Course, Dining } from '../src/types'
 
 // C3c (plan 2026-10-22, seccion 4.1): el aviso de «listo para servir» de Costina Sala, sin DOM. Sale de las RELECTURAS del tablero y de
@@ -167,6 +167,88 @@ describe('vibration: Android with Chrome, with the page in sight and after a fir
     expect(buzz(['k1'], true, vibrator)).toBe(true)
     expect(calls.length).toBe(1)
     expect(buzz(['k1'], true, { vibrate: () => { throw new Error('no') } })).toBe(false)
+  })
+})
+
+// C3e (plan 2026-10-27, paso 2): «Mis mesas» es presentacion, nunca permiso ni atribucion a una persona (ADR-018). Una mesa es mia si
+// la abrio ESTE dispositivo (el actor exacto de /session), si se abrio desde su misma estacion (el codigo) o si no se sabe quien la abrio.
+describe('C3e: «Mis mesas» (who opened the table) and the banner of «Mis mesas» only', () => {
+  const ANA: Who = { actor: 'device:Móvil Ana', station: 'sala-1' }
+  const opened = (openedBy?: string | null, openedStation?: string | null) => dining('s1', 'M1', [], { openedBy, openedStation })
+  // La misma mesa (entrada del tablero) con quien la abrio.
+  const by = (row: BoardEntry, openedBy: string | null, openedStation: string | null): BoardEntry => ({ ...row, service: { ...row.service, openedBy, openedStation } })
+  const fromOther = (row: BoardEntry) => by(row, 'device:Móvil Eva', 'sala-2')
+  const fromMine = (row: BoardEntry) => by(row, 'device:Móvil Ana', 'sala-1')
+
+  it('opened by this very device: openedBy is the EXACT actor that /session gives (never one rebuilt from the saved name)', () => {
+    expect(isMine(opened('device:Móvil Ana', 'sala-1'), ANA)).toBe(true)
+    expect(isMine(opened('device:Móvil Ana', 'sala-2'), ANA)).toBe(true)            // el propio actor basta
+    expect(isMine(opened('Móvil Ana', 'sala-2'), ANA)).toBe(false)                   // el nombre sin «device:» no es el actor
+    expect(isMine(opened('device:móvil ana', 'sala-2'), ANA)).toBe(false)            // comparacion exacta, sin colacion
+  })
+  it('opened from the same station (its code): the other phones of «Sala 1», and the PC if its station is «Sala 1»', () => {
+    expect(isMine(opened('device:Móvil Luis', 'sala-1'), ANA)).toBe(true)
+    expect(isMine(opened('device:PC barra', 'sala-1'), ANA)).toBe(true)
+    expect(isMine(opened('device:Móvil Luis', 'Sala-1'), ANA)).toBe(false)           // el codigo, exacto
+  })
+  it('nobody knows who opened it: without openedBy (before E4e) or without openedStation (a person at the PC) it is mine: better too many', () => {
+    expect(isMine(dining('s1', 'M1', []), ANA)).toBe(true)                          // el servidor omite los dos
+    expect(isMine(opened(null, null), ANA)).toBe(true)
+    expect(isMine(opened(null, 'sala-2'), ANA)).toBe(true)
+    expect(isMine(opened('user:responsable', null), ANA)).toBe(true)
+    expect(isMine(opened('user:responsable', ''), ANA)).toBe(true)
+    expect(isMine(opened('', 'sala-2'), ANA)).toBe(true)
+  })
+  it('opened from another station by another device: not mine (it is still in «Todas»)', () => {
+    expect(isMine(opened('device:Móvil Eva', 'sala-2'), ANA)).toBe(false)
+    expect(isMine(opened('user:responsable', 'sala-2'), ANA)).toBe(false)
+  })
+  it('a phone with no station: only its own and the unknown ones; a null station never matches', () => {
+    const lone: Who = { actor: 'device:Móvil Ana', station: null }
+    expect(isMine(opened('device:Móvil Ana', 'sala-2'), lone)).toBe(true)
+    expect(isMine(opened('device:Móvil Luis', 'sala-1'), lone)).toBe(false)
+    expect(isMine(opened('device:Móvil Luis', null), lone)).toBe(true)
+    expect(isMine(dining('s1', 'M1', []), lone)).toBe(true)
+  })
+  it('mineEntries keeps the order and the very entries of the read (F01: the version read goes with them)', () => {
+    const rows = [fromMine(ready('s4', 'M4', T1, 21)), fromOther(ready('s7', 'M7', T1)), ready('s2', 'M2', T2), fromOther(cooking('s9', 'M9'))]
+    expect(mineEntries(rows, ANA)).toEqual([rows[0], rows[2]])
+    expect(mineEntries(rows, ANA)[0]).toBe(rows[0])
+    expect(mineEntries([], ANA)).toEqual([])
+  })
+  it('the banner reads only «Mis mesas»: a ready pass of a table opened from another station neither shows nor vibrates', () => {
+    const watch = new ReadyWatch()
+    expect(watch.read(mineEntries([fromMine(cooking('s4', 'M4')), fromOther(cooking('s7', 'M7'))], ANA))).toEqual([])
+    const fresh = watch.read(mineEntries([fromMine(cooking('s4', 'M4')), fromOther(ready('s7', 'M7', T1))], ANA))
+    expect(fresh).toEqual([])
+    expect(watch.shown).toEqual([])
+    const calls: number[][] = []
+    const phone: Vibrator = { vibrate: pattern => { calls.push([...pattern]); return true }, userActivation: { hasBeenActive: true } }
+    expect(buzz(fresh, true, phone)).toBe(false)
+    expect(calls).toEqual([])
+    // La suya se pone lista: avisa y vibra; la de la otra estacion sigue sin salir.
+    const mine = watch.read(mineEntries([fromMine(ready('s4', 'M4', T2)), fromOther(ready('s7', 'M7', T1))], ANA))
+    expect(mine).toEqual([readyKey('s4', 'c2', T2)])
+    expect(keys(watch)).toEqual([readyKey('s4', 'c2', T2)])
+    expect(buzz(mine, true, phone)).toBe(true)
+    expect(calls).toEqual([[...VIBRATION]])
+  })
+  it('«Visto» is pruned the same way: a key of another station cannot be dismissed, and a dismissed one of mine that leaves the read alerts again', () => {
+    const watch = new ReadyWatch()
+    const other = fromOther(ready('s7', 'M7', T1))
+    watch.read(mineEntries([fromMine(ready('s4', 'M4', T1)), other], ANA))
+    watch.dismiss(readyKey('s7', 'c2', T1))                                          // no esta en la lectura filtrada: nada
+    watch.dismiss(readyKey('s4', 'c2', T1))
+    expect(watch.shown).toEqual([])
+    // Se ve en cuanto esa clave entra en una lectura (aqui, la misma sin filtrar): el «Visto» de s7 no se quedo guardado. El de s4 si.
+    expect(watch.read([fromMine(ready('s4', 'M4', T1)), other])).toEqual([readyKey('s7', 'c2', T1)])
+    expect(keys(watch)).toEqual([readyKey('s7', 'c2', T1)])
+    watch.read(mineEntries([fromMine(ready('s4', 'M4', T1)), other], ANA))
+    expect(watch.shown).toEqual([])
+    const served = fromMine(entry(dining('s4', 'M4', [course('c2', 'Principal', 'Served')]), 13))
+    expect(watch.read(mineEntries([served, other], ANA))).toEqual([])               // servido: sale de la lectura y se olvida el «Visto»
+    expect(watch.read(mineEntries([fromMine(ready('s4', 'M4', T1, 14)), other], ANA))).toEqual([readyKey('s4', 'c2', T1)])
+    expect(keys(watch)).toEqual([readyKey('s4', 'c2', T1)])
   })
 })
 

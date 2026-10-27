@@ -17,6 +17,10 @@ export interface Course {
 export interface Dining {
   id: string; tableId: string; pax: number; state: 'Open' | 'InService' | 'Paused' | 'Completed' | 'Cancelled'
   offerId?: string | null   // E4a: oferta con la que se abrio la mesa
+  // E4e/C3e (plan 2026-10-27, paso 2): quien abrio la mesa (el actor de la orden open: device:<nombre> o user:<nombre>) y desde que
+  // estacion (el codigo; ninguna para una persona). El servidor los omite si no los sabe (abierta antes de E4e). Solo para «Mis mesas»
+  // (sala.ts, isMine): presentacion, nunca permiso. Aditivo: money-guard no los toca.
+  openedBy?: string | null; openedStation?: string | null
   courses: Course[]; actions?: string[]; restrictions?: GuestRestriction[]; restrictionsPendingAck?: boolean
 }
 export interface Occupancy { id: string; tableId: string; serviceId: string; state: 'Occupied' | 'Released'; releasedAt: string | null; actions?: string[] }
