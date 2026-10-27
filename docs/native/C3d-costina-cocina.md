@@ -39,16 +39,16 @@ Captura: [la estación](images/c3d/cocina-estacion-1180x820.png).
 
 ### En el pase
 
-Capturas: [el pase con «Más opciones» abierto](images/c3d/cocina-pase-1180x820.png), [«Por revisar antes de enviar» con una nota](images/c3d/cocina-pase-por-revisar-1180x820.png) y [la página entera, con «Esperando al camarero»](images/c3d/cocina-pase-entero-1180.png).
+Capturas: [el pase con «Más opciones» abierto](images/c3d/cocina-pase-1180x820.png), [«Por revisar antes de enviar» con una nota](images/c3d/cocina-pase-por-revisar-1180x820.png) y [el pase desplazado, con una revisión de lo enviado en ámbar](images/c3d/cocina-pase-desplazado-1180x820.png).
 
-- **A la derecha** (arriba en una pantalla estrecha), dos apartados:
+- **A la derecha** (arriba en una pantalla estrecha), dos apartados. En la tablet, esa columna **se queda a la vista** al desplazar las comandas y no pasa del alto de la pantalla: «Por revisar antes de enviar» se desplaza dentro de ella y **«Esperando al camarero» queda siempre al pie**, también al abrir la página (como en la maqueta):
   - **«Por revisar antes de enviar»** (de E4e), siempre arriba: por mesa y comensal, con su alergia escrita, cada plato de los pases sin enviar con su nota obligatoria, «No le afecta» y «Adaptado». **Atajos que rellenan la nota a la vista:** «No lo lleva», «Sin gluten» y «Cambiado por …», que deja el cursor al final para escribir por qué; solo «Cambiado por» no vale como nota. La nota se puede corregir antes de decidir. Con dos platos o más, «No le afecta a nada más», con los atajos «No lo lleva» y «Sin gluten»: una orden para todo lo que queda de ese comensal.
   - **«Esperando al camarero»:** lo validado y sin servir, «Mesa 7 · Aperitivo · listo hace 3 min», del más antiguo al más nuevo. Se va solo cuando el camarero toca «Servido». Nunca dice «Sala avisada»: el servidor no sabe si el aviso llegó al móvil.
 - **A la izquierda, una comanda por mesa y pase con la mesa entera:**
   - **el progreso de cada estación**, con su nombre entero: «Cocina caliente: lista», «Cocina fría: 1 de 2 platos». Cuenta platos agrupados, no comensales;
   - una restricción de toda la mesa, una vez;
   - **los platos agrupados**, con su estado («Por empezar», «Lista», «1 de 4 listas») y, si la comanda tiene dos estaciones o más, el nombre de la estación bajo cada plato. Debajo, sus alergias, como en las estaciones;
-  - **lo enviado que queda por revisar** (una alergia anotada con el pase ya en cocina), bajo su plato, con la nota, los atajos y «No le afecta», «Adaptado» o «Rehacer». «Rehacer» devuelve el plato a su estación;
+  - **lo enviado que queda por revisar** (una alergia anotada con el pase ya en cocina), bajo su plato y en ámbar, como lo de antes de enviar, con la nota, los atajos y «No le afecta», «Adaptado» o «Rehacer». «Rehacer» devuelve el plato a su estación. El rojo queda en la línea de la alergia, encima, si alarma;
   - **«Siguiente: Postre (sin enviar)»**, solo para leer: el ritmo lo sigue marcando el camarero;
   - **qué falta**, mientras no se puede validar: «Falta Cocina fría», «Falta revisar la alergia» o «Falta Cocina caliente y revisar la alergia»;
   - **«Validar pase: listo para servir»**, grande, solo cuando el servidor deja validar. **Ese toque es el aviso al camarero.** La tarjeta se enmarca en verde;
@@ -56,6 +56,7 @@ Capturas: [el pase con «Más opciones» abierto](images/c3d/cocina-pase-1180x82
   - **«Más opciones» › «Marcar Cocina fría como lista»** (respuesta 2): si se estropea la tablet de una estación, el pase marca por ella. Una orden con lo de esa estación que el servidor deja marcar. Sale solo si queda algo por marcar de esa estación.
 - **Un pase validado con algo por revisar** (una alergia anotada después de validar) vuelve a su comanda hasta que se revise; no se puede servir mientras tanto y no sale en «Esperando al camarero».
 - **Arriba**, «4 comandas · 1 por revisar» y la hora.
+- **Una nota escrita no se pierde:** si otra pantalla cambia la mesa a la vez, la revisión no se aplica, la comanda dice «toca otra vez» y la nota sigue ahí; basta un toque. La nota se borra solo cuando la revisión se aplicó (o quedó como la orden sin confirmar).
 
 ### «Empezar turno» y el sonido
 
@@ -144,10 +145,11 @@ Todo es presentación de la lectura del tablero: nada habilita nada. Un botón e
 ### Pantalla: `pwa/views/KitchenView.vue`, reescrita
 
 - **Estación:** rejilla de comandas para una tablet en horizontal (1180 × 820), leída a uno o dos metros: «Mesa 4 · Principal» de 24 px, platos de 22 px con la cantidad de 28 px, las líneas de alergia de 18 px en negrita, el tiempo de 18 px y botones de 64 px. Nada operativo por debajo de 16 px. La franja «Hecho · esperando al pase», al pie.
-- **Pase:** la columna lateral de 400 px a la derecha desde 1000 px de ancho (arriba en una pantalla más estrecha), y las comandas a la izquierda.
+- **Pase:** la columna lateral de 400 px a la derecha desde 1000 px de ancho (arriba en una pantalla más estrecha), y las comandas a la izquierda. Desde 1000 px la columna es `sticky` y como mucho del alto de la pantalla: «Por revisar antes de enviar» se desplaza dentro y «Esperando al camarero» queda al pie, `sticky` también abajo para verse al abrir la página, cuando la columna aún empieza bajo la cabecera.
+- **Las notas de revisión** (lo enviado, lo de antes de enviar y «No le afecta a nada más») se borran solo después del resultado y si la orden se aplicó o quedó pendiente (`cocina.ts`, `noteSpent`). Con un rechazo, también un `version_conflict`, la nota sigue escrita.
 - **Cada toque es una orden** (D6.3, D6.7), con la versión leída: «Listo» y «Marcar … como lista», `preparations-ready`; «Validar pase», `ready`; cada revisión, `review-preparation`; «No le afecta a nada más», `review-preparations`. Todos los botones se apagan mientras hay una orden en curso o sin confirmar (`operations.ts`).
 - **`pwa/turno.ts`**, nuevo, sin globales del navegador (el audio y la pantalla llegan como dependencias): `Shift` crea el audio dentro del toque, suena una vez y pide la pantalla encendida; `chime` (dos notas, 880 Hz y 1318,5 Hz, triangulares, menos de medio segundo); `screenSupport` (`available`, `http` o `unsupported`); las palabras de la franja. El turno es uno por página cargada, fuera del componente: sobrevive a que la pantalla se desmonte sin conexión. El audio se guarda fuera de lo reactivo, porque un `AudioContext` envuelto rompe sus métodos.
-- **`style.css`:** un bloque propio de cocina con esos tamaños y los tonos del tiempo (`--time-amber-*`, `--time-late-bg`), nunca rojos; las filas de «Hecho» alineadas arriba. Tema claro, acento `#0E7A5F` en los botones, rojo solo para las alergias que alarman y ámbar para lo pendiente y el tiempo. Sin estilos en línea: la CSP no cambia.
+- **`style.css`:** un bloque propio de cocina con esos tamaños y los tonos del tiempo (`--time-amber-*`, `--time-late-bg`), nunca rojos; las filas de «Hecho» alineadas arriba. También de 64 px los atajos de la nota, «Más opciones», «Actualizar» y los botones de la orden sin confirmar. Lo que queda por revisar, en ámbar antes y después de enviar. Tema claro, acento `#0E7A5F` en los botones, rojo solo para las alergias que alarman y ámbar para lo pendiente y el tiempo. Sin estilos en línea: la CSP no cambia.
 - **`StatusPanel.vue`** gana un hueco en la fila de la conexión, donde Costiña Cocina pone las comandas y la hora. Sala no pone nada.
 - **`data-testid` de la pantalla:** `ticket-<mesa>-<pase>`, `elapsed`, `dish-<mesa>-<pase>-<n>`, `do-listo-<mesa>-<pase>` y `do-listo-<mesa>-<pase>-<n>`, `also-…`, `conflict-…`, `done-band` y `done-…`, `progress-…`, `missing-…`, `next-…`, `more-…`, `do-mark-<mesa>-<pase>-<estación>`, `do-ready-…`, `review-…` y `do-review-<decisión>-…`, `waiting` y `waiting-…`, `shift`, `do-shift-start`, `shift-on`, `kitchen-count`, `kitchen-clock` y `presend-empty`. Siguen los de E4e (`presend…`, `do-presend-…`). Desaparecen los de cada elaboración (`prep-…` y `do-preparation-…`).
 
@@ -186,6 +188,13 @@ Pequeñas. Cualquiera se cambia si el promotor lo prefiere:
 - Las comandas y la hora van en la fila de la conexión, no en la del título.
 - El aviso de la conexión sin cifrar y «Opciones» quedan al pie de la página, como en el resto de Costiña Cocina.
 
+**Revisión (27-10), lo que cambió tras las revisiones de seguridad, aspecto y pruebas:**
+- **Lo enviado por revisar va en ámbar**, como lo de antes de enviar, y alineado con su línea. Antes era siempre rojo, también con una intolerancia leve; el rojo queda solo en la línea de la alergia que alarma.
+- **La nota de una revisión ya no se borra en el mismo toque.** Tras un `version_conflict` sigue escrita y basta otro toque.
+- **«Esperando al camarero» siempre a la vista en el pase.** Con algo por revisar caía bajo la pantalla de 1180 × 820, y verlo desplazaba las comandas. Ahora la columna lateral se queda y «Esperando al camarero» va al pie. Al abrir la página, si hay mucho por revisar, tapa el final de «Por revisar» hasta que se desplaza la página.
+- **64 px también para** los atajos de la nota (eran 52), «Más opciones» (56), «Actualizar» y los botones de la orden sin confirmar (48, con letra de 15,5 px; ahora 17).
+- La captura de la página entera del pase se cambia por la del pase desplazado: con la columna fija, una captura de página entera la pinta a medias.
+
 ## Qué NO cambia
 
 - **El motor, el esquema (v8), la API, `grants.sql` y la CSP.** El envío a estaciones, igual.
@@ -199,24 +208,24 @@ Pequeñas. Cualquiera se cambia si el promotor lo prefiere:
 
 ## Comprobaciones automáticas
 
-Cifras en la punta del corte, con la versión `0.45.0-c3d`, todas en este PC, una ejecución cada vez, en primer plano y sin administrador (registros en `.lab-test/`, los de este corte `c3d-*.log`):
-- **vitest:** 463 en 20 ficheros (antes 401 en 19). `cocina.test.ts` (58, nuevo) y `turno.test.ts` (10, nuevo); `kitchen.test.ts` se retira. `npm run build` en verde.
-  - `cocina.test.ts`: la tabla común; comandas de estación (solo lo suyo, el orden, «También en», «Listo» con solo lo anunciado, la franja «Hecho»); comandas del pase (progreso por estación, qué falta, «Siguiente», marcar por una estación, el «Listo» de lo emplatado en el pase); «Esperando al camarero»; los umbrales del tiempo, nunca rojos y siempre escritos; la comanda nueva para el sonido; los atajos de la nota; el `version_conflict`; sin palabras de caja, ni dentro de otra palabra.
+Cifras en la punta del corte, con la versión `0.45.0-c3d` y la revisión, todas en este PC, una ejecución cada vez, en primer plano y sin administrador (registros en `.lab-test/`, los de este corte `c3d-*.log`):
+- **vitest:** 467 en 20 ficheros (antes 401 en 19). `cocina.test.ts` (59, nuevo) y `turno.test.ts` (10, nuevo); `kitchen.test.ts` se retira. `npm run build` en verde.
+  - `cocina.test.ts`: la tabla común; comandas de estación (solo lo suyo, el orden, «También en», «Listo» con solo lo anunciado, la franja «Hecho»); comandas del pase (progreso por estación, qué falta, «Siguiente», marcar por una estación, el «Listo» de lo emplatado en el pase); «Esperando al camarero»; los umbrales del tiempo, nunca rojos y siempre escritos; la comanda nueva para el sonido; los atajos de la nota; el `version_conflict` y la nota que solo se gasta con una orden aplicada o pendiente (`noteSpent`); sin palabras de caja, ni dentro de otra palabra.
   - `turno.test.ts`: el tono (dos notas, menos de medio segundo, sin ficheros de audio); nada suena antes del toque, y el toque empieza el turno, suena una vez y deja la pantalla encendida con https; la pantalla se pide otra vez al volver a verse la página; el texto de http, el de un navegador sin Wake Lock y el de uno sin Web Audio; sin globales del navegador y sin palabras de caja.
-  - `views.test.ts`: ni «Empezar» ni `preparation(s)-start` en la pantalla de cocina, `kitchen.ts` retirado, y el bloque de cocina de `style.css` (24, 22, 28 y 18 px, botones de 64, nada por debajo de 16, un tiempo que nunca es rojo y las filas de «Hecho» alineadas arriba).
+  - `views.test.ts`: ni «Empezar» ni `preparation(s)-start` en la pantalla de cocina, `kitchen.ts` retirado, ninguna nota borrada antes de su resultado, y el bloque de cocina de `style.css` (24, 22, 28 y 18 px, botones de 64 con los atajos, «Más opciones», «Actualizar» y los de la orden sin confirmar, nada por debajo de 16, un tiempo que nunca es rojo, las filas de «Hecho» alineadas arriba, lo que queda por revisar en ámbar antes y después de enviar, y la columna lateral del pase fija con «Esperando al camarero» al pie).
 - **ClientChecks:** 288 (antes 277): la tabla común contra `DishGroups` y la línea del comensal del PC.
 - **DesktopChecks:** en verde (cambian `Costina.Client` y la versión).
-- **Batería completa** (`COSTINA_E2E=1 sh tools/agent/local-tests.sh`, puerto 5090): `rc=0` en 318 s. Compilación con 0 advertencias y 0 errores; dominio 97/97; ClientChecks 288; las 14 suites HTTP (packaging 15 con 1 saltada, native 11, security 6/6, desktop_reads 9, affordances 8, restrictions 9, checkout 8, identity 10, pairing 18, station 11, organization 5, catalog 10, offers 8 y pwa_http 8); Realtime 13.
+- **Batería completa** (`COSTINA_E2E=1 sh tools/agent/local-tests.sh`, puerto 5090), tras la revisión: `rc=0` en 312 s. Compilación con 0 advertencias y 0 errores; dominio 97/97; ClientChecks 288; las 14 suites HTTP (packaging 15 con 1 saltada, native 11, security 6/6, desktop_reads 9, affordances 8, restrictions 9, checkout 8, identity 10, pairing 18, station 11, organization 5, catalog 10, offers 8 y pwa_http 8); Realtime 13.
   - **Playwright, 29** (14 de escritorio, 14 de móvil y 1 de `tableta`) en 2,7 min. `kitchen.spec` tarda unos 11 s, ahora una vez y no dos (9 + 10 s antes).
-  - **`pwa_http` tardó 168 s en local** (173 s antes de C3d). El job `postgres-http` de la CI tiene 20 minutos y tardaba unos 17: con una prueba de navegador menos no hace falta subir `timeout-minutes`.
-- **`kitchen.spec`** (la historia de cocina, contra el motor real):
-  - **antes de enviar:** Sala espera la revisión de cocina; el pase usa «Cambiado por …» (el cursor al final, y eso solo no vale) y después «No lo lleva» con «No le afecta a nada más», en una orden; Sala ve «Adaptado: …» y envía;
+  - **`pwa_http` tardó 165 s en local** (173 s antes de C3d). El job `postgres-http` de la CI tiene 20 minutos y tardaba unos 17: con una prueba de navegador menos no hace falta subir `timeout-minutes`.
+- **`kitchen.spec`** (la historia de cocina, contra el motor real; en cocina, `checkScreen` mide a 64 px también los atajos, «Más opciones», «Actualizar» y los botones de la orden sin confirmar):
+  - **antes de enviar:** Sala espera la revisión de cocina; sin nota no se puede decidir («No le afecta» ni «Adaptado»); el pase usa «Cambiado por …» (el cursor al final, y eso solo no vale) y después «No lo lleva» con «No le afecta a nada más», en una orden; Sala ve «Adaptado: …» y envía;
   - **el sonido:** la estación fría empieza el turno antes de que llegue la comanda: exactamente 2 notas al tocar, 2 con la comanda nueva y ninguna más (las notas se cuentan envolviendo `createOscillator`);
   - **solo lo suyo:** un plato, «También en: Cocina caliente» y ningún botón de validar, revisar ni marcar por otra estación;
   - **«Listo» y el `version_conflict`:** el PC empieza el plato caliente en el mismo momento; no se aplica nada, la comanda dice «toca otra vez» y sigue habiendo 1 POST hasta el siguiente toque, que va con otra clave y la versión releída: la versión sube en uno, las dos elaboraciones frías van en una `preparations-ready` y la comanda baja a «Hecho»;
   - **la frontera es el servidor:** con el token de la tablet fría, `wrong_station` en `preparation-start`, en la `preparations-ready` de grupo y en `ready`;
   - **una alergia con el pase enviado** sale escrita en «Hecho»;
-  - **el pase:** «Cocina fría: lista», «Falta Cocina caliente y revisar la alergia» y «Siguiente: Segundo pase (sin enviar)»; revisa con nota; «Marcar Cocina caliente como lista» desde «Más opciones» es una orden; valida; «Esperando al camarero» hasta que se sirve;
+  - **el pase:** «Cocina fría: lista», «Falta Cocina caliente y revisar la alergia» y «Siguiente: Segundo pase (sin enviar)»; revisa con nota, y un `version_conflict` en esa revisión (el PC empieza un plato caliente a la vez) no aplica nada, deja la nota escrita y un solo toque más la envía con otra clave; «Marcar Cocina caliente como lista» desde «Más opciones» es una orden; valida; «Esperando al camarero» hasta que se sirve;
   - ninguna palabra de caja ni clave de dinero, y ninguna violación de la CSP.
 - **Lo que no se prueba en el navegador:** que se oiga de verdad, Wake Lock en un Chromium sin pantalla (solo se comprueba «Turno empezado») y la lectura a uno o dos metros. Van al guion de abajo.
 
@@ -236,6 +245,10 @@ Cada prueba nueva falló primero. Las roturas a propósito se restauraron desde 
   - la estación suena con cada lectura: 6 notas en lugar de 4;
   - la estación vuelve a ver el pase entero (la regla de D6.4): 2 tarjetas de plato en lugar de 1.
 - **`wrong_station`** no tiene prueba en rojo propia: es una regla del servidor que ya cubre `station_http`, y solo un cambio en el motor la haría fallar.
+- **La revisión (27-10):**
+  - vitest con las comprobaciones nuevas escritas antes del arreglo: 5 fallos (`noteSpent` no existía; las tres notas se borraban en el mismo toque; los atajos a 52 px; lo enviado por revisar sin ámbar; la columna lateral sin fijar);
+  - `kitchen.spec` nuevo contra el motor con la pantalla anterior (proyecto `tableta` solo): con los objetivos de 64 px, fallo en «pass before sending» («Actualizar» de 48 px y los atajos de 52); sin esa medida, fallo en la nota tras el `version_conflict` de la revisión, que volvía vacía (`kitchen.spec.ts:248`);
+  - la comprobación de que «No le afecta» también está apagado sin nota no tiene rojo: la pantalla ya lo hacía bien, y la prueba solo recupera lo que comprobaba la de antes.
 
 ## Capturas
 
@@ -245,7 +258,7 @@ En `docs/native/images/c3d/`, de `e2e/captures-c3d.spec.ts` contra el motor real
 - [La franja «Hecho · esperando al pase»](images/c3d/cocina-estacion-hecho-1180x820.png), con una comanda con alergia.
 - [El pase](images/c3d/cocina-pase-1180x820.png): el progreso de cada estación, «Falta …», «Más opciones» abierto con «Marcar Cocina caliente como lista» y «Por revisar antes de enviar».
 - [«Por revisar antes de enviar»](images/c3d/cocina-pase-por-revisar-1180x820.png), con una nota hecha con «Cambiado por …».
-- [El pase entero](images/c3d/cocina-pase-entero-1180.png), la página completa, con «Esperando al camarero».
+- [El pase desplazado](images/c3d/cocina-pase-desplazado-1180x820.png): una intolerancia leve anotada con el pase ya enviado, con su revisión en ámbar bajo la alergia en rojo, y la columna lateral a la vista, con «Esperando al camarero» al pie.
 
 **Cómo se hicieron:** tres menús creados por API dan los platos de la maqueta. El laboratorio envía todo en un minuto, así que, solo para las capturas, se atrasan `firedAt` y `readyAt` en la instantánea guardada con `psql` (el motor no se toca). A la tablet se le dice que la conexión no es segura, para que enseñe el texto que verán las tablets reales por http.
 

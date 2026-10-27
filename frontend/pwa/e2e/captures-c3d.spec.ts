@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path'
 import { asMain, checkScreen, command, MAIN, openTable, pairThroughTheUi, RUN, watch, type Restriction } from './support'
 
 // C3d: las capturas de docs/native/images/c3d/ (Costina Cocina en la tablet de 1180 x 820: «Empezar turno», la estacion, la franja
-// «Hecho · esperando al pase», el pase, «Por revisar antes de enviar» y la pantalla entera del pase, con «Esperando al camarero») salen
+// «Hecho · esperando al pase», el pase, «Por revisar antes de enviar» y el pase desplazado, con una revision en ambar y la columna
+// lateral a la vista, con «Esperando al camarero») salen
 // del MOTOR REAL, con la escena de la maqueta aprobada (2026-10-22, pestanas 3 y 4). Solo con C3D_CAPTURES=<carpeta> y nunca en la CI: playwright.config.ts corre
 // entonces SOLO este spec. Usa las mesas M3 a M8 y necesita una base recien creada (la de packaging_http); M1 y M2 quedan libres para
 // pwa_http.py:
@@ -188,10 +189,18 @@ test('captures of Costina Cocina, station and pass, for the C3d doc', async ({ b
     if (aside) window.scrollTo(0, aside.getBoundingClientRect().top + window.scrollY - 16)
   })
   await shot(pass, 'cocina-pase-por-revisar-1180x820.png')
-  // La pantalla entera del pase: las comandas, «Por revisar antes de enviar» y, debajo, «Esperando al camarero».
-  await pass.evaluate(() => window.scrollTo(0, 0))
-  await checkScreen(pass, 'whole pass', true)
-  await pass.screenshot({ path: join(DIR, 'cocina-pase-entero-1180.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
+  // Revision de C3d: el pase desplazado hasta la Mesa 4, con una intolerancia leve anotada con el pase ya enviado. Su revision va en ambar
+  // (el rojo es solo de la alergia que alarma) y la columna lateral sigue a la vista, con «Esperando al camarero» al pie. (Antes era una
+  // captura de la pagina entera: con la columna fija, una captura de pagina entera la pinta a medias.)
+  await command(request, m4, 'declare-restriction', { guestPosition: 3, kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' })
+  await expect(pass.locator('[data-testid^="review-M4-principal-"]')).toHaveCount(1, { timeout: 15_000 })
+  await expect(pass.getByTestId('do-ready-M4-principal')).toHaveCount(0)
+  await pass.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur()
+    const box = document.querySelector('[data-testid^="review-M4-principal-"]')?.getBoundingClientRect()
+    if (box) window.scrollTo(0, box.bottom + window.scrollY - window.innerHeight + 24)
+  })
+  await shot(pass, 'cocina-pase-desplazado-1180x820.png')
 
   expect(leaks, 'a kitchen device received financial data').toEqual([])
   expect(violations, 'CSP violations in the console').toEqual([])

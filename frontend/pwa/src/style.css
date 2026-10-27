@@ -274,6 +274,9 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .k-clock { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .k-btn { min-height: var(--touch-kitchen); min-width: 8.5rem; padding: 0 16px; border-radius: 14px; font-size: 17px; font-weight: 700; }
 .k-btn.wide { width: 100%; }
+/* Revision de C3d: en cocina, tambien de 64 px «Actualizar» y los botones de la orden sin confirmar (StatusPanel), que se tocan con las
+   manos mojadas justo despues de un «Listo» que no se confirmo. */
+.kitchen .status .refresh, .kitchen .status-panels .btn { min-height: var(--touch-kitchen); min-width: var(--touch-kitchen); font-size: 17px; }
 
 /* «Empezar turno»: una franja arriba que no tapa las comandas. Despues, una linea que dice si suena y que pasa con la pantalla. */
 .shift { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 16px; border-radius: 16px; background: var(--accent-soft); border: 1.5px solid var(--accent-line); }
@@ -371,8 +374,12 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .review.presend-item .lbl { color: var(--warn-text); }
 .review.rest { border-color: var(--accent-line); background: var(--accent-soft); }
 .review.rest .lbl { color: var(--accent-text); }
+/* Revision de C3d: lo enviado por revisar, en su comanda del pase, tambien en ambar (pendiente) y alineado con su linea; el rojo queda solo
+   en esa linea de encima, si la restriccion alarma. */
+.review.k-review { margin-left: 36px; border-color: var(--warn-line); background: var(--warn-soft); }
+.review.k-review .lbl { color: var(--warn-text); }
 .k-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
-.k-chip { min-height: 52px; min-width: 48px; padding: 0 14px; border-radius: 26px; border: 1.5px solid var(--accent-line); background: var(--surface); color: var(--accent-text); font-size: 16px; font-weight: 700; }
+.k-chip { min-height: var(--touch-kitchen); min-width: var(--touch-kitchen); padding: 0 16px; border-radius: 32px; border: 1.5px solid var(--accent-line); background: var(--surface); color: var(--accent-text); font-size: 16px; font-weight: 700; }
 .k-chip:disabled { border-color: var(--border); color: var(--muted); cursor: default; }
 .wt { display: flex; flex-direction: column; gap: 8px; }
 .wt-r { min-height: 60px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-size: 17px; color: var(--muted); }
@@ -404,19 +411,28 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .pc-miss { display: flex; align-items: center; gap: 8px; padding-top: 4px; font-size: 18px; font-weight: 600; color: var(--muted); }
 .pase-go { width: 100%; min-height: var(--touch-kitchen); display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 14px; border: 0; border-radius: 14px; background: var(--accent); color: #FFFFFF; font-size: 20px; font-weight: 800; }
 .pase-go:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
-.k-more > summary { min-height: 56px; font-size: 18px; }
+.k-more > summary { min-height: var(--touch-kitchen); font-size: 18px; }
 .k-more .more-b .k-btn { font-size: 18px; }
 @media (hover: hover) {
   .listo:hover:not(:disabled), .k-chip:hover:not(:disabled) { background: var(--accent-soft); }
   .todo:hover:not(:disabled), .pase-go:hover:not(:disabled) { background: var(--accent-hover); }
 }
 @media (max-width: 699px) {
-  .pd-al { margin-left: 0; }
+  .pd-al, .review.k-review { margin-left: 0; }
 }
 @media (min-width: 1000px) {
   .pase-body { display: grid; grid-template-columns: minmax(0, 1fr) 400px; grid-template-areas: "main side"; align-items: start; }
-  .pside { grid-area: side; }
   .pmain { grid-area: main; }
+  /* Revision de C3d (como la maqueta): la columna lateral se queda a la vista al desplazar las comandas y no pasa del alto de la pantalla;
+     «Por revisar» se desplaza dentro (un menu degustacion son muchos platos por comensal). */
+  .pside { grid-area: side; position: sticky; top: 8px; max-height: calc(100dvh - 16px); }
+  .side-presend { flex: 0 1 auto; min-height: 0; }
+  .side-presend > .presend { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+  /* «Esperando al camarero», siempre a la vista al pie de la columna. Al abrir la pagina la columna empieza bajo la cabecera y baja mas que
+     la pantalla: se queda pegado abajo, por encima de lo que sigue de «Por revisar», hasta que la pagina se desplaza. Si crece, su lista
+     se desplaza sola. */
+  .side-waiting { position: sticky; bottom: 0; flex: none; padding: 10px 0 8px; border-top: 1px solid var(--border-strong); background: var(--bg); }
+  .side-waiting > .wt { min-height: 0; max-height: 36dvh; overflow-y: auto; scrollbar-width: thin; }
 }
 /* ---------- Fin de Costiña Cocina ---------- */
 

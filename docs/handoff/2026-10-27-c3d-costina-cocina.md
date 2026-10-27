@@ -19,7 +19,8 @@ Leer antes, en este orden:
   - `3c1b4b0` feat(pwa): la pantalla nueva, cada estación con lo suyo y el pase con la mesa entera, «Empezar turno», el sonido y la pantalla encendida; se retira `kitchen.ts`;
   - `68d5b1e` test(pwa): el proyecto `tableta` de Playwright, `kitchen.spec` reescrito y las capturas;
   - `4422e6d` docs(native): el documento, ADR-017, AGENTS, STATUS, los planes entregados y la versión `0.45.0-c3d`;
-  - el commit de este traspaso.
+  - el commit de este traspaso;
+  - `fix(pwa): C3d revision - ...`, lo que pidieron las revisiones de seguridad, aspecto y pruebas: lo enviado por revisar en ámbar, la nota que sobrevive a un `version_conflict`, «Esperando al camarero» siempre a la vista en el pase, 64 px para los atajos, «Más opciones», «Actualizar» y la orden sin confirmar, y las capturas rehechas (la del pase entero pasa a ser la del pase desplazado).
 - **Permiso de subida y mezcla: dado el 27-10** («si, adelante»), para cuando la CI esté en verde. Este traspaso se escribe antes de subir: mira `git log origin/develop` para saber si ya está mezclada, con qué PR y qué dijo la CI.
 - **Las respuestas del promotor** que fija C3d (22-10):
   1. en las estaciones, solo «Listo», sin «Empezar»;
@@ -36,15 +37,15 @@ Leer antes, en este orden:
   - **Pruebas:** el proyecto `tableta` (1180 × 820, táctil), que corre solo la historia de cocina.
   - **Sin cambio de esquema, de motor, de API ni de CSP.**
 - **Vuelta atrás:** C3d no cambia los datos, pero la guarda de E4e se estrena con él: desde que `0.45.0-c3d` sirve los datos, el instalador de `0.44.0-e4e` se para con `SETUP FAILED`. Volver es restaurar la copia previa a la actualización, en un equipo limpio y con el instalador anterior. Las tablets no hay que emparejarlas de nuevo.
-- **Cifras en la punta** (en este PC, el 27-10, con la versión `0.45.0-c3d`):
-  - vitest 463, en 20 ficheros (`cocina.test.ts` 58 y `turno.test.ts` 10, nuevos; `kitchen.test.ts`, retirado); `npm run build` en verde;
+- **Cifras en la punta** (en este PC, el 27-10, con la versión `0.45.0-c3d` y la revisión):
+  - vitest 467, en 20 ficheros (`cocina.test.ts` 59 y `turno.test.ts` 10, nuevos; `kitchen.test.ts`, retirado); `npm run build` en verde;
   - ClientChecks 288;
   - dominio 97;
   - PersistenceChecks 88;
   - las 14 suites HTTP (packaging 15 con 1 saltada, native 11, security 6/6, desktop_reads 9, affordances 8, restrictions 9, checkout 8, identity 10, pairing 18, station 11, organization 5, catalog 10, offers 8 y pwa_http 8) y Realtime 13;
   - Playwright 29 (14 de escritorio, 14 de móvil y 1 de `tableta`), en 2,7 min;
   - DesktopChecks en verde;
-  - la batería completa con `COSTINA_E2E=1`, `rc=0` en 318 s; `pwa_http` tardó 168 s (registro en `.lab-test/c3d-stage5-battery.log` y `.lab-test/c3d-stage5-battery-pwa_http.log`).
+  - la batería completa con `COSTINA_E2E=1`, `rc=0` en 312 s tras la revisión; `pwa_http` tardó 165 s (registro en `.lab-test/c3d-rev-battery.log` y `.lab-test/c3d-rev-battery-pwa_http.log`).
 - **Lo que solo verá la CI:**
   - el proyecto `tableta` corre por primera vez en la CI, en el job `postgres-http`. Ese job tiene 20 minutos y tardaba unos 17; con una prueba de navegador menos que en E4e no se ha subido `timeout-minutes` (`.github/workflows/dotnet-d1.yml`). Si roza el límite, se sube con su comentario;
   - el workflow «Native Windows installer» no salta en la PR (C3d no toca nada de lo que invoca el instalador); corre al mezclar en `develop`.

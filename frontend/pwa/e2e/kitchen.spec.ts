@@ -88,11 +88,14 @@ test('a station sees and marks only its own work in ONE command, the pass review
     //    «Cambiado por …» rellena la nota a la vista y deja el cursor al final; solo eso aun no es una decision.
     const adapted = passPage.getByTestId(`presend-item-${TABLE.id}-p1-caliente-2`)
     const adapt = passPage.getByTestId(`do-presend-adapt-${TABLE.id}-p1-caliente-2`)
-    await expect(adapt).toBeDisabled()                                                          // sin nota no hay decision
+    //    Sin nota no hay decision: ni «No le afecta» ni «Adaptado» (los atajos, en cambio, se tocan siempre).
+    const decisions = adapted.locator('[data-testid^="do-presend-"]')
+    await expect(decisions).toHaveCount(2)
+    for (const button of await decisions.all()) await expect(button).toBeDisabled()
     await press(adapted.getByRole('button', { name: 'Cambiado por …' }))
     await expect(adapted.locator('input')).toHaveValue('Cambiado por ')
     await expect(adapted.locator('input')).toBeFocused()
-    await expect(adapt).toBeDisabled()
+    for (const button of await decisions.all()) await expect(button).toBeDisabled()
     await passPage.keyboard.type('aceite de oliva')
     await expect(adapted.locator('input')).toHaveValue('Cambiado por aceite de oliva')
     let before = await version()
@@ -227,7 +230,31 @@ test('a station sees and marks only its own work in ONE command, the pass review
     expect(pendingReviews).toBeGreaterThan(0)
     await expect(reviews).toHaveCount(pendingReviews, { timeout: 15_000 })
     for (const button of await reviews.first().locator('[data-testid^="do-"]').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
-    for (let left = pendingReviews; left > 0; left--) {
+    //    Revision C3d: un version_conflict en una revision (la caliente empieza un plato a la vez) NO borra la nota escrita: la comanda
+    //    pide tocar otra vez y UN toque, sin volver a escribirla, la envia como otra orden (otra clave) con la version releida.
+    const reviewPosts: string[] = []
+    passPage.on('request', sent => {
+      if (sent.method() === 'POST' && sent.url().endsWith('/commands/review-preparation')) reviewPosts.push(sent.headers()['idempotency-key'] ?? '')
+    })
+    await passPage.route('**/commands/review-preparation', async route => {
+      await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: hot[1].id }); await route.continue()
+    }, { times: 1 })
+    const firstNote = reviews.first().locator('input'), firstAdapt = reviews.first().locator('[data-testid^="do-review-adapt-"]')
+    await firstNote.fill('sin marisco, salsa aparte')
+    before = await version()
+    await press(firstAdapt)
+    await expect(passPage.getByTestId(`conflict-${ticketId}`)).toContainText('toca otra vez', { timeout: 15_000 })
+    await expect(reviews).toHaveCount(pendingReviews)
+    await expect(firstNote).toHaveValue('sin marisco, salsa aparte')                             // la nota sigue ahi
+    await expect(firstAdapt).toBeEnabled()
+    expect(await version()).toBe(before + 1)                                                   // solo la de la caliente
+    expect(reviewPosts).toHaveLength(1)                                                        // nada se reenvia sin otro toque
+    await press(firstAdapt)
+    await expect(reviews).toHaveCount(pendingReviews - 1, { timeout: 15_000 })
+    expect(reviewPosts).toHaveLength(2)
+    expect(reviewPosts[1]).not.toBe(reviewPosts[0])
+    await expect(passPage.getByTestId(`conflict-${ticketId}`)).toHaveCount(0)
+    for (let left = pendingReviews - 1; left > 0; left--) {
       await reviews.first().locator('input').fill('sin marisco, salsa aparte')
       await press(reviews.first().locator('[data-testid^="do-review-adapt-"]'))
       await expect(reviews).toHaveCount(left - 1, { timeout: 15_000 })                         // relectura tras confirmar: version fresca

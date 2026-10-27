@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, dishAlarming, dishes, dishNote, dishState, dishText, doneText,
   elapsedText, exceptionLine, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText, NOTE_SHORTCUTS,
-  noteReady, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS,
+  noteReady, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS,
   reviewNoteOk, ringKeys, seesWholeTable, shouldChime, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
@@ -316,6 +316,15 @@ describe('two screens at once on the same table (version_conflict)', () => {
     for (const outcome of [{ kind: 'rejected', status: 409, code: 'wrong_station' }, { kind: 'confirmed', response: {} }, { kind: 'unconfirmed', reason: 'network' }, null] as const)
       expect(versionConflict(outcome)).toBe(false)
     expect(CONFLICT_TEXT).toBe('Otra pantalla cambió esta mesa a la vez. Ya se ha vuelto a leer: toca otra vez si sigue haciendo falta.')
+  })
+  // Revision de C3d: «toca otra vez» tiene que bastar. La nota de una revision se borra solo cuando la orden se aplico o quedo como LA
+  // orden pendiente (se reintenta con su misma clave); con un rechazo (un version_conflict incluido) o sin orden, se queda escrita.
+  it('a review note is spent only by an applied or pending command, never by a rejection such as a version_conflict', () => {
+    expect(noteSpent({ kind: 'confirmed', response: {} })).toBe(true)
+    expect(noteSpent({ kind: 'unconfirmed', reason: 'network' })).toBe(true)
+    for (const outcome of [{ kind: 'rejected', status: 409, code: 'version_conflict' }, { kind: 'rejected', status: 409, code: 'nothing_to_review' },
+      { kind: 'unauthorized' }, null, undefined] as const)
+      expect(noteSpent(outcome)).toBe(false)
   })
 })
 

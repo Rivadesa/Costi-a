@@ -23,7 +23,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Session } from '../api'
 import {
   alsoText, applyShortcut, CONFLICT_TEXT, countText, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
-  exceptionLine, listoPerDish, markLabel, missingText, nextText, NOTE_SHORTCUTS, noteReady, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
+  exceptionLine, listoPerDish, markLabel, missingText, nextText, NOTE_SHORTCUTS, noteReady, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
   progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS, ringKeys, seesWholeTable, shouldChime, stationTickets, TicketWatch,
   timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem, type StationMark, type StationTicket,
 } from '../cocina'
@@ -32,6 +32,7 @@ import { restrictionAlarming } from '../floor'
 import { clockLabel, guestLabel, plural, restrictionLabel } from '../labels'
 import { useOperations } from '../operations'
 import { screenHint, screenSupport, shiftIntro, soundText } from '../turno'
+import type { Outcome } from '../commands'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../types'
 import Icon from './Icon.vue'
 import StatusPanel from './StatusPanel.vue'
@@ -82,10 +83,12 @@ const restrictionTone = (restriction: GuestRestriction) => restrictionAlarming(r
 
 // ---- Ordenes: una por toque, con la version LEIDA de esa mesa (F01) ----
 const conflict = ref<string | null>(null)
-async function send(key: string, entry: BoardEntry, action: string, body: Record<string, unknown>, description: string): Promise<void> {
+// Devuelve el resultado (null si no hubo orden): una revision solo borra su nota tras saberlo (noteSpent).
+async function send(key: string, entry: BoardEntry, action: string, body: Record<string, unknown>, description: string): Promise<Outcome | null> {
   conflict.value = null
   const outcome = await run(`/dining/services/${encodeURIComponent(entry.service.id)}/commands/${action}`, body, description)
   if (versionConflict(outcome)) conflict.value = key
+  return outcome
 }
 function listo(ticket: StationTicket | PassTicket, itemIds: string[], what: string): void {
   if (itemIds.length === 0) return
@@ -114,14 +117,17 @@ function shortcut(store: Record<string, string>, key: string, fieldId: string, c
   })
 }
 // Lo ENVIADO por revisar, en su comanda: «No le afecta», «Adaptado» o «Rehacer» (solo el pase: el servidor no se lo anuncia a nadie mas).
+// Revision de C3d: cada nota se borra SOLO tras el resultado y si la orden se aplico o quedo pendiente (noteSpent). Tras un
+// version_conflict sigue escrita, y «toca otra vez» es un toque. Mientras la orden va y se relee, todo esta apagado (locked): nadie escribe.
 const sentKey = (ticket: PassTicket, preparation: Preparation) => `enviado:${ticket.key}:${preparation.id}`
 const reviewable = (ticket: PassTicket, preparation: Preparation) => ticket.reviews.includes(preparation)
-function reviewSent(ticket: PassTicket, preparation: Preparation, decision: string, label: string): void {
+async function reviewSent(ticket: PassTicket, preparation: Preparation, decision: string, label: string): Promise<void> {
   const key = sentKey(ticket, preparation), note = (notes[key] ?? '').trim()
   if (!noteReady(note)) return
-  void send(ticket.key, ticket.entry, 'review-preparation', { expectedVersion: ticket.entry.version, courseId: ticket.course.id, itemId: preparation.id, decision, note },
+  const outcome = await send(ticket.key, ticket.entry, 'review-preparation',
+    { expectedVersion: ticket.entry.version, courseId: ticket.course.id, itemId: preparation.id, decision, note },
     `Revisión (${label}) de ${preparation.name} · ${guestLabel(preparation.guestPosition)} · ${title(ticket.entry, ticket.course)}`)
-  notes[key] = ''
+  if (noteSpent(outcome)) notes[key] = ''
 }
 
 // ---- E4e: «Por revisar antes de enviar» ----
@@ -132,20 +138,20 @@ const itemKey = (guest: PresendGuest, item: PresendItem) => `antes:${guest.entry
 // E4e (revision): el id de cada campo de nota (y su etiqueta) sale de su POSICION en la lista, unico por construccion. El id de una
 // elaboracion (<plato>-<comensal>) se repite entre mesas con la misma oferta: con el, la etiqueta de una mesa llevaba a la nota de otra.
 const rest = computed(() => new Map(presend.value.map(guest => [guest.key, restOfGuest(guest)])))
-function presendReview(guest: PresendGuest, item: PresendItem, decision: string, label: string): void {
+async function presendReview(guest: PresendGuest, item: PresendItem, decision: string, label: string): Promise<void> {
   const key = itemKey(guest, item), note = (notes[key] ?? '').trim()
   if (!noteReady(note)) return
-  void send(guest.key, guest.entry, 'review-preparation',
+  const outcome = await send(guest.key, guest.entry, 'review-preparation',
     { expectedVersion: guest.entry.version, courseId: item.course.id, itemId: item.preparation.id, decision, note },
     `Revisión antes de enviar (${label}) de ${item.preparation.name} · ${guestLabel(guest.guestPosition)} · ${item.course.name} · ${guestTable(guest)}`)
-  notes[key] = ''
+  if (noteSpent(outcome)) notes[key] = ''
 }
-function nothingElse(guest: PresendGuest): void {
+async function nothingElse(guest: PresendGuest): Promise<void> {
   const note = (restNotes[guest.key] ?? '').trim(), items = rest.value.get(guest.key) ?? []
   if (!noteReady(note) || items.length === 0) return
-  void send(guest.key, guest.entry, 'review-preparations', restBody(guest, note),
+  const outcome = await send(guest.key, guest.entry, 'review-preparations', restBody(guest, note),
     `No le afecta a nada más (${plural(items.length, 'plato', 'platos')}) · ${guestLabel(guest.guestPosition)} · ${guestTable(guest)}`)
-  restNotes[guest.key] = ''
+  if (noteSpent(outcome)) restNotes[guest.key] = ''
 }
 
 // ---- «Empezar turno» y el sonido de una comanda nueva ----
@@ -238,7 +244,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
     <div v-else class="pase-body">
       <aside class="pside">
         <!-- E4e: lo que el pase decide antes de enviar, siempre arriba. Tipo, sustancia y gravedad escritos; nunca atenuado. -->
-        <section class="side-sec" aria-labelledby="presend-title">
+        <section class="side-sec side-presend" aria-labelledby="presend-title">
           <h2 id="presend-title" class="side-h"><Icon name="alert" :size="22" :stroke="2.2" />Por revisar antes de enviar<span class="cnt">{{ presend.length }}</span></h2>
           <p v-if="presend.length === 0" class="side-hint" data-testid="presend-empty">Nada por revisar.</p>
           <div v-else class="presend" data-testid="presend">
@@ -278,8 +284,9 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
           </div>
         </section>
 
-        <!-- Validado y sin servir. Nunca «Sala avisada»: el servidor no sabe si el aviso llego a un movil (D2). -->
-        <section class="side-sec" aria-labelledby="waiting-title" data-testid="waiting">
+        <!-- Validado y sin servir. Nunca «Sala avisada»: el servidor no sabe si el aviso llego a un movil (D2). Revision de C3d: en la
+             tablet, siempre a la vista al pie de la columna, aunque haya mucho por revisar encima (style.css, .side-waiting). -->
+        <section class="side-sec side-waiting" aria-labelledby="waiting-title" data-testid="waiting">
           <h2 id="waiting-title" class="side-h"><Icon name="check" :size="22" :stroke="2.6" />Esperando al camarero<span class="cnt">{{ waiting.length }}</span></h2>
           <p v-if="waiting.length === 0" class="side-hint">Nada esperando.</p>
           <ul v-else class="wt">

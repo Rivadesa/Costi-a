@@ -63,13 +63,15 @@ async function noMoneyWords(page: Page, where: string, rule = MONEY_WORDS): Prom
   expect(await page.locator('main').innerText(), `money words on ${where}`).not.toMatch(rule)
 }
 // Cada pantalla que se visita: sin palabras de caja, sin desplazamiento lateral (tampoco en el movil de 375 px) y con objetivos
-// tactiles de 48 px de alto y de ancho como minimo; en cocina, sus botones de accion y la nota de revision, de 64 px (manos ocupadas).
+// tactiles de 48 px de alto y de ancho como minimo; en cocina, de 64 px (manos ocupadas): sus botones de accion, la nota de revision y
+// (revision de C3d) los atajos de la nota, «Más opciones», «Actualizar» y los botones de la orden sin confirmar.
+const KITCHEN_TARGETS = 'main [data-testid^="do-"], main .review input, main .k-chip, main .k-more > summary, main .status .refresh, main .status-panels button'
 export async function checkScreen(page: Page, where: string, kitchen = false): Promise<void> {
   await noMoneyWords(page, where, kitchen ? MONEY_INSIDE : MONEY_WORDS)
   const [scroll, width] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
   expect(scroll, `horizontal scroll on ${where}`).toBeLessThanOrEqual(width)
   await targetsOf(page, where, 'main button, main summary, main input, main select', 48)
-  if (kitchen) await targetsOf(page, where, 'main [data-testid^="do-"], main .review input', 64)
+  if (kitchen) await targetsOf(page, where, KITCHEN_TARGETS, 64)
 }
 async function targetsOf(page: Page, where: string, selector: string, min: number): Promise<void> {
   // Lo que no se pinta (dentro de un <details> cerrado, por ejemplo) mide 0 x 0 y no es un objetivo.

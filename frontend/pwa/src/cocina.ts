@@ -349,6 +349,9 @@ export const ringKeys = (entries: readonly BoardEntry[], station: string | null 
 // solo se dice en la propia comanda que se toque otra vez: nunca se reenvia sola, ni con otra clave.
 export const CONFLICT_TEXT = 'Otra pantalla cambió esta mesa a la vez. Ya se ha vuelto a leer: toca otra vez si sigue haciendo falta.'
 export const versionConflict = (outcome: Outcome | null | undefined): boolean => outcome?.kind === 'rejected' && outcome.code === 'version_conflict'
+// Revision de C3d: la nota de una revision se gasta solo cuando la orden se aplico o quedo como LA orden pendiente (se reintenta con su
+// misma clave). Con un rechazo (un version_conflict incluido) o sin orden se queda escrita: «toca otra vez» basta, sin volver a escribirla.
+export const noteSpent = (outcome: Outcome | null | undefined): boolean => outcome?.kind === 'confirmed' || outcome?.kind === 'unconfirmed'
 
 // ---- E4e (ADR-016): «Por revisar antes de enviar», del pase (movido tal cual de kitchen.ts) ----
 // Cocina decide cada plato de un comensal con restriccion ANTES de que salga su pase, y ese pase espera. Aqui se listan, por mesa y
