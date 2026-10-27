@@ -1,0 +1,39 @@
+name: Playwright Chromium with cached apt packages
+description: >-
+  Instala Chromium de Playwright y sus paquetes del sistema igual que antes (playwright install --with-deps chromium),
+  pero guarda en actions/cache los .deb que baja apt. El espejo de Ubuntu de Azure llego a servirlos a 40 kB/s
+  (10 minutos para 26 MB de fuentes y xvfb); el navegador baja siempre en menos de 10 s y no se cachea.
+  Necesita frontend/pwa con npm ci hecho (npx usa la version de Playwright del lock).
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      working-directory: frontend/pwa
+      run: |
+        # La version de Playwright decide la lista de paquetes; la imagen del runner, cuales trae ya y en que version.
+        echo "playwright=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+        echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cache/playwright-apt
+        key: playwright-apt-${{ steps.key.outputs.os }}-${{ steps.key.outputs.playwright }}-${{ steps.key.outputs.image }}
+        # Con imagen nueva se parte de la entrada anterior: apt solo baja lo que cambio y se guarda una entrada nueva.
+        restore-keys: |
+          playwright-apt-${{ steps.key.outputs.os }}-${{ steps.key.outputs.playwright }}-
+          playwright-apt-${{ steps.key.outputs.os }}-
+    - shell: bash
+      working-directory: frontend/pwa
+      run: |
+        archives="$HOME/.cache/playwright-apt"
+        conf=/etc/apt/apt.conf.d/99costina-playwright-apt
+        mkdir -p "$archives/partial"
+        # apt busca y deja los .deb en la carpeta de la cache; si ya estan, "Need to get 0 B" y no toca el espejo.
+        printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$archives" | sudo tee "$conf" > /dev/null
+        npx playwright install --with-deps chromium
+        sudo apt-get autoclean -qq   # quita las versiones que el indice ya no ofrece: la cache no crece sin limite
+        sudo rm -f "$conf"
+        # apt escribe como root (y el lock con 0640): sin esto actions/cache no puede leerlos al guardar.
+        sudo chown -R "$(id -u):$(id -g)" "$archives"
+        du -sh "$archives"

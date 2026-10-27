@@ -2,7 +2,7 @@ name: Native D1 PostgreSQL and HTTP
 on:
   pull_request:
     # Una PR que solo toca Markdown no relanza nada (el filtro mira el diff de TODA la PR, no el del ultimo push).
-    paths: ['dotnet/**', 'frontend/pwa/**', '.github/workflows/dotnet-d1.yml', '!**/*.md']
+    paths: ['dotnet/**', 'frontend/pwa/**', '.github/workflows/dotnet-d1.yml', '.github/actions/playwright-chromium/**', '!**/*.md']
   workflow_dispatch:
 permissions:
   contents: read
@@ -91,11 +91,12 @@ jobs:
         run: python3 tests/http/catalog_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: E4a offers - tastings and set menus with courses, dishes and per-guest choices
         run: python3 tests/http/offers_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+      # Paso propio para que su tiempo se vea aparte: con la cache caliente, menos de un minuto (antes, hasta 10 min de apt).
+      - name: Playwright Chromium and its system packages (apt .deb files cached)
+        uses: ./.github/actions/playwright-chromium
       - name: D6.1 PWA hosted on the same origin, money-free catalogue and a REAL browser pairing a device
         env: {COSTINA_E2E: '1'}
-        run: |
-          (cd ../frontend/pwa && npx playwright install --with-deps chromium)
-          python3 tests/http/pwa_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
+        run: python3 tests/http/pwa_http.py src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: D2 realtime publisher and SignalR flow with real processes
         run: dotnet run --project tests/Costina.RealtimeChecks -c Release -- src/Costina.Server/bin/Release/net10.0/Costina.Server.dll
       - name: Upload exact executed evidence

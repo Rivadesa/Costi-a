@@ -1,0 +1,28 @@
+name: Playwright apt cache on develop
+# Una cache que guarda una PR solo la ve esa misma PR; las de develop las ven todas las PR contra develop. Este job deja en
+# develop los .deb de Playwright (.github/actions/playwright-chromium) para que la PRIMERA ejecucion de D1 de cada PR nueva
+# ya los encuentre. Corre con cada mezcla que tocaria D1: asi la entrada sigue la imagen del runner. Tarda un minuto.
+on:
+  push:
+    branches: [develop]
+    paths: ['dotnet/**', 'frontend/pwa/**', '.github/actions/playwright-chromium/**', '.github/workflows/playwright-apt-cache.yml', '!**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # con la cache fria y el espejo lento, apt llego a tardar 10 min
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/pwa/package-lock.json}
+      - name: Install the PWA dependencies (npx playwright must be the version in the lock)
+        working-directory: frontend/pwa
+        run: npm ci --no-audit --no-fund
+      - name: Playwright Chromium and its system packages (saves the apt .deb files for develop)
+        uses: ./.github/actions/playwright-chromium
