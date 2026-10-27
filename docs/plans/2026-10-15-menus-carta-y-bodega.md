@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-15. **Estado: APROBADO por el promotor el 15-10-2026.** Contestó las siete preguntas del resumen; las respuestas y lo que cambian están en la sección 10, y las decisiones en la 9. El orden de entrega pasa a ser E4d, E3.3, C3a, C3b, E4e, C3c, **E4f, E4c**, E4g.
 
-> **Nota del 22-10: el orden que queda lo sustituye otro plan.** E4d, E3.3, C3a y C3b están entregados (y E4e, el 26-10, como `0.44.0-e4e`: ver la sección 4.5). A partir de ahí manda `docs/plans/2026-10-22-sala-y-cocina.md`, APROBADO por el promotor el 22-10: C3c (dos aplicaciones, Costiña Sala y Costiña Cocina), E4e, C3d (Costiña Cocina), C3e (Costiña Sala), E4f, E4c y E4g, con versiones nuevas a partir de `0.43.0-c3c`. El C3c de la sección 4.6 se reparte entre C3d (cocina) y C3e (sala), y el nombre «C3c» pasa a las dos aplicaciones. Lo aprobado aquí para E4e, E4f, E4c y E4g sigue valiendo con las concreciones de ese plan.
+> **Nota del 22-10: el orden que queda lo sustituye otro plan.** E4d, E3.3, C3a y C3b están entregados (y E4e, el 26-10, como `0.44.0-e4e`: ver la sección 4.5; y la mitad de cocina de la sección 4.6, el 27-10, en C3d, `0.45.0-c3d`). A partir de ahí manda `docs/plans/2026-10-22-sala-y-cocina.md`, APROBADO por el promotor el 22-10: C3c (dos aplicaciones, Costiña Sala y Costiña Cocina), E4e, C3d (Costiña Cocina), C3e (Costiña Sala), E4f, E4c y E4g, con versiones nuevas a partir de `0.43.0-c3c`. El C3c de la sección 4.6 se reparte entre C3d (cocina) y C3e (sala), y el nombre «C3c» pasa a las dos aplicaciones. Lo aprobado aquí para E4e, E4f, E4c y E4g sigue valiendo con las concreciones de ese plan.
 
 **Maqueta del comandero:** `docs/plans/maquetas/2026-10-15-comandero.html`. Se abre en el navegador y tiene pestañas para abrir mesa, mesa, bodega, ronda, combinados, menú cerrado, carta y PC. Capturas en `docs/plans/maquetas/2026-10-15-comandero/`.
 
@@ -658,6 +658,8 @@ Lleva también la petición del promotor del 15-10 de añadir una consumición d
 - ClientChecks y DesktopChecks, con capturas de la apertura con alergias y de la ficha con la línea adaptada.
 
 ### 4.6. C3c — Comandero y cocina: abrir mesa y servir el menú (`0.44.0-c3c`, sin cambio del motor)
+
+**La mitad de cocina, entregada el 27-10 en C3d** (`0.45.0-c3d`), cambiada según el plan del 22-10 (sección 4.3): cada estación ve solo lo suyo, con un único «Listo» y sin «Empezar», y el pase ve la mesa entera con el progreso de cada estación. Ver `docs/native/C3d-costina-cocina.md`. La mitad del camarero va en C3e.
 
 **Comandero:**
 - **Abrir mesa:** al tocar una mesa libre se abre una hoja con:

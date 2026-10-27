@@ -2,7 +2,7 @@
 
 Fecha: 2026-10-22. **Estado: APROBADO por el promotor el 22-10-2026**, con sus palabras: «Si a todo, la 5, va haber android y apple». Acepta las cuatro propuestas de la sección 10 y contesta la quinta: habrá Android y también iPhone y iPad. Las respuestas, y en qué corte entra cada una, están en las secciones 9 y 10. **Da permiso para subir y mezclar C3c** cuando la CI esté en verde; para E4e, C3d y C3e se vuelve a pedir. La revisión crítica contra el código está hecha (sección «Revisión», al final), y la maqueta está corregida según esa revisión.
 
-**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). **E4e entregado el 26-10** (`docs/native/E4e-alergias-antes-de-enviar.md`; ver la sección 4.2), con el permiso de subida y mezcla del promotor («sube y mezcla»). Siguiente: C3d.
+**C3c entregado el 22-10** (`docs/native/C3c-dos-apps.md`; ver la sección 4.1). **E4e entregado el 26-10** (`docs/native/E4e-alergias-antes-de-enviar.md`; ver la sección 4.2), con el permiso de subida y mezcla del promotor («sube y mezcla»). **C3d entregado el 27-10** (`docs/native/C3d-costina-cocina.md`; ver la sección 4.3), con el permiso de subida y mezcla del promotor («si, adelante»). Siguiente: C3e.
 
 **Maqueta:** `docs/plans/maquetas/2026-10-22-sala-y-cocina.html` (se abre en el navegador; pestañas: instalar, mis mesas, mesa, estación, pase, aviso y servido) y capturas en `docs/plans/maquetas/2026-10-22-sala-y-cocina/`.
 
@@ -612,6 +612,13 @@ Sigue siendo requisito la guarda del instalador contra bajar de versión (`AGENT
   - las claves no tienen dinero.
 
 ### 4.3. C3d: Costiña Cocina, comandas por mesa (`0.45.0-c3d`, sin cambio de esquema ni de motor)
+
+**Entregado el 27-10**: `docs/native/C3d-costina-cocina.md`, con sus capturas en `docs/native/images/c3d/`, su ADR, `docs/ADR/ADR-017-la-estacion-ve-solo-lo-suyo.md`, y los pasos de `docs/plans/2026-10-27-c3d-costina-cocina.md`. Incluye todo el alcance de abajo con las respuestas 1 a 4 (solo «Listo»; «Marcar <estación> como lista» en «Más opciones»; ámbar a los 15 y a los 25 minutos, nunca rojo; sonido tras «Empezar turno»), con estas concreciones:
+- **El carril de las pruebas de navegador:** el proyecto `tableta` usa M8, la mesa de cocina que el escritorio deja, y la libera en `finally`, como `drinks.spec`. No se crean mesas.
+- **«Empezar turno»** es una franja encima de las comandas, no una pantalla que las tape: sin el toque solo falta el sonido.
+- **Un pase validado con algo por revisar** sigue en las comandas del pase, no en «Esperando al camarero».
+- **El PC cambia un poco** con la tabla común `kitchen-cases.json`: una restricción de toda la mesa ya no se repite en cada línea, y un plato para compartir dice de quién es la alergia.
+- **Para revisar con el promotor:** dieciocho decisiones pequeñas y cinco diferencias con la maqueta, en el documento del corte.
 
 Necesita E4e (órdenes de grupo y revisión antes de enviar) y la maqueta aprobada.
 

@@ -10,6 +10,8 @@ Fecha: 2026-10-27. **Estado: APROBADO.** Aquí solo se baja a pasos lo que ya es
 
 **27-10, «si, adelante»:** permiso para subir y mezclar C3d cuando la CI esté en verde.
 
+**Entregado el 27-10**, en los cinco pasos de abajo: `docs/native/C3d-costina-cocina.md` (con las capturas, las decisiones para revisar, las pruebas en rojo y el guion de laboratorio) y `docs/ADR/ADR-017-la-estacion-ve-solo-lo-suyo.md`. Concreciones del corte: seis capturas en lugar de cinco (también el pase entero, con «Esperando al camarero»), y el paso 5 hecho en un solo commit `docs(native)` con el ADR.
+
 - **Base:** `develop` en `d4f095b` (`0.44.0-e4e`, esquema v8).
 - **Rama:** `feat/c3d-costina-cocina`.
 - **Versión:** `0.45.0-c3d`.
