@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
-  alsoText, AMBER_MINUTES, DARK_AMBER_MINUTES, dishes, dishNote, dishState, dishText, doneText, elapsedText, exceptionLine, lineRestrictions,
-  listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText, passTickets, PRESEND_DECISIONS, presendReviews,
-  progressText, readyBody, readySince, restBody, restOfGuest, reviewNoteOk, seesWholeTable, shouldChime, stationTickets, TicketWatch, timeTone,
-  waitingForWaiter, wholeTable,
+  alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, dishAlarming, dishes, dishNote, dishState, dishText, doneText,
+  elapsedText, exceptionLine, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText, NOTE_SHORTCUTS,
+  noteReady, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS,
+  reviewNoteOk, ringKeys, seesWholeTable, shouldChime, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
 
@@ -224,11 +224,21 @@ describe('the pass sees the whole table', () => {
       prep('pan-1', 'Pan', 'pase', 1), prep('t-1', 'Tosta', 'bar', 1)])])]
     const [ticket] = passTickets(board)
     expect(ticket.marks).toEqual([{ stationId: 'cold', itemIds: ['o-1'] }, { stationId: 'bar', itemIds: ['t-1'] }])
-    expect(ticket.passWork).toEqual(['pan-1'])
     expect(ticket.marks.map(mark => markLabel(mark, nameOf))).toEqual(['Marcar Cocina fría como lista', 'Marcar bar como lista'])
+    // Lo que se emplata en el pase lleva su «Listo» en SU plato, con solo lo suyo; los platos de las estaciones, ninguno (para eso, «Marcar …»).
+    expect(ticket.dishes.map(dish => [dish.name, passDishIds(ticket, dish)])).toEqual([['Zamburiñas', []], ['Ostras', []], ['Salpicón', []], ['Pan', ['pan-1']], ['Tosta', []]])
     // Sin la orden de grupo anunciada en el pase (una estacion, un rol de sala), no hay nada que marcar.
     const quiet = passTickets([entry('M9', [{ ...board[0].service.courses[0], actions: [] }])])[0]
-    expect([quiet.marks, quiet.passWork]).toEqual([[], []])
+    expect([quiet.marks, quiet.dishes.flatMap(dish => passDishIds(quiet, dish))]).toEqual([[], []])
+  })
+  it('the header counts the tickets, and on the pass also the guests to review before sending', () => {
+    expect([countText(1, null), countText(4, null), countText(0, null)]).toEqual(['1 comanda', '4 comandas', '0 comandas'])
+    expect(countText(4, 1)).toBe('4 comandas · 1 por revisar')
+  })
+  it('a dish is red when one of its exceptions alarms; amber otherwise', () => {
+    const [merluza] = stationTickets(BOARD, 'hot').find(ticket => ticket.entry.service.tableId === 'M4')!.dishes
+    expect(dishAlarming(merluza)).toBe(true)
+    expect(dishAlarming(dishes([prep('o-1', 'Ostra', 'cold', 1, { restrictions: [CORIANDER], review: { decision: 'Unaffected', note: 'x', at: AT } })])[0])).toBe(false)
   })
   it('«Esperando al camarero»: validated and not served, oldest first, with the time since it was validated', () => {
     const board = [
@@ -291,6 +301,38 @@ describe('a new ticket rings (after «Empezar turno»)', () => {
   })
   it('it sounds only with something new and the shift started (the browser lets it play only after a touch)', () => {
     expect([shouldChime(['k'], true), shouldChime(['k'], false), shouldChime([], true)]).toEqual([true, false, false])
+  })
+  it('what rings is each screen\'s grid: a station\'s tickets still to do, every ticket of the pass', () => {
+    expect(ringKeys(BOARD, 'hot')).toEqual(['s-M1:segundo', 's-M4:principal'])                // M9 ya esta hecho: en la franja no suena
+    expect(ringKeys(BOARD, 'pase')).toEqual(passTickets(BOARD).map(ticket => ticket.key))
+    expect(ringKeys(BOARD, null)).toEqual(ringKeys(BOARD, 'pase'))
+    expect(ringKeys(BOARD, 'bar')).toEqual([])
+  })
+})
+
+describe('two screens at once on the same table (version_conflict)', () => {
+  it('only a version_conflict rejection asks to tap again; never a resend with another key', () => {
+    expect(versionConflict({ kind: 'rejected', status: 409, code: 'version_conflict' })).toBe(true)
+    for (const outcome of [{ kind: 'rejected', status: 409, code: 'wrong_station' }, { kind: 'confirmed', response: {} }, { kind: 'unconfirmed', reason: 'network' }, null] as const)
+      expect(versionConflict(outcome)).toBe(false)
+    expect(CONFLICT_TEXT).toBe('Otra pantalla cambió esta mesa a la vez. Ya se ha vuelto a leer: toca otra vez si sigue haciendo falta.')
+  })
+})
+
+describe('note shortcuts of the pass: they fill the note in view', () => {
+  it('«No lo lleva», «Sin gluten» and «Cambiado por …»', () => {
+    expect(NOTE_SHORTCUTS.map(shortcut => shortcut.label)).toEqual(['No lo lleva', 'Sin gluten', 'Cambiado por …'])
+    expect(applyShortcut(NOTE_SHORTCUTS[0])).toBe('No lo lleva')
+    expect(applyShortcut(NOTE_SHORTCUTS[1])).toBe('Sin gluten')
+    expect(applyShortcut(NOTE_SHORTCUTS[2])).toBe('Cambiado por ')
+    expect(NOTE_SHORTCUTS.map(shortcut => shortcut.open)).toEqual([false, false, true])   // «Cambiado por …» deja escribir el resto
+  })
+  it('a note that is only «Cambiado por» is not a decision yet: it says by what', () => {
+    expect([noteReady('No lo lleva'), noteReady('Sin gluten'), noteReady('Cambiado por flan de huevo')]).toEqual([true, true, true])
+    expect([noteReady('Cambiado por '), noteReady('  cambiado por'), noteReady('Cambiado por …'), noteReady(''), noteReady(' a ')]).toEqual([false, false, false, false, false])
+  })
+  it('what was sent and has to be reviewed: «No le afecta», «Adaptado» and «Rehacer», the words of Sala and the PC', () => {
+    expect(REVIEW_DECISIONS.map(option => [option.decision, option.label])).toEqual([['unaffected', 'No le afecta'], ['adapt', 'Adaptado'], ['remake', 'Rehacer']])
   })
 })
 

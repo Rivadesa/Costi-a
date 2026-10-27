@@ -9,6 +9,7 @@ import Icon from './Icon.vue'
 // D6.7: una orden pendiente es siempre de ESTE dispositivo y nombre (lo de otro nombre llega como bloqueada), asi que la
 // frase "reintentarla es segura" solo se dice donde es cierta. Las tres causas de bloqueo (otro nombre, otra instalacion,
 // ilegible) se ven con su titulo y solo con los botones que les corresponden. C3a: el aspecto nuevo, los mismos textos y botones.
+// C3d: un hueco en la fila del enlace para lo que cada pantalla quiera tener siempre a la vista (en cocina, las comandas y la hora).
 defineProps<{ state: LiveState; runnerState: RunnerState; age: number | null; stale: boolean }>()
 defineEmits<{ retry: []; reconcile: []; discard: []; refresh: [] }>()
 </script>
@@ -18,6 +19,8 @@ defineEmits<{ retry: []; reconcile: []; discard: []; refresh: [] }>()
     <p class="net" :class="{ warn: state.link !== 'live' }" role="status"><span class="dot" aria-hidden="true"></span><span data-testid="link">{{ LINK_TEXT[state.link] }}</span></p>
     <!-- En un movil, la antiguedad en corto al lado del enlace («Leído hace 3 s»): una fila menos sobre la mesa, y siempre a la vista. -->
     <p class="age" :class="{ stale }" data-testid="age"><span class="age-l">Última lectura del servidor: {{ ageLabel(age) }}</span><span class="age-s">{{ ageShort(age) }}</span><strong v-if="stale"> · DATOS ANTIGUOS</strong></p>
+    <!-- C3d: Costina Cocina pone aqui, en la misma fila, cuantas comandas hay y la hora. Sala no pone nada. -->
+    <slot />
     <button type="button" class="btn btn-quiet refresh" data-testid="refresh" @click="$emit('refresh')"><Icon name="refresh" /><span class="refresh-t">Actualizar</span></button>
   </div>
 

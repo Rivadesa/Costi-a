@@ -10,6 +10,8 @@
   --warn-soft: #FDF1DE; --warn-line: #EBC88C; --warn-text: #8A4B0A;
   --danger-soft: #FDECEA; --danger-line: #F4C7C2; --danger-text: #A3231A;
   --info-soft: #E6EEFB; --info-text: #1D4C9C;
+  /* C3d: el tiempo de una comanda en cocina, nunca rojo: ambar desde 15 minutos y ambar oscuro con letra blanca desde 25. */
+  --time-amber-bg: #FFF2C4; --time-amber-text: #6B5000; --time-amber-line: #E6CB6E; --time-late-bg: #8A5300;
   --touch: 48px; --touch-kitchen: 64px;
   --radius: 14px; --radius-sm: 10px;
   color-scheme: light;
@@ -255,37 +257,166 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .guest-row:first-of-type { border-top: 0; }
 .guest-row .row > select { flex: 1 1 12rem; width: auto; }
 
-/* ---------- Pantalla de cocina (D6.4): tablet, manos ocupadas o mojadas. Botones de 64 px y texto siempre. ---------- */
+/* ---------- C3d: Costiña Cocina (maqueta 2026-10-22, «3 · Cocina · estación» y «4 · Cocina · pase») ----------
+   Tablet horizontal de 1180 x 820 leida a uno o dos metros, con las manos ocupadas o mojadas: el titulo de la comanda de 24 px, los
+   platos de 22 px con la cantidad de 28 px, la linea de alergia de 18 px en negrita, el tiempo de 18 px y botones de 64 px; nada
+   operativo por debajo de 16 px (tests/views.test.ts lo mide en este bloque). El rojo es SOLO de las alergias que alarman; el ambar, de
+   lo pendiente y del tiempo (que nunca es rojo); todo aviso va escrito y con su icono. Los botones, con el acento de siempre. */
 .app:has(.kitchen) { max-width: 100rem; }
-.tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 14px; align-items: start; }
-.ticket { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 16px; background: var(--surface); border: 1.5px solid var(--border); box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
-.ticket h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 19px; font-weight: 700; }
-.ticket-sub { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14.5px; }
-.prep { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 2px; border-top: 1px solid var(--border); }
-.prep-title { font-size: 16.5px; overflow-wrap: anywhere; }
-/* Lo de otra estacion se atenua solo en su rotulo y lo dice con texto; un aviso de restriccion nunca se atenua. */
-.prep-title.other { color: var(--muted); }
-.kbtn { min-height: var(--touch-kitchen); min-width: 8.5rem; font-size: 17px; border-radius: 14px; }
-.kbtn.wide { width: 100%; }
+.app[data-app="cocina"] .net, .app[data-app="cocina"] .age { font-size: 16px; }
+.kitchen { display: flex; flex-direction: column; gap: 14px; }
+.kitchen > .status, .kitchen > .status-panels { margin-bottom: 0; }
+.kitchen .pill { font-size: 16px; }
+.kitchen .lbl { font-size: 16px; }
+.k-meta { margin-left: auto; display: flex; align-items: baseline; gap: 16px; }
+.k-meta ~ .refresh { margin-left: 0; }
+.k-count { font-size: 17px; color: var(--muted); }
+.k-clock { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.k-btn { min-height: var(--touch-kitchen); min-width: 8.5rem; padding: 0 16px; border-radius: 14px; font-size: 17px; font-weight: 700; }
+.k-btn.wide { width: 100%; }
+
+/* «Empezar turno»: una franja arriba que no tapa las comandas. Despues, una linea que dice si suena y que pasa con la pantalla. */
+.shift { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 16px; border-radius: 16px; background: var(--accent-soft); border: 1.5px solid var(--accent-line); }
+.shift-t { flex: 1 1 22rem; font-size: 18px; font-weight: 600; }
+.shift-go { flex: 0 1 auto; padding: 0 28px; font-size: 20px; }
+.shift-on { display: flex; align-items: flex-start; gap: 8px; font-size: 16px; font-weight: 600; color: var(--ok-text); }
+.shift-on.warn { color: var(--warn-text); }
+.shift-on .icon { margin-top: 1px; }
+.k-empty { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px 16px; border-radius: 16px; border: 1px dashed var(--border-strong); background: var(--chrome); color: var(--muted); font-size: 18px; text-align: center; }
+
+/* La comanda: cabecera con la mesa y el pase, las personas y el tiempo. */
+.k-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 12px; align-items: start; }
+.tk, .pc { display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0, 0, 0, .07); }
+.tk-h { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+.tk-name { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.tk-s2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; margin-top: 6px; font-size: 16px; color: var(--muted); }
+/* El tiempo (respuesta 3 del 22-10), siempre escrito: neutro, ambar desde 15 minutos y ambar oscuro con letra blanca desde 25. */
+.tmr { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 10px; font-size: 18px; font-weight: 700; white-space: nowrap; }
+.tmr.t-neutral { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+.tmr.t-amber { background: var(--time-amber-bg); color: var(--time-amber-text); border: 1px solid var(--time-amber-line); }
+.tmr.t-late { background: var(--time-late-bg); color: #FFFFFF; border: 1px solid var(--time-late-bg); }
+.k-paused { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn-text); font-size: 16px; font-weight: 700; }
+/* Restricciones y excepciones: tipo, sustancia y gravedad escritos, nunca atenuados. Rojo si alarman; si no, ambar. */
+.k-whole, .k-als { display: flex; flex-direction: column; gap: 6px; }
+.tk > .k-whole { padding: 10px 8px 0; }
+.pc > .k-whole { padding: 0 14px 10px; }
+.k-al { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.k-al .icon { margin-top: 2px; }
+.k-al.alarm { background: var(--danger-soft); border: 2px solid var(--danger-text); color: var(--danger-text); }
+.k-al.warn { background: var(--warn-soft); border: 2px solid var(--warn-line); color: var(--warn-text); }
+
+/* Estacion: un plato por tarjeta («Merluza á galega × 4 (1 adaptada)»), su «Listo» con dos platos o mas y el «Listo» grande. */
+.tk-b { display: flex; flex-direction: column; gap: 8px; padding: 10px 8px; }
+.dg { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 8px 10px 12px; border-radius: 12px; background: var(--surface2); }
+.dg-n { min-width: 0; }
+.dg-n b { display: block; font-size: 22px; line-height: 1.2; overflow-wrap: anywhere; }
+.dg-qr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin-top: 2px; }
+.dg-q { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.dg-x { font-size: 16px; font-weight: 700; color: var(--warn-text); }
+.dg-x.alarm { color: var(--danger-text); }
+.dg .k-als { grid-column: 1 / -1; }
+/* Un plato ya listo en una comanda que sigue: el nombre en gris y «Lista» en verde. Sus alergias, nunca en gris. */
+.dg.done { background: transparent; border: 1px dashed var(--border-strong); }
+.dg.done .dg-n b, .dg.done .dg-q { color: var(--muted); }
+.dg-ok { display: inline-flex; align-items: center; gap: 5px; padding-right: 6px; color: var(--ok-text); font-size: 17px; font-weight: 700; }
+.listo { min-width: 92px; min-height: var(--touch-kitchen); padding: 0 10px; border-radius: 12px; border: 2px solid var(--accent); background: var(--surface); color: var(--accent-text); font-size: 19px; font-weight: 800; }
+.listo:disabled { border-color: var(--border); background: var(--surface2); color: var(--muted); cursor: default; }
+.also { display: flex; align-items: center; gap: 6px; padding: 2px 4px; font-size: 16px; color: var(--muted); }
+.k-conflict { display: flex; align-items: flex-start; gap: 8px; margin: 0 8px 8px; padding: 10px 12px; border-radius: 10px; background: var(--info-soft); color: var(--info-text); font-size: 16px; font-weight: 600; }
+.k-conflict .icon { margin-top: 1px; }
+.pc .k-conflict { margin: 0 14px 4px; }
+.rv-c .k-conflict { margin: 0; }
+.tk-f { padding: 0 8px 10px; }
+.todo { width: 100%; min-height: var(--touch-kitchen); display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; background: var(--accent); color: #FFFFFF; font-size: 21px; font-weight: 800; }
+.todo:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+/* «Hecho · esperando al pase»: lo suyo terminado hasta que el pase valida, sin hora y sin deshacer; las alergias tambien aqui. */
+.done-band { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-radius: 16px; background: var(--chrome); border: 1px solid var(--border); }
+.db-l { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.db-l .icon, .hrow > .icon { color: var(--ok); }
+.db-empty { font-size: 16px; color: var(--muted); }
+.db-list { flex: 1 1 20rem; min-width: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.hrow { flex: 0 1 26rem; min-width: 0; min-height: 56px; display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 16px; color: var(--muted); }
+.hrow > .icon { margin-top: 2px; }
+.hr-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.hr-t b { color: var(--text); }
+
+/* Pase: «Por revisar antes de enviar» y «Esperando al camarero» a la derecha (arriba en una pantalla estrecha); las comandas, con la
+   mesa entera, a la izquierda. */
+.pase-body { display: flex; flex-direction: column; gap: 16px; }
+.pside { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.pmain { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.side-sec { display: flex; flex-direction: column; gap: 8px; }
+.side-h { display: flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 700; }
+.side-h .cnt { min-width: 30px; height: 30px; padding: 0 9px; border-radius: 15px; background: var(--surface); border: 1px solid var(--border); font-size: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.side-hint { font-size: 16px; color: var(--muted); }
+.presend { display: flex; flex-direction: column; gap: 10px; }
+.rv-c { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 16px; background: var(--surface); border: 2px solid var(--danger-text); }
+.rv-c.warn { border-color: var(--warn-line); }
+.rv-t { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.rv-t h3 { flex: 1; min-width: 0; font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.rv-list { display: flex; flex-direction: column; gap: 10px; }
+.rv-d { display: flex; flex-direction: column; gap: 2px; }
+.rv-d small { font-size: 16px; color: var(--muted); }
+.rv-d b { font-size: 19px; line-height: 1.2; overflow-wrap: anywhere; }
+/* Una revision: la nota obligatoria, los atajos que la rellenan a la vista y las decisiones, a partes iguales y de 64 px. */
 .review { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2px solid var(--danger-line); border-radius: 12px; background: var(--danger-soft); }
 .review .lbl { color: var(--danger-text); }
 .review input { min-height: var(--touch-kitchen); }
-/* Las tres decisiones en una fila, a partes iguales (siguen de 64 px de alto y de mas de 64 de ancho, tambien a 375 px). */
 .review .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .review .row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.review .kbtn { min-width: 0; padding: 0 8px; }
-/* E4e: «Por revisar antes de enviar» (solo el pase), siempre encima de las comandas. Lo pendiente va en ambar; una restriccion que
-   alarma, en rojo y escrita. «No le afecta a nada más», en el verde suave del acento (es una decision, no un aviso). */
-.presend { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; padding: 14px; border-radius: 16px; background: var(--warn-soft); border: 1.5px solid var(--warn-line); }
-.presend h2 { display: flex; align-items: center; gap: 8px; font-size: 21px; font-weight: 700; color: var(--warn-text); }
-.presend-help { font-size: 15px; }
-.presend-guest { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
-.presend-guest h3 { font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
-.presend-guest > ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 10px; }
+.review .k-btn { min-width: 0; padding: 0 8px; }
 .review.presend-item { border-color: var(--warn-line); background: var(--warn-soft); }
 .review.presend-item .lbl { color: var(--warn-text); }
 .review.rest { border-color: var(--accent-line); background: var(--accent-soft); }
 .review.rest .lbl { color: var(--accent-text); }
+.k-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-chip { min-height: 52px; min-width: 48px; padding: 0 14px; border-radius: 26px; border: 1.5px solid var(--accent-line); background: var(--surface); color: var(--accent-text); font-size: 16px; font-weight: 700; }
+.k-chip:disabled { border-color: var(--border); color: var(--muted); cursor: default; }
+.wt { display: flex; flex-direction: column; gap: 8px; }
+.wt-r { min-height: 60px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-size: 17px; color: var(--muted); }
+.wt-r > .icon { color: var(--ok); }
+.wt-r span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wt-r b { color: var(--text); }
+/* La comanda del pase: el progreso de cada estacion, los platos con su estado, lo siguiente y, abajo, validar o lo que falta. */
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 14px; align-items: start; }
+.pc.all { border: 2px solid var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+.pc-st { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; }
+.schip { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 12px; border-radius: 18px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 16px; font-weight: 700; }
+.schip.ok { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok-text); }
+.pd-l { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.pd { display: flex; flex-direction: column; gap: 6px; }
+.pd-r { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 40px; }
+.pd-s { display: flex; align-items: center; justify-content: center; }
+.pd.ok .pd-s { color: var(--ok); }
+.todo-dot { display: block; width: 20px; height: 20px; border-radius: 10px; border: 2.5px solid #A9B0B9; }
+.pd-n { min-width: 0; font-size: 22px; line-height: 1.2; overflow-wrap: anywhere; }
+.pd-q { font-size: 28px; font-weight: 800; white-space: nowrap; }
+.pd-x { margin-left: 6px; font-size: 16px; font-weight: 700; color: var(--warn-text); }
+.pd-x.alarm { color: var(--danger-text); }
+.pd-at { display: block; font-size: 16px; color: var(--muted); }
+.pd-st { font-size: 16px; font-weight: 600; white-space: nowrap; }
+.pd.ok .pd-st { color: var(--ok-text); }
+.pd-al { margin-left: 36px; }
+.pc-next { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 16px; color: var(--muted); }
+.pc-f { display: flex; flex-direction: column; gap: 10px; padding: 6px 14px 14px; }
+.pc-miss { display: flex; align-items: center; gap: 8px; padding-top: 4px; font-size: 18px; font-weight: 600; color: var(--muted); }
+.pase-go { width: 100%; min-height: var(--touch-kitchen); display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 14px; border: 0; border-radius: 14px; background: var(--accent); color: #FFFFFF; font-size: 20px; font-weight: 800; }
+.pase-go:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+.k-more > summary { min-height: 56px; font-size: 18px; }
+.k-more .more-b .k-btn { font-size: 18px; }
+@media (hover: hover) {
+  .listo:hover:not(:disabled), .k-chip:hover:not(:disabled) { background: var(--accent-soft); }
+  .todo:hover:not(:disabled), .pase-go:hover:not(:disabled) { background: var(--accent-hover); }
+}
+@media (max-width: 699px) {
+  .pd-al { margin-left: 0; }
+}
+@media (min-width: 1000px) {
+  .pase-body { display: grid; grid-template-columns: minmax(0, 1fr) 400px; grid-template-areas: "main side"; align-items: start; }
+  .pside { grid-area: side; }
+  .pmain { grid-area: main; }
+}
+/* ---------- Fin de Costiña Cocina ---------- */
 
 /* ---------- Emparejar, sin conexion y opciones ---------- */
 .pair-card { width: 100%; max-width: 36rem; margin: 8px auto 0; display: flex; flex-direction: column; gap: 14px; }

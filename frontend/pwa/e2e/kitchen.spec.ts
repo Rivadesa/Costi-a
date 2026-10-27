@@ -4,6 +4,9 @@ import { checkDevice, checkScreen, command, databaseOf, deviceContext, deviceNam
 // D6.4: pantalla de cocina por estacion contra el MOTOR REAL. C3a: con el aparato de cada proyecto (escritorio o movil tactil) y la
 // mesa de cocina de su carril (e2e/support.ts).
 // C3c: la credencial de una tablet de cocina vive en la base de Costina Cocina.
+// C3d (paso 3 del plan 2026-10-27): ajustada lo justo a la pantalla nueva (la estacion ve solo lo suyo, «Listo» es UNA orden y el pase
+// ve el progreso de cada estacion, marca por una estacion y deja lo validado en «Esperando al camarero»). El paso 4 la reescribe para
+// el proyecto `tableta`.
 const deviceToken = (page: Page) => storedToken(page, databaseOf('cocina'))
 
 test('a station marks only its own work, the pass reviews and validates, and everything is enabled by the server alone', async ({ browser, request }) => {
@@ -41,7 +44,7 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await expect(passPage.getByTestId(`presend-${TABLE}-1`)).toHaveCount(0)
   await checkScreen(passPage, 'pass before sending', true)
   const adapted = passPage.getByTestId(`presend-item-${TABLE}-p1-caliente-2`)
-  for (const button of await adapted.locator('button').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
+  for (const button of await adapted.locator('[data-testid^="do-"]').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
   await adapted.locator('input').fill('aceite de oliva en vez de mantequilla')
   let before = await version()
   await press(passPage.getByTestId(`do-presend-adapt-${TABLE}-p1-caliente-2`))
@@ -50,7 +53,8 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   const rest = passPage.getByTestId(`presend-rest-${TABLE}-2`)
   await expect(rest).toContainText('No le afecta a nada más · 2 platos')
   await expect(passPage.getByTestId(`do-presend-rest-${TABLE}-2`)).toBeDisabled()
-  await rest.locator('input').fill('no lleva lactosa')
+  await press(rest.getByRole('button', { name: 'No lo lleva' }))                             // C3d: el atajo rellena la nota a la vista
+  await expect(rest.locator('input')).toHaveValue('No lo lleva')
   before = await version()
   await press(passPage.getByTestId(`do-presend-rest-${TABLE}-2`))
   await expect(guest).toHaveCount(0, { timeout: 15_000 })
@@ -67,36 +71,42 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   await salaContext.close()
 
   const course = (await read(request, serviceId)).data.courses[0]
-  const cold = course.preparations.find(p => p.stationId === 'cold')!, hot = course.preparations.find(p => p.stationId === 'hot')!
-  const id = (action: string, preparationId: string) => `do-${action}-${TABLE}-${course.id}-${preparationId}`
+  const hot = course.preparations.find(p => p.stationId === 'hot')!
+  const ticketId = `${TABLE}-${course.id}`
 
-  // 1) ESTACION FRIA: ve el pase entero, lo ajeno atenuado y SIN botones; ni validar ni revisar.
+  // 1) ESTACION FRIA (C3d, ADR-017): solo lo suyo, agrupado («Preparación fría × 2»); lo de la caliente no se pinta, se nombra
+  //    («También en: Cocina caliente»). Ni validar ni revisar. «Empezar turno» deja sonar.
   const coldContext = await deviceContext(browser); const coldPage = await coldContext.newPage(); watch(coldPage, leaks, violations)
   await pairThroughTheUi(coldPage, request, deviceName('cold'), 'kitchen', 'cold')
   await expect(coldPage.getByTestId('kitchen')).toBeVisible(); await checkDevice(coldPage)
   await expect(coldPage.getByTestId('link')).toHaveText('Tiempo real activo', { timeout: 20_000 })
-  const coldTicket = coldPage.getByTestId(`ticket-${TABLE}-${course.id}`)
+  await press(coldPage.getByTestId('do-shift-start'))
+  await expect(coldPage.getByTestId('shift-on')).toContainText('Turno empezado')
+  const coldTicket = coldPage.getByTestId(`ticket-${ticketId}`)
   await expect(coldTicket).toBeVisible({ timeout: 15_000 })
   await expect(coldTicket.locator('h3')).toContainText(TABLE_NAME)                                         // el NOMBRE de la mesa, no su codigo
-  await expect(coldTicket).toContainText(/enviado hace/)
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${hot.id}`)).toContainText('Cocina caliente (otra estación)')
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`)).not.toContainText('(otra estación)')
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${hot.id}`).locator('button')).toHaveCount(0)
-  await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
+  await expect(coldTicket).toContainText(/Lleva/)
+  await expect(coldTicket.getByTestId(`dish-${ticketId}-0`)).toContainText('Preparación fría')
+  await expect(coldTicket.getByTestId(`dish-${ticketId}-0`)).toContainText('× 2')
+  await expect(coldTicket.getByTestId(`dish-${ticketId}-0`)).toContainText('Comensal 2 · Intolerancia lactosa (leve) · No le afecta: No lo lleva')
+  await expect(coldTicket).not.toContainText('Preparación caliente')
+  await expect(coldPage.getByTestId(`also-${ticketId}`)).toHaveText('También en: Cocina caliente')
+  await expect(coldTicket.locator('[data-testid^="do-listo-"]')).toHaveCount(1)                            // un solo plato: solo el «Listo» grande
+  await expect(coldPage.getByTestId(`do-ready-${ticketId}`)).toHaveCount(0)
   await checkScreen(coldPage, 'cold station', true)
 
-  // 2) Marca SU elaboracion: empezar -> lista. El servidor lo refleja.
-  await press(coldPage.getByTestId(id('preparation-start', cold.id)))
-  // El motor anuncia "empezar" y "marcar lista" A LA VEZ en una elaboracion enviada: la senal de que la primera orden
-  // se aplico y se releyo es el ESTADO escrito, no que el segundo boton exista (ya existia).
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· En preparación', { timeout: 15_000 })
-  await expect(coldPage.getByTestId(id('preparation-start', cold.id))).toHaveCount(0)
-  await press(coldPage.getByTestId(id('preparation-ready', cold.id)))
-  // La senal es el ESTADO escrito y que el servidor ya no anuncie la accion (no el texto del boton).
-  await expect(coldPage.getByTestId(`prep-${TABLE}-${course.id}-${cold.id}`).locator('.prep-title')).toContainText('· Lista', { timeout: 15_000 })
-  await expect(coldPage.getByTestId(id('preparation-ready', cold.id))).toHaveCount(0)
+  // 2) «Listo»: UNA orden preparations-ready con lo suyo (las dos elaboraciones frias); la version sube en uno y la comanda baja a
+  //    «Hecho · esperando al pase».
+  before = await version()
+  await press(coldPage.getByTestId(`do-listo-${ticketId}`))
+  const coldDone = coldPage.getByTestId(`done-${ticketId}`)
+  await expect(coldDone).toBeVisible({ timeout: 15_000 })
+  await expect(coldTicket).toHaveCount(0)
   await expect(coldPage.getByTestId('pending')).toHaveCount(0)
-  expect((await read(request, serviceId)).data.courses[0].preparations.find(p => p.id === cold.id)!.state).toBe('Ready')
+  expect(await version()).toBe(before + 1)
+  const marked = (await read(request, serviceId)).data.courses[0].preparations
+  expect(marked.filter(p => p.stationId === 'cold').map(p => p.state)).toEqual(['Ready', 'Ready'])
+  expect(marked.filter(p => p.stationId === 'hot').map(p => p.state)).toEqual(['Fired', 'Fired'])
 
   // 3) La frontera es el SERVIDOR, no la pantalla: con el token de este dispositivo, marcar lo de otra estacion es un rechazo wrong_station.
   const token = await deviceToken(coldPage)
@@ -106,53 +116,60 @@ test('a station marks only its own work, the pass reviews and validates, and eve
   const validate = await post(request, token, `/dining/services/${serviceId}/commands/ready`, { expectedVersion: (await read(request, serviceId)).version, courseId: course.id })
   expect(validate.status()).toBe(409); expect((await validate.json()).error).toBe('wrong_station')
 
-  // 4) Sala declara una alergia grave con el pase enviado: la estacion lo ve ESCRITO (tipo, sustancia, severidad), sin botones de revision.
+  // 4) Sala declara una alergia grave con el pase enviado: la estacion lo ve ESCRITO (tipo, sustancia, severidad), tambien en la franja
+  //    «Hecho», y sin botones de revision.
   await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
-  await expect(coldTicket).toContainText(/PENDIENTES? DE REVISIÓN/, { timeout: 15_000 })
-  await expect(coldTicket).toContainText('ALERGIA marisco (grave)')
+  await expect(coldDone).toContainText('Por revisar en el pase', { timeout: 15_000 })
+  await expect(coldDone).toContainText('ALERGIA marisco (grave)')
   await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                               // en NINGUNA mesa: el servidor no se lo anuncia a una estacion
 
-  // 5) PASE (el dispositivo del paso 0): todo es suyo para mirar; revisa con nota OBLIGATORIA. E4e (ADR-016): tambien puede marcar por
-  //    una estacion con la tablet estropeada, asi que el servidor le anuncia lo que falta de CUALQUIER estacion (lo ya listo de la fria, no).
-  const passTicket = passPage.getByTestId(`ticket-${TABLE}-${course.id}`)
+  // 5) PASE (el dispositivo del paso 0): la mesa entera, con el progreso de cada estacion y lo que falta; revisa con nota OBLIGATORIA.
+  //    E4e: puede marcar por una estacion con la tablet estropeada, desde «Más opciones» (lo ya listo de la fria, no).
+  const passTicket = passPage.getByTestId(`ticket-${ticketId}`)
   await expect(passTicket).toBeVisible({ timeout: 15_000 })
-  await expect(passTicket).not.toContainText('(otra estación)')
-  await expect(passPage.getByTestId(id('preparation-ready', hot.id))).toBeVisible()
-  await expect(passPage.getByTestId(id('preparation-ready', cold.id))).toHaveCount(0)
-  await expect(passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)            // con revisiones pendientes el servidor no anuncia validar
+  await expect(passPage.getByTestId(`progress-${ticketId}`)).toContainText('Cocina fría: lista')
+  await expect(passPage.getByTestId(`progress-${ticketId}`)).toContainText('Cocina caliente: 0 de 1 plato')
+  await expect(passPage.getByTestId(`missing-${ticketId}`)).toHaveText('Falta Cocina caliente y revisar la alergia')
+  await expect(passPage.getByTestId(`do-ready-${ticketId}`)).toHaveCount(0)                    // con revisiones pendientes el servidor no anuncia validar
+  const more = passPage.getByTestId(`more-${ticketId}`), mark = passPage.getByTestId(`do-mark-${ticketId}-hot`)
+  await press(more.locator('summary'))
+  await expect(mark).toHaveText('Marcar Cocina caliente como lista')
+  await expect(passPage.getByTestId(`do-mark-${ticketId}-cold`)).toHaveCount(0)
   await checkScreen(passPage, 'pass', true)
   const reviews = passTicket.locator('[data-testid^="review-"]')
   const pendingReviews = (await read(request, serviceId)).data.courses[0].preparations.filter(p => p.reviewPending).length
   expect(pendingReviews).toBeGreaterThan(0)
   await expect(reviews).toHaveCount(pendingReviews, { timeout: 15_000 })
-  for (const button of await reviews.first().locator('button').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
+  for (const button of await reviews.first().locator('[data-testid^="do-"]').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
   for (let left = pendingReviews; left > 0; left--) {
     await reviews.first().locator('input').fill('sin marisco, salsa aparte')
     await press(reviews.first().locator('[data-testid^="do-review-adapt-"]'))
     await expect(reviews).toHaveCount(left - 1, { timeout: 15_000 })                                       // relectura tras confirmar: version fresca
   }
-  await expect(passTicket).toContainText('Revisada: adaptada — sin marisco, salsa aparte')
-  await expect(coldTicket).toContainText('Revisada: adaptada', { timeout: 15_000 })                         // la estacion lo ve sola
+  await expect(passTicket).toContainText('Adaptado: sin marisco, salsa aparte')
+  await expect(coldDone).toContainText('Adaptado: sin marisco, salsa aparte', { timeout: 15_000 })          // la estacion lo ve sola
 
-  // 6) El resto de la cocina termina (por API): las elaboraciones son POR COMENSAL, asi que quedan varias de cada estacion.
-  //    Solo cuando TODAS estan listas el servidor anuncia VALIDAR, y solo al pase.
-  const ready = passPage.getByTestId(`do-ready-${TABLE}-${course.id}`)
+  // 6) El pase marca lo de la caliente (UNA orden). Solo cuando TODO esta listo el servidor anuncia VALIDAR, y solo al pase.
+  const ready = passPage.getByTestId(`do-ready-${ticketId}`)
   await expect(ready).toHaveCount(0)
-  await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: hot.id })
-  for (const preparation of (await read(request, serviceId)).data.courses[0].preparations.filter(p => p.state !== 'Ready'))
-    await command(request, serviceId, 'preparation-ready', { courseId: course.id, itemId: preparation.id })
+  if (!await mark.isVisible()) await press(more.locator('summary'))
+  before = await version()
+  await press(mark)
   await expect(ready).toBeVisible({ timeout: 15_000 })
-  await expect(coldPage.getByTestId(`do-ready-${TABLE}-${course.id}`)).toHaveCount(0)
+  expect(await version()).toBe(before + 1)
+  await expect(passPage.getByTestId(`progress-${ticketId}`)).toContainText('Cocina caliente: lista')
+  await expect(coldPage.getByTestId(`do-ready-${ticketId}`)).toHaveCount(0)
   await press(ready)
-  await expect(passTicket.locator('h3')).toContainText('Listo para servir', { timeout: 15_000 })          // el encabezado, no el texto del boton
-  await expect(ready).toHaveCount(0)
+  const waiting = passPage.getByTestId(`waiting-${ticketId}`)
+  await expect(waiting).toContainText(/listo hace/, { timeout: 15_000 })                                    // «Esperando al camarero»
+  await expect(passTicket).toHaveCount(0)
   await expect(passPage.getByTestId('pending')).toHaveCount(0)
   expect((await read(request, serviceId)).data.courses[0].state).toBe('Ready')
-  await expect(coldTicket).toHaveCount(0, { timeout: 15_000 })                                             // un pase listo ya no es trabajo de la estacion
+  await expect(coldDone).toHaveCount(0, { timeout: 15_000 })                                                // un pase listo ya no es trabajo de la estacion
 
-  // 7) Sala sirve: desaparece tambien del pase.
+  // 7) Sala sirve: desaparece tambien de «Esperando al camarero».
   await command(request, serviceId, 'serve', { courseId: course.id })
-  await expect(passTicket).toHaveCount(0, { timeout: 15_000 })
+  await expect(waiting).toHaveCount(0, { timeout: 15_000 })
 
   for (const [page, where] of [[coldPage, 'cold station'], [passPage, 'pass']] as const) await checkScreen(page, `${where} at the end`, true)
   expect(leaks, 'a kitchen device received financial data').toEqual([])

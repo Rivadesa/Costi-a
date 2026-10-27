@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -81,11 +81,53 @@ describe('words the views write as they are', () => {
     expect(ids.length).toBeGreaterThan(0)
     expect(labels).toEqual(ids)                                         // cada etiqueta apunta a SU campo
   })
+  it('Costiña Cocina: a station has only «Listo», never «Empezar» (promoter, 22-10); kitchen.ts is retired (C3d)', () => {
+    const kitchen = files.find(([name]) => name === 'views/KitchenView.vue')![1]
+    expect(kitchen).not.toMatch(/preparations?-start/)
+    expect(shown(kitchen).filter(text => /Empezar/.test(text) && text !== 'Empezar turno')).toEqual([])
+    expect(kitchen).not.toMatch(/from '\.\.\/kitchen'/)
+    expect(existsSync(folder('../src/kitchen.ts'))).toBe(false)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])
     const icon = files.find(([name]) => name === 'views/AppIcon.vue')![1]
     expect(icon).toMatch(/v-html="body"/)
     expect(icon).toMatch(/const body = computed\(\(\) => iconBody\(props\.app\)\)/)
+  })
+})
+
+// C3d (plan 2026-10-22, seccion 4.3): Costiña Cocina se lee a uno o dos metros, en una tablet horizontal de 1180 x 820. La hoja de la
+// cocina va en su propio bloque de style.css; aqui se miden sus reglas sin abrir un navegador (la E2E mide los botones de verdad).
+describe('Costiña Cocina reads at one or two metres (style.css)', () => {
+  const css = readFileSync(folder('../src/style.css')).toString('utf8').replace(/\r\n/g, '\n')
+  const start = css.indexOf('/* ---------- C3d: Costiña Cocina'), end = css.indexOf('/* ---------- Fin de Costiña Cocina')
+  const block = start >= 0 && end > start ? css.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '') : ''
+  const rules = [...block.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(match => ({ selectors: match[1].split(',').map(text => text.trim()), body: match[2] }))
+  const value = (selector: string, property: string) => {
+    const found = rules.filter(rule => rule.selectors.includes(selector)).map(rule => rule.body.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`))?.[1].trim()).filter(Boolean)
+    return found.at(-1) ?? ''
+  }
+  it('has its own block', () => { expect(rules.length).toBeGreaterThan(20) })
+  it('ticket title 24 px, dishes 22 px with the quantity at 28 px, the allergy line 18 px bold and the time 18 px', () => {
+    expect(value('.tk-name', 'font-size')).toBe('24px')
+    expect([value('.dg-n b', 'font-size'), value('.pd-n', 'font-size')]).toEqual(['22px', '22px'])
+    expect([value('.dg-q', 'font-size'), value('.pd-q', 'font-size')]).toEqual(['28px', '28px'])
+    expect([value('.k-al', 'font-size'), value('.k-al', 'font-weight')]).toEqual(['18px', '700'])
+    expect(value('.tmr', 'font-size')).toBe('18px')
+  })
+  it('the kitchen buttons are 64 px high', () => {
+    expect(css).toMatch(/--touch-kitchen: 64px/)
+    for (const selector of ['.todo', '.listo', '.pase-go', '.k-btn']) expect(value(selector, 'min-height'), selector).toBe('var(--touch-kitchen)')
+  })
+  it('nothing operational under 16 px', () => {
+    const sizes = rules.flatMap(rule => [...rule.body.matchAll(/font-size\s*:\s*([\d.]+)px/g)].map(match => [rule.selectors.join(', '), Number(match[1])] as const))
+    expect(sizes.length).toBeGreaterThan(20)
+    expect(sizes.filter(([, size]) => size < 16)).toEqual([])
+  })
+  it('the time is never red: neutral, amber and dark amber with white text', () => {
+    expect(value('.tmr.t-amber', 'background')).toBe('var(--time-amber-bg)')
+    expect([value('.tmr.t-late', 'background'), value('.tmr.t-late', 'color')]).toEqual(['var(--time-late-bg)', '#FFFFFF'])
+    expect(block.match(/\.tmr[^{]*\{[^}]*\}/g)?.join('') ?? '').not.toMatch(/danger/)
   })
 })

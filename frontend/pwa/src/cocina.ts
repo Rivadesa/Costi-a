@@ -1,3 +1,4 @@
+import type { Outcome } from './commands'
 import { dishGroups, restrictionAlarming } from './floor'
 import { guestLabel, minutesLabel, plural, preparationLabel, restrictionKindLabel, reviewOutcome, severityLabel } from './labels'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from './types'
@@ -11,7 +12,8 @@ import type { BoardEntry, Course, GuestRestriction, Preparation } from './types'
 //    enviar» (E4e);
 //  - los platos se agrupan con la regla COMUN con el PC (Costina.Client/DishGroups.cs; tabla dotnet/tests/fixtures/kitchen-cases.json);
 //  - el tiempo, siempre escrito, en ambar desde 15 minutos y en ambar oscuro desde 25: nunca en rojo, que es de las alergias;
-//  - las claves nuevas entre dos lecturas, para el sonido.
+//  - las claves nuevas entre dos lecturas, para el sonido (que pone turno.ts tras «Empezar turno»);
+//  - los atajos que rellenan la nota de una revision del pase, y el aviso de un version_conflict en la propia comanda.
 // Nada habilita nada: un boton existe solo si el servidor anuncia su accion en ESA elaboracion o en ESE pase (ya filtrada por rol y
 // estacion, D4.3a y E4e). Aqui solo se elige que elaboraciones lleva cada orden de grupo: las que anuncian la accion individual.
 
@@ -203,7 +205,6 @@ export interface PassTicket {
   reviews: Preparation[]            // lo enviado por revisar que el servidor deja revisar aqui
   canValidate: boolean              // el servidor anuncia ready: «Validar pase: listo para servir»
   marks: StationMark[]              // «Más opciones»: marcar por una estacion (no el pase), en UNA orden cada una
-  passWork: string[]                // lo que se emplata en el pase y el servidor deja marcar: su propio «Listo»
   next: Course | null               // el primer pase sin enviar de la mesa: «Siguiente: … (sin enviar)»
 }
 
@@ -239,7 +240,6 @@ export function passTickets(entries: readonly BoardEntry[]): PassTicket[] {
         marks: stations.filter(station => station !== PASS_STATION)
           .map(station => ({ stationId: station, itemIds: readyItems(course, course.preparations.filter(preparation => preparation.stationId === station)) }))
           .filter(mark => mark.itemIds.length > 0),
-        passWork: readyItems(course, course.preparations.filter(preparation => preparation.stationId === PASS_STATION)),
         next: entry.service.courses.find(candidate => same(candidate.state, 'Pending')) ?? null,
       })
     }
@@ -264,6 +264,17 @@ export function missingText(ticket: PassTicket, name: (stationId: string) => str
 
 // «Marcar Cocina fría como lista» (respuesta 2 del 22-10: el pase marca por una estacion con la tablet estropeada).
 export const markLabel = (mark: StationMark, name: (stationId: string) => string): string => `Marcar ${name(mark.stationId)} como lista`
+
+// Lo que se emplata en el propio pase (platos de la estacion `pase`) lleva su «Listo» en SU plato: una orden preparations-ready con solo
+// las elaboraciones de ese plato que el servidor deja marcar. Los platos de las estaciones no (para eso, «Marcar <estación> como lista»).
+export const passDishIds = (ticket: PassTicket, dish: Dish): string[] => dish.stationId === PASS_STATION ? dishReadyIds(ticket.course, dish) : []
+
+// La cabecera: «4 comandas»; en el pase, ademas, cuantos comensales hay por revisar antes de enviar («4 comandas · 1 por revisar»).
+export const countText = (tickets: number, reviews: number | null): string =>
+  reviews === null ? plural(tickets, 'comanda', 'comandas') : `${plural(tickets, 'comanda', 'comandas')} · ${reviews} por revisar`
+
+// El plato en rojo si alguna de sus excepciones alarma; si no, en ambar (nunca atenuado).
+export const dishAlarming = (dish: Dish): boolean => dish.exceptions.some(preparation => exceptionLine(preparation).alarming)
 
 // «Siguiente: Postre (sin enviar)», solo de lectura: el ritmo lo marca el camarero.
 export const nextText = (next: Course | null): string => next ? `Siguiente: ${next.name} (sin enviar)` : ''
@@ -327,6 +338,17 @@ export class TicketWatch {
 }
 // Suena solo con algo nuevo y despues de «Empezar turno»: el navegador no deja sonar hasta que se toca la pagina.
 export const shouldChime = (fresh: readonly string[], shiftStarted: boolean): boolean => shiftStarted && fresh.length > 0
+// Las claves que vigila cada pantalla: la rejilla. En una estacion, sus comandas por hacer (lo que baja a «Hecho» no suena; si vuelve
+// con un «Rehacer», si); en el pase (o sin estacion), todas sus comandas.
+export const ringKeys = (entries: readonly BoardEntry[], station: string | null | undefined): string[] =>
+  seesWholeTable(station) ? passTickets(entries).map(ticket => ticket.key)
+    : stationTickets(entries, station as string).filter(ticket => !ticket.done).map(ticket => ticket.key)
+
+// ---- Dos pantallas a la vez en la misma mesa ----
+// Un version_conflict (otra estacion toco la misma mesa a la vez) ya cierra la orden, sin aplicar nada, y relee (operations.ts). Aqui
+// solo se dice en la propia comanda que se toque otra vez: nunca se reenvia sola, ni con otra clave.
+export const CONFLICT_TEXT = 'Otra pantalla cambió esta mesa a la vez. Ya se ha vuelto a leer: toca otra vez si sigue haciendo falta.'
+export const versionConflict = (outcome: Outcome | null | undefined): boolean => outcome?.kind === 'rejected' && outcome.code === 'version_conflict'
 
 // ---- E4e (ADR-016): «Por revisar antes de enviar», del pase (movido tal cual de kitchen.ts) ----
 // Cocina decide cada plato de un comensal con restriccion ANTES de que salga su pase, y ese pase espera. Aqui se listan, por mesa y
@@ -387,9 +409,24 @@ export const PRESEND_DECISIONS = [
 // Formato de lo tecleado (lo unico local): la nota de una revision es obligatoria.
 export const reviewNoteOk = (note: string) => note.trim().length >= 2
 
-// Lo ENVIADO por revisar (D3.5): tambien «Rehacer», que devuelve el plato a la estacion y retira la validacion.
+// Atajos del pase que RELLENAN la nota a la vista (plan 2026-10-22, seccion 4.3): la nota sigue siendo obligatoria y se puede corregir.
+// «Cambiado por …» deja la nota abierta para escribir por que (open: la pantalla pone el cursor al final).
+export const NOTE_SHORTCUTS = [
+  { label: 'No lo lleva', text: 'No lo lleva', open: false },
+  { label: 'Sin gluten', text: 'Sin gluten', open: false },
+  { label: 'Cambiado por …', text: 'Cambiado por ', open: true },
+] as const
+export type NoteShortcut = typeof NOTE_SHORTCUTS[number]
+export const applyShortcut = (shortcut: NoteShortcut): string => shortcut.text
+// Una nota que es solo el principio de un atajo abierto («Cambiado por», o con sus puntos) aun no dice nada: no hay decision.
+const unfinished = (note: string) => NOTE_SHORTCUTS.some(shortcut => shortcut.open
+  && [shortcut.text, shortcut.label].some(start => note.trim().replace(/\s+/g, ' ').toLowerCase() === start.trim().toLowerCase()))
+export const noteReady = (note: string): boolean => reviewNoteOk(note) && !unfinished(note)
+
+// Lo ENVIADO por revisar (D3.5): tambien «Rehacer», que devuelve el plato a la estacion y retira la validacion. Con las palabras de
+// Sala y del PC («No le afecta», «Adaptado: …»).
 export const REVIEW_DECISIONS = [
-  { decision: 'unaffected', label: 'No afecta' },
-  { decision: 'adapt', label: 'Adaptar' },
+  { decision: 'unaffected', label: 'No le afecta' },
+  { decision: 'adapt', label: 'Adaptado' },
   { decision: 'remake', label: 'Rehacer' },
 ] as const
