@@ -125,6 +125,11 @@ describe('Costiña Cocina reads at one or two metres (style.css)', () => {
     expect(sizes.length).toBeGreaterThan(20)
     expect(sizes.filter(([, size]) => size < 16)).toEqual([])
   })
+  // Capturas de C3d: una fila de «Hecho» con alergias es mas alta; centrada, estiraba a las otras filas y bajaba la etiqueta.
+  it('the «Hecho» band aligns its rows at the top: a row with allergies stretches no other', () => {
+    expect([value('.done-band', 'align-items'), value('.db-list', 'align-items')]).toEqual(['flex-start', 'flex-start'])
+    expect([value('.db-l', 'min-height'), value('.db-empty', 'min-height'), value('.hrow', 'min-height')]).toEqual(['56px', '56px', '56px'])
+  })
   it('the time is never red: neutral, amber and dark amber with white text', () => {
     expect(value('.tmr.t-amber', 'background')).toBe('var(--time-amber-bg)')
     expect([value('.tmr.t-late', 'background'), value('.tmr.t-late', 'color')]).toEqual(['var(--time-late-bg)', '#FFFFFF'])

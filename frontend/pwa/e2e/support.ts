@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { deflateSync } from 'node:zlib'
 
 // C3a: lo comun de los specs E2E, que corren contra el MOTOR REAL en dos proyectos (escritorio y movil) con las MISMAS historias.
+// C3d: y la cocina en un tercero, `tableta` (1180 x 820, tactil), solo con sus historias.
 // El "PC principal" se simula por API con un token main; el navegador solo es el dispositivo. Todo JSON que llega al navegador pasa
 // la guarda de dinero (ADR-007) y lo que se VE no lleva palabras de caja. Cada proyecto tiene su carril: sus mesas y sus nombres de
 // dispositivo, porque los dos comparten el mismo motor (y la misma base) en una sola ejecucion.
@@ -89,19 +90,34 @@ export async function checkDevice(page: Page): Promise<void> {
 
 // ---- Carriles: mesas y nombres propios de cada proyecto (M2 es de pwa_http.py; M1 queda libre) ----
 export type Table = { id: string; name: string }
-export type Lane = { board: Table; commands: Table; kitchen: Table; tag: string }
+export type Lane = { board: Table; commands: Table }
 const table = (n: number): Table => ({ id: `M${n}`, name: `Mesa ${n}` })
 const LANES: Record<string, Lane> = {
-  desktop: { board: table(6), commands: table(7), kitchen: table(8), tag: 'pc' },
-  mobile: { board: table(3), commands: table(4), kitchen: table(5), tag: 'movil' },
+  desktop: { board: table(6), commands: table(7) },
+  mobile: { board: table(3), commands: table(4) },
 }
+// C3d (plan 2026-10-27, seccion 3): la cocina es una tablet. Sus historias corren SOLO en el proyecto `tableta`, con la mesa de cocina
+// que era del escritorio (M8); la del movil (M5) queda libre. Un solo proyecto la usa, una vez por ejecucion, y kitchen.spec la deja
+// libre al terminar (como drinks.spec con M1): no hace falta crear mesas.
+const KITCHEN_TABLES: Record<string, Table> = { tableta: table(8) }
+// La etiqueta de cada proyecto en los nombres de dispositivo.
+const TAGS: Record<string, string> = { desktop: 'pc', mobile: 'movil', tableta: 'tableta' }
 export function lane(): Lane {
   const found = LANES[test.info().project.name]
   if (!found) throw new Error(`El proyecto ${test.info().project.name} no tiene mesas propias (support.ts, LANES)`)
   return found
 }
-// Nombre de dispositivo unico por ejecucion Y por proyecto: los dos proyectos emparejan contra el mismo motor.
-export const deviceName = (kind: string) => `e2e-${kind}-${lane().tag}-${RUN}`
+export function kitchenTable(): Table {
+  const found = KITCHEN_TABLES[test.info().project.name]
+  if (!found) throw new Error(`El proyecto ${test.info().project.name} no tiene mesa de cocina: la cocina es del proyecto tableta (support.ts)`)
+  return found
+}
+// Nombre de dispositivo unico por ejecucion Y por proyecto: los proyectos emparejan contra el mismo motor.
+export function deviceName(kind: string): string {
+  const tag = TAGS[test.info().project.name]
+  if (!tag) throw new Error(`El proyecto ${test.info().project.name} no tiene etiqueta (support.ts, TAGS)`)
+  return `e2e-${kind}-${tag}-${RUN}`
+}
 
 // En el proyecto tactil se TOCA (eventos touch de verdad); en el de escritorio, clic de raton.
 export const press = (target: Locator) => test.info().project.use.hasTouch === true ? target.tap() : target.click()

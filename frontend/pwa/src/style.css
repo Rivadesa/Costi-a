@@ -330,11 +330,13 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .todo { width: 100%; min-height: var(--touch-kitchen); display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; background: var(--accent); color: #FFFFFF; font-size: 21px; font-weight: 800; }
 .todo:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
 /* «Hecho · esperando al pase»: lo suyo terminado hasta que el pase valida, sin hora y sin deshacer; las alergias tambien aqui. */
-.done-band { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border-radius: 16px; background: var(--chrome); border: 1px solid var(--border); }
-.db-l { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+/* Arriba, no centrado: una fila con alergias es mas alta y no estira a las demas ni baja la etiqueta (capturas de C3d). La etiqueta y
+   «Nada» miden lo que una fila (56 px), para quedar a su altura. */
+.done-band { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; padding: 12px 16px; border-radius: 16px; background: var(--chrome); border: 1px solid var(--border); }
+.db-l { display: inline-flex; align-items: center; gap: 6px; min-height: 56px; font-size: 16px; font-weight: 700; color: var(--muted); white-space: nowrap; }
 .db-l .icon, .hrow > .icon { color: var(--ok); }
-.db-empty { font-size: 16px; color: var(--muted); }
-.db-list { flex: 1 1 20rem; min-width: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.db-empty { display: inline-flex; align-items: center; min-height: 56px; font-size: 16px; color: var(--muted); }
+.db-list { flex: 1 1 20rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
 .hrow { flex: 0 1 26rem; min-width: 0; min-height: 56px; display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 16px; color: var(--muted); }
 .hrow > .icon { margin-top: 2px; }
 .hr-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
