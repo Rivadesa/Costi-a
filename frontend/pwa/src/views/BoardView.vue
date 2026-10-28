@@ -167,7 +167,8 @@ async function open(request: CommandRequest): Promise<void> {
   }
   if (here) openingTable.value = null
   const serviceId = outcome?.kind === 'confirmed' ? (outcome.response as { serviceId?: unknown } | null)?.serviceId : undefined
-  if (typeof serviceId === 'string' && (here || (openingTable.value === null && selectedId.value === null))) selectedId.value = serviceId
+  // Solo si seguia en la hoja (revision final de C3e): si la dejo, ni desde el plano se le lleva a la ficha, que cambiaria bajo su dedo.
+  if (typeof serviceId === 'string' && here) selectedId.value = serviceId
 }
 </script>
 

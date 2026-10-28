@@ -47,7 +47,8 @@ const step = (delta: number) => choosePax(Math.min(limit.value, Math.max(1, (Num
 // ---- ¿Que van a comer? ----
 // La propuesta (la primera vigente, «Menú del día») ya elegida; «Otro menú…» enseña las demas y, si hay menus con eleccion, «Más
 // opciones». La configuracion se relee al abrir la hoja (y tras un offer_unavailable): si nadie ha elegido aun se propone la nueva; si lo
-// elegido deja de estar vigente se vuelve a la propuesta.
+// que el camarero eligio deja de estar vigente, la hoja queda sin menu (como tras un offer_unavailable) y lo dice: nunca cambia sola a
+// otro menu que el no eligio (revision final de C3e).
 const groups = computed(() => offerGroups(props.offers))
 const offerId = ref(groups.value.proposed?.id ?? '')
 const touched = ref(false)
@@ -56,10 +57,15 @@ const choiceOpen = ref(false)
 // C3e (revision): tras un offer_unavailable el servidor pidio «elige otro». La hoja NO cambia sola a la nueva propuesta (un segundo toque
 // abriria la mesa con un menu que el camarero no eligio): queda sin menu y «Abrir» apagado hasta que toque uno.
 const mustPick = ref(false)
+const offerGone = ref(false)
 watch(() => props.rejection, rejection => { if (rejection?.code === 'offer_unavailable') { offerId.value = ''; touched.value = false; mustPick.value = true } })
 watch(() => props.offers.map(offer => offer.id).join('|'), () => {
   if (mustPick.value) return
-  if (!touched.value || !props.offers.some(offer => offer.id === offerId.value)) { offerId.value = groups.value.proposed?.id ?? ''; touched.value = false }
+  if (touched.value && !props.offers.some(offer => offer.id === offerId.value)) {
+    offerId.value = ''; touched.value = false; mustPick.value = true; offerGone.value = true
+    return
+  }
+  if (!touched.value) offerId.value = groups.value.proposed?.id ?? ''
 })
 const chosen = computed(() => props.offers.find(offer => offer.id === offerId.value) ?? null)
 // Lo elegido nunca queda escondido: otra oferta que la propuesta deja «Otro menú…» abierto, y un menu con eleccion, «Más opciones».
@@ -69,7 +75,7 @@ const mainOffers = computed(() => [...(groups.value.proposed ? [groups.value.pro
 const hiddenOffers = computed(() => groups.value.others.length + groups.value.withChoice.length)
 // Sin otras cartas ni menus cerrados, «Otro menú…» lleva directo a los menus con eleccion (no hace falta un segundo toque).
 function showOthers(): void { others.value = true; if (groups.value.others.length === 0) choiceOpen.value = true }
-function pick(id: string): void { offerId.value = id; touched.value = true; mustPick.value = false }
+function pick(id: string): void { offerId.value = id; touched.value = true; mustPick.value = false; offerGone.value = false }
 const describe = (offer: OfferChoice) => [offerKindLabel(offer.kind) === offer.name ? '' : offerKindLabel(offer.kind),
   offer.kind === 'a-la-carte' ? 'Platos sueltos de la carta' : offer.courses.length > 0 ? plural(offer.courses.length, 'pase', 'pases') : ''].filter(part => part).join(' · ')
 
@@ -214,6 +220,7 @@ function submit(): void {
          el camarero suele estar mas abajo, anotando alergias. -->
     <div class="bar">
       <p v-if="rejection" class="notice open-problem" role="alert" data-testid="open-rejected"><Icon name="info" />{{ rejection.text }}</p>
+      <p v-else-if="offerGone" class="notice open-problem" role="alert" data-testid="open-offer-gone"><Icon name="info" />Ese menú ya no se ofrece ahora: elige otro.</p>
       <p v-if="summary" class="bar-note" data-testid="open-summary"><b v-if="paxText">{{ paxText }}</b>{{ summaryRest }}</p>
       <p v-if="problem" class="notice open-problem" role="status" data-testid="open-problem"><Icon name="info" />{{ problem }}</p>
       <button type="button" class="btn btn-primary btn-big" :disabled="!canOpen" data-testid="do-open" @click="submit"><Icon name="users" :size="22" />Abrir {{ tableName }}</button>
