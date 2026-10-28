@@ -46,11 +46,14 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await checkScreen(page, 'table card')
 
   // 4) La ficha abierta tambien vive: cocina marca una elaboracion y se ve sin tocar nada.
+  // C3e: los platos van agrupados (pases.ts, la regla comun con Costina Cocina y el PC): la linea del plato dice su estacion y como van
+  // sus tres elaboraciones. En el primer pase del laboratorio cada plato es de una estacion: su linea es la de su primera aparicion.
   const course = (await read(request, serviceId)).data.courses[0]
   const hot = course.preparations.find(p => p.stationId === 'hot')!, cold = course.preparations.find(p => p.stationId === 'cold')!
-  await expect(detail.getByTestId(`prep-${hot.id}`)).not.toContainText('En preparación')
+  const dish = (stationId: string) => detail.getByTestId(`dish-${course.id}-${[...new Set(course.preparations.map(p => p.stationId))].indexOf(stationId)}`)
+  await expect(dish('hot')).toContainText('Cocina caliente · Por empezar')
   await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: hot.id })
-  await expect(detail.getByTestId(`prep-${hot.id}`)).toContainText('En preparación', { timeout: 10_000 })
+  await expect(dish('hot')).toContainText('Cocina caliente · 0 de 3 listas', { timeout: 10_000 })
 
   // 5) Sin red: lo dice, conserva lo ultimo leido y marca la antiguedad. Al volver, relee sola.
   await context.setOffline(true)
@@ -60,7 +63,7 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
   await command(request, serviceId, 'preparation-start', { courseId: course.id, itemId: cold.id })   // cambio ocurrido durante el corte (la API de test no pasa por el navegador)
   await context.setOffline(false)
   await expect(page.getByTestId('board-error')).toHaveCount(0, { timeout: 30_000 })
-  await expect(detail.getByTestId(`prep-${cold.id}`)).toContainText('En preparación', { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
+  await expect(dish('cold')).toContainText('Cocina fría · 0 de 3 listas', { timeout: 30_000 })   // lo ocurrido durante el corte aparece solo
   await expect(page.getByTestId('link')).toHaveText('Tiempo real activo', { timeout: 60_000 })
 
   // 6) Volver al plano: la mesa sigue con su estado y su aviso.
@@ -70,6 +73,9 @@ test('the waiter board follows the kitchen and the main PC in real time, with mo
 
   // 7) Con dos salas, la elegida sigue elegida al volver de una ficha (como SelectedZone en el Comedor). El laboratorio tiene una sola
   // sala: /configuration se reescribe EN EL NAVEGADOR (la mesa del carril pasa a una «Terraza»); el motor y la base no cambian.
+  // C3e: las pestanas de sala son de «Todas» («Mis mesas» va por salas, sin pestanas, y ensena todas las libres, tambien M1).
+  await press(page.getByTestId('board-scope-all'))
+  await expect(page.getByTestId('board-scope-all')).toHaveAttribute('aria-selected', 'true')
   const configurationRoute = '**/api/native/v1/configuration'
   await page.route(configurationRoute, async route => {
     const response = await route.fetch()

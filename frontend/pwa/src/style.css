@@ -175,36 +175,26 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .achip { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
 .achip.strong { border-color: var(--danger-line); color: var(--danger-text); font-weight: 700; }
 .alert-f { font-size: 14px; font-weight: 600; }
-.declare { border-top: 1px solid currentColor; border-top-color: rgba(0, 0, 0, .08); padding-top: 4px; color: var(--text); }
-.declare > summary { min-height: var(--touch); display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; list-style: none; }
-.declare > summary::-webkit-details-marker { display: none; }
 
 .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.entry { position: relative; min-height: 136px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); text-align: left; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
+/* C3e (revision): en fila tambien en el movil, como la maqueta («2 · Sala · Mesa»): el icono a la izquierda y el titulo a su lado, unos
+   64 px de alto, para que los pases empiecen en la primera pantalla. En el movil la linea de ayuda y la flecha se quitan (abajo, bloque
+   de Costiña Sala); desde 700 px, la entrada grande de siempre. */
+.entry { position: relative; min-height: 64px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); text-align: left; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
 .entry:hover { border-color: var(--accent); }
-.entry-ic { width: 50px; height: 50px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-text); display: flex; align-items: center; justify-content: center; flex: none; }
+.entry-ic { width: 42px; height: 42px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); display: flex; align-items: center; justify-content: center; flex: none; }
 .entry-tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.entry-t { font-size: 18px; font-weight: 700; line-height: 1.2; }
+.entry-t { font-size: 16.5px; font-weight: 700; line-height: 1.2; }
 .entry-s { font-size: 13px; color: var(--muted); }
-.entry-go { position: absolute; top: 14px; right: 12px; color: var(--muted); }
+.entry-go { margin-left: auto; color: var(--muted); }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
 .card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-bottom: 10px; }
 .card-h h3 { font-size: 16px; font-weight: 700; }
-.cpass { display: flex; flex-direction: column; gap: 8px; }
-.cpass > li { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 12px; background: var(--surface2); }
-.cpass > li.current { background: var(--surface); border: 2px solid var(--accent); }
 .pdot { width: 30px; height: 30px; border-radius: 15px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: var(--surface); color: var(--muted); border: 1px solid var(--border-strong); }
 .pdot.st-done { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 .pdot.st-ready { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok-text); }
 .pdot.st-kitchen { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn-text); }
-.cp-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.cp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.cp-head b { flex: 1; min-width: 0; font-size: 15.5px; }
-.cp-t small { font-size: 13px; color: var(--muted); }
-.preps { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.prep-line { padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); font-size: 14px; display: flex; flex-direction: column; gap: 3px; }
-.prep-line .meta { color: var(--muted); }
 .line-alert { display: flex; align-items: flex-start; gap: 6px; font-size: 13.5px; font-weight: 700; color: var(--warn-text); }
 .line-alert.alarm { color: var(--danger-text); }
 .line-alert .icon { margin-top: 1px; }
@@ -253,9 +243,6 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .oc-t b { font-size: 16.5px; }
 .oc-t small { color: var(--muted); font-size: 13.5px; }
 .tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 8px; background: var(--accent); color: #FFFFFF; font-size: 12px; font-weight: 700; vertical-align: 2px; }
-.guest-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
-.guest-row:first-of-type { border-top: 0; }
-.guest-row .row > select { flex: 1 1 12rem; width: auto; }
 
 /* ---------- C3d: Costiña Cocina (maqueta 2026-10-22, «3 · Cocina · estación» y «4 · Cocina · pase») ----------
    Tablet horizontal de 1180 x 820 leida a uno o dos metros, con las manos ocupadas o mojadas: el titulo de la comanda de 24 px, los
@@ -700,3 +687,195 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
   .banner .bn-x { flex: none; min-height: 54px; padding: 0 18px; }
   .banner > .bn-more { flex: 1 1 100%; }
 }
+
+/* ---------- C3e (plan 2026-10-27, paso 3): Costiña Sala (maqueta 2026-10-22, «1 · Sala · Mis mesas», «2 · Sala · Mesa», «5 · Sala · aviso» y
+   «6 · Sala · servido»; «Abrir mesa», maqueta del 15-10, «0 · Abrir mesa») ----------
+   «Mis mesas» y «Todas» (BoardView, MineList y TableTile), «Abrir mesa» con sus alergias (OpenTable), los pases agrupados y las hojas de
+   omitir y de alergias de la ficha (CoursesTimeline, SkipSheet y AllergySheet) y «Carta y menús» sin desplegables (DishPanel). Reutiliza lo
+   de siempre (.room, .tiles, .tile, .pax, .stepper, .offers, .ocard, .guests, .g, .seg, .field, .card, .sheet*, .qstep, .notice,
+   .alert-box, .bar-note); aqui solo va lo nuevo, con un prefijo por pantalla (board-, open-, fc-, carta-). El acento en los botones y en lo
+   que manda, el verde en lo listo, el ambar en lo pendiente y el rojo SOLO en lo que alarma; siempre escrito, nunca solo el color. Las
+   restricciones nunca se atenuan ni se cortan: se parten en lineas (overflow-wrap). Objetivos tactiles de 48 px o mas. Sin precios. */
+
+/* «Mis mesas» y «Todas»: un tablist; la pestana elegida va en blanco, con el texto del acento, en negrita y con sombra (nunca solo el
+   color). Las secciones reutilizan .room y .room-h del plano; las tarjetas, .tile. */
+/* La cabecera de las dos pestanas, del mismo alto: el resumen siempre en su linea (tambien vacio), y el segmento no se mueve al cambiar. */
+.board-h { flex-direction: column; align-items: flex-start; gap: 2px; }
+.board-h-sum { min-height: 1.4em; }
+.board-scope { display: flex; gap: 4px; padding: 4px; margin: 0 0 10px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--border); }
+.board-scope button { flex: 1 1 0; min-width: 0; min-height: var(--touch); padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-size: 16px; font-weight: 600; }
+.board-scope button:hover { color: var(--text); }
+.board-scope button[aria-selected="true"] { background: var(--surface); color: var(--accent-text); font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.board-hint { margin: 0 4px; font-size: 14px; color: var(--muted); }
+.board-empty { margin-top: 12px; }
+/* La primera seccion, bajo la ayuda; entre secciones manda .room + .room (18 px). */
+.board-room { margin-top: 14px; }
+.board-free-room + .board-free-room { margin-top: 14px; }
+.board-sub-h { margin: 0 4px 6px; font-size: 14px; font-weight: 700; color: var(--muted); }
+/* La tarjeta: el pase listo para servir (en verde, como la maqueta) y «Abrir mesa» en una libre, al pie. */
+.board-tile-what { align-self: flex-start; font-size: 14px; font-weight: 700; color: var(--ok-text); overflow-wrap: anywhere; }
+/* Una libre dice «Libre · 4 plazas» en su subtitulo, sin pastilla: solo tan alta como su contenido (en una fila con una ocupada, la rejilla
+   la estira igual), para que quepan mas libres en la pantalla de «Mis mesas». */
+.tile.free { min-height: 0; }
+.board-tile-open { align-self: flex-start; margin-top: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 600; color: var(--accent-text); }
+
+/* «Abrir mesa»: las tres preguntas en columna, la rejilla de 1 a 8, los botones que despliegan («Más…» y «Más opciones») y las filas de
+   alergias. Rojo SOLO en la fila que alarma (una alergia o una grave); si no, ambar; siempre con su texto. */
+.open-body { display: flex; flex-direction: column; gap: 18px; }
+.open-q { display: flex; flex-direction: column; gap: 8px; }
+.open-q > .q-h { margin: 4px 0 0; }
+/* Con 7 u 8 botones, dos filas de 4 en el movil (unos 80 px cada uno en 375 px); en la tableta, los 8 en una fila. */
+.pax.open-pax-8 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* «Más…» y «Más opciones» despliegan: abiertos, en gris neutro con la flecha hacia arriba (y aria-expanded). El verde del acento es solo
+   de lo ELEGIDO (.ocard, .pax, .seg): un desplegable abierto no debe leerse como otra opcion marcada. */
+.open-toggle[aria-expanded="true"] { background: var(--surface2); }
+.open-hint { font-size: 14px; color: var(--muted); }
+.open-none { display: flex; flex-direction: column; gap: 10px; }
+.open-rows { display: flex; flex-direction: column; gap: 10px; }
+.open-row { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px; border-radius: var(--radius); border: 1.5px solid var(--warn-line); background: var(--surface);
+  scroll-margin-top: 8px; }
+.open-row.open-alarm { border-color: var(--danger-line); }
+.open-row-h { display: flex; align-items: center; gap: 8px; min-height: var(--touch); font-size: 15px; font-weight: 700; color: var(--warn-text); }
+.open-row.open-alarm .open-row-h { color: var(--danger-text); }
+.open-row-h > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* «Quitar», como un enlace del color de la fila, con su objetivo de 48 px. */
+.open-remove { flex: none; min-height: var(--touch); min-width: var(--touch); margin-right: -8px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent;
+  color: inherit; font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.open-remove:hover { background: var(--surface2); }
+/* Tipo y gravedad en una fila en 375 px: «Alergia», «Intolerancia» y «Preferencia» caben con menos relleno. */
+.open-row .seg button { padding: 0 8px; font-size: 15.5px; }
+.open-problem { padding: 10px 12px; font-size: 14.5px; }
+.open-problem .icon { margin-top: 1px; }
+
+/* La ficha: la cabecera de la franja abre la hoja de alergias («Cambiar», «Anotar alergia o intolerancia» o «Ver alergias»), como enlace
+   del color de la franja. C3e (revision): «Cambiar» queda en la linea del titulo tambien en 375 px, como la maqueta (el titulo se parte
+   dentro de su caja si hace falta); solo un enlace largo («Anotar alergia o intolerancia») baja a su linea cuando no cabe junto al titulo. */
+.fc-al-h { flex-wrap: wrap; row-gap: 0; }
+.fc-al-ht { flex: 1 1 10rem; min-width: 0; overflow-wrap: anywhere; }
+.fc-al-open { flex: none; margin: -12px -6px -12px auto; min-height: var(--touch); min-width: var(--touch); padding: 0 6px; border: 0; border-radius: 10px;
+  background: transparent; color: inherit; font-size: 14.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.alert-box.none .fc-al-open { color: var(--accent-text); }
+
+/* Pases (CoursesTimeline): lo servido en una linea, y cada pase sin terminar con sus platos agrupados y sus excepciones aparte. El acento
+   en el pase «Siguiente», el verde en el listo. */
+.fc-tl-done { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; padding: 9px 12px; border-radius: 12px; background: var(--surface2); font-size: 14.5px; font-weight: 600; }
+.fc-tl-done li { display: inline-flex; align-items: center; gap: 5px; }
+.fc-tl-done .icon { color: var(--accent); }
+.fc-tl-done small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.fc-tl-done li.skipped { color: var(--muted); }
+.fc-tl-done li.skipped .icon { color: var(--muted); }
+.fc-tl-list { display: flex; flex-direction: column; gap: 8px; }
+.fc-tl-pass { padding: 11px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); }
+.fc-tl-pass.next { border: 2px solid var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fc-tl-pass.ready { border: 2px solid var(--ok-text); background: var(--ok-soft); }
+.fc-tl-h { display: flex; align-items: center; gap: 10px; }
+.fc-tl-pass.next .pdot { background: var(--surface); border: 2px solid var(--accent); color: var(--accent-text); }
+.fc-tl-pass.ready .pdot { background: var(--ok-text); border-color: var(--ok-text); color: #FFFFFF; }
+.fc-tl-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fc-tl-t b { font-size: 16.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.fc-tl-t small { font-size: 13px; color: var(--muted); }
+.fc-tl-pills { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.fc-tl-nextpill { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
+.fc-tl-pass.ready .pill.s-ready { background: var(--ok-text); color: #FFFFFF; }
+.fc-tl-dishes { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.fc-tl-dish { display: flex; flex-direction: column; gap: 6px; }
+/* El plato: nombre y nota a la izquierda, la cantidad grande a la derecha y, debajo, la estacion y el estado. */
+.fc-tl-dr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1px 10px; padding: 9px 12px; border-radius: 10px; background: var(--surface2); }
+.fc-tl-pass.ready .fc-tl-dr { background: var(--surface); }
+.fc-tl-dn { grid-column: 1; grid-row: 1; min-width: 0; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+.fc-tl-dn b { font-weight: 600; }
+.fc-tl-dx { font-size: 13.5px; font-weight: 700; color: var(--muted); }
+.fc-tl-dx.warn { color: var(--warn-text); }
+.fc-tl-dx.alarm { color: var(--danger-text); }
+.fc-tl-q { grid-column: 2; grid-row: 1 / span 2; font-size: 18px; font-weight: 700; white-space: nowrap; }
+.fc-tl-dm { grid-column: 1; grid-row: 2; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+/* Las excepciones: rojo si alarma, ambar mientras cocina no decide; si no, escrita sin color. Nunca atenuadas. */
+.fc-tl-xs { display: flex; flex-direction: column; gap: 6px; }
+.fc-tl-x { display: flex; align-items: flex-start; gap: 6px; padding: 8px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.fc-tl-x .icon { flex: none; margin-top: 1px; }
+.fc-tl-x.alarm { background: var(--danger-soft); border: 1.5px solid var(--danger-text); color: var(--danger-text); }
+.fc-tl-x.warn { background: var(--warn-soft); border: 1.5px solid var(--warn-line); color: var(--warn-text); }
+.fc-tl-x.calm { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.fc-tl-x.calm .icon { color: var(--muted); }
+
+/* Hoja de omitir (SkipSheet): el motivo y dos botones a partes iguales; «Omitir» con borde de aviso, nunca en rojo. */
+.fc-sk-t { margin: 8px 0 14px; font-size: 15.5px; }
+.fc-sk-problem { margin-top: 10px; }
+.fc-sk-foot .btn { flex: 1 1 0; min-width: 0; white-space: normal; }
+
+/* Hoja de alergias (AllergySheet): cada una escrita entera, con sus platos; rojo si alarma, ambar si no (como la franja). */
+.fc-al .sheet-scroll { padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.fc-al .sh-head { margin-bottom: 10px; }
+.fc-al-none { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--surface2); font-weight: 600; }
+.fc-al-none .icon { color: var(--ok-text); }
+.fc-al-list { display: flex; flex-direction: column; gap: 10px; }
+.fc-al-item { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; border: 1.5px solid var(--warn-line); background: var(--warn-soft); }
+.fc-al-item.alarm { border: 2px solid var(--danger-text); background: var(--danger-soft); }
+.fc-al-r { display: flex; align-items: flex-start; gap: 8px; font-size: 16px; font-weight: 700; line-height: 1.3; color: var(--warn-text); overflow-wrap: anywhere; }
+.fc-al-item.alarm .fc-al-r { color: var(--danger-text); }
+.fc-al-r .icon { flex: none; margin-top: 1px; }
+.fc-al-dishes { display: flex; flex-direction: column; gap: 4px; }
+.fc-al-dishes li { display: flex; align-items: flex-start; gap: 6px; font-size: 14.5px; color: var(--text); overflow-wrap: anywhere; }
+.fc-al-dishes li .icon { flex: none; margin-top: 2px; color: var(--muted); }
+/* Un punto neutro delante de cada plato (es texto, no un enlace); el que espera a cocina, en negrita ambar con su aviso. La clase lleva
+   prefijo propio: «.pending» es el panel de la orden sin confirmar. */
+.fc-al-dot { flex: none; width: 6px; height: 6px; margin: 7px 4px 0; border-radius: 3px; background: var(--muted); }
+.fc-al-dishes li.fc-al-pending { font-weight: 700; color: var(--warn-text); }
+.fc-al-dishes li.fc-al-pending .icon { color: var(--warn-text); }
+.fc-al-nodish { font-size: 14px; color: var(--muted); }
+.fc-al-remove { align-self: flex-start; background: var(--surface); }
+/* Retirar, en dos pasos dentro de la tarjeta: el motivo, «Volver» y la confirmacion juntos. */
+.fc-al-rm { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.fc-al-rm-b { display: flex; gap: 10px; }
+.fc-al-rm-b .btn { flex: 1 1 0; min-width: 0; }
+.fc-al-add { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.fc-al-add-h { display: flex; align-items: center; gap: 8px; font-size: 16.5px; font-weight: 700; }
+
+/* «Carta y menús» (DishPanel; plan 2026-10-15, 678-679): un toque por plato. Cada plato es un boton de 56 px con el borde del acento (como
+   «Pedir» de la maqueta del 15-10). En un menu con eleccion, una fila por comensal; lo elegido, en verde claro con su marca y escrito al
+   lado del comensal, nunca solo por el color. En la carta, «Para quién» (.guests/.g) y «Cantidad» (.qstep) son los de la ronda (C3b). */
+.carta-dishes { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 8px; }
+.carta-dish { min-height: 56px; min-width: var(--touch); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; border: 1.5px solid var(--accent); background: var(--surface); color: var(--text); text-align: left; }
+.carta-dish > .icon { flex: none; color: var(--accent-text); }
+.carta-dish-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.carta-dish-t b { font-size: 15.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.carta-dish-t small { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.carta-dish:disabled { border-color: var(--border); background: var(--surface2); color: var(--muted); cursor: default; }
+.carta-dish:disabled > .icon { color: var(--muted); }
+/* Lo elegido manda sobre el boton apagado (no se vuelve a mandar): verde claro, borde del acento y la marca. */
+.carta-dish[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.carta-dish[aria-pressed="true"] > .icon { color: var(--accent-text); }
+/* Menu con eleccion: una fila por comensal, separadas por una linea; sus restricciones escritas debajo de su nombre (.line-alert). */
+.carta-guest { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+.card-h + .carta-guest { border-top: 0; padding-top: 2px; }
+.carta-guest-h { font-size: 15.5px; overflow-wrap: anywhere; }
+.carta-chosen { font-weight: 600; color: var(--accent-text); }
+/* Sin elegir: pendiente, en ambar y escrito. */
+.carta-missing { font-weight: 700; color: var(--warn-text); }
+/* El punto de un comensal con restricciones que no alarman (intolerancia o preferencia leve o moderada): ambar; el rojo, solo si alarma. */
+.g-dot.carta-dot-mild { background: var(--warn-text); }
+/* Carta: lo que pide el proximo toque, encima de los platos. */
+.carta-tap { margin: -4px 0 10px; font-size: 13.5px; font-weight: 600; color: var(--accent-text); }
+
+/* En el movil, las entradas de la ficha en una linea (maqueta): sin la flecha y con la ayuda solo para el lector de pantalla (sigue en el
+   nombre del boton). */
+@media (max-width: 699px) {
+  .entry-go { display: none; }
+  .entry-s { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+/* Solo con raton: en una pantalla tactil el :hover se queda pegado tras el toque y parece elegido. */
+@media (hover: hover) {
+  .fc-al-open:hover { background: rgba(0, 0, 0, .05); }
+  .carta-dish:hover:not(:disabled) { background: var(--accent-soft); }
+}
+@media (min-width: 700px) {
+  /* El segmento no se estira de lado a lado en una tableta. */
+  .board-scope { max-width: 30rem; }
+  /* «Abrir mesa», en una columna centrada como la maqueta de tableta; la barra de abajo sigue de lado a lado. */
+  .open-body { width: 100%; max-width: 40rem; margin: 0 auto; }
+  .pax.open-pax-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .open-row .seg button { padding: 0 12px; font-size: 16px; }
+  .carta-dishes { grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 10px; }
+  .carta-dish-t b { font-size: 16.5px; }
+}
+/* ---------- Fin de Costiña Sala ---------- */

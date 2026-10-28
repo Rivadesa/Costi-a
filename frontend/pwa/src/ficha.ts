@@ -15,13 +15,20 @@ export const REASON_ACTIONS = new Set(['pause', 'skip', 'cancel-unstarted', 'rel
 const CAUTION_ACTIONS = new Set(['release', 'cancel-unstarted'])
 // Plan, seccion 3: el boton que manda un pase dice «Enviar siguiente pase» (maqueta: «Enviar siguiente pase · Postre»). La orden
 // pendiente y los avisos usan el texto completo del vocabulario («Enviar siguiente pase a cocina»), como el puesto.
-const BUTTON: Readonly<Record<string, string>> = { 'fire-next': 'Enviar siguiente pase' }
+// C3e (plan 2026-10-27, paso 2; plan 2026-10-22, seccion 4.4): el de servir dice «Servido · Principal». Es un texto del BOTON, no de la
+// tabla comun de vocabulario: la orden pendiente sigue diciendo «Marcar servido · Principal · Mesa 4» (action.serve, labels.ts), igual
+// que el PC.
+const BUTTON: Readonly<Record<string, string>> = { 'fire-next': 'Enviar siguiente pase', serve: 'Servido' }
 
 export interface TableAction { action: string; course: Course | null; label: string; testId: string; needsReason: boolean; caution: boolean }
 
+// El pase que enviaria fire-next: el primero sin enviar. Lo nombra el boton grande y, desde C3e, la marca «Siguiente» de la ficha
+// (pases.ts): una sola regla para los dos, asi nunca se separan.
+export const fireNextCourse = (service: Dining): Course | null => service.courses.find(candidate => candidate.state === 'Pending') ?? null
+
 function item(action: string, course: Course | null, service: Dining): TableAction {
   const base = BUTTON[action] ?? actionLabel(action)
-  const next = action === 'fire-next' ? service.courses.find(candidate => candidate.state === 'Pending') : undefined
+  const next = action === 'fire-next' ? fireNextCourse(service) : null
   const label = course ? `${base} · ${course.name}` : next ? `${base} · ${next.name}` : base
   return { action, course, label, testId: course ? `do-${action}-${course.id}` : `do-${action}`, needsReason: REASON_ACTIONS.has(action), caution: CAUTION_ACTIONS.has(action) }
 }
@@ -64,6 +71,25 @@ export function waitingText(service: Dining): string {
   const marked = service.courses.some(course => course.preparations.some(preparation => preparation.reviewPending === true))
   if (waitsForReview(service) || (service.restrictionsPendingAck === true && !marked)) return 'Esperando la revisión de cocina'
   return tileState(service) === KITCHEN ? 'Esperando a cocina' : 'Sin acciones para esta mesa ahora'
+}
+
+// C3e (plan 2026-10-27, paso 2; maqueta 2026-10-22, «2 · Sala · Mesa» y «6 · Sala · servido»): la linea encima del boton grande. No
+// depende del genero del pase, porque su nombre ya va en el boton. Sale de la lectura, y sin la hora del servidor no se inventa:
+//  - «Enviar siguiente pase» antes de servir nada (un omitido no vale como servido), o con lo servido sin hora: «Cada estación lo recibe…»;
+//  - «Enviar siguiente pase» despues de servir: la hora del ULTIMO pase servido (servedAt mas reciente, como tileSince);
+//  - «Servido»: desde cuando esta listo ese pase (readyAt, la validacion del pase); sin la hora, solo que esta listo;
+//  - cualquier otro boton grande, o apagado: nada.
+export function barNote(service: Dining, primary: TableAction | null): string {
+  if (primary?.action === 'serve') {
+    const at = primary.course?.readyAt
+    return at ? `Listo en el pase desde las ${clockLabel(at)}.` : 'Listo en el pase.'
+  }
+  if (primary?.action !== 'fire-next') return ''
+  const served = service.courses.filter(course => course.state === 'Served' && course.servedAt && !Number.isNaN(Date.parse(course.servedAt)))
+    .map(course => course.servedAt as string)
+  if (served.length === 0) return 'Cada estación lo recibe en su tableta al momento.'
+  const last = served.reduce((latest, at) => Date.parse(at) > Date.parse(latest) ? at : latest)
+  return `Último pase servido a las ${clockLabel(last)}.`
 }
 
 // El rotulo del campo de motivo nombra SOLO lo anunciado que lo pide (no se ofrece con palabras lo que el servidor no permite).

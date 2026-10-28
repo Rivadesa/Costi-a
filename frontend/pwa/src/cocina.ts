@@ -100,15 +100,18 @@ export interface ExceptionLine {
   preparation: Preparation
   text: string        // «Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra»
   alarming: boolean   // en rojo: alguna restriccion que alarma (tambien la de toda la mesa que motivo la adaptacion)
-  pending: boolean    // «Por revisar en el pase», en ambar
+  pending: boolean    // por revisar («Por revisar en el pase» en cocina, «Por revisar en cocina» en Sala), en ambar
 }
 // La restriccion de OTRO comensal (un plato para compartir recibe la de cualquiera) dice de quien es.
 function restrictionText(restriction: GuestRestriction, guest: number | null | undefined): string {
   const text = `${restrictionKindLabel(restriction.kind)} ${restriction.substance} (${severityLabel(restriction.severity)})`
   return (restriction.guestPosition ?? null) === (guest ?? null) ? text : `${text} del ${guestLabel(restriction.guestPosition)}`
 }
-export function exceptionLine(preparation: Preparation): ExceptionLine {
-  const outcome = pendingReview(preparation) ? REVIEW_PENDING_AT_PASS : reviewOutcome(preparation)
+// C3e (plan 2026-10-27, paso 2): pendingText es ADITIVO. Costina Cocina sigue con «Por revisar en el pase» (el valor por defecto); la
+// ficha de Costina Sala (pases.ts) pasa «Por revisar en cocina» (labels.ts, REVIEW_PENDING_TEXT), que es la palabra del camarero
+// (plan 2026-10-22, seccion 3). Solo cambia esa palabra: una decision ya tomada se escribe igual en las dos aplicaciones.
+export function exceptionLine(preparation: Preparation, pendingText: string = REVIEW_PENDING_AT_PASS): ExceptionLine {
+  const outcome = pendingReview(preparation) ? pendingText : reviewOutcome(preparation)
   const parts = [guestLabel(preparation.guestPosition), ...lineRestrictions(preparation).map(restriction => restrictionText(restriction, preparation.guestPosition)), outcome]
   return {
     preparation,

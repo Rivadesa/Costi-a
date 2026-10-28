@@ -1,5 +1,7 @@
 # Traspaso 2026-10-27: C3d (Costiña Cocina, comandas por mesa); siguiente, C3e
 
+> **Ya no es el punto de entrada:** desde el 27-10 lo es `docs/handoff/2026-10-27-c3e-costina-sala.md`. C3e (`0.46.0-c3e`, Costiña Sala con «Mis mesas», abrir con alergias y «Servido») está hecho, con el permiso «Adelante» del promotor. Este documento sigue valiendo para C3d, sus dieciocho decisiones y sus cinco diferencias con la maqueta, su guion manual y sus trampas; su nota de las mesas de las pruebas está desfasada (desde C3e, M5 es de `mesas.spec`, en los proyectos `mobile` y `sala-vertical`).
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-26-e4e-alergias-antes-de-enviar.md`. El anterior sigue valiendo para E4e, sus once decisiones, su guion manual y sus trampas.
 
 Leer antes, en este orden:

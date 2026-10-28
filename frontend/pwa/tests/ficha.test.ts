@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, tableActions, tableInfo, waitingText } from '../src/ficha'
+import { barNote, commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, tableActions, tableInfo, waitingText } from '../src/ficha'
 import { clockLabel } from '../src/labels'
 import type { BoardEntry, Course, Dining } from '../src/types'
 
@@ -61,7 +61,9 @@ describe('words of the buttons', () => {
   })
   it('a course action names its course; the others use the words of the main PC', () => {
     const row = entry(dining(['start', 'pause'], [course('c1', 'Entrantes', 'Ready', ['serve', 'skip'])]), ['release'])
-    expect(tableActions(row).map(action => action.label)).toEqual(['Marcar servido · Entrantes', 'Iniciar servicio', 'Pausar servicio', 'Omitir pase · Entrantes', 'Liberar mesa'])
+    // C3e (plan 2026-10-27, paso 2): el boton grande dice «Servido · Entrantes», como la maqueta; la orden pendiente sigue diciendo
+    // «Marcar servido · Entrantes · Mesa 7», igual que el PC (abajo, en la orden de un boton).
+    expect(tableActions(row).map(action => action.label)).toEqual(['Servido · Entrantes', 'Iniciar servicio', 'Pausar servicio', 'Omitir pase · Entrantes', 'Liberar mesa'])
   })
   it('without a big action the button says what it waits for', () => {
     expect(waitingText(dining([], [course('c1', 'Entrantes', 'Fired')], { restrictionsPendingAck: true }))).toBe('Esperando la revisión de cocina')
@@ -102,6 +104,41 @@ describe('waiting for the kitchen review before sending', () => {
   it('nothing to review: start is still the big button of a seated table', () => {
     const service = seated(false, false)
     expect(primaryAction(tableActions(entry(service)), service)?.action).toBe('start')
+  })
+})
+
+// C3e (plan 2026-10-27, paso 2; maqueta 2026-10-22, «2 · Sala · Mesa» y «6 · Sala · servido»): la linea encima del boton grande. No
+// depende del genero del pase: su nombre ya va en el boton. Sin la hora del servidor no se inventa ninguna.
+describe('the note above the big button (barNote)', () => {
+  const at = (minutes: number) => new Date(Date.parse('2026-10-27T21:00:00Z') + minutes * 60_000).toISOString()
+  const note = (service: Dining) => barNote(service, primaryAction(tableActions(entry(service)), service))
+  it('«Enviar siguiente pase» before serving anything: every station gets it on its tablet at once', () => {
+    expect(note(dining(['start', 'fire-next'], [course('c1', 'Aperitivos', 'Pending'), course('c2', 'Principal', 'Pending')], { state: 'Open' })))
+      .toBe('Cada estación lo recibe en su tableta al momento.')
+    // Un pase omitido no es un pase servido.
+    expect(note(dining(['fire-next'], [course('c1', 'Aperitivos', 'Skipped'), course('c2', 'Principal', 'Pending')]))).toBe('Cada estación lo recibe en su tableta al momento.')
+  })
+  it('«Servido»: ready at the pass since the time the pass validated it', () => {
+    const service = dining(['pause'], [course('c1', 'Aperitivos', 'Served', [], { servedAt: at(5) }), course('c2', 'Principal', 'Ready', ['serve'], { readyAt: at(19) })])
+    expect(primaryAction(tableActions(entry(service)), service)?.label).toBe('Servido · Principal')
+    expect(note(service)).toBe(`Listo en el pase desde las ${clockLabel(at(19))}.`)
+    expect(note({ ...service, courses: [service.courses[0], { ...service.courses[1], readyAt: null }] })).toBe('Listo en el pase.')
+  })
+  it('«Enviar siguiente pase» after serving: the time of the last course served', () => {
+    const service = dining(['fire-next', 'pause'], [course('c1', 'Aperitivos', 'Served', [], { servedAt: at(5) }), course('c2', 'Principal', 'Served', [], { servedAt: at(21) }),
+      course('c3', 'Postre', 'Pending')])
+    expect(note(service)).toBe(`Último pase servido a las ${clockLabel(at(21))}.`)
+    // La hora MAS RECIENTE, no la del ultimo pase en el orden de la mesa (aqui el segundo se sirvio antes que el primero).
+    const [aperitivos, principal, postre] = service.courses
+    expect(note({ ...service, courses: [{ ...aperitivos, servedAt: at(21) }, { ...principal, servedAt: at(5) }, postre] }))
+      .toBe(`Último pase servido a las ${clockLabel(at(21))}.`)
+    // Servido sin hora (un servidor anterior): lo que siempre es cierto, sin inventar la hora.
+    expect(note({ ...service, courses: service.courses.map(current => ({ ...current, servedAt: null })) })).toBe('Cada estación lo recibe en su tableta al momento.')
+  })
+  it('nothing for any other big button, nor while waiting', () => {
+    expect(note(dining(['complete'], [course('c1', 'Aperitivos', 'Served', [], { servedAt: at(5) })]))).toBe('')
+    expect(note(dining([], [course('c1', 'Aperitivos', 'Fired')]))).toBe('')
+    expect(barNote(dining([], []), null)).toBe('')
   })
 })
 
@@ -146,6 +183,8 @@ describe('header and short courses', () => {
   })
   it('no checkout word in any text of the table card, not even inside another word', () => {
     const texts = [PENDING_REVIEW_TEXT, REASON_PROBLEM, waitingText(dining([], [], { restrictionsPendingAck: true })), waitingText(dining([], [course('c', 'x', 'Fired')])), waitingText(dining([], [])),
+      ...[dining(['fire-next'], [course('c1', 'x', 'Pending')]), dining(['fire-next'], [course('c1', 'x', 'Served', [], { servedAt: at(0) }), course('c2', 'y', 'Pending')]),
+        dining([], [course('c1', 'x', 'Ready', ['serve'], { readyAt: at(0) })])].map(service => barNote(service, primaryAction(tableActions(entry(service)), service))),
       ...tableActions(entry(dining(['start', 'fire-next', 'pause', 'resume', 'complete', 'cancel-unstarted'], [course('c1', 'x', 'Ready', ['serve', 'ready', 'skip'])]), ['release'])).map(action => action.label)]
     expect(texts.filter(text => /€|precio|saldo|pago|cuenta/i.test(text))).toEqual([])
   })

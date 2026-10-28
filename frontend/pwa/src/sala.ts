@@ -1,6 +1,6 @@
 import { commandFor, tableActions, type CommandRequest } from './ficha'
 import { clockLabel } from './labels'
-import type { BoardEntry, Course } from './types'
+import type { BoardEntry, Course, Dining } from './types'
 
 // C3c (plan 2026-10-22, seccion 4.1): el aviso de «listo para servir» de Costina Sala, SIN tocar el motor y sin DOM (vitest).
 //  - Sale de la RELECTURA autoritativa del tablero, nunca del contenido del aviso del canal (D2: los avisos son finos y sin datos):
@@ -13,8 +13,30 @@ import type { BoardEntry, Course } from './types'
 //  - «Visto» se recuerda EN MEMORIA por clave mientras la clave siga en la lectura; si sale de ella (servido, o por revisar) y
 //    vuelve, avisa de nuevo. Una recarga lo olvida.
 // Nada de esto habilita una accion: «Servido» existe solo si el servidor anuncia serve en ESE pase, y sale con la version LEIDA de esa
-// mesa (F01), por la orden incierta de siempre. En C3c avisa de todas las mesas; desde C3e, solo de «Mis mesas».
+// mesa (F01), por la orden incierta de siempre.
+// C3e (plan 2026-10-27, paso 2): la banda avisa SOLO de «Mis mesas»: ReadyWatch lee mineEntries(entries, who), no el tablero entero.
+// En «Todas» las demas mesas se siguen pintando en verde, sin banda ni vibracion. Sin «rescope»: el actor y la estacion de una sesion no
+// cambian mientras dure la credencial (el motor no renombra ni cambia de estacion un dispositivo emparejado; volver a emparejar monta
+// otra vez la pantalla con un ReadyWatch nuevo).
 export interface ReadyNotice { key: string; entry: BoardEntry; course: Course }
+
+// ---- C3e: «Mis mesas» (ADR-018): presentacion por dispositivo y estacion, nunca permiso ni atribucion a una persona ----
+// who: el actor y la estacion de /session. Tipo propio (como Who en apps.ts), sin importar Session: sala.ts solo importa ficha, labels y
+// types. Una mesa es mia si:
+//  - openedBy es EXACTAMENTE el actor de /session («device:Movil Ana»), el texto que forma el servidor, nunca uno rehecho con el nombre
+//    guardado en el movil;
+//  - o openedStation no esta vacio y es EXACTAMENTE la estacion (el codigo, que no cambia al renombrarla): los otros moviles de esa
+//    estacion y el PC si su estacion es esa. Una estacion nula nunca coincide;
+//  - o no se sabe quien la abrio: sin openedBy (abierta antes de E4e) o sin openedStation (una persona en el PC, sin estacion). Mejor
+//    avisar de mas que de menos (plan 2026-10-22, 4.4).
+export interface Who { actor: string; station: string | null }
+const known = (value: string | null | undefined): value is string => typeof value === 'string' && value.length > 0
+export function isMine(service: Pick<Dining, 'openedBy' | 'openedStation'>, who: Who): boolean {
+  if (!known(service.openedBy) || !known(service.openedStation)) return true
+  return service.openedBy === who.actor || (who.station !== null && service.openedStation === who.station)
+}
+// Lo que lee la banda: las entradas de «Mis mesas», en el orden y con la version de la lectura (F01).
+export const mineEntries = (entries: readonly BoardEntry[], who: Who): BoardEntry[] => entries.filter(entry => isMine(entry.service, who))
 
 export const readyKey = (serviceId: string, courseId: string, readyAt: string | null) => `${serviceId}:${courseId}:${readyAt ?? ''}`
 const instant = (at: string | null) => { const parsed = at ? Date.parse(at) : Number.NaN; return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed }

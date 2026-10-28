@@ -4,6 +4,7 @@ import { deflateSync } from 'node:zlib'
 
 // C3a: lo comun de los specs E2E, que corren contra el MOTOR REAL en dos proyectos (escritorio y movil) con las MISMAS historias.
 // C3d: y la cocina en un tercero, `tableta` (1180 x 820, tactil), solo con sus historias.
+// C3e: y «Mis mesas» de Costina Sala en el movil y en un cuarto, `sala-vertical` (820 x 1180, tactil), solo con mesas.spec.
 // El "PC principal" se simula por API con un token main; el navegador solo es el dispositivo. Todo JSON que llega al navegador pasa
 // la guarda de dinero (ADR-007) y lo que se VE no lleva palabras de caja. Cada proyecto tiene su carril: sus mesas y sus nombres de
 // dispositivo, porque los dos comparten el mismo motor (y la misma base) en una sola ejecucion.
@@ -102,8 +103,11 @@ const LANES: Record<string, Lane> = {
 // que era del escritorio (M8); la del movil (M5) queda libre. Un solo proyecto la usa, una vez por ejecucion, y kitchen.spec la deja
 // libre al terminar (como drinks.spec con M1): no hace falta crear mesas.
 const KITCHEN_TABLES: Record<string, Table> = { tableta: table(8) }
+// C3e (plan 2026-10-27, paso 4): «Mis mesas» (mesas.spec) abre M5, la mesa libre desde C3d, en el movil y en `sala-vertical`. Los dos
+// proyectos corren uno detras de otro y mesas.spec la deja libre al terminar, tambien si falla a medias (finishAndRelease).
+const SALA_TABLES: Record<string, Table> = { mobile: table(5), 'sala-vertical': table(5) }
 // La etiqueta de cada proyecto en los nombres de dispositivo.
-const TAGS: Record<string, string> = { desktop: 'pc', mobile: 'movil', tableta: 'tableta' }
+const TAGS: Record<string, string> = { desktop: 'pc', mobile: 'movil', tableta: 'tableta', 'sala-vertical': 'vertical' }
 export function lane(): Lane {
   const found = LANES[test.info().project.name]
   if (!found) throw new Error(`El proyecto ${test.info().project.name} no tiene mesas propias (support.ts, LANES)`)
@@ -112,6 +116,11 @@ export function lane(): Lane {
 export function kitchenTable(): Table {
   const found = KITCHEN_TABLES[test.info().project.name]
   if (!found) throw new Error(`El proyecto ${test.info().project.name} no tiene mesa de cocina: la cocina es del proyecto tableta (support.ts)`)
+  return found
+}
+export function salaTable(): Table {
+  const found = SALA_TABLES[test.info().project.name]
+  if (!found) throw new Error(`El proyecto ${test.info().project.name} no tiene mesa de «Mis mesas»: es de mobile y sala-vertical (support.ts)`)
   return found
 }
 // Nombre de dispositivo unico por ejecucion Y por proyecto: los proyectos emparejan contra el mismo motor.
@@ -234,6 +243,56 @@ export async function release(request: APIRequestContext, serviceId: string): Pr
   const entry = board.find(candidate => candidate.service.id === serviceId)!
   const released = await asMain(request, `/dining/occupancy/${serviceId}/release`, { expectedVersion: entry.occupancyVersion, reason: 'fin de la prueba' })
   expect(released.ok(), `release -> ${released.status()}`).toBeTruthy()
+}
+
+// C3e: de banner.spec.ts a aqui, porque tambien las usa mesas.spec.ts.
+// Cocina termina un pase: las estaciones por API como el PC principal y la VALIDACION con el token de la tablet del pase.
+export async function kitchenValidates(request: APIRequestContext, serviceId: string, courseId: string, pass: string): Promise<void> {
+  for (const preparation of (await read(request, serviceId)).data.courses.find(course => course.id === courseId)!.preparations.filter(p => p.state !== 'Ready'))
+    await command(request, serviceId, 'preparation-ready', { courseId, itemId: preparation.id })
+  const validated = await post(request, pass, `/dining/services/${serviceId}/commands/ready`, { expectedVersion: (await read(request, serviceId)).version, courseId })
+  expect(validated.ok(), `ready by the pass -> ${validated.status()}`).toBeTruthy()
+}
+// El PC principal termina lo que quede en cocina, sirve lo listo y libera la mesa (release omite lo no enviado).
+export async function finishAndRelease(request: APIRequestContext, serviceId: string): Promise<void> {
+  for (const course of (await read(request, serviceId)).data.courses) {
+    if (!['Fired', 'Preparing', 'Ready'].includes(course.state)) continue
+    for (const preparation of course.preparations.filter(p => p.reviewPending))
+      await command(request, serviceId, 'review-preparation', { courseId: course.id, itemId: preparation.id, decision: 'unaffected', note: 'fin de la prueba' })
+    if (course.state !== 'Ready') {
+      for (const preparation of course.preparations.filter(p => p.state !== 'Ready')) await command(request, serviceId, 'preparation-ready', { courseId: course.id, itemId: preparation.id })
+      await command(request, serviceId, 'ready', { courseId: course.id })
+    }
+    await command(request, serviceId, 'serve', { courseId: course.id })
+  }
+  await release(request, serviceId)
+}
+// La vibracion se cuenta con un navigator.vibrate de mentira (Chromium de escritorio no vibra): solo cuenta las LLAMADAS. Antes de la
+// primera navegacion de la pagina.
+export async function recordVibrations(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const calls: unknown[] = []
+    Object.defineProperty(window, 'vibrations', { value: calls })
+    Navigator.prototype.vibrate = function (pattern: VibratePattern) { calls.push(pattern); return true }
+  })
+}
+export const vibrations = (page: Page) => page.evaluate(() => (window as unknown as { vibrations: unknown[] }).vibrations.length)
+
+// ---- C3e: estaciones y dispositivos por API, como el PC principal (Salas, mesas y estaciones; Dispositivos) ----
+// Una estacion de sala nueva (kind room: admite moviles de sala, Program.cs, approve). Codigo de 1 a 32 letras, digitos, '-' o '_'.
+export async function createRoomStation(request: APIRequestContext, id: string, name: string): Promise<void> {
+  const created = await asMain(request, '/organization/commands/station-create', { id, name, kind: 'room' })
+  expect(created.ok(), `station-create ${id} -> ${created.status()}`).toBeTruthy()
+}
+// Las estaciones no se borran: se desactivan (/configuration las sigue listando, marcadas).
+export async function deactivateStation(request: APIRequestContext, id: string): Promise<void> {
+  const deactivated = await asMain(request, '/organization/commands/station-deactivate', { id })
+  expect(deactivated.ok(), `station-deactivate ${id} -> ${deactivated.status()}`).toBeTruthy()
+}
+// Revocar un dispositivo desde el PC principal: su credencial deja de valer y su tiempo real se corta al momento.
+export async function revokeDevice(request: APIRequestContext, deviceId: string): Promise<void> {
+  const revoked = await asMain(request, `/auth/devices/${encodeURIComponent(deviceId)}/revoke`, {})
+  expect(revoked.ok(), `revoke ${deviceId} -> ${revoked.status()}`).toBeTruthy()
 }
 
 // ---- C3b: bodega y bebidas de prueba, por API como el PC principal (el laboratorio no trae ningun vino con «albar» ni fotos) ----

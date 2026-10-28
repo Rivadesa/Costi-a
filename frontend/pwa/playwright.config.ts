@@ -6,10 +6,14 @@ import { defineConfig, devices } from '@playwright/test'
 // el unico navegador que instala la CI; cada uno con sus mesas y sus nombres de dispositivo (e2e/support.ts, carriles).
 // C3d (plan 2026-10-27, seccion 3): la cocina es una tablet fija en horizontal. El proyecto `tableta` (1180 x 820, tactil) corre SOLO
 // las historias de cocina, que salen del escritorio y del movil: una vez por ejecucion en lugar de dos, para no alargar la CI.
+// C3e (plan 2026-10-27, paso 4): «Mis mesas» de Costina Sala (e2e/mesas.spec.ts) corre en el movil y en el proyecto `sala-vertical`
+// (820 x 1180, tactil: Costina Sala en vertical, plan 2026-10-22:760), y no en el escritorio. Los dos usan M5, uno detras de otro.
 // Con C3A_CAPTURES=<carpeta> (nunca en la CI) solo corre e2e/captures.spec.ts, que guarda alli las capturas de la documentacion; con
 // C3B_CAPTURES=<carpeta>, solo e2e/captures-c3b.spec.ts (Bodega y bebidas); con C3C_CAPTURES=<carpeta>, solo e2e/captures-c3c.spec.ts (las
 // dos aplicaciones y como se instalan); con E4E_CAPTURES=<carpeta>, solo e2e/captures-e4e.spec.ts (revisar las alergias antes de enviar);
-// con C3D_CAPTURES=<carpeta>, solo e2e/captures-c3d.spec.ts (Costina Cocina: estacion, franja «Hecho» y pase).
+// con C3D_CAPTURES=<carpeta>, solo e2e/captures-c3d.spec.ts (Costina Cocina: estacion, franja «Hecho» y pase); con C3E_CAPTURES=<carpeta>,
+// solo e2e/captures-c3e.spec.ts (Costina Sala: «Mis mesas», «Todas», abrir con alergias, la ficha, «Servido» y la banda). Este ultimo crea
+// en el propio spec un contexto por aparato (el movil de 375 x 812 y la vertical de 820 x 1180), como captures-e4e.spec.ts.
 const MOBILE = {
   ...devices['Pixel 7'],
   viewport: { width: 375, height: 812 }, screen: { width: 375, height: 812 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
@@ -19,13 +23,20 @@ const TABLET = {
   ...devices['Desktop Chrome'],
   viewport: { width: 1180, height: 820 }, screen: { width: 1180, height: 820 }, deviceScaleFactor: 1, hasTouch: true,
 }
+// C3e: Costina Sala en vertical, 820 x 1180 y tactil (el aparato de la tablet, girado).
+const SALA_VERTICAL = {
+  ...devices['Desktop Chrome'],
+  viewport: { width: 820, height: 1180 }, screen: { width: 820, height: 1180 }, deviceScaleFactor: 1, hasTouch: true,
+}
 const captures = (process.env.C3A_CAPTURES ?? '') !== ''
 const capturesC3b = (process.env.C3B_CAPTURES ?? '') !== ''
 const capturesC3c = (process.env.C3C_CAPTURES ?? '') !== ''
 const capturesE4e = (process.env.E4E_CAPTURES ?? '') !== ''
 const capturesC3d = (process.env.C3D_CAPTURES ?? '') !== ''
-const CAPTURE_SPECS = /captures(-c3b|-c3c|-e4e|-c3d)?\.spec\.ts$/
+const capturesC3e = (process.env.C3E_CAPTURES ?? '') !== ''
+const CAPTURE_SPECS = /captures(-c3b|-c3c|-e4e|-c3d|-c3e)?\.spec\.ts$/
 const KITCHEN_SPECS = /kitchen\.spec\.ts$/
+const SALA_SPECS = /mesas\.spec\.ts$/
 
 export default defineConfig({
   testDir: 'e2e',
@@ -33,7 +44,9 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [['list']],
-  use: { baseURL: process.env.E2E_BASE ?? 'http://127.0.0.1:5088', serviceWorkers: 'allow', trace: 'off' },
+  // Revision de C3e: sin E2E_BASE no hay direccion por defecto. Antes caia en 127.0.0.1:5088, la instalacion REAL, y los specs abren,
+  // terminan y liberan mesas y crean estaciones: sin la direccion de pwa_http.py, la primera llamada falla y no se toca nada.
+  use: { baseURL: process.env.E2E_BASE, serviceWorkers: 'allow', trace: 'off' },
   projects: captures
     ? [{ name: 'captures', testMatch: /captures\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
     : capturesC3b
@@ -44,9 +57,12 @@ export default defineConfig({
           ? [{ name: 'captures-e4e', testMatch: /captures-e4e\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
           : capturesC3d
             ? [{ name: 'captures-c3d', testMatch: /captures-c3d\.spec\.ts$/, use: TABLET }]
-            : [
-                { name: 'desktop', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS], use: { ...devices['Desktop Chrome'] } },
-                { name: 'mobile', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS], use: MOBILE },
-                { name: 'tableta', testMatch: KITCHEN_SPECS, use: TABLET },
-              ],
+            : capturesC3e
+              ? [{ name: 'captures-c3e', testMatch: /captures-c3e\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
+              : [
+                  { name: 'desktop', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS, SALA_SPECS], use: { ...devices['Desktop Chrome'] } },
+                  { name: 'mobile', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS], use: MOBILE },
+                  { name: 'tableta', testMatch: KITCHEN_SPECS, use: TABLET },
+                  { name: 'sala-vertical', testMatch: SALA_SPECS, use: SALA_VERTICAL },
+                ],
 })
