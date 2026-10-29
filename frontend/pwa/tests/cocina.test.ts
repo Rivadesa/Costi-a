@@ -5,8 +5,8 @@ import {
   alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, DIRECT_DECISIONS, dishAlarming, dishes, dishNote, dishState, dishText,
   doneText, elapsedText, exceptionLine, isGluten, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText,
   NOTE_SHORTCUTS, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince,
-  REMAKE_DECISION, remakeQuestion, restBody, restOfGuest, REVIEW_DECISIONS, REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys, seesWholeTable, shouldChime,
-  stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
+  REMAKE_DECISION, remakeQuestion, restBody, restButton, restDishes, restOfGuest, REVIEW_DECISIONS, REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys,
+  seesWholeTable, shouldChime, stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
 
@@ -423,6 +423,16 @@ describe('reviews before sending (the pass)', () => {
     expect(restBody(guest, '  no lleva marisco ')).toEqual({ expectedVersion: 7, items: [
       { courseId: 'p2', itemId: 'principal-2', decision: 'unaffected', note: 'no lleva marisco' },
       { courseId: 'p3', itemId: 'postre-2', decision: 'unaffected', note: 'no lleva marisco' }] })
+  })
+  // C3e.1 (usabilidad 28-10, H56): con el boton arriba, encima van ENTEROS los platos que decide, y el boton los cuenta.
+  it('C3e.1 (H56): above its button, every dish it decides, whole and with its quantity; the button counts them', () => {
+    const guest = presendReviews(board).find(row => row.entry.service.tableId === 'M2' && row.guestPosition === 2)!
+    expect(restDishes(restOfGuest(guest))).toBe('principal-2 · postre-2')
+    const named = [{ course: course('p1', 'Aperitivos', 'Pending', null, []), preparation: prep('a', 'Ostra', 'cold', 2, { quantity: 1 }) },
+      { course: course('p2', 'Principal', 'Pending', null, []), preparation: prep('b', 'Merluza á galega', 'hot', 2, { quantity: 2 }) },
+      { course: course('p3', 'Postre', 'Pending', null, []), preparation: prep('c', 'Tarta de queso', 'cold', 2, { quantity: 1 }) }]
+    expect(restDishes(named)).toBe('Ostra · Merluza á galega × 2 · Tarta de queso')
+    expect([restButton(1), restButton(2), restButton(3)]).toEqual(['No le afecta a este plato', 'No le afecta a ninguno de estos 2 platos', 'No le afecta a ninguno de estos 3 platos'])
   })
   it('the group carries only courses that announce review-preparations, and at most the server limit', () => {
     const quiet = [entry('M5', [unsent('p1', [pending('a', 2)], ['skip']), unsent('p2', [pending('b', 2)])])]

@@ -125,11 +125,14 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
     expect(sent.open).toBe(0)
     await press(page.getByTestId('do-open'))
-    // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues.
-    await expect(page.locator('[data-testid="do-done"]:disabled')).toHaveText(`${table.name} abierta ✓`, { timeout: 15_000 })
+    // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues. Revision
+    // de C3e.1: «Mesa abierta · <nombre>», con el nombre detras (el configurado puede ser masculino: «Reservado 2 abierta» no concuerda).
+    await expect(page.locator('[data-testid="do-done"]:disabled')).toHaveText(`Mesa abierta · ${table.name} ✓`, { timeout: 15_000 })
     // La ficha se abre sola, Sentados y con la alergia escrita; el boton grande espera a cocina y cada plato del comensal 2 tambien.
     const detail = page.getByTestId('detail')
     await expect(detail.getByTestId('detail-state')).toHaveText('Sentados', { timeout: 15_000 })
+    // Revision de C3e.1 (H20): el «✓» sigue en el boton grande de la FICHA tras abrirla (no solo en la hoja, durante la relectura).
+    await expect(detail.getByTestId('do-done')).toHaveText(`Mesa abierta · ${table.name} ✓`)
     await expect(page.getByTestId('pending')).toHaveCount(0)
     await expect(detail.getByTestId('restrictions')).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
     await expect(page.getByTestId('do-wait')).toBeDisabled({ timeout: 15_000 })

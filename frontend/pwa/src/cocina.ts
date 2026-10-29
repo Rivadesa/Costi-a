@@ -124,6 +124,8 @@ export function exceptionLine(preparation: Preparation, pendingText: string = RE
 // C3e.1 (usabilidad 28-10, H34): en una ESTACION, la linea por revisar dice ademas que hacer mientras el pase no decide. Sigue en rojo si
 // alarma y nunca se pliega; el «Listo» sigue como estaba (bloquearlo es una decision pendiente del promotor). El pase, que es quien decide,
 // sigue con «Por revisar en el pase», y Sala con «Por revisar en cocina». Una decision ya tomada se escribe igual en todas.
+// Solo en la rejilla (lo que aun hay que hacer): en la franja «Hecho» el plato ya esta marcado Listo y va exceptionLine; «no lo emplates»
+// haria creer que hay que retirarlo.
 export const REVIEW_PENDING_AT_STATION = `${REVIEW_PENDING_AT_PASS} · no lo emplates hasta que decida`
 export const stationLine = (preparation: Preparation): ExceptionLine => exceptionLine(preparation, REVIEW_PENDING_AT_STATION)
 
@@ -411,6 +413,13 @@ export function restBody(guest: PresendGuest, note: string): { expectedVersion: 
   return { expectedVersion: guest.entry.version,
     items: restOfGuest(guest).map(item => ({ courseId: item.course.id, itemId: item.preparation.id, decision: 'unaffected', note: note.trim() })) }
 }
+// C3e.1 (usabilidad 28-10, H56): con «No le afecta a nada más» ARRIBA, los nombres de los platos quedan debajo, a una pantalla, y la unica
+// pista era «· 3 platos». Sin ninguna decision tomada, ese toque decide TAMBIEN el plato que lleva el alergeno. Encima del boton se
+// escriben ENTEROS, sin plegar, los platos que decide (restOfGuest), con la cantidad como en su ficha («Ostra · Merluza × 2 · Tarta»), y
+// el boton los cuenta. Sigue siendo un toque (una accion frecuente, un toque) con la nota obligatoria.
+export const restDishes = (items: readonly PresendItem[]): string =>
+  items.map(item => item.preparation.quantity > 1 ? `${item.preparation.name} × ${item.preparation.quantity}` : item.preparation.name).join(' · ')
+export const restButton = (count: number): string => count === 1 ? 'No le afecta a este plato' : `No le afecta a ninguno de estos ${count} platos`
 
 // Las decisiones que se ofrecen ANTES de enviar: «Rehacer» es solo para lo que ya salio (nothing_to_remake).
 export const PRESEND_DECISIONS = [

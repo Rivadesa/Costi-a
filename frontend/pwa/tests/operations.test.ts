@@ -137,7 +137,9 @@ describe('D6.7 end to end through useOperations (no realtime, no Web Locks)', ()
 })
 
 // C3e.1 (usabilidad 28-10, H20): tras una orden CONFIRMADA del boton grande, su resultado se ve apagado durante DONE_MS desde que termina la
-// relectura, y todo queda bloqueado hasta entonces: un doble toque, o un segundo «por si no fue», no cae en la accion siguiente.
+// relectura: un doble toque, o un segundo «por si no fue», no cae en la accion siguiente. Revision de C3e.1: solo ese sitio queda apagado
+// (lo apaga quien lo pinta): tras la relectura el resto de la pantalla ya no esta bloqueado; y una orden que quedo sin confirmar ensena su
+// resultado si el reintento (a mano o solo) la confirma.
 describe('C3e.1 (H20): the result of a confirmed big-button order, for DONE_MS, before the next action', () => {
   const SERVE = '/dining/services/s1/commands/serve'
   const RESULT = { text: 'Servido · Aperitivos ✓', place: 'servicio:s1' }
@@ -155,22 +157,71 @@ describe('C3e.1 (H20): the result of a confirmed big-button order, for DONE_MS, 
   // Solo setTimeout y clearTimeout: IndexedDB (setImmediate) y la lectura siguen con los de verdad.
   const fake = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-  it('confirmed: the result shows at once, the read after it is done, and only DONE_MS later the lock goes', async () => {
-    const mounted = mount('device:tablet')
+  it('confirmed: the result shows at once, BEFORE the read after it, stays DONE_MS after that read, and locks nothing else', async () => {
+    // Lo que valia done cuando llego la relectura que sigue a la orden: el resultado tiene que estar ya a la vista (sale antes de releer).
+    let operations: ReturnType<typeof useOperations> | null = null
+    let atRead: unknown = 'sin relectura tras la orden'
+    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/dining/board') && posts().length > 0 && atRead === 'sin relectura tras la orden') atRead = operations?.done.value ?? null
+      return fakeFetch(url, init)
+    })
+    const mounted = mount('device:tablet'); operations = mounted.operations
     try {
       await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
       fake()
       const readsBefore = reads()
       const outcome = await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT)
       expect(outcome?.kind).toBe('confirmed')
-      expect(reads()).toBe(readsBefore + 1)                                      // la relectura ya termino...
+      expect(atRead).toEqual(RESULT)                                             // ya a la vista al pedir la relectura...
+      expect(reads()).toBe(readsBefore + 1)                                      // ...la relectura ya termino...
       expect(mounted.operations.done.value).toEqual(RESULT)                      // ...y el boton sigue con su resultado
-      expect(mounted.operations.locked.value).toBe(true)
+      expect(mounted.operations.locked.value).toBe(false)                        // el resto (Carta, ronda, alergias), disponible
       vi.advanceTimersByTime(DONE_MS - 1)
-      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([RESULT, true])
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([RESULT, false])
       vi.advanceTimersByTime(1)
       expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([null, false])   // ahora, la accion siguiente
       expect(posts()).toHaveLength(1)
+    } finally { mounted.unmount() }
+  })
+  // La respuesta del primer POST se pierde (red); el reintento lleva la MISMA clave y se confirma.
+  const losingFirstPost = () => {
+    let lose = true
+    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST' && lose) {
+        lose = false
+        requests.push({ method: 'POST', url: String(url), key: ((init.headers ?? {}) as Record<string, string>)['Idempotency-Key'] })
+        return Promise.reject(new TypeError('Failed to fetch'))
+      }
+      return fakeFetch(url, init)
+    })
+  }
+  it('unconfirmed, then «Reintentar» confirms it: the result of THAT order shows for DONE_MS before the next action', async () => {
+    losingFirstPost()
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT))?.kind).toBe('unconfirmed')
+      expect(mounted.operations.done.value).toBeNull()                           // sin confirmar: nada de «✓» todavia
+      expect((await mounted.operations.retry())?.kind).toBe('confirmed')
+      expect(posts().map(post => post.key)).toEqual([posts()[0].key, posts()[0].key])   // la misma orden
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([RESULT, false])
+      vi.advanceTimersByTime(DONE_MS - 1)
+      expect(mounted.operations.done.value).toEqual(RESULT)
+      vi.advanceTimersByTime(1)
+      expect(mounted.operations.done.value).toBeNull()
+    } finally { mounted.unmount() }
+  })
+  it('unconfirmed, then the automatic retry when the server answers again confirms it: the result shows too', async () => {
+    losingFirstPost()
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT))?.kind).toBe('unconfirmed')
+      await mounted.operations.live.refresh()                                    // el servidor vuelve a responder: se reintenta sola
+      await vi.waitFor(() => expect(mounted.operations.done.value).toEqual(RESULT))
+      expect(posts().map(post => post.key)).toEqual([posts()[0].key, posts()[0].key])
+      expect(mounted.operations.runnerState.pending).toBeNull()
     } finally { mounted.unmount() }
   })
   it('without a result asked (a dish, a round, the kitchen), nothing changes: no result and no extra wait', async () => {

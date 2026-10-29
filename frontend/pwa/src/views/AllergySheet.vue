@@ -80,6 +80,10 @@ async function remove(restriction: GuestRestriction): Promise<void> {
   const text = notApplied(settled, restrictionSubject(restriction.kind), 'retirado')
   if (text) removeProblem.value = text; else emit('close')
 }
+// Revision de C3e.1 (H03): la relectura que sigue a un rechazo puede quitar la tarjeta (restriction_not_found: otro puesto ya la retiro) o
+// el permiso de retirar (service_finished, forbidden), y con ellos el paso que pintaba el motivo. Entonces se dice en la hoja, bajo la lista.
+const removeOrphan = computed(() => removing.value !== null && removeProblem.value !== ''
+  && (!canRemove.value || !items.value.some(item => item.restriction.id === removing.value)))
 
 // ---- Anotar: una fila como las de «Abrir mesa» (quien sin valor por defecto; Alergia y Grave por defecto) ----
 const draft = reactive<RestrictionDraft>(newDraft())
@@ -167,6 +171,8 @@ onBeforeUnmount(() => opener?.focus({ preventScroll: true }))
           </template>
         </li>
       </ul>
+      <!-- Revision de C3e.1 (H03): el motivo de un rechazo de retirar cuya tarjeta (o cuyo permiso) ya no esta tras releer. -->
+      <p v-if="removeOrphan" class="notice" role="alert" data-testid="allergy-problem"><Icon name="info" />{{ removeProblem }}</p>
 
       <!-- El alta: los mismos campos que la franja tenia en su <details> (C3a, E4e) y que cada fila de «Abrir mesa». -->
       <section v-if="canDeclare" class="fc-al-add stack" aria-labelledby="allergy-add-title" data-testid="declare">
@@ -200,6 +206,9 @@ onBeforeUnmount(() => opener?.focus({ preventScroll: true }))
         <button type="button" class="btn btn-primary wide" :disabled="locked || sending !== null" data-testid="do-declare-restriction" @click="declare">
           <Icon name="plus" :stroke="2.2" />{{ sending === DECLARE ? 'Anotando…' : 'Anotar alergia o intolerancia' }}</button>
       </section>
+      <!-- Revision de C3e.1 (H03): si la relectura que sigue al rechazo quita el alta (service_finished, forbidden), el aviso no se va con
+           ella: se queda en la hoja, donde estaba el alta. Esa alergia NO esta anotada. -->
+      <p v-else-if="declined" class="notice fc-al-no" :class="{ alarm: declinedAlarm }" role="alert" data-testid="declare-rejected"><Icon name="alert" :stroke="2.3" />{{ declined }}</p>
     </div>
   </section>
 </template>

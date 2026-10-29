@@ -11,7 +11,8 @@ import Icon from './Icon.vue'
 // de aviso y nunca en rojo: el rojo es de las alergias. Lo unico que se comprueba aqui es el formato del motivo (3 caracteres o mas).
 // C3e.1 (usabilidad 28-10, H03): como la hoja de alergias, ya no se cierra al tocar «Omitir»: send manda la orden (TableCard) y la hoja
 // espera su resultado con «Omitiendo…» en el boton apagado. Confirmada o sin confirmar, se cierra (commands.ts, notApplied); rechazada
-// o sin salir, se queda con el motivo escrito y dice por que, en ambar («Postre NO se ha omitido: …»): ese pase sigue en la mesa.
+// o sin salir, se queda con el motivo escrito y dice por que, en ambar («El pase Postre NO se ha omitido: …»): ese pase sigue en la mesa.
+// El sujeto es «El pase», con su nombre detras: el nombre es el configurado y puede ser plural («Aperitivos NO se ha omitido» no concuerda).
 const props = defineProps<{ courseName: string; locked: boolean; send: (reason: string) => Promise<Settlement> }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -32,7 +33,7 @@ async function confirm(): Promise<void> {
   const courseName = props.courseName
   let settled: Settlement
   try { settled = await props.send(reason.value.trim()) } finally { sending.value = false }
-  const why = notApplied(settled, courseName, 'omitido')
+  const why = notApplied(settled, `El pase ${courseName}`, 'omitido')
   if (why) problem.value = why; else emit('close')
 }
 </script>

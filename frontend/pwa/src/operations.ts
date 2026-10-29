@@ -11,11 +11,13 @@ import type { BoardEntry } from './types'
 // del tablero y la MISMA orden incierta durable. Una pantalla nueva no reimplementa ninguna de las dos.
 
 // C3e.1 (usabilidad 28-10, H20): tras una orden CONFIRMADA lanzada desde el boton grande (o desde «Servido» de la banda), ese boton
-// ensena el resultado, apagado y sin accion («Servido · Aperitivos ✓», «Mesa 5 abierta ✓»), y solo despues la accion siguiente en el
+// ensena el resultado, apagado y sin accion («Servido · Aperitivos ✓», «Mesa abierta · Mesa 5 ✓»), y solo despues la accion siguiente en el
 // mismo sitio: un doble toque nervioso, o un segundo toque «por si no fue» con la Wi-Fi lenta, ya no manda el pase siguiente a cocina.
 // Quien envia la orden dice el texto y que boton lo pinta (place, un nombre suyo). Sale en cuanto se confirma y dura DONE_MS desde que
-// termina la relectura posterior (la accion siguiente aparece DONE_MS despues que antes); mientras tanto todo queda bloqueado (locked),
-// como durante la relectura. Rechazada, sin confirmar o sin enviar: nada de «✓», como siempre.
+// termina la relectura posterior (la accion siguiente aparece DONE_MS despues que antes). Solo ese sitio queda apagado (lo pinta quien lo
+// pide: el boton o la banda); tras la relectura el resto de la pantalla vuelve a estar disponible (locked no lo mira: bloquear la Carta o
+// la ronda no protege nada y parecia un cuelgue). Rechazada o sin enviar: nada de «✓», como siempre. Sin confirmar: nada de «✓» todavia,
+// pero el resultado se guarda con la clave de ESA orden pendiente y sale si se confirma al reintentar (a mano o solo, al volver la red).
 export const DONE_MS = 1500
 export interface Done { text: string; place: string }
 
@@ -28,6 +30,10 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     identity: { installationId: props.session.installationId, actor: props.session.actor },
   })
   let lastAutoRetry = 0
+  // C3e.1 (H20): el resultado pedido por una orden que quedo SIN CONFIRMAR, con la clave de esa orden. El reintento (a mano o solo) lo
+  // vuelve a pedir solo si la pendiente sigue siendo ESA orden.
+  let pendingDone: { key: string; result: Done } | null = null
+  const retryResult = (): Done | undefined => pendingDone !== null && pendingDone.key === runnerState.pending?.key ? pendingDone.result : undefined
   const live = new LiveBoard(state, {
     load: () => call<BoardEntry[]>(fetch, '/dining/board', { token: props.token }),
     connect: () => connectHub(fetch, props.token),
@@ -37,7 +43,7 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     // (misma instalacion y mismo actor) llega a `pending`: la de otro nombre de dispositivo queda bloqueada y no se reintenta.
     onRead: () => {
       if (runnerState.pending && !runnerState.busy && runnerState.lastFailure === 'network' && Date.now() - lastAutoRetry > 5000) {
-        lastAutoRetry = Date.now(); void resolve(runner.retry())
+        lastAutoRetry = Date.now(); void resolve(runner.retry(), retryResult())
       }
     },
   })
@@ -45,11 +51,11 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   // `settling`: desde que se pulsa hasta que termina la RELECTURA posterior. Sin el, al confirmarse una orden los botones
   // volvian a habilitarse con la version anterior y un segundo toque rapido daba un falso version_conflict.
   const settling = ref(0)
-  // C3e.1 (H20): el resultado a la vista; su temporizador se limpia al desmontar.
+  // C3e.1 (H20): el resultado a la vista; su temporizador se limpia al desmontar. No entra en locked: su sitio lo apaga quien lo pinta.
   const done = ref<Done | null>(null)
   let doneTimer: number | undefined
   let mounted = true
-  const locked = computed(() => settling.value > 0 || done.value !== null || runnerState.busy || runnerState.pending !== null || runnerState.blocked !== null)
+  const locked = computed(() => settling.value > 0 || runnerState.busy || runnerState.pending !== null || runnerState.blocked !== null)
   const now = ref(Date.now())
   let clock: number | undefined
   const age = computed(() => state.readAt ? Math.max(0, Math.round((now.value - state.readAt.getTime()) / 1000)) : null)
@@ -68,6 +74,9 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     try {
       const outcome = await work
       if (!outcome) return null
+      // C3e.1 (H20): sin confirmar, el resultado pedido espera con la clave de ESA orden (la pendiente) a un reintento que la confirme; con
+      // cualquier otro final ya no hace falta.
+      pendingDone = outcome.kind === 'unconfirmed' && result && runnerState.pending ? { key: runnerState.pending.key, result } : null
       if (outcome.kind === 'unauthorized') { onUnauthorized(); return outcome }
       // Una confirmacion retira el aviso ANTERIOR, no el que acaba de poner esta misma orden ("se aplico en un intento anterior").
       if (outcome.kind === 'confirmed' && runnerState.notice === noticeBefore) runnerState.notice = ''
@@ -88,9 +97,11 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     }
   }
   const run = (path: string, body: Record<string, unknown>, description: string, result?: Done) => resolve(runner.send(path, body, description), result)
-  const retry = () => resolve(runner.retry())
-  async function reconcile(): Promise<void> { if (await runner.reconcile() === 'applied') await live.refresh() }
-  const discard = () => runner.discardBlocked()
+  // C3e.1 (H20): el reintento de una orden del boton grande que quedo sin confirmar ensena su resultado si ahora se confirma. Si se resuelve
+  // por otro camino (preguntar al servidor, descartar), no se ensena: su aviso de arriba ya dice que paso.
+  const retry = () => resolve(runner.retry(), retryResult())
+  async function reconcile(): Promise<void> { if (await runner.reconcile() === 'applied') { pendingDone = null; await live.refresh() } }
+  const discard = () => { pendingDone = null; return runner.discardBlocked() }
 
   const online = () => { void live.refresh() }
   const visible = () => { if (document.visibilityState === 'visible') { void runner.restore(); void live.refresh() } }   // otra pestana, o el movil vuelve del bloqueo

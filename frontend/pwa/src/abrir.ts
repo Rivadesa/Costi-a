@@ -10,7 +10,7 @@ import type { GuestRestriction } from './types'
 // Todo es presentacion y FORMATO: la hoja existe solo si el servidor anuncia open (D3.1), y el servidor decide la capacidad (422,
 // DiningOperations.cs:39), la oferta vigente (offer_unavailable), el comensal (invalid_guest) y las duplicadas (duplicate_restriction).
 // Aqui solo se adelantan esos rechazos, con los textos del PC. Sin dinero (ADR-007) y sin guardar nada: las filas de alergias son
-// borradores EN MEMORIA, como la ronda de Bodega y como el PC (ServiceViewModel.cs:510).
+// borradores EN MEMORIA, como la ronda de Bodega y como el PC (ServiceViewModel, AddAllergy/RemoveAllergy: solo memoria).
 
 // ---- ¿Cuantas personas? ----
 // Botones de 1 a 8 sin pasar de la capacidad; «Más…» (el paso a paso y el numero) solo si la mesa admite mas de 8 o no se sabe su
@@ -43,7 +43,7 @@ export function paxProblem(pax: number, capacity: number | null | undefined): st
 // ---- ¿Que van a comer? ----
 // La propuesta es la primera oferta vigente (E4d, offers.ts: el «Menú del día»), ya elegida; las demas, detras de «Otro menú…»; los
 // menus con eleccion (set-menu), solo en «Más opciones» de la hoja (plan15:671, maq15:792). Cada grupo, en el orden de /configuration.
-// Si la primera es un menu con eleccion se propone igual, como el PC (ProposeDaily, ServiceViewModel.cs:641): el orden es el de Menus y
+// Si la primera es un menu con eleccion se propone igual, como el PC (ServiceViewModel.ProposeDaily): el orden es el de Menus y
 // cartas, y la propuesta no se repite en «Más opciones». En el laboratorio se propone LAB-TASTING («Menú de ensayo») y LAB-DAILY, que es
 // con eleccion, va en «Más opciones» (e2e/commands.spec.ts:24).
 export interface OfferGroups<T> { proposed: T | null; others: T[]; withChoice: T[] }
@@ -73,7 +73,7 @@ export function restrictionSubject(kind: string): string {
   return label ? `La ${label.toLowerCase()}` : 'La restricción'
 }
 
-// Una fila de la hoja, como AllergyDraft del PC (ServiceViewModel.cs:94-100): quien (null = sin elegir; «Toda la mesa» es una opcion
+// Una fila de la hoja, como AllergyDraft del PC (en ServiceViewModel.cs): quien (null = sin elegir; «Toda la mesa» es una opcion
 // mas, 'all', nunca la de por defecto), tipo (Alergia por defecto), a que y gravedad (Grave por defecto). Como mucho 30 filas, como
 // CanAddAllergy del PC.
 export type DraftGuest = number | 'all' | null
@@ -90,8 +90,8 @@ export function guestChoices(pax: number): GuestChoice[] {
   return [...Array.from({ length: people }, (_, index): GuestChoice => ({ guest: index + 1, label: guestLabel(index + 1) })), whole]
 }
 
-// Una fila vacia del todo (sin quien y sin a que) no se mira, como en el PC (ServiceViewModel.cs:499): el tipo o la gravedad solos no
-// la llenan. Las demas viajan en la orden.
+// Una fila vacia del todo (sin quien y sin a que) no se mira, como en el PC (ServiceViewModel.OpenRestrictions): el tipo o la gravedad
+// solos no la llenan. Las demas viajan en la orden.
 const filled = (draft: RestrictionDraft) => draft.guest !== null || draft.substance.trim().length > 0
 // Igual que OrdinalIgnoreCase del servidor (Restrictions.cs:44): mayuscula letra a letra, sin las que crecen («ß» no pasa a «SS»).
 const fold = (text: string) => Array.from(text.trim(), char => { const upper = char.toUpperCase(); return upper.length === 1 ? upper : char }).join('')
@@ -101,7 +101,7 @@ export const SUBSTANCE_PROBLEM = 'Escribe a qué es cada alergia o intolerancia 
 export const DUPLICATE_PROBLEM = 'Esa alergia o intolerancia ya está anotada para ese comensal.'
 export const guestRangeProblem = (pax: number) => `El comensal de una alergia tiene que estar entre 1 y ${pax}.`
 
-// Solo el FORMATO, con los textos del PC (ServiceViewModel.cs:502-505) y en su orden, fila a fila; despues, la duplicada que el
+// Solo el FORMATO, con los textos del PC (ServiceViewModel.CheckDraft) y en su orden, fila a fila; despues, la duplicada que el
 // servidor rechazaria (duplicate_restriction: mismo comensal, mismo tipo y la misma sustancia sin mirar mayusculas ni los espacios de
 // los lados). El rango del comensal, solo con personas validas: si no, habla antes paxProblem. Devuelve el primer problema, o ''.
 export function draftProblem(drafts: readonly RestrictionDraft[], pax: number): string {

@@ -20,14 +20,15 @@ import Icon from './Icon.vue'
 // orden incierta de siempre y, si el servidor la rechaza, deja esta hoja montada con sus filas para no escribirlas otra vez (decision 7).
 // Las filas se pueden llenar con una orden sin confirmar (como la ronda): solo «Abrir» espera (locked, D6.7). Sin dinero (ADR-007).
 // rejection: el motivo del ultimo rechazo de la apertura (o de que no saliera), que BoardView deja aqui para que se lea junto a «Abrir».
-// C3e.1 (usabilidad 28-10, H20): done, «Mesa 5 abierta ✓» en cuanto se confirma, en el sitio de «Abrir», apagado y sin accion; la ficha
+// C3e.1 (usabilidad 28-10, H20): done, «Mesa abierta · Mesa 5 ✓» en cuanto se confirma, en el sitio de «Abrir», apagado y sin accion; la ficha
 // que sale despues lo sigue diciendo en su boton grande durante DONE_MS (operations.ts) antes de «Enviar siguiente pase».
 // C3e.1 (usabilidad 28-10, H06): encima de «Abrir», cada alergia escrita entera (abrir.ts, openLines) en vez de «1 alergia o
 // intolerancia»; y salir con alguna escrita («Mesas», o «Ver mesa» de la banda, que BoardView pasa por leave) pregunta antes, como la
 // ronda: «¿Salir sin abrir la mesa?», con «Seguir abriendo» como opcion segura.
+// sending (C3e.1, H06): la apertura va camino del servidor (o se relee tras ella); sus filas ya viajan en esa orden.
 const props = defineProps<{
   tableId: string; tableName: string; roomName: string; capacity: number; offers: OfferChoice[]; occupied: boolean; locked: boolean
-  rejection: { code: string; text: string } | null; done: string
+  rejection: { code: string; text: string } | null; done: string; sending: boolean
 }>()
 const emit = defineEmits<{ open: [request: CommandRequest]; back: [] }>()
 
@@ -130,11 +131,13 @@ function submit(): void {
 // ---- Salir: con alguna alergia escrita, primero se pregunta (C3e.1, H06) ----
 // Como la ronda en la ficha (TableCard.vue, leave): «Mesas» sale por aqui y «Ver mesa» de la banda tambien, con `then` (ir a esa mesa) en
 // lugar de volver al plano. Sin nada escrito (lostText vacio) sale sin preguntar. El foco va a «Seguir abriendo», la opcion segura.
+// Revision de C3e.1 (H06): con la apertura de camino (sending) tampoco pregunta: nada se pierde, las filas viajan en ella (o en la
+// pendiente), y la pregunta diria que la mesa no se abre junto a «Mesa abierta · Mesa 5 ✓».
 const lost = computed(() => lostText(rows.value))
 const leaving = ref(false)
 let afterLeave: (() => void) | null = null
 function leave(then?: () => void): void {
-  if (lost.value) { afterLeave = then ?? null; leaving.value = true; return }
+  if (lost.value && !props.sending) { afterLeave = then ?? null; leaving.value = true; return }
   if (then) then(); else emit('back')
 }
 const stay = ref<HTMLButtonElement | null>(null)

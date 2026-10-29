@@ -50,8 +50,10 @@ export function doneLabel(action: TableAction, service: Dining): string {
   const subject = named(action.action, action.course, service)
   return `${subject ? `${base} · ${subject.name}` : base} ${DONE_MARK}`
 }
-// «Abrir Mesa 5» confirmado: el boton grande de su ficha dice «Mesa 5 abierta ✓» (la mesa por su nombre, nunca por su codigo).
-export const openedLabel = (tableName: string): string => `${tableName} abierta ${DONE_MARK}`
+// «Abrir Mesa 5» confirmado: el boton grande de su ficha dice «Mesa abierta · Mesa 5 ✓» (la mesa por su nombre, nunca por su codigo).
+// Revision de C3e.1 (H20): el nombre va DETRAS, como en doneLabel: es el configurado y puede ser masculino o plural («Reservado 2»), y
+// «Reservado 2 abierta ✓» no concuerda.
+export const openedLabel = (tableName: string): string => `Mesa abierta · ${tableName} ${DONE_MARK}`
 
 // Todas las acciones operativas ANUNCIADAS de una mesa, en el orden del Comedor. Servir, validar y omitir son de cada pase; liberar,
 // de la ocupacion; las demas, del servicio. Lo que no esta en la lista (elegir, pedir, restricciones, consumos) tiene su sitio propio.

@@ -101,6 +101,10 @@ export const REJECTIONS: Record<string, string> = {
   table_inactive: 'Esa mesa ya no está activa: se ha quitado en el PC principal. No se ha abierto.',
   // 422: datos que el servidor no admite (al abrir, mas personas de las que caben en la mesa).
   invalid_request: 'El servidor no admite esos datos: vuelve a leer la mesa y revísalos. No se ha aplicado nada.',
+  // Revision de C3e.1 (usabilidad 28-10, H03): los de la hoja de alergias que aun salian con el codigo en el aviso de arriba. Los del PC
+  // (Client/Labels.cs), tal cual.
+  service_finished: 'La mesa ya está terminada: no admite cambios.',
+  restriction_not_found: 'Esa restricción ya no existe.',
 }
 
 // C3e.1 (usabilidad 28-10, H03): las hojas de la ficha que mandan una orden (anotar o retirar una alergia, omitir un pase) esperan su

@@ -127,8 +127,12 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await press(adapt)
     await expect(adapted).toHaveCount(0, { timeout: 15_000 })
     expect(await version()).toBe(before + 1)
-    //    «No le afecta a nada más», con el atajo «No lo lleva»: los dos platos que quedan, en UNA orden.
-    await expect(rest).toContainText('No le afecta a nada más · 2 platos')
+    //    «No le afecta a nada más», con el atajo «No lo lleva»: los dos platos que quedan, en UNA orden. Revision de C3e.1 (H56): encima
+    //    del boton, ENTEROS, los platos que decide (los mismos que quedan en la lista, por su nombre), y el boton los cuenta.
+    const left = (await guest.locator('[data-testid^="presend-item-"] .rv-d b').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim())
+    expect(left).toHaveLength(2)
+    await expect(passPage.getByTestId(`presend-rest-dishes-${TABLE.id}-2`)).toHaveText(left.join(' · '))
+    await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toHaveText('No le afecta a ninguno de estos 2 platos')
     await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toBeDisabled()
     await press(rest.getByRole('button', { name: 'No lo lleva' }))
     await expect(rest.locator('input')).toHaveValue('No lo lleva')
@@ -228,9 +232,11 @@ test('a station sees and marks only its own work in ONE command, the pass review
     }
 
     // 4) Sala declara una alergia grave con el pase enviado: la estacion la ve ESCRITA (tipo, sustancia, gravedad), tambien en la franja
-    //    «Hecho», y sin botones de revision. C3e.1 (usabilidad 28-10, H34): la linea dice ademas que hacer mientras el pase no decide.
+    //    «Hecho», y sin botones de revision. C3e.1 (usabilidad 28-10, H34): en «Hecho» el plato ya esta Listo, asi que la linea NO dice
+    //    «no lo emplates hasta que decida» (eso es de la rejilla, de lo que aun hay que hacer).
     await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
-    await expect(coldDone).toContainText('Comensal 1 · ALERGIA marisco (grave) · Por revisar en el pase · no lo emplates hasta que decida', { timeout: 15_000 })
+    await expect(coldDone).toContainText('Comensal 1 · ALERGIA marisco (grave) · Por revisar en el pase', { timeout: 15_000 })
+    await expect(coldDone).not.toContainText('no lo emplates')
     await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                  // en NINGUNA mesa: el servidor no se lo anuncia
 
     // 5) EL PASE: la mesa entera, con el progreso de cada estacion por su nombre, que falta y lo que viene (sin enviar). Lo enviado por

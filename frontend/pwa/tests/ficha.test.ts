@@ -82,7 +82,10 @@ describe('words of the buttons', () => {
     const primary = primaryAction(tableActions(entry(dining(['fire-next'], [course('c1', 'Aperitivos', 'Pending'), course('c2', 'Principal', 'Pending')]))))!
     expect(primary.label).toBe('Enviar siguiente pase · Aperitivos')
     expect(doneLabel(primary, dining(['fire-next'], [course('c1', 'Aperitivos', 'Pending'), course('c2', 'Principal', 'Pending')]))).toBe('Pase enviado · Aperitivos ✓')
-    expect(openedLabel('Mesa 5')).toBe(`Mesa 5 abierta ${DONE_MARK}`)
+    // Revision de C3e.1: el nombre de la mesa, detras (el configurado puede ser masculino o plural): nunca «Reservado 2 abierta».
+    expect(openedLabel('Mesa 5')).toBe(`Mesa abierta · Mesa 5 ${DONE_MARK}`)
+    expect(openedLabel('Reservado 2')).toBe('Mesa abierta · Reservado 2 ✓')
+    expect(openedLabel('Reservado 2')).not.toMatch(/Reservado 2 abierta/)
     // Lo que no esta en su tabla dice el texto del boton con la marca; nunca una palabra de caja.
     expect(doneLabel(tableActions(entry(dining(['pause'], []))).find(action => action.action === 'pause')!, service)).toBe('Pausar servicio ✓')
   })

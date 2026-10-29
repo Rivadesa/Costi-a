@@ -98,16 +98,21 @@ describe('words the views write as they are', () => {
     expect(clearing.filter(line => !/if \(noteSpent\(outcome\)\)/.test(line))).toEqual([])
     expect(kitchen).not.toMatch(/void send\([^)]*'review-preparations?'/)
   })
-  // C3e.1 (usabilidad 28-10). H34: la estacion lee que hacer con lo que esta por revisar (stationLine), en su rejilla y en «Hecho»; el
-  // pase sigue con exceptionLine. H53: «Rehacer» va aparte y en dos pasos; su primer toque solo pregunta y la orden es «Sí, rehacer».
-  // H56: «No le afecta a nada más» va arriba, justo bajo la alergia del comensal. H48: los atajos salen de las restricciones aplicables.
+  // C3e.1 (usabilidad 28-10). H34: la estacion lee que hacer con lo que esta por revisar (stationLine) en su rejilla; en «Hecho», donde el
+  // plato ya esta Listo, no («no lo emplates» haria creer que hay que retirarlo); el pase sigue con exceptionLine. H53: «Rehacer» va aparte
+  // y en dos pasos; su primer toque solo pregunta y la orden es «Sí, rehacer». H56: «No le afecta a nada más» va arriba, justo bajo la
+  // alergia del comensal. H48: los atajos salen de las restricciones aplicables.
   it('Costiña Cocina, C3e.1: the station says what to do, «Rehacer» asks first, «No le afecta a nada más» on top, shortcuts by restriction', () => {
     const kitchen = template(files.find(([name]) => name === 'views/KitchenView.vue')![1])
     const station = kitchen.slice(kitchen.indexOf('<template v-if="!whole">'), kitchen.indexOf('<div v-else class="pase-body">'))
     const pass = kitchen.slice(kitchen.indexOf('<div v-else class="pase-body">'))
     expect(station.length).toBeGreaterThan(0)
-    expect(station.match(/stationLine\(preparation\)\.text/g)).toHaveLength(2)                 // la rejilla y la franja «Hecho»
-    expect(station).not.toMatch(/exceptionLine\(preparation\)\.text/)
+    const grid = station.slice(0, station.indexOf('data-testid="done-band"')), band = station.slice(station.indexOf('data-testid="done-band"'))
+    expect([grid.length > 0, band.length > 0]).toEqual([true, true])
+    expect(grid.match(/stationLine\(preparation\)\.text/g)).toHaveLength(1)                    // la rejilla: que hacer mientras tanto
+    expect(grid).not.toMatch(/exceptionLine\(preparation\)\.text/)
+    expect(band.match(/exceptionLine\(preparation\)\.text/g)).toHaveLength(1)                  // «Hecho»: ya esta Listo
+    expect(band).not.toMatch(/stationLine/)
     expect(pass).toMatch(/exceptionLine\(preparation\)\.text/)
     // H53: ninguna lista de decisiones con «Rehacer» dentro; su primer paso no manda nada y la orden sale solo de la pregunta.
     expect(kitchen).not.toMatch(/v-for="option in REVIEW_DECISIONS"/)
@@ -124,6 +129,20 @@ describe('words the views write as they are', () => {
     // H56: la decision para el resto del comensal, entre su alergia y la lista de sus platos.
     const allergy = kitchen.indexOf('v-for="restriction in guest.restrictions"'), restBlock = kitchen.indexOf('`presend-rest-${guestId(guest)}`'), list = kitchen.indexOf('<ul class="rv-list">')
     expect([allergy > 0, restBlock > allergy, list > restBlock]).toEqual([true, true, true])
+    // Revision de H56: encima de su boton, los platos que decide (enteros: restDishes) y el boton los cuenta; su version_conflict, en el
+    // mismo bloque (restKey), no al final de la tarjeta.
+    const rest = kitchen.slice(restBlock, list)
+    const at = (text: string) => rest.indexOf(text)
+    expect(at('{{ restDishes(rest.get(guest.key) ?? []) }}')).toBeGreaterThan(0)
+    expect([at('`presend-rest-dishes-${guestId(guest)}`') > 0, at('`presend-rest-dishes-${guestId(guest)}`') < at('`do-presend-rest-${guestId(guest)}`')]).toEqual([true, true])
+    expect(rest).toMatch(/\{\{ restButton\(rest\.get\(guest\.key\)\?\.length \?\? 0\) \}\}/)
+    expect(rest).not.toMatch(/nada más/)
+    expect(at('<p v-if="conflict === restKey(guest)" class="k-conflict" role="status"')).toBeGreaterThan(at('`do-presend-rest-${guestId(guest)}`'))
+    const script = files.find(([name]) => name === 'views/KitchenView.vue')![1]
+    expect(script).toMatch(/await send\(restKey\(guest\), guest\.entry, 'review-preparations', restBody\(guest, note\)/)
+    // Revision de H53: la pregunta de «Rehacer» se cierra si, al releer, su revision ya no esta en el pase (otro puesto decidio el plato).
+    expect(script).toMatch(/watch\(pass, tickets => \{/)
+    expect(script).toMatch(/if \(remaking\.value !== null && !tickets\.some\(ticket => ticket\.reviews\.some\(preparation => sentKey\(ticket, preparation\) === remaking\.value\)\)\) remaking\.value = null/)
     // H48: ningun atajo fijo; cada lista sale de las restricciones que aplican.
     expect(kitchen).not.toMatch(/NOTE_SHORTCUTS/)
     expect(kitchen.match(/v-for="option in (?:noteShortcuts\([^)]*\)|restShortcuts\(guest\))"/g)).toHaveLength(3)
@@ -200,8 +219,11 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     expect([/\sref="stay"/.test(stay), /\sclass="btn btn-primary"/.test(stay)]).toEqual([true, true])
     expect(ask.match(/<button[^>]*data-testid="open-leave-discard"[^>]*>/)?.[0] ?? '').toMatch(/class="btn btn-caution"[^>]*@click="discardAndLeave"/)
     const openScript = script('views/OpenTable.vue')
-    expect(openScript).toMatch(/if \(lost\.value\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
+    // Revision de C3e.1: con la apertura de camino (sending) no pregunta: sus filas viajan en ella, y la pregunta diria que se pierden.
+    expect(openScript).toMatch(/if \(lost\.value && !props\.sending\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
     expect(openScript).toMatch(/defineExpose\(\{ leave \}\)/)
+    expect(template(source('views/BoardView.vue')).match(/<OpenTable [^>]*>/)?.[0] ?? '').toContain(':sending="openSending"')
+    expect(script('views/BoardView.vue')).toMatch(/openSending\.value = true\n\s*try \{ outcome = await run\([^\n]*\) \}\n\s*finally \{ openSending\.value = false \}/)
     const board = script('views/BoardView.vue')
     const view = board.slice(board.indexOf('function viewTable('), board.indexOf('}', board.indexOf('selectedId.value = serviceId\n')))
     expect(view.indexOf('opening.value.leave(')).toBeGreaterThan(0)
@@ -249,12 +271,19 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     expect(body('.notice.fc-al-no.alarm')).toMatch(/--danger-text/)
     expect(body('.notice.fc-al-no')).not.toMatch(/danger/)
     expect(view.match(/<p v-if="removeProblem"[^>]*>/)?.[0] ?? '').toMatch(/class="notice" /)
+    // Revision de C3e.1: la relectura que sigue a un rechazo puede quitar el alta (service_finished, forbidden) o la tarjeta de retirar
+    // (restriction_not_found); sus avisos no se van con ellas: siguen en la hoja.
+    expect(view).toMatch(/<\/section>\s*<p v-else-if="declined" class="notice fc-al-no" :class="\{ alarm: declinedAlarm \}" role="alert" data-testid="declare-rejected">/)
+    expect(view.indexOf('<p v-else-if="declined"')).toBeGreaterThan(view.indexOf('<section v-if="canDeclare"'))
+    expect(view).toMatch(/<\/ul>\s*<p v-if="removeOrphan" class="notice" role="alert" data-testid="allergy-problem"><Icon name="info" \/>\{\{ removeProblem \}\}<\/p>/)
+    expect(sheet).toMatch(/&& \(!canRemove\.value \|\| !items\.value\.some\(item => item\.restriction\.id === removing\.value\)\)\)/)
   })
   it('H03: the skip sheet waits too, in amber (red is only for allergies); the table card passes both sheets the command that settles', () => {
     const skip = script('views/SkipSheet.vue')
     expect(skip).not.toMatch(/emit\('confirm'/)
     expect(skip).toMatch(/send: \(reason: string\) => Promise<Settlement>/)
-    expect(skip).toMatch(/const why = notApplied\(settled, courseName, 'omitido'\)\n\s*if \(why\) problem\.value = why; else emit\('close'\)/)
+    // Revision de C3e.1: el sujeto es «El pase <nombre>» (el nombre configurado puede ser plural: «Aperitivos NO se ha omitido»).
+    expect(skip).toMatch(/const why = notApplied\(settled, `El pase \$\{courseName\}`, 'omitido'\)\n\s*if \(why\) problem\.value = why; else emit\('close'\)/)
     const skipView = template(source('views/SkipSheet.vue'))
     expect(skipView.match(/<button[^>]*data-testid="do-skip-confirm"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '').toMatch(/:disabled="locked \|\| sending"[\s\S]*'Omitiendo…'/)
     expect(skipView.match(/<p v-if="problem"[^>]*>/)?.[0] ?? '').toMatch(/class="notice fc-sk-problem"/)

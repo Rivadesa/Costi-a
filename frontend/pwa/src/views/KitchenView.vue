@@ -24,9 +24,9 @@ import type { Session } from '../api'
 import {
   alsoText, applyShortcut, CONFLICT_TEXT, countText, DIRECT_DECISIONS, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
   exceptionLine, listoPerDish, markLabel, missingText, nextText, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
-  progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restOfGuest, ringKeys, seesWholeTable, shouldChime, stationLine, stationTickets,
-  TicketWatch, timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem, type StationMark,
-  type StationTicket,
+  progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restButton, restDishes, restOfGuest, ringKeys, seesWholeTable, shouldChime,
+  stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem,
+  type StationMark, type StationTicket,
 } from '../cocina'
 import { Names, useConfiguration } from '../configuration'
 import { restrictionAlarming } from '../floor'
@@ -151,6 +151,11 @@ async function reviewSent(ticket: PassTicket, preparation: Preparation, decision
   // otro resultado se cierra (si el plato vuelve a quedar por revisar, empieza otra vez por el primer paso).
   if (remaking.value === key && !versionConflict(outcome)) remaking.value = null
 }
+// C3e.1 (usabilidad 28-10, H53): la pregunta es de UNA revision. Si al releer ya no esta en el pase (otro puesto decidio ese plato), se
+// cierra: si el plato vuelve a quedar por revisar (otra restriccion tardia del mismo comensal), empieza otra vez por el primer paso.
+watch(pass, tickets => {
+  if (remaking.value !== null && !tickets.some(ticket => ticket.reviews.some(preparation => sentKey(ticket, preparation) === remaking.value))) remaking.value = null
+})
 
 // ---- E4e: «Por revisar antes de enviar» ----
 const guestTable = (guest: PresendGuest) => names.value.table(guest.entry.service.tableId)
@@ -168,10 +173,13 @@ async function presendReview(guest: PresendGuest, item: PresendItem, decision: s
     `Revisión antes de enviar (${label}) de ${item.preparation.name} · ${guestLabel(guest.guestPosition)} · ${item.course.name} · ${guestTable(guest)}`)
   if (noteSpent(outcome)) notes[key] = ''
 }
+// C3e.1 (usabilidad 28-10, H56): su version_conflict se dice junto a su boton, arriba (restKey), no al final de la tarjeta, varios
+// formularios mas abajo; el aviso de abajo queda para las decisiones de cada plato.
+const restKey = (guest: PresendGuest) => `rest:${guest.key}`
 async function nothingElse(guest: PresendGuest): Promise<void> {
   const note = (restNotes[guest.key] ?? '').trim(), items = rest.value.get(guest.key) ?? []
   if (!noteReady(note) || items.length === 0) return
-  const outcome = await send(guest.key, guest.entry, 'review-preparations', restBody(guest, note),
+  const outcome = await send(restKey(guest), guest.entry, 'review-preparations', restBody(guest, note),
     `No le afecta a nada más (${plural(items.length, 'plato', 'platos')}) · ${guestLabel(guest.guestPosition)} · ${guestTable(guest)}`)
   if (noteSpent(outcome)) restNotes[guest.key] = ''
 }
@@ -244,7 +252,9 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
         </li>
       </ul>
 
-      <!-- Lo suyo ya terminado, hasta que el pase valida. Sin hora (el motor no la guarda) y sin deshacer. Las alergias, tambien aqui. -->
+      <!-- Lo suyo ya terminado, hasta que el pase valida. Sin hora (el motor no la guarda) y sin deshacer. Las alergias, tambien aqui.
+           C3e.1 (usabilidad 28-10, H34): aqui la linea por revisar NO dice «no lo emplates hasta que decida» (exceptionLine, no stationLine):
+           el plato ya esta marcado Listo, y esa orden haria creer que hay que retirarlo. Sigue en rojo si alarma y escrita entera. -->
       <section class="done-band" aria-label="Hecho · esperando al pase" data-testid="done-band">
         <h2 class="db-l"><Icon name="check" :size="20" :stroke="2.8" />{{ DONE_BAND }}</h2>
         <p v-if="done.length === 0" class="db-empty">Nada</p>
@@ -255,7 +265,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <p><b>{{ title(ticket.entry, ticket.course) }}</b> · {{ doneText(ticket) }}</p>
               <p v-for="restriction in ticket.wholeTable" :key="restriction.id" class="k-al" :class="restrictionTone(restriction)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ restrictionLabel(restriction) }}</span></p>
               <template v-for="dish in ticket.dishes" :key="dish.key">
-                <p v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ dish.name }} · {{ stationLine(preparation).text }}</span></p>
+                <p v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ dish.name }} · {{ exceptionLine(preparation).text }}</span></p>
               </template>
             </div>
           </li>
@@ -285,8 +295,11 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                   <button v-for="option in restShortcuts(guest)" :key="option.label" type="button" class="k-chip" :disabled="locked"
                     @click="shortcut(restNotes, guest.key, `presend-rest-note-${g}`, option)">{{ option.label }}</button>
                 </div>
+                <!-- C3e.1 (H56): encima del boton, enteros y sin plegar, los platos que decide; el boton los cuenta. Su version_conflict, aqui. -->
+                <p class="rest-dishes" :data-testid="`presend-rest-dishes-${guestId(guest)}`">{{ restDishes(rest.get(guest.key) ?? []) }}</p>
                 <button type="button" class="btn k-btn wide" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
-                  @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />No le afecta a nada más · {{ plural(rest.get(guest.key)?.length ?? 0, 'plato', 'platos') }}</button>
+                  @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />{{ restButton(rest.get(guest.key)?.length ?? 0) }}</button>
+                <p v-if="conflict === restKey(guest)" class="k-conflict" role="status" :data-testid="`conflict-rest-${guestId(guest)}`"><Icon name="info" :size="20" />{{ CONFLICT_TEXT }}</p>
               </div>
               <ul class="rv-list">
                 <li v-for="(item, i) in guest.items" :key="itemKey(guest, item)" class="review presend-item" :data-testid="`presend-item-${itemId(guest, item)}`">
