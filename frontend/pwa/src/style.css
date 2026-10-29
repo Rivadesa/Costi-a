@@ -369,7 +369,7 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .review .k-remake:disabled { border-color: var(--border); background: var(--surface2); color: var(--muted); }
 .review .row > .k-remake { margin-top: 0; }
 .k-remake-ask { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
-.k-remake-q { min-height: var(--touch-kitchen); display: flex; align-items: center; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--warn-text); background: var(--surface); color: var(--warn-text); font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.k-remake-q, .k-rest-q { min-height: var(--touch-kitchen); display: flex; align-items: center; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--warn-text); background: var(--surface); color: var(--warn-text); font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .k-remake-ask .row { gap: 12px; }
 .review.presend-item { border-color: var(--warn-line); background: var(--warn-soft); }
 .review.presend-item .lbl { color: var(--warn-text); }
@@ -377,6 +377,11 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .review.rest .lbl { color: var(--accent-text); }
 /* C3e.1 (usabilidad 28-10, H56): encima de «No le afecta a …», los platos que decide, enteros (nunca plegados ni cortados). */
 .rest-dishes { font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+/* C3e.2 (decision 1b del promotor, 29-10): «No le afecta a ninguno de estos N platos» tambien pregunta antes, como «Rehacer»: la pregunta
+   (.k-rest-q, la misma hoja que .k-remake-q: ambar oscuro, nunca rojo) ocupa el sitio del boton, sin margen arriba (el boton no lo
+   tiene), y al menos su alto; debajo, «Cancelar» y «Sí, a ninguno», de 64 px y a 12 px. */
+.k-rest-ask { display: flex; flex-direction: column; gap: 10px; }
+.k-rest-ask .row { gap: 12px; }
 /* Revision de C3d: lo enviado por revisar, en su comanda del pase, tambien en ambar (pendiente) y alineado con su linea; el rojo queda solo
    en esa linea de encima, si la restriccion alarma. */
 .review.k-review { margin-left: 36px; border-color: var(--warn-line); background: var(--warn-soft); }

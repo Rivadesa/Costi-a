@@ -129,16 +129,66 @@ test('a station sees and marks only its own work in ONE command, the pass review
     expect(await version()).toBe(before + 1)
     //    «No le afecta a nada más», con el atajo «No lo lleva»: los dos platos que quedan, en UNA orden. Revision de C3e.1 (H56): encima
     //    del boton, ENTEROS, los platos que decide (los mismos que quedan en la lista, por su nombre), y el boton los cuenta.
+    //    C3e.2 (decision 1b del promotor, 29-10): en DOS pasos, como «Rehacer». El primer toque no manda nada: en su sitio sale la pregunta,
+    //    con la sustancia del comensal 2 («lactosa»), «Cancelar» y «Sí, a ninguno»; «Cancelar» vuelve atras sin orden y sin borrar la
+    //    nota. «Sí, a ninguno» es UNA review-preparations.
     const left = (await guest.locator('[data-testid^="presend-item-"] .rv-d b').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim())
     expect(left).toHaveLength(2)
+    const askRest = passPage.getByTestId(`rest-ask-${TABLE.id}-2`), restStep = passPage.getByTestId(`rest-step-${TABLE.id}-2`)
+    const cancelRest = passPage.getByTestId(`rest-cancel-${TABLE.id}-2`), confirmRest = passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)
     await expect(passPage.getByTestId(`presend-rest-dishes-${TABLE.id}-2`)).toHaveText(left.join(' · '))
-    await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toHaveText('No le afecta a ninguno de estos 2 platos')
-    await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toBeDisabled()
+    await expect(askRest).toHaveText('No le afecta a ninguno de estos 2 platos')
+    await expect(askRest).toBeDisabled()
+    await expect(confirmRest).toHaveCount(0)                                                   // la orden solo sale de la pregunta
+    const groupPosts: string[] = []
+    passPage.on('request', sent => {
+      if (sent.method() === 'POST' && sent.url().endsWith('/commands/review-preparations')) groupPosts.push(sent.headers()['idempotency-key'] ?? '')
+    })
     await press(rest.getByRole('button', { name: 'No lo lleva' }))
     await expect(rest.locator('input')).toHaveValue('No lo lleva')
+    await expect(askRest).toBeEnabled()
+    await askRest.scrollIntoViewIfNeeded()                                                     // medido donde se toca: el toque ya no desplaza
+    const restAskBox = await askRest.boundingBox()
     before = await version()
-    await press(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`))
+    await press(askRest)
+    await expect(restStep).toContainText('¿Ninguno de estos 2 platos lleva lactosa?')
+    await expect(askRest).toHaveCount(0)
+    await expect(cancelRest).toHaveText('Cancelar')
+    await expect(cancelRest).toBeFocused()
+    await expect(confirmRest).toHaveText('Sí, a ninguno')
+    await expect(confirmRest).toBeEnabled()
+    //    La pregunta ocupa el sitio del primer toque: el segundo toque de un doble toque cae en el texto, no en un boton.
+    const restQuestionBox = await restStep.locator('.k-rest-q').boundingBox()
+    expect(Math.abs(restQuestionBox!.y - restAskBox!.y)).toBeLessThanOrEqual(1)
+    expect(restQuestionBox!.height).toBeGreaterThanOrEqual(restAskBox!.height - 1)
+    //    Revision de C3e.2: el primer paso (rest-ask-…) ya no empieza por «do-» y checkScreen no lo mide (KITCHEN_TARGETS): se mide aqui.
+    expect(restAskBox!.height).toBeGreaterThanOrEqual(64)
+    expect((await cancelRest.boundingBox())!.height).toBeGreaterThanOrEqual(64)
+    expect((await confirmRest.boundingBox())!.height).toBeGreaterThanOrEqual(64)
+    expect(await gapBetween(cancelRest, confirmRest)).toBeGreaterThanOrEqual(8)
+    await checkScreen(passPage, 'pass asking whether nothing else is affected', true)
+    await press(cancelRest)
+    await expect(restStep).toHaveCount(0)
+    await expect(askRest).toBeEnabled()
+    await expect(askRest).toBeFocused()
+    await expect(rest.locator('input')).toHaveValue('No lo lleva')                             // «Cancelar» no borra la nota
+    expect(groupPosts).toHaveLength(0)                                                         // ni el primer toque ni «Cancelar» mandan nada
+    expect(await version()).toBe(before)
+    //    Revision de C3e.2: con la pregunta abierta y la nota vaciada, «Sí, a ninguno» se apaga (la orden exige nota) y «Cancelar» lleva
+    //    el foco a la nota: el primer paso vuelve apagado y no lo recibiria (caeria en <body>).
+    await press(askRest)
+    await rest.locator('input').fill('')
+    await expect(confirmRest).toBeDisabled()
+    await press(cancelRest)
+    await expect(askRest).toBeDisabled()
+    await expect(rest.locator('input')).toBeFocused()
+    await press(rest.getByRole('button', { name: 'No lo lleva' }))
+    await expect(rest.locator('input')).toHaveValue('No lo lleva')
+    expect(groupPosts).toHaveLength(0)
+    await press(askRest)
+    await press(confirmRest)
     await expect(guest).toHaveCount(0, { timeout: 15_000 })
+    expect(groupPosts).toHaveLength(1)
     const reviewed = await read(request, serviceId)
     expect(reviewed.version).toBe(before + 1)
     expect(reviewed.data.courses.flatMap(current => current.preparations).filter(preparation => preparation.reviewPending)).toEqual([])
@@ -317,6 +367,7 @@ test('a station sees and marks only its own work in ONE command, the pass review
     const questionBox = await remakeStep.locator('.k-remake-q').boundingBox()
     expect(Math.abs(questionBox!.y - askBox!.y)).toBeLessThanOrEqual(1)
     expect(questionBox!.height).toBeGreaterThanOrEqual(askBox!.height - 1)
+    expect(askBox!.height).toBeGreaterThanOrEqual(64)                                          // revision de C3e.2: remake-… tampoco es «do-»
     expect((await cancelRemake.boundingBox())!.height).toBeGreaterThanOrEqual(64)
     expect(await gapBetween(cancelRemake, confirmRemake)).toBeGreaterThanOrEqual(8)
     await checkScreen(passPage, 'pass asking to remake', true)

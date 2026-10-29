@@ -24,7 +24,8 @@ import type { Session } from '../api'
 import {
   alsoText, applyShortcut, CONFLICT_TEXT, countText, DIRECT_DECISIONS, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
   exceptionLine, listoPerDish, markLabel, missingText, nextText, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
-  progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restButton, restDishes, restOfGuest, ringKeys, seesWholeTable, shouldChime,
+  progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restButton, restConfirm, restDishes, restOfGuest, restQuestion, restSignature,
+  restSubstances, ringKeys, seesWholeTable, shouldChime,
   stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem,
   type StationMark, type StationTicket,
 } from '../cocina'
@@ -129,16 +130,29 @@ const reviewable = (ticket: PassTicket, preparation: Preparation) => ticket.revi
 // nota escrita se queda. El foco va a «Cancelar» y, al cancelar, vuelve a «Rehacer» (sin desplazar la pantalla).
 const remaking = ref<string | null>(null)
 const remakeId = (ticket: PassTicket, preparation: Preparation) => `${testKey(ticket.entry, ticket.course)}-${preparation.id}`
-function focusTestId(testId: string): void {
-  void nextTick(() => document.querySelector<HTMLElement>(`[data-testid="${CSS.escape(testId)}"]`)?.focus({ preventScroll: true }))
+const byTestId = (testId: string) => `[data-testid="${CSS.escape(testId)}"]`
+// C3e.2 (revision): el foco va al PRIMERO de la lista que pueda recibirlo. Un boton apagado no lo recibe y el foco caeria en <body>: al
+// cancelar con la nota vaciada, el primer paso vuelve apagado. Detras van el campo de la nota y, si todo esta apagado (locked: va una
+// orden), el propio bloque (tabindex="-1").
+function focusFirst(...selectors: string[]): void {
+  void nextTick(() => {
+    for (const selector of selectors) {
+      const target = document.querySelector<HTMLElement>(selector)
+      if (target && !target.matches(':disabled')) { target.focus({ preventScroll: true }); return }
+    }
+  })
 }
+const focusTestId = (testId: string) => focusFirst(byTestId(testId))
+// «Cancelar» devuelve el foco al primer paso; si sale apagado, a la nota de su bloque o al bloque.
+const focusBack = (first: string, block: string) => focusFirst(byTestId(first), `${byTestId(block)} input`, byTestId(block))
 function askRemake(ticket: PassTicket, preparation: Preparation): void {
+  resting.value = null                                   // C3e.2: una sola pregunta abierta en la pantalla (askRest)
   remaking.value = sentKey(ticket, preparation)
   focusTestId(`remake-cancel-${remakeId(ticket, preparation)}`)
 }
 function cancelRemake(ticket: PassTicket, preparation: Preparation): void {
   remaking.value = null
-  focusTestId(`remake-${remakeId(ticket, preparation)}`)
+  focusBack(`remake-${remakeId(ticket, preparation)}`, `review-${remakeId(ticket, preparation)}`)
 }
 async function reviewSent(ticket: PassTicket, preparation: Preparation, decision: string, label: string): Promise<void> {
   const key = sentKey(ticket, preparation), note = (notes[key] ?? '').trim()
@@ -180,13 +194,43 @@ const restKey = (guest: PresendGuest) => `rest:${guest.key}`
 // La MISMA condicion en el bloque y en el aviso del final de la tarjeta: si la relectura que sigue a su version_conflict quita el bloque
 // (otro puesto decidio a la vez uno de sus dos platos), el aviso sale abajo en vez de irse con el.
 const showsRest = (guest: PresendGuest) => guest.items.length > 1 && (rest.value.get(guest.key)?.length ?? 0) > 0
+// C3e.2 (decision 1b del promotor, 29-10): «No le afecta a ninguno de estos N platos» en DOS pasos, como «Rehacer» (H53). El primer toque
+// (rest-ask-…) no manda nada: en su sitio sale la pregunta (restQuestion, con la sustancia) con «Cancelar» y restConfirm, que es la orden
+// de siempre (do-presend-rest-…). La nota escrita se queda. El foco va a «Cancelar» y, al cancelar, vuelve al primer boton (sin desplazar).
+// Una sola pregunta abierta en la pantalla: abrir esta cierra la de «Rehacer» y al reves (askRemake). Cerrar la otra no manda nada ni borra
+// su nota, y deja siempre a la vista la pregunta que se acaba de tocar; impedir abrir dejaria un boton que no responde.
+const resting = ref<string | null>(null)
+// Lo que la pregunta dejaba leer al abrirse (restSignature): si cambia, se cierra (watch de abajo).
+let restSeen = ''
+const restAsk = (guest: PresendGuest) => restQuestion(rest.value.get(guest.key)?.length ?? 0, restSubstances(guest))
+function askRest(guest: PresendGuest): void {
+  remaking.value = null
+  resting.value = guest.key
+  restSeen = restSignature(guest)
+  focusTestId(`rest-cancel-${guestId(guest)}`)
+}
+function cancelRest(guest: PresendGuest): void {
+  resting.value = null
+  focusBack(`rest-ask-${guestId(guest)}`, `presend-rest-${guestId(guest)}`)
+}
 async function nothingElse(guest: PresendGuest): Promise<void> {
   const note = (restNotes[guest.key] ?? '').trim(), items = rest.value.get(guest.key) ?? []
   if (!noteReady(note) || items.length === 0) return
   const outcome = await send(restKey(guest), guest.entry, 'review-preparations', restBody(guest, note),
     `No le afecta a nada más (${plural(items.length, 'plato', 'platos')}) · ${guestLabel(guest.guestPosition)} · ${guestTable(guest)}`)
   if (noteSpent(outcome)) restNotes[guest.key] = ''
+  // C3e.2: tras un version_conflict la pregunta sigue abierta, con su aviso (conflict-rest-…) debajo: «toca otra vez» es un toque. Con
+  // cualquier otro resultado se cierra (si el comensal sigue con platos por decidir, empieza otra vez por el primer paso).
+  if (resting.value === guest.key && !versionConflict(outcome)) resting.value = null
 }
+// C3e.2: la pregunta se cierra sola si, al releer, su bloque ya no se pinta (showsRest) o cambia lo que deja leer (otro puesto decidio uno
+// de esos platos: diria otro numero; o llego, se retiro o cambio una restriccion, tambien de la misma sustancia con otro tipo o gravedad):
+// nunca se confirma sin haber leido la lista actual.
+watch(presend, guests => {
+  if (resting.value === null) return
+  const guest = guests.find(candidate => candidate.key === resting.value)
+  if (!guest || !showsRest(guest) || restSignature(guest) !== restSeen) resting.value = null
+})
 
 // ---- «Empezar turno» y el sonido de una comanda nueva ----
 const intro = shiftIntro(screenSupport(browserScreen()))
@@ -294,7 +338,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <!-- C3e.1 (usabilidad 28-10, H56): «No le afecta a nada más» ARRIBA, justo bajo la alergia: lo normal es adaptar uno o dos platos
                    y dejar el resto, y antes habia que pasar todos los formularios para llegar a el. Lo mismo que exigia: nota obligatoria y
                    solo con mas de un plato del comensal. -->
-              <div v-if="showsRest(guest)" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
+              <div v-if="showsRest(guest)" class="review rest" tabindex="-1" :data-testid="`presend-rest-${guestId(guest)}`">
                 <label class="lbl" :for="`presend-rest-note-${g}`">Nota para todo lo que queda (obligatoria)</label>
                 <input :id="`presend-rest-note-${g}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${g}`" maxlength="200" autocomplete="off" :disabled="locked" />
                 <div class="k-shortcuts">
@@ -303,8 +347,19 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                 </div>
                 <!-- C3e.1 (H56): encima del boton, enteros y sin plegar, los platos que decide; el boton los cuenta. Su version_conflict, aqui. -->
                 <p class="rest-dishes" :data-testid="`presend-rest-dishes-${guestId(guest)}`">{{ restDishes(rest.get(guest.key) ?? []) }}</p>
-                <button type="button" class="btn k-btn wide" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
-                  @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />{{ restButton(rest.get(guest.key)?.length ?? 0) }}</button>
+                <!-- C3e.2 (decision 1b del promotor, 29-10): en DOS pasos, como «Rehacer». El primer toque (rest-ask-…) solo pregunta; la
+                     pregunta ocupa su sitio y al menos su alto (el segundo toque de un doble toque cae en el texto) y solo «Sí, a ninguno»
+                     (do-presend-rest-…) manda la orden. «Cancelar» no borra la nota. -->
+                <button v-if="resting !== guest.key" type="button" class="btn k-btn wide" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')"
+                  :data-testid="`rest-ask-${guestId(guest)}`" @click="askRest(guest)"><Icon name="checkCircle" :size="22" />{{ restButton(rest.get(guest.key)?.length ?? 0) }}</button>
+                <div v-else class="k-rest-ask" role="group" :aria-labelledby="`presend-rest-q-${g}`" :data-testid="`rest-step-${guestId(guest)}`">
+                  <p :id="`presend-rest-q-${g}`" class="k-rest-q">{{ restAsk(guest) }}</p>
+                  <div class="row">
+                    <button type="button" class="btn k-btn" :data-testid="`rest-cancel-${guestId(guest)}`" @click="cancelRest(guest)">Cancelar</button>
+                    <button type="button" class="btn k-btn" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
+                      @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />{{ restConfirm(rest.get(guest.key)?.length ?? 0) }}</button>
+                  </div>
+                </div>
                 <p v-if="conflict === restKey(guest)" class="k-conflict" role="status" :data-testid="`conflict-rest-${guestId(guest)}`"><Icon name="info" :size="20" />{{ CONFLICT_TEXT }}</p>
               </div>
               <ul class="rv-list">
@@ -375,7 +430,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                 </div>
                 <template v-for="(preparation, e) in dish.exceptions" :key="preparation.id">
                   <p class="k-al pd-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ exceptionLine(preparation).text }}</span></p>
-                  <div v-if="reviewable(ticket, preparation)" class="review k-review" :data-testid="`review-${testKey(ticket.entry, ticket.course)}-${preparation.id}`">
+                  <div v-if="reviewable(ticket, preparation)" class="review k-review" tabindex="-1" :data-testid="`review-${testKey(ticket.entry, ticket.course)}-${preparation.id}`">
                     <label class="lbl" :for="`review-note-${t}-${d}-${e}`">Nota (obligatoria)</label>
                     <input :id="`review-note-${t}-${d}-${e}`" v-model="notes[sentKey(ticket, preparation)]" :name="`review-note-${t}-${d}-${e}`" maxlength="200" autocomplete="off" :disabled="locked" />
                     <div class="k-shortcuts">

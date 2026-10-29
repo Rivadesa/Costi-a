@@ -76,7 +76,10 @@ describe('words the views write as they are', () => {
     const found = files.flatMap(([name, source]) => [...template(source).matchAll(bound)].map(match => `${name}: ${match[0]}`))
     expect(found).toEqual([])
     const kitchen = template(files.find(([name]) => name === 'views/KitchenView.vue')![1])
-    const ids = [...kitchen.matchAll(/:id="`([^`"]*)`"/g)].map(match => match[1])
+    // C3e.2: el texto de una pregunta en dos pasos nombra su grupo (aria-labelledby, con id tambien de su posicion): no es un campo.
+    const named = [...kitchen.matchAll(/:aria-labelledby="`([^`"]*)`"/g)].map(match => match[1])
+    expect(named).toEqual(['presend-rest-q-${g}'])
+    const ids = [...kitchen.matchAll(/:id="`([^`"]*)`"/g)].map(match => match[1]).filter(id => !named.includes(id))
     const labels = [...kitchen.matchAll(/:for="`([^`"]*)`"/g)].map(match => match[1])
     expect(ids.length).toBeGreaterThan(0)
     expect(labels).toEqual(ids)                                         // cada etiqueta apunta a SU campo
@@ -147,7 +150,7 @@ describe('words the views write as they are', () => {
     // Las dos con la MISMA condicion (showsRest): el aviso de abajo solo cuando el bloque ya no se pinta, nunca dos veces.
     expect(script).toMatch(/const showsRest = \(guest: PresendGuest\) => guest\.items\.length > 1 && \(rest\.value\.get\(guest\.key\)\?\.length \?\? 0\) > 0/)
     expect(kitchen.match(/showsRest\(guest\)/g)).toHaveLength(2)
-    expect(kitchen).toMatch(/<div v-if="showsRest\(guest\)" class="review rest" :data-testid="`presend-rest-\$\{guestId\(guest\)\}`">/)
+    expect(kitchen).toMatch(/<div v-if="showsRest\(guest\)" class="review rest" tabindex="-1" :data-testid="`presend-rest-\$\{guestId\(guest\)\}`">/)
     const card = kitchen.slice(list, kitchen.indexOf('</article>', list))
     expect(card).toMatch(/<p v-if="conflict === guest\.key \|\| \(conflict === restKey\(guest\) && !showsRest\(guest\)\)" class="k-conflict" role="status">/)
     // Revision de H53: la pregunta de «Rehacer» se cierra si, al releer, su revision ya no esta en el pase (otro puesto decidio el plato).
@@ -156,6 +159,60 @@ describe('words the views write as they are', () => {
     // H48: ningun atajo fijo; cada lista sale de las restricciones que aplican.
     expect(kitchen).not.toMatch(/NOTE_SHORTCUTS/)
     expect(kitchen.match(/v-for="option in (?:noteShortcuts\([^)]*\)|restShortcuts\(guest\))"/g)).toHaveLength(3)
+  })
+  // C3e.2 (decision 1b del promotor, 29-10): «No le afecta a ninguno de estos N platos» decidia con UN toque todo lo que le quedaba al
+  // comensal. Ahora va en dos pasos, como «Rehacer»: el primer toque solo pregunta, en su sitio, y la orden sale solo de la pregunta.
+  it('Costiña Cocina, C3e.2: «No le afecta a ninguno de estos N platos» asks first, in its own place, and only the question sends', () => {
+    const source = files.find(([name]) => name === 'views/KitchenView.vue')![1].replace(/\r\n/g, '\n')
+    const kitchen = template(source), script = source.slice(0, source.indexOf('<template>'))
+    const block = kitchen.slice(kitchen.indexOf('`presend-rest-${guestId(guest)}`'), kitchen.indexOf('<ul class="rv-list">'))
+    // Primer paso: el mismo texto (restButton) en el mismo sitio, bajo los platos que decide; apagado sin nota lista o con locked. No manda nada.
+    const ask = block.match(/<button v-if="resting !== guest\.key"[^>]*>/)?.[0] ?? ''
+    expect(ask).toMatch(/:disabled="locked \|\| !noteReady\(restNotes\[guest\.key\] \?\? ''\)"/)
+    expect(ask).toMatch(/:data-testid="`rest-ask-\$\{guestId\(guest\)\}`"/)
+    expect(ask).toMatch(/@click="askRest\(guest\)"/)
+    expect(ask).not.toMatch(/nothingElse|do-presend-rest/)
+    const askAt = block.indexOf(ask), stepAt = block.indexOf('<div v-else class="k-rest-ask"')
+    expect(block.indexOf('`presend-rest-dishes-${guestId(guest)}`')).toBeLessThan(askAt)
+    expect(block.slice(askAt, stepAt)).toMatch(/\{\{ restButton\(rest\.get\(guest\.key\)\?\.length \?\? 0\) \}\}<\/button>\s*$/)
+    // La pregunta, en su sitio (v-else del primer paso): el texto de restQuestion, «Cancelar» y la orden, que conserva do-presend-rest-….
+    const conflictAt = block.indexOf('<p v-if="conflict === restKey(guest)"')
+    expect([askAt > 0, stepAt > askAt, conflictAt > stepAt]).toEqual([true, true, true])
+    const step = block.slice(stepAt, conflictAt)
+    expect(step).toMatch(/^<div v-else class="k-rest-ask" role="group" :aria-labelledby="`presend-rest-q-\$\{g\}`" :data-testid="`rest-step-\$\{guestId\(guest\)\}`">/)
+    expect(step).toMatch(/<p :id="`presend-rest-q-\$\{g\}`" class="k-rest-q">\{\{ restAsk\(guest\) \}\}<\/p>/)
+    const cancel = step.match(/<button[^>]*rest-cancel-[^>]*>/)?.[0] ?? ''
+    expect(cancel).toMatch(/:data-testid="`rest-cancel-\$\{guestId\(guest\)\}`" @click="cancelRest\(guest\)"/)
+    expect(cancel).not.toMatch(/:disabled/)
+    const confirm = step.match(/<button[^>]*do-presend-rest-[^>]*>/)?.[0] ?? ''
+    expect(confirm).toMatch(/:disabled="locked \|\| !noteReady\(restNotes\[guest\.key\] \?\? ''\)"/)            // sin nota, apagado: la orden la exige
+    expect(confirm).toMatch(/@click="nothingElse\(guest\)"/)
+    expect(step.indexOf(cancel)).toBeLessThan(step.indexOf(confirm))
+    expect(step).toMatch(/\{\{ restConfirm\(rest\.get\(guest\.key\)\?\.length \?\? 0\) \}\}<\/button>/)
+    // La orden sale SOLO de la pregunta: un unico do-presend-rest-… y un unico nothingElse en toda la plantilla.
+    expect([kitchen.match(/do-presend-rest-/g)?.length, kitchen.match(/nothingElse\(/g)?.length]).toEqual([1, 1])
+    // El script: el primer toque abre (y cierra la de «Rehacer»: una sola pregunta) y lleva el foco a «Cancelar»; «Cancelar» vuelve al primer
+    // boton sin tocar la nota; la orden cierra la pregunta salvo con version_conflict; y se cierra sola al releer.
+    expect(script).toMatch(/function askRest\(guest: PresendGuest\): void \{\n\s*remaking\.value = null\n\s*resting\.value = guest\.key\n\s*restSeen = restSignature\(guest\)\n\s*focusTestId\(`rest-cancel-\$\{guestId\(guest\)\}`\)\n\}/)
+    expect(script).toMatch(/function cancelRest\(guest: PresendGuest\): void \{\n\s*resting\.value = null\n\s*focusBack\(`rest-ask-\$\{guestId\(guest\)\}`, `presend-rest-\$\{guestId\(guest\)\}`\)\n\}/)
+    expect(script).toMatch(/function askRemake\(ticket: PassTicket, preparation: Preparation\): void \{\n\s*resting\.value = null\s/)
+    expect(script).toMatch(/preventScroll: true/)
+    // Revision de C3e.2: si el primer paso vuelve APAGADO (nota vaciada con la pregunta abierta, o locked), un boton apagado no recibe el
+    // foco y caeria en <body>: va al primero que lo pueda recibir, el boton, la nota de su bloque o el bloque (tabindex="-1"). Igual en
+    // «Rehacer».
+    expect(script).toMatch(/if \(target && !target\.matches\(':disabled'\)\) \{ target\.focus\(\{ preventScroll: true \}\); return \}/)
+    expect(script).toMatch(/const focusBack = \(first: string, block: string\) => focusFirst\(byTestId\(first\), `\$\{byTestId\(block\)\} input`, byTestId\(block\)\)/)
+    expect(script).toMatch(/function cancelRemake\(ticket: PassTicket, preparation: Preparation\): void \{\n\s*remaking\.value = null\n\s*focusBack\(`remake-\$\{remakeId\(ticket, preparation\)\}`, `review-\$\{remakeId\(ticket, preparation\)\}`\)\n\}/)
+    // Los dos bloques a los que vuelve el foco existen con ese data-testid y pueden recibirlo.
+    expect(kitchen).toMatch(/class="review k-review" tabindex="-1" :data-testid="`review-\$\{testKey\(ticket\.entry, ticket\.course\)\}-\$\{preparation\.id\}`"/)
+    expect(script).toMatch(/const remakeId = \(ticket: PassTicket, preparation: Preparation\) => `\$\{testKey\(ticket\.entry, ticket\.course\)\}-\$\{preparation\.id\}`/)
+    const nothing = script.slice(script.indexOf('async function nothingElse('), script.indexOf('\n}', script.indexOf('async function nothingElse(')))
+    expect(nothing).toMatch(/if \(resting\.value === guest\.key && !versionConflict\(outcome\)\) resting\.value = null/)
+    expect(nothing).not.toMatch(/restNotes\[guest\.key\] = ''[\s\S]*restNotes\[guest\.key\] = ''/)                // la nota, solo con noteSpent
+    expect(script).toMatch(/const restAsk = \(guest: PresendGuest\) => restQuestion\(rest\.value\.get\(guest\.key\)\?\.length \?\? 0, restSubstances\(guest\)\)/)
+    expect(script).toMatch(/watch\(presend, guests => \{\n\s*if \(resting\.value === null\) return\n\s*const guest = guests\.find\(candidate => candidate\.key === resting\.value\)\n\s*if \(!guest \|\| !showsRest\(guest\) \|\| restSignature\(guest\) !== restSeen\) resting\.value = null\n\s*\}\)/)
+    // La descripcion de la orden pendiente no cambia.
+    expect(nothing).toMatch(/`No le afecta a nada más \(\$\{plural\(items\.length, 'plato', 'platos'\)\}\) · \$\{guestLabel\(guest\.guestPosition\)\} · \$\{guestTable\(guest\)\}`/)
   })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
@@ -404,6 +461,16 @@ describe('Costiña Cocina reads at one or two metres (style.css)', () => {
     expect(block.match(/\.k-remake[^{]*\{[^}]*\}/g)?.join('') ?? '').not.toMatch(/danger/)
     for (const selector of ['.k-shortcuts', '.review .row', '.k-remake-ask .row'])
       expect(Number(value(selector, 'gap').replace('px', '')), selector).toBeGreaterThanOrEqual(8)
+  })
+  // C3e.2 (decision 1b del promotor, 29-10): la pregunta de «No le afecta a ninguno de estos N platos» es la de «Rehacer»: tapa el sitio del
+  // primer toque (sin margen arriba, como su boton, y al menos su alto), en ambar oscuro y nunca en rojo; «Cancelar» y la orden, a 12 px.
+  it('C3e.2: the question of «No le afecta a ninguno …» covers the place of its button, amber and never red, its two buttons 12 px apart', () => {
+    for (const property of ['min-height', 'border', 'color', 'font-size', 'font-weight']) expect(value('.k-rest-q', property), property).toBe(value('.k-remake-q', property))
+    expect(value('.k-rest-q', 'min-height')).toBe('var(--touch-kitchen)')
+    expect(value('.k-rest-q', 'border')).toBe('2px solid var(--warn-text)')
+    expect([value('.k-rest-ask', 'display'), value('.k-rest-ask', 'flex-direction'), value('.k-rest-ask', 'margin-top')]).toEqual(['flex', 'column', ''])
+    expect(value('.k-rest-ask .row', 'gap')).toBe('12px')
+    expect(block.match(/\.k-rest[^{]*\{[^}]*\}/g)?.join('') ?? '').not.toMatch(/danger/)
   })
   it('nothing operational under 16 px', () => {
     const sizes = rules.flatMap(rule => [...rule.body.matchAll(/font-size\s*:\s*([\d.]+)px/g)].map(match => [rule.selectors.join(', '), Number(match[1])] as const))

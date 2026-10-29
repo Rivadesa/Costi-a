@@ -418,10 +418,64 @@ export function restBody(guest: PresendGuest, note: string): { expectedVersion: 
 // C3e.1 (usabilidad 28-10, H56): con «No le afecta a nada más» ARRIBA, los nombres de los platos quedan debajo, a una pantalla, y la unica
 // pista era «· 3 platos». Sin ninguna decision tomada, ese toque decide TAMBIEN el plato que lleva el alergeno. Encima del boton se
 // escriben ENTEROS, sin plegar, los platos que decide (restOfGuest), con la cantidad como en su ficha («Ostra · Merluza × 2 · Tarta»), y
-// el boton los cuenta. Sigue siendo un toque (una accion frecuente, un toque) con la nota obligatoria.
+// el boton los cuenta, con la nota obligatoria. C3e.2 (decision 1b del promotor, 29-10): ese boton ya no manda nada; pregunta antes
+// (restQuestion, abajo).
 export const restDishes = (items: readonly PresendItem[]): string =>
   items.map(item => item.preparation.quantity > 1 ? `${item.preparation.name} × ${item.preparation.quantity}` : item.preparation.name).join(' · ')
 export const restButton = (count: number): string => count === 1 ? 'No le afecta a este plato' : `No le afecta a ninguno de estos ${count} platos`
+
+// C3e.2 (decision 1b del promotor, 29-10): «No le afecta a ninguno de estos N platos» decidia con UN toque todo lo que le quedaba al
+// comensal, tambien el plato que lleva el alergeno si aun no se habia adaptado. Ahora va en DOS pasos, como «Rehacer» (H53): el primer toque
+// no manda nada y en su sitio sale restQuestion, con «Cancelar» y restConfirm, que es la orden de siempre (review-preparations). La
+// pregunta nombra la sustancia: «¿Ninguno de estos 3 platos lleva marisco?».
+// Las sustancias son las de las restricciones que aplican a ese comensal en ese bloque: guest.restrictions, las MISMAS que mira el atajo
+// «Sin gluten» de «nada más» (H48, restShortcuts en KitchenView.vue), con las de toda la mesa que llevan sus platos. Tal como se
+// escriben en la linea de la alergia (restrictionLabel), sin el tipo ni la gravedad.
+// C3e.2 (decision 1b del promotor, 29-10; revision): una Preferencia no siempre es algo que un plato «lleva» («vegetariana», «poco
+// hecho»): no se nombra. Las alergias e intolerancias SI, siempre: nombrar el alergeno es para lo que esta el segundo paso (antes, con
+// cualquier Preferencia en el bloque, la pregunta dejaba de nombrar tambien la alergia). La Preferencia sigue escrita en su linea de
+// encima, y «Sí, a ninguno» decide como siempre todo lo del bloque.
+export const restSubstances = (guest: PresendGuest): string[] =>
+  guest.restrictions.filter(restriction => restriction.kind !== 'Preference').map(restriction => restriction.substance)
+// C3e.2 (revision): una sustancia escrita como negacion («sin picante», «no come cerdo») diria lo contrario: «¿Ninguno … lleva sin picante?».
+// No se nombra; las demas, si.
+const NEGATION = /^(?:sin|no)(?:\s|$)/i
+// Sin repetir (sin mirar mayusculas ni los espacios de los lados) y en el orden en que salen; una vacia no dice nada.
+function knownSubstances(substances: readonly string[]): string[] {
+  const seen = new Set<string>(), found: string[] = []
+  for (const substance of substances) {
+    const text = (substance ?? '').trim(), key = text.toLowerCase()
+    if (text.length === 0 || seen.has(key)) continue
+    seen.add(key); found.push(text)
+  }
+  return found
+}
+// «marisco», «marisco ni gluten», «marisco, gluten ni lactosa».
+function neither(parts: readonly string[]): string {
+  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} ni ${parts.at(-1)}`
+}
+export function restQuestion(count: number, substances: readonly string[]): string {
+  // Las que no se pueden preguntar como «lleva X» (una negacion) no se nombran; sin ninguna que nombrar, la pregunta sin sustancia.
+  const known = knownSubstances(substances).filter(substance => !NEGATION.test(substance))
+  if (known.length === 0) return count === 1 ? '¿No le afecta a este plato?' : `¿No le afecta a ninguno de estos ${count} platos?`
+  return count === 1 ? `¿Este plato no lleva ${neither(known)}?` : `¿Ninguno de estos ${count} platos lleva ${neither(known)}?`
+}
+// El boton de la pregunta que manda la orden.
+export const restConfirm = (count: number): string => count === 1 ? 'Sí, no le afecta' : 'Sí, a ninguno'
+// Lo que la pregunta deja leer: que platos decide (por su id, su nombre y su cantidad), las lineas de alergia de encima y que pregunta.
+// Si cambia con la pregunta abierta (otro puesto decidio uno de esos platos, o llego, se retiro o cambio una restriccion), la pantalla la
+// cierra: nunca se confirma sin haber leido la lista actual. La version de la mesa no entra: sube con cualquier orden de esa mesa (otro
+// comensal, otro pase) y no cambia lo que se lee.
+// C3e.2 (revision): cada restriccion entra ENTERA (id, comensal, tipo, sustancia y gravedad), ordenada por su id. La pregunta no repite
+// sustancias: si llega «ALERGIA lactosa (grave)» a quien ya tenia «Intolerancia lactosa (leve)», el texto y los platos son los mismos,
+// pero la linea de encima ya es otra (y en rojo). Lo mismo con una retirada y vuelta a anotar (otro id), o una de toda la mesa.
+export function restSignature(guest: PresendGuest): string {
+  const items = restOfGuest(guest)
+  const restrictions = [...guest.restrictions].sort((a, b) => a.id.localeCompare(b.id))
+    .map(restriction => [restriction.id, restriction.guestPosition ?? null, restriction.kind, restriction.substance, restriction.severity])
+  return JSON.stringify([items.map(item => [item.course.id, item.preparation.id]), restDishes(items), restrictions,
+    restQuestion(items.length, restSubstances(guest))])
+}
 
 // Las decisiones que se ofrecen ANTES de enviar: «Rehacer» es solo para lo que ya salio (nothing_to_remake).
 export const PRESEND_DECISIONS = [
