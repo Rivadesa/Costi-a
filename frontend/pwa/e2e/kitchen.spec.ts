@@ -147,7 +147,9 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await press(rest.getByRole('button', { name: 'No lo lleva' }))
     await expect(rest.locator('input')).toHaveValue('No lo lleva')
     await expect(askRest).toBeEnabled()
-    await askRest.scrollIntoViewIfNeeded()                                                     // medido donde se toca: el toque ya no desplaza
+    // Medido donde se toca. Centrado, no solo «a la vista»: abajo, la franja fija «Esperando al camarero» tapa parte de la columna (H50),
+    // y si el boton queda debajo Playwright desplaza la pantalla antes de tocar y la medida de antes ya no vale.
+    await askRest.evaluate(element => element.scrollIntoView({ block: 'center' }))
     const restAskBox = await askRest.boundingBox()
     before = await version()
     await press(askRest)
