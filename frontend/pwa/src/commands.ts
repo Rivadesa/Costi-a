@@ -3,6 +3,7 @@ import { currentDatabase } from './db'
 import { otherActorAdvice } from './labels'
 import { assertNoMoney } from './money-guard'
 import type { PendingCommand, PendingStore } from './pending'
+import type { Settlement } from './round'
 
 // Ejecutor de comandos de dominio con ORDEN INCIERTA durable (D6.3, espejo de D3.3/D3.4):
 //  1. La orden se guarda ANTES del primer intento, RESERVANDO el unico hueco del dispositivo (D6.7: comprobar y escribir
@@ -100,6 +101,43 @@ export const REJECTIONS: Record<string, string> = {
   table_inactive: 'Esa mesa ya no está activa: se ha quitado en el PC principal. No se ha abierto.',
   // 422: datos que el servidor no admite (al abrir, mas personas de las que caben en la mesa).
   invalid_request: 'El servidor no admite esos datos: vuelve a leer la mesa y revísalos. No se ha aplicado nada.',
+  // Revision de C3e.1 (usabilidad 28-10, H03): los de la hoja de alergias que aun salian con el codigo en el aviso de arriba. Los del PC
+  // (Client/Labels.cs), tal cual.
+  service_finished: 'La mesa ya está terminada: no admite cambios.',
+  restriction_not_found: 'Esa restricción ya no existe.',
+}
+
+// C3e.1 (usabilidad 28-10, H03): las hojas de la ficha que mandan una orden (anotar o retirar una alergia, omitir un pase) esperan su
+// resultado (bodega.ts, settlementOf). Confirmada, la hoja se cierra: lo hecho ya se ve en la ficha releida. Sin confirmar, tambien: la
+// orden pendiente ya guarda sus datos y se reintenta identica, y su aviso de arriba («Orden sin confirmar», con reintentar y preguntar) es
+// el unico sitio que la resuelve; una copia en la hoja invitaria a anotarla dos veces. Rechazada, o sin salir de este dispositivo, la hoja
+// se QUEDA con lo escrito y dice en su sitio que NO se aplico y por que, en corto: «La alergia NO se ha anotado: otro puesto cambió la
+// mesa a la vez y ya se ha vuelto a leer. Toca otra vez.». Antes se cerraba sin esperar y lo escrito se perdia; el aviso de arriba no
+// decia que la alergia no se habia anotado. «Toca otra vez» solo donde repetir puede salir bien (la mesa releida, o la orden que no llego
+// a salir); en lo demas el motivo dice que pasa. Un codigo sin motivo propio usa el texto de REJECTIONS, y si tampoco lo tiene, uno
+// generico sin el codigo. Devuelve '' cuando la hoja se cierra.
+const DECLINED: Record<string, string> = {
+  version_conflict: 'otro puesto cambió la mesa a la vez y ya se ha vuelto a leer',
+  // No es del servidor: la orden no salio de este dispositivo (no se pudo guardar, u otra ocupaba su hueco). El aviso de arriba dice cual.
+  not_sent: 'la orden no ha salido de este dispositivo; el aviso de arriba dice por qué',
+  duplicate_restriction: 'ya estaba anotada para ese comensal',
+  invalid_guest: 'ese comensal no está en la mesa',
+  invalid_restriction: 'el servidor no conoce ese tipo o esa gravedad',
+  restriction_not_found: 'otro puesto ya la había retirado',
+  service_finished: 'la mesa ya está terminada',
+  course_not_pending: 'ese pase ya se envió a cocina',
+  forbidden: 'este dispositivo no tiene permiso para eso',
+  invalid_request: 'el servidor no admite esos datos',
+}
+const AGAIN = new Set(['version_conflict', 'not_sent'])
+export const TRY_AGAIN = 'Toca otra vez.'
+export function notApplied(settled: Settlement, subject: string, done: string): string {
+  if (settled.kind === 'confirmed' || settled.kind === 'unconfirmed') return ''
+  const code = settled.kind === 'rejected' ? settled.code : 'not_sent'
+  const head = `${subject} NO se ha ${done}`
+  const why = DECLINED[code]
+  if (why) return `${head}: ${why}.${AGAIN.has(code) ? ` ${TRY_AGAIN}` : ''}`
+  return REJECTIONS[code] ? `${head}. ${REJECTIONS[code]}` : `${head}: el servidor no ha admitido la orden.`
 }
 
 export class CommandRunner {

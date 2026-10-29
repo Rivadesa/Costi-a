@@ -100,18 +100,65 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('open-kind-1-Allergy')).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('open-severity-1-Severe')).toHaveAttribute('aria-checked', 'true')
-    await expect(page.getByTestId('open-summary')).toHaveText('3 personas · Menú de ensayo · 1 alergia o intolerancia')
+    //    C3e.1 (usabilidad 28-10, H06): encima de «Abrir», la alergia escrita entera y en rojo, como la dira la ficha, en vez de «1 alergia
+    //    o intolerancia» al final del resumen.
+    await expect(page.getByTestId('open-summary')).toHaveText('3 personas · Menú de ensayo')
+    await expect(page.getByTestId('open-line')).toHaveText(['Comensal 2 · ALERGIA frutos secos (grave)'])
+    await expect(page.getByTestId('open-line')).toHaveClass(/\balarm\b/)
     await expect(page.getByTestId('open-problem')).toHaveCount(0)
     await expect(page.getByTestId('do-open')).toHaveText(`Abrir ${table.name}`)
     await expect(page.getByTestId('do-open')).toBeEnabled()
     await checkScreen(page, 'open sheet with an allergy')
+    //    Revision final de C3e.1 (H06): «Salir sin abrir», de verdad. Con la alergia escrita, «Mesas» pregunta; «Salir sin abrir» vuelve al
+    //    plano sin mandar nada y la alergia se pierde: al tocar otra vez la misma mesa libre, la hoja empieza sin filas. Se escribe de nuevo.
+    const leaveSheet = page.getByTestId('open-leave-sheet')
+    const freeTile = page.getByTestId('mine-free').getByTestId(`table-${table.id}`)
+    await press(sheet.getByTestId('back'))
+    await expect(leaveSheet).toContainText('¿Salir sin abrir la mesa?')
+    await expect(leaveSheet.getByTestId('open-leave-discard')).toHaveText('Salir sin abrir')
+    await press(leaveSheet.getByTestId('open-leave-discard'))
+    await expect(leaveSheet).toHaveCount(0)
+    await expect(sheet).toHaveCount(0)
+    await expect(freeTile.getByTestId('tile-state')).toHaveText('Libre')
+    expect(sent.open).toBe(0)
+    await press(freeTile)
+    await expect(sheet).toContainText(`Abrir ${table.name}`)
+    await expect(page.getByTestId('open-row-1')).toHaveCount(0)
+    await expect(page.getByTestId('open-line')).toHaveCount(0)
+    await expect(page.getByTestId('open-add-restriction')).toBeVisible()
+    await press(page.getByTestId('pax-3'))
+    await press(page.getByTestId('open-add-restriction'))
+    await expect(page.getByTestId('open-row-1')).toBeVisible()
+    await press(page.getByTestId('open-guest-1-2'))
+    await page.fill('input[name=open-substance-1]', 'frutos secos')
+    await expect(page.getByTestId('open-summary')).toHaveText('3 personas · Menú de ensayo')
+    await expect(page.getByTestId('open-line')).toHaveText(['Comensal 2 · ALERGIA frutos secos (grave)'])
+    //    C3e.1 (H06): «Mesas» con una alergia escrita ya no cierra la hoja sin aviso: pregunta, con la alergia entera, y «Seguir abriendo»
+    //    (la opcion segura, con el foco) deja la hoja como estaba. No sale ninguna orden.
+    await press(sheet.getByTestId('back'))
+    await expect(leaveSheet).toContainText('¿Salir sin abrir la mesa?')
+    await expect(leaveSheet.getByTestId('open-leave-text')).toHaveText('Se perderá 1 alergia: habrá que escribirla otra vez.')
+    await expect(leaveSheet).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
+    await expect(leaveSheet.getByTestId('open-leave-stay')).toBeFocused()
+    await checkScreen(page, 'leaving the open sheet with an allergy')
+    await press(leaveSheet.getByTestId('open-leave-stay'))
+    await expect(leaveSheet).toHaveCount(0)
+    await expect(sheet).toBeVisible()
+    await expect(page.locator('input[name=open-substance-1]')).toHaveValue('frutos secos')
+    await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
+    expect(sent.open).toBe(0)
     await press(page.getByTestId('do-open'))
+    // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues. Revision
+    // de C3e.1: «Mesa abierta · <nombre>», con el nombre detras (el configurado puede ser masculino: «Reservado 2 abierta» no concuerda).
+    await expect(page.locator('[data-testid="do-done"]:disabled')).toHaveText(`Mesa abierta · ${table.name} ✓`, { timeout: 15_000 })
     // La ficha se abre sola, Sentados y con la alergia escrita; el boton grande espera a cocina y cada plato del comensal 2 tambien.
     const detail = page.getByTestId('detail')
     await expect(detail.getByTestId('detail-state')).toHaveText('Sentados', { timeout: 15_000 })
+    // Revision de C3e.1 (H20): el «✓» sigue en el boton grande de la FICHA tras abrirla (no solo en la hoja, durante la relectura).
+    await expect(detail.getByTestId('do-done')).toHaveText(`Mesa abierta · ${table.name} ✓`)
     await expect(page.getByTestId('pending')).toHaveCount(0)
     await expect(detail.getByTestId('restrictions')).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
-    await expect(page.getByTestId('do-wait')).toBeDisabled()
+    await expect(page.getByTestId('do-wait')).toBeDisabled({ timeout: 15_000 })
     await expect(page.getByTestId('do-wait')).toHaveText('Esperando la revisión de cocina')
     serviceId = await openOn(request, table.id)
     expect(serviceId, `${table.id} is open`).not.toBeNull()
@@ -129,6 +176,33 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     expect([opened.data.openedBy, opened.data.openedStation]).toEqual([sessionA.actor, 'sala-1'])
     expect(opened.version).toBe(1)
     expect(sent.open).toBe(1)
+
+    //    C3e.1 (usabilidad 28-10, H03): la hoja de alergias espera el resultado de su orden. Si el servidor la RECHAZA (aqui, un choque con
+    //    otra pantalla simulado en el navegador: la orden no llega al motor; la consulta por clave si, y al motor no le consta), la hoja se
+    //    queda con la fila escrita y dice en rojo que NO se ha anotado. La mesa no cambia; se cierra sin anotar nada.
+    await press(detail.getByTestId('restrictions-open'))
+    const allergySheet = page.getByTestId('allergy-sheet')
+    await expect(allergySheet.getByTestId('declare')).toBeVisible()
+    await press(allergySheet.getByTestId('declare-guest-1'))
+    await allergySheet.locator('input[name=substance]').fill('sésamo')
+    const declareRoute = '**/commands/declare-restriction'
+    await page.route(declareRoute, route => route.fulfill({
+      status: 409, headers: { 'Idempotency-Key': route.request().headers()['idempotency-key'] ?? '' }, json: { error: 'version_conflict' },
+    }))
+    await press(allergySheet.getByTestId('do-declare-restriction'))
+    await expect(allergySheet.getByTestId('declare-rejected'))
+      .toHaveText('La alergia NO se ha anotado: otro puesto cambió la mesa a la vez y ya se ha vuelto a leer. Toca otra vez.', { timeout: 15_000 })
+    await expect(allergySheet.getByTestId('declare-rejected')).toHaveClass(/\balarm\b/)                 // una alergia grave: en rojo
+    await expect(allergySheet.locator('input[name=substance]')).toHaveValue('sésamo')
+    await expect(allergySheet.getByTestId('declare-guest-1')).toHaveAttribute('aria-checked', 'true')
+    await expect(allergySheet.getByTestId('do-declare-restriction')).toHaveText('Anotar alergia o intolerancia')
+    await expect(page.getByTestId('pending')).toHaveCount(0)
+    await checkScreen(page, 'allergy sheet after a rejected allergy')
+    await page.unroute(declareRoute)
+    expect((await service(request, serviceId!)).version).toBe(1)
+    await press(allergySheet.getByTestId('allergy-close'))
+    await expect(allergySheet).toHaveCount(0)
+    await expect(detail.getByTestId('restrictions')).not.toContainText('sésamo')
 
     // 4) En B, M5 ya no esta entre las libres y no es suya: no sale en «Mis mesas». En «Todas», si, Sentados. B pasa a «Todas» con un
     //    toque de verdad, como el camarero, antes de que cocina valide. Ojo (revision de C3e): la activacion de la pagina que pide buzz
@@ -165,6 +239,7 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await checkScreen(page, 'table card reviewed by the kitchen')
     const beforeFire = (await read(request, serviceId!)).version
     await press(fire)
+    await expect(page.getByTestId('do-done')).toHaveText(`Pase enviado · ${first.name} ✓`, { timeout: 15_000 })   // C3e.1 (H20)
     await expect(detail.getByTestId('detail-state')).toHaveText('En cocina', { timeout: 15_000 })
     expect((await read(request, serviceId!)).version).toBe(beforeFire + 1)
     expect(sent.fire).toBe(1)
@@ -184,6 +259,15 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(banner).toBeVisible({ timeout: 15_000 })
     await expect(banner.getByTestId('banner-title')).toHaveText(`${table.name} · ${first.name}`)
     await expect(page.getByTestId('banner-serve')).toHaveText(`Servido · ${first.name}`)
+    //    C3e.1 (usabilidad 28-10, H19): bajo el titulo, las mismas lineas que la ficha (cada plato del comensal 2 en Aperitivos): a quien
+    //    va el plato adaptado y por que, en rojo. Todas a la vista, y la banda sigue dejando sitio debajo (375 x 812 y 820 x 1180).
+    const adaptedInBanner = banner.getByTestId('banner-line').filter({ hasText: 'Adaptado: sin almendra' })
+    await expect(adaptedInBanner).toContainText('Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra')
+    await expect(adaptedInBanner).toHaveClass(/\balarm\b/)
+    await expect(banner.getByTestId('banner-line').filter({ hasText: 'No le afecta: no lleva frutos secos' }))
+      .toHaveCount(first.preparations.filter(p => p.reviewPending).length - 1)
+    const bannerBox = await banner.boundingBox()
+    expect(bannerBox && bannerBox.height < page.viewportSize()!.height * 0.6, `the banner with its allergy lines leaves room below it (${bannerBox?.height} px)`).toBeTruthy()
     await expect.poll(() => vibrations(page)).toBe(1)
     await expect(tileA).toHaveClass(/\bready\b/)
     await expect(tileA.getByTestId('tile-state')).toHaveText('Listo para servir')
@@ -211,10 +295,26 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     // 8) «Servido» desde el boton grande: UNA orden, la version sube en uno, el pase sale servido y la banda no vuelve. Al volver, M5 sigue
     //    en «Mis mesas» de A, en su sala.
     const beforeServe = (await read(request, serviceId!)).version
+    //    C3e.1 (usabilidad 28-10, H20): «Servido · Aperitivos ✓», apagado, en el mismo sitio. Un segundo toque «por si no fue» justo
+    //    DESPUES de la relectura (antes de C3e.1, el boton ya era «Enviar siguiente pase») cae en el resultado: ni otro servir ni un envio.
+    const spot = await serve.boundingBox()
+    let answered = false
+    const reread = page.waitForResponse(response => {
+      const path = new URL(response.url()).pathname
+      if (response.request().method() === 'POST' && path.endsWith('/commands/serve')) answered = true
+      return answered && path.endsWith('/dining/board')
+    })
     await press(serve)
+    await reread
+    const result = page.getByTestId('do-done')
+    await expect(result).toHaveText(`Servido · ${first.name} ✓`)
+    const [x, y] = [spot!.x + spot!.width / 2, spot!.y + spot!.height / 2]
+    await (test.info().project.use.hasTouch === true ? page.touchscreen.tap(x, y) : page.mouse.click(x, y))
+    await expect(result).toHaveCount(0, { timeout: 15_000 })
     await expect.poll(async () => (await service(request, serviceId!)).data.courses[0].state, { timeout: 15_000 }).toBe('Served')
     expect((await read(request, serviceId!)).version).toBe(beforeServe + 1)
     expect(sent.serve).toBe(1)
+    expect(sent.fire).toBe(1)
     await expect(detail.getByTestId('courses-served').getByTestId(`served-${first.id}`)).toContainText(first.name, { timeout: 15_000 })
     await expect(detail.getByTestId(`course-${first.id}`)).toHaveCount(0)
     await expect(page.getByTestId('pending')).toHaveCount(0)

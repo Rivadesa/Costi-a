@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
-  draftProblem, guestChoices, initialPax, KINDS, MAX_DRAFTS, newDraft, offerGroups, openDescription, openRequest, openSummary, paxChoices, paxLimit, paxProblem,
-  SEVERITIES, type RestrictionDraft,
+  draftLabel, draftLines, draftProblem, guestChoices, initialPax, KINDS, LEAVE_DISCARD, LEAVE_STAY, LEAVE_TITLE, lostText, MAX_DRAFTS, newDraft, offerGroups,
+  OPEN_LINES, openDescription, openLines, openRequest, openSummary, paxChoices, paxLimit, paxProblem, restrictionSubject, SEVERITIES, WHAT_MISSING, WHO_MISSING,
+  type RestrictionDraft,
 } from '../src/abrir'
+import { restrictionLabel } from '../src/labels'
 import { assertNoMoney } from '../src/money-guard'
 
 // C3e (plan 2026-10-27, paso 2, «Abrir mesa»): la hoja de abrir de Costina Sala SIN DOM. Personas de 1 a 8 y «Más…» sin pasar de la
@@ -189,12 +191,75 @@ describe('the open command', () => {
     expect(openDescription('Mesa 1', 1, [])).toBe('Abrir Mesa 1 para 1 persona')
     expect(openDescription('Terraza 2', 4, [newDraft(), draft({ guest: 1, substance: 'gluten' })])).toBe('Abrir Terraza 2 para 4 personas con 1 alergia o intolerancia')
   })
-  it('the line above «Abrir»: people, menu and allergies, only what there is', () => {
-    expect(openSummary(3, offer, [draft({ guest: 2, substance: 'frutos secos' })])).toBe('3 personas · Menú de ensayo · 1 alergia o intolerancia')
-    expect(openSummary(3, offer, [])).toBe('3 personas · Menú de ensayo')
-    expect(openSummary(1, null, [newDraft()])).toBe('1 persona')
-    expect(openSummary(Number.NaN, offer, [])).toBe('Menú de ensayo')
-    expect(openSummary(4, offer, [draft({ guest: 1, substance: 'gluten' }), draft({ guest: 'all', substance: 'lactosa' })])).toBe('4 personas · Menú de ensayo · 2 alergias o intolerancias')
+  // C3e.1 (usabilidad 28-10, H06): sin «1 alergia o intolerancia» al final; las alergias van debajo, enteras (openLines).
+  it('the line above «Abrir»: people and menu, only what there is (the allergies go below it, whole)', () => {
+    expect(openSummary(3, offer)).toBe('3 personas · Menú de ensayo')
+    expect(openSummary(1, null)).toBe('1 persona')
+    expect(openSummary(Number.NaN, offer)).toBe('Menú de ensayo')
+    expect(openSummary(Number.NaN, null)).toBe('')
+  })
+})
+
+// C3e.1 (usabilidad 28-10, H06): encima de «Abrir» decia solo «1 alergia o intolerancia», sin quien ni que, y salir de la hoja la
+// cerraba sin aviso. Ahora cada fila escrita va entera, con el formato de la ficha, y salir con alguna escrita pregunta antes.
+describe('C3e.1 (H06): every allergy written whole above «Abrir», and a question before leaving', () => {
+  const nuts = draft({ guest: 2, substance: ' frutos secos ' })
+  const lactose = draft({ guest: 'all', kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' })
+  it('a complete row says exactly what the table card will say (labels.ts, restrictionLabel)', () => {
+    expect(draftLabel(nuts)).toBe('Comensal 2 · ALERGIA frutos secos (grave)')
+    expect(draftLabel(lactose)).toBe('Toda la mesa · Intolerancia lactosa (leve)')
+    for (const row of [nuts, lactose, draft({ guest: 5, kind: 'Preference', substance: 'Cerdo', severity: 'Moderate' })]) {
+      const guestPosition = row.guest === 'all' || row.guest === null ? null : row.guest
+      expect(draftLabel(row)).toBe(restrictionLabel({ id: 'x', guestPosition, kind: row.kind, substance: row.substance.trim(), severity: row.severity }))
+    }
+  })
+  it('what a row still lacks is written as its question: a row without who is NEVER «Toda la mesa»', () => {
+    expect([WHO_MISSING, WHAT_MISSING]).toEqual(['¿Quién?', '¿A qué?'])
+    expect(draftLabel(draft({ substance: 'gluten' }))).toBe('¿Quién? · ALERGIA gluten (grave)')
+    expect(draftLabel(draft({ guest: 3 }))).toBe('Comensal 3 · ALERGIA ¿A qué? (grave)')
+    expect(draftLabel(draft({ guest: 'all', substance: '   ' }))).toBe('Toda la mesa · ALERGIA ¿A qué? (grave)')
+    expect(draftLabel(draft({ substance: 'gluten' }))).not.toContain('Toda la mesa')
+  })
+  it('only the rows with something written, in their order, red when they alarm with the rule of the table card, amber otherwise', () => {
+    const rows = [nuts, newDraft(), draft({ kind: 'Intolerance', severity: 'Mild' }), lactose, draft({ guest: 1, kind: 'Intolerance', substance: 'gluten', severity: 'Severe' })]
+    expect(draftLines(rows)).toEqual([
+      { text: 'Comensal 2 · ALERGIA frutos secos (grave)', alarming: true },
+      { text: 'Toda la mesa · Intolerancia lactosa (leve)', alarming: false },
+      { text: 'Comensal 1 · Intolerancia gluten (grave)', alarming: true },
+    ])
+    expect(draftLines([])).toEqual([])
+    expect(draftLines([newDraft()])).toEqual([])
+  })
+  it('above «Abrir»: up to 3 rows whole; with more, ONE line that never hides that there are some, red if any alarms', () => {
+    expect(OPEN_LINES).toBe(3)
+    const three = [nuts, lactose, draft({ guest: 1, substance: 'apio' })]
+    expect(openLines(three)).toEqual(draftLines(three))
+    const four = [...three, draft({ guest: 3, kind: 'Preference', substance: 'cerdo', severity: 'Mild' })]
+    expect(openLines(four)).toEqual([{ text: '4 alergias o intolerancias anotadas: revísalas arriba antes de abrir.', alarming: true }])
+    const mild = Array.from({ length: 5 }, (_, index) => draft({ guest: index + 1, kind: 'Preference', substance: 'cerdo', severity: 'Mild' }))
+    expect(openLines(mild)).toEqual([{ text: '5 alergias o intolerancias anotadas: revísalas arriba antes de abrir.', alarming: false }])
+    // Las filas vacias no suman para pasar de 3.
+    expect(openLines([...three, newDraft(), newDraft()])).toEqual(draftLines(three))
+  })
+  it('leaving with something written asks first, with the right plural; with nothing written it does not ask', () => {
+    expect([LEAVE_TITLE, LEAVE_STAY, LEAVE_DISCARD]).toEqual(['¿Salir sin abrir la mesa?', 'Seguir abriendo', 'Salir sin abrir'])
+    expect(lostText([])).toBe('')
+    expect(lostText([newDraft(), draft({ kind: 'Intolerance' })])).toBe('')
+    expect(lostText([nuts])).toBe('Se perderá 1 alergia: habrá que escribirla otra vez.')
+    expect(lostText([nuts, draft({ guest: 1, substance: 'gluten' })])).toBe('Se perderán 2 alergias: habrá que escribirlas otra vez.')
+    // Con alguna que no es una alergia, la palabra de la hoja: «alergia o intolerancia».
+    expect(lostText([lactose])).toBe('Se perderá 1 alergia o intolerancia: habrá que escribirla otra vez.')
+    expect(lostText([nuts, lactose, newDraft()])).toBe('Se perderán 2 alergias o intolerancias: habrá que escribirlas otra vez.')
+    // Una fila a medias tambien se perderia: se pregunta igual.
+    expect(lostText([draft({ substance: 'gluten' })])).toBe('Se perderá 1 alergia: habrá que escribirla otra vez.')
+  })
+})
+
+// C3e.1 (usabilidad 28-10, H03): como se nombra una restriccion que NO se ha anotado o retirado (commands.ts, notApplied).
+describe('C3e.1 (H03): the subject of «… NO se ha anotado»', () => {
+  it('the kind in words, feminine like the reasons; an unknown kind is never softened', () => {
+    expect(KINDS.map(option => restrictionSubject(option.code))).toEqual(['La alergia', 'La intolerancia', 'La preferencia'])
+    expect([restrictionSubject('allergy'), restrictionSubject('Anaphylaxis')]).toEqual(['La alergia', 'La restricción'])
   })
 })
 
@@ -203,7 +268,7 @@ describe('abrir.ts itself', () => {
   const code = source.replace(/^\s*\/\/.*$/gm, '')
   const literals = [...code.matchAll(/'([^'\n]*)'|`([^`]*)`/g)].map(match => match[1] ?? match[2])
   it('has no DOM and no storage: it runs in Node and is tested without a browser', () => {
-    expect([...code.matchAll(/from '([^']+)'/g)].map(match => match[1]).sort()).toEqual(['./ficha', './labels', './offers', './types'])
+    expect([...code.matchAll(/from '([^']+)'/g)].map(match => match[1]).sort()).toEqual(['./ficha', './floor', './labels', './offers', './types'])
     expect(code).not.toMatch(/\b(window|document|navigator|localStorage|indexedDB)\b/)
   })
   it('no checkout word anywhere, not even in a comment or inside another word', () => {

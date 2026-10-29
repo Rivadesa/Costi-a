@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CommandRunner, REJECTIONS, type RunnerState } from '../src/commands'
+import { CommandRunner, notApplied, REJECTIONS, TRY_AGAIN, type RunnerState } from '../src/commands'
 import { run as transaction, STORES } from '../src/db'
 import { blockedTitle, deviceNameOf, foreignAdvice, otherActorAdvice, pairPendingAdvice, pendingDeviceName, unpairWarning } from '../src/labels'
 import { MoneyLeakError } from '../src/money-guard'
@@ -456,5 +456,62 @@ describe('C3e: the command from another installation, in Sala and in Cocina', ()
   it('foreignAdvice says what happened, that this server only speaks for itself, and to check in the PC before discarding', () => {
     expect(foreignAdvice()).toBe('Se hizo con otra instalación del servidor (reinstalado o restaurado en otro equipo). Este servidor solo puede decir si a él le consta. Antes de descartarla, comprueba en el PC principal si se aplicó.')
     expect(foreignAdvice()).not.toMatch(/€|precio|saldo|pago|cuenta|cents|amount|es seguro/i)
+  })
+})
+
+// C3e.1 (usabilidad 28-10, H03): las hojas de la ficha (anotar o retirar una alergia, omitir un pase) esperaban NADA: se cerraban al tocar
+// y, si el servidor rechazaba la anotacion, lo escrito se perdia sin que nada dijera que la alergia NO estaba anotada. notApplied dice que
+// hace la hoja con el resultado de SU orden (bodega.ts, settlementOf): '' = se cierra; un texto = se queda con lo escrito y lo dice.
+describe('C3e.1 (H03): what a sheet of the table card does with the result of its command', () => {
+  it('confirmed or unconfirmed: the sheet closes (the pending command keeps the data and is resolved in its own panel)', () => {
+    expect(notApplied({ kind: 'confirmed' }, 'La alergia', 'anotado')).toBe('')
+    expect(notApplied({ kind: 'unconfirmed' }, 'La alergia', 'anotado')).toBe('')
+  })
+  it('rejected or not sent: it stays and says, in its place, that it was NOT applied and why; «Toca otra vez» only where repeating can work', () => {
+    expect(TRY_AGAIN).toBe('Toca otra vez.')
+    expect(notApplied({ kind: 'rejected', code: 'version_conflict' }, 'La alergia', 'anotado'))
+      .toBe('La alergia NO se ha anotado: otro puesto cambió la mesa a la vez y ya se ha vuelto a leer. Toca otra vez.')
+    expect(notApplied({ kind: 'not_sent' }, 'La intolerancia', 'anotado'))
+      .toBe('La intolerancia NO se ha anotado: la orden no ha salido de este dispositivo; el aviso de arriba dice por qué. Toca otra vez.')
+    expect(notApplied({ kind: 'rejected', code: 'duplicate_restriction' }, 'La alergia', 'anotado')).toBe('La alergia NO se ha anotado: ya estaba anotada para ese comensal.')
+    expect(notApplied({ kind: 'rejected', code: 'invalid_guest' }, 'La alergia', 'anotado')).toBe('La alergia NO se ha anotado: ese comensal no está en la mesa.')
+    expect(notApplied({ kind: 'rejected', code: 'restriction_not_found' }, 'La alergia', 'retirado')).toBe('La alergia NO se ha retirado: otro puesto ya la había retirado.')
+    expect(notApplied({ kind: 'rejected', code: 'course_not_pending' }, 'Postre', 'omitido')).toBe('Postre NO se ha omitido: ese pase ya se envió a cocina.')
+    expect(notApplied({ kind: 'rejected', code: 'version_conflict' }, 'Postre', 'omitido'))
+      .toBe('Postre NO se ha omitido: otro puesto cambió la mesa a la vez y ya se ha vuelto a leer. Toca otra vez.')
+    for (const code of ['duplicate_restriction', 'invalid_guest', 'invalid_restriction', 'restriction_not_found', 'service_finished', 'course_not_pending', 'forbidden', 'invalid_request'])
+      expect(notApplied({ kind: 'rejected', code }, 'La alergia', 'anotado'), code).not.toContain(TRY_AGAIN)
+  })
+  // Revision de C3e.1: la hoja de omitir nombra el pase como «El pase <nombre>» (SkipSheet.vue): con un nombre en plural, el primero del
+  // laboratorio, «Aperitivos NO se ha omitido» no concordaba.
+  it('the skip sheet names the course after «El pase», so a plural name agrees', () => {
+    expect(notApplied({ kind: 'rejected', code: 'version_conflict' }, 'El pase Aperitivos', 'omitido'))
+      .toBe('El pase Aperitivos NO se ha omitido: otro puesto cambió la mesa a la vez y ya se ha vuelto a leer. Toca otra vez.')
+    expect(notApplied({ kind: 'rejected', code: 'course_not_pending' }, 'El pase Postres', 'omitido')).toBe('El pase Postres NO se ha omitido: ese pase ya se envió a cocina.')
+  })
+  // Revision de C3e.1: el aviso de arriba de esos rechazos de la hoja de alergias salia con el codigo; ahora, con el texto del PC.
+  it('service_finished and restriction_not_found have their own text above, the one of the main PC (Labels.cs)', async () => {
+    for (const [code, text] of [['service_finished', 'La mesa ya está terminada: no admite cambios.'], ['restriction_not_found', 'Esa restricción ya no existe.']] as const) {
+      expect(REJECTIONS[code], code).toBe(text)
+      const rejected = runner(new MemoryStore(), [{ status: 409, body: { error: code } }, { status: 200, body: { key: '$key', found: false } }])
+      expect(await rejected.run.send(...SERVE), code).toEqual({ kind: 'rejected', status: 409, code })
+      expect(rejected.state.notice, code).toBe(text)
+    }
+  })
+  it('a code without its own reason uses the sentence of REJECTIONS, and one the PWA does not know a generic one, never the code', () => {
+    expect(notApplied({ kind: 'rejected', code: 'wrong_station' }, 'La alergia', 'anotado')).toBe(`La alergia NO se ha anotado. ${REJECTIONS.wrong_station}`)
+    const unknown = notApplied({ kind: 'rejected', code: 'brand_new_rule' }, 'La alergia', 'anotado')
+    expect(unknown).toBe('La alergia NO se ha anotado: el servidor no ha admitido la orden.')
+    expect(unknown).not.toContain('brand_new_rule')
+  })
+  it('the words: accents, no checkout word, no code', () => {
+    const codes = ['version_conflict', 'duplicate_restriction', 'invalid_guest', 'invalid_restriction', 'restriction_not_found', 'service_finished', 'course_not_pending',
+      'forbidden', 'invalid_request', 'brand_new_rule']
+    const texts = [...codes.map(code => notApplied({ kind: 'rejected', code }, 'La alergia', 'anotado')), notApplied({ kind: 'not_sent' }, 'La alergia', 'anotado')]
+    for (const text of texts) {
+      expect(text).toMatch(/^La alergia NO se ha anotado[:.] /)
+      expect(text).not.toMatch(/€|precio|saldo|pago|cuenta|cents|amount|_/i)
+      expect(text).not.toMatch(/(^|[^\p{L}])(aqui|mas|codigo|restriccion|estacion|no esta|por que|envio|cambio la mesa|retiro)($|[^\p{L}])/iu)
+    }
   })
 })

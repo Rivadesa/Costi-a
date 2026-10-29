@@ -121,6 +121,16 @@ export function exceptionLine(preparation: Preparation, pendingText: string = RE
   }
 }
 
+// C3e.1 (usabilidad 28-10, H34): en una ESTACION, la linea por revisar dice ademas que hacer mientras el pase no decide. Sigue en rojo si
+// alarma y nunca se pliega; el «Listo» sigue como estaba (bloquearlo es una decision pendiente del promotor). El pase, que es quien decide,
+// sigue con «Por revisar en el pase», y Sala con «Por revisar en cocina». Una decision ya tomada se escribe igual en todas.
+// Solo en la rejilla (lo que aun hay que hacer): en la franja «Hecho» el plato ya esta marcado Listo y va exceptionLine; «no lo emplates»
+// haria creer que hay que retirarlo.
+// Revision final de C3e.1 (H34): y en la rejilla, solo en lo que aun no esta Listo. Con dos platos o mas cada uno tiene su «Listo»
+// (listoPerDish) y uno ya «Lista» sigue en la rejilla: va con exceptionLine, como en «Hecho» (KitchenView.vue, dish.ready).
+export const REVIEW_PENDING_AT_STATION = `${REVIEW_PENDING_AT_PASS} · no lo emplates hasta que decida`
+export const stationLine = (preparation: Preparation): ExceptionLine => exceptionLine(preparation, REVIEW_PENDING_AT_STATION)
+
 // Las restricciones de toda la mesa, una sola vez (cabecera de la comanda), sin repetir y en el orden de su primera aparicion.
 export function wholeTable(preparations: readonly Preparation[]): GuestRestriction[] {
   const found = new Map<string, GuestRestriction>()
@@ -405,6 +415,13 @@ export function restBody(guest: PresendGuest, note: string): { expectedVersion: 
   return { expectedVersion: guest.entry.version,
     items: restOfGuest(guest).map(item => ({ courseId: item.course.id, itemId: item.preparation.id, decision: 'unaffected', note: note.trim() })) }
 }
+// C3e.1 (usabilidad 28-10, H56): con «No le afecta a nada más» ARRIBA, los nombres de los platos quedan debajo, a una pantalla, y la unica
+// pista era «· 3 platos». Sin ninguna decision tomada, ese toque decide TAMBIEN el plato que lleva el alergeno. Encima del boton se
+// escriben ENTEROS, sin plegar, los platos que decide (restOfGuest), con la cantidad como en su ficha («Ostra · Merluza × 2 · Tarta»), y
+// el boton los cuenta. Sigue siendo un toque (una accion frecuente, un toque) con la nota obligatoria.
+export const restDishes = (items: readonly PresendItem[]): string =>
+  items.map(item => item.preparation.quantity > 1 ? `${item.preparation.name} × ${item.preparation.quantity}` : item.preparation.name).join(' · ')
+export const restButton = (count: number): string => count === 1 ? 'No le afecta a este plato' : `No le afecta a ninguno de estos ${count} platos`
 
 // Las decisiones que se ofrecen ANTES de enviar: «Rehacer» es solo para lo que ya salio (nothing_to_remake).
 export const PRESEND_DECISIONS = [
@@ -416,14 +433,26 @@ export const PRESEND_DECISIONS = [
 export const reviewNoteOk = (note: string) => note.trim().length >= 2
 
 // Atajos del pase que RELLENAN la nota a la vista (plan 2026-10-22, seccion 4.3): la nota sigue siendo obligatoria y se puede corregir.
-// «Cambiado por …» deja la nota abierta para escribir por que (open: la pantalla pone el cursor al final).
+// «Cambiado por …» deja la nota abierta para escribir por que (open: la pantalla pone el cursor al final). gluten: solo con una
+// restriccion de gluten (noteShortcuts).
 export const NOTE_SHORTCUTS = [
-  { label: 'No lo lleva', text: 'No lo lleva', open: false },
-  { label: 'Sin gluten', text: 'Sin gluten', open: false },
-  { label: 'Cambiado por …', text: 'Cambiado por ', open: true },
+  { label: 'No lo lleva', text: 'No lo lleva', open: false, gluten: false },
+  { label: 'Sin gluten', text: 'Sin gluten', open: false, gluten: true },
+  { label: 'Cambiado por …', text: 'Cambiado por ', open: true, gluten: false },
 ] as const
 export type NoteShortcut = typeof NOTE_SHORTCUTS[number]
 export const applyShortcut = (shortcut: NoteShortcut): string => shortcut.text
+
+// C3e.1 (usabilidad 28-10, H48): ante «ALERGIA marisco» no se ofrece «Sin gluten»: «Adaptado: Sin gluten» no diria nada del marisco.
+// Solo sale si alguna restriccion APLICABLE (las que el servidor pone en ese plato, o las del comensal para «No le afecta a nada más») es
+// de gluten: su sustancia dice «gluten» o celiaco/celiaquia, sin distinguir mayusculas ni tildes («Glúten», «Celíaca»). El trigo, la
+// cebada, el centeno o la avena NO cuentan: un producto sin gluten puede llevar almidon de trigo o avena sin gluten, asi que «Sin gluten»
+// no diria lo que se quito; ahi la nota dice la sustancia («No lo lleva» o «Cambiado por …»). Los demas atajos, siempre. Un atajo solo
+// rellena la nota: la decision sigue siendo otro toque.
+const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+export const isGluten = (restriction: GuestRestriction): boolean => /gluten|celiac|coeliac|celiaqu/.test(plain(restriction.substance))
+export const noteShortcuts = (restrictions: readonly GuestRestriction[]): NoteShortcut[] =>
+  NOTE_SHORTCUTS.filter(shortcut => !shortcut.gluten || restrictions.some(isGluten))
 // Una nota que es solo el principio de un atajo abierto («Cambiado por», o con sus puntos) aun no dice nada: no hay decision.
 const unfinished = (note: string) => NOTE_SHORTCUTS.some(shortcut => shortcut.open
   && [shortcut.text, shortcut.label].some(start => note.trim().replace(/\s+/g, ' ').toLowerCase() === start.trim().toLowerCase()))
@@ -436,3 +465,10 @@ export const REVIEW_DECISIONS = [
   { decision: 'adapt', label: 'Adaptado' },
   { decision: 'remake', label: 'Rehacer' },
 ] as const
+
+// C3e.1 (usabilidad 28-10, H53): «No le afecta» y «Adaptado», un toque cada una, a lo ancho y en su fila. «Rehacer» devuelve a la estacion
+// un plato que ya salio: va aparte, en su fila, y en DOS pasos (como retirar una alergia en Sala, AllergySheet.vue). El primer toque no
+// manda nada: pregunta remakeQuestion, con «Sí, rehacer» (la orden) y «Cancelar».
+export const DIRECT_DECISIONS = REVIEW_DECISIONS.filter(option => option.decision !== 'remake')
+export const REMAKE_DECISION = REVIEW_DECISIONS[2]
+export const remakeQuestion = (preparation: Preparation): string => `¿Rehacer ${preparation.name}? Vuelve a la estación.`

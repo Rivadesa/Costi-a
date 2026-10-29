@@ -1,4 +1,4 @@
-import { commandFor, tableActions, type CommandRequest } from './ficha'
+import { commandFor, DONE_MARK, tableActions, type CommandRequest } from './ficha'
 import { clockLabel } from './labels'
 import type { BoardEntry, Course, Dining } from './types'
 
@@ -81,6 +81,8 @@ export const READY_TEXT = 'listo para servir'
 export const noticeTitle = (notice: ReadyNotice, table: string) => `${table} · ${notice.course.name}`
 export const noticeSince = (notice: ReadyNotice) => notice.course.readyAt ? `El pase lo validó a las ${clockLabel(notice.course.readyAt)}` : ''
 export const serveLabel = (notice: ReadyNotice) => `Servido · ${notice.course.name}`
+// C3e.1 (usabilidad 28-10, H20): «Servido» confirmado desde la banda; el mismo texto que el boton grande de la ficha (ficha.ts, doneLabel).
+export const servedLabel = (notice: ReadyNotice) => `${serveLabel(notice)} ${DONE_MARK}`
 // «+2 más: Mesa 6 · Postre y Mesa 2 · Aperitivo».
 export function moreText(rest: readonly ReadyNotice[], table: (tableId: string) => string): string {
   const titles = rest.map(notice => noticeTitle(notice, table(notice.entry.service.tableId)))

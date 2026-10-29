@@ -2,9 +2,10 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, ROUND_UNCONFIRMED, roundNames, roundProblem, VOIDED } from '../bodega'
 import type { CatalogStatus } from '../catalog'
+import { notApplied } from '../commands'
 import { offerFor, type Configuration, type Names } from '../configuration'
 import type { DrinkProduct, RoundItem } from '../drinks'
-import { barNote, commandFor, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
+import { barNote, commandFor, dishesHint, doneLabel, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
 import { isTileCode, restrictionAlarming, tileLabel, tileState } from '../floor'
 import type { IconName } from '../icons'
 import { clockLabel, plural, restrictionLabel } from '../labels'
@@ -34,12 +35,19 @@ import SkipSheet from './SkipSheet.vue'
 // platos agrupados con la regla comun de pases.ts y cocina.ts, sus excepciones aparte y «Siguiente»); encima del boton grande, su nota
 // (barNote); omitir un pase abre su propia hoja (SkipSheet) con su motivo; y las alergias se ven, se anotan y se retiran en su hoja
 // (AllergySheet), desde la cabecera de la franja roja y solo con lo que el servidor anuncia. «Más opciones» se queda con lo demas.
+// C3e.1 (usabilidad 28-10, H20): el boton grande manda tambien el texto de su resultado (ficha.ts, doneLabel); confirmada su orden,
+// BoardView lo devuelve en done y el boton lo ensena apagado durante DONE_MS (operations.ts) antes de la accion siguiente.
+// C3e.1 (usabilidad 28-10, H03): las hojas de alergias y de omitir ya no se cierran al tocar: mandan su orden por sendSettled (la de la
+// ronda, ahora con un nombre que no es solo de la ronda) y se cierran solo si se confirma o queda sin confirmar (commands.ts, notApplied).
+// Revision final de C3e.1 (H03): la relectura que sigue a un rechazo puede quitar lo que abria la hoja. La de alergias sigue abierta
+// mientras va su orden (sheetSending) y dice el rechazo en su sitio; la de omitir se cierra (ese pase ya no se puede omitir) y el rechazo
+// sale en la barra fija de la ficha (action-problem). Nunca se va sin que se lea.
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
-  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number
-  sendRound: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
+  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number; done: string
+  sendSettled: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
 }>()
-const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; back: []; bodega: [] }>()
+const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string, result?: string]; back: []; bodega: [] }>()
 
 const service = computed(() => props.entry.service)
 const has = (action: string) => service.value.actions?.includes(action) === true
@@ -94,7 +102,7 @@ async function sendRound(): Promise<void> {
   addMessage.value = ''
   const request = round.begin(props.entry.version, props.tableName)
   if (request === null) return
-  const settlement = await props.sendRound(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
+  const settlement = await props.sendSettled(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
   round.settle(settlement)
   if (settlement.kind === 'confirmed') sent.value = ROUND_SENT
   // Sin confirmar: la ronda ya es la orden de arriba («Orden sin confirmar»); la bandeja vacia lo dice y la pantalla sube hasta ella.
@@ -170,37 +178,64 @@ const reasonText = computed(() => reasonLabel(actions.value.filter(action => act
 const hasMore = computed(() => secondary.value.length > 0)
 const more = ref(false)
 // La hoja de omitir es de UN pase y vive mientras el servidor siga anunciando omitirlo: si otro puesto lo envia, la hoja se cierra.
+// Revision final de C3e.1 (H03): tambien si deja de anunciarlo la relectura que sigue al rechazo de SU orden (course_not_pending, o un
+// version_conflict con el pase ya enviado desde otro puesto); entonces el motivo sale en la barra de la ficha (skip).
 const skipping = ref<string | null>(null)
 const skipAction = computed(() => skipping.value === null ? null : actions.value.find(action => action.action === 'skip' && action.testId === skipping.value) ?? null)
 watch(skipAction, action => { if (action === null) skipping.value = null })
 // Sin nada que ver ni anunciado (se retiro la ultima y ya no se deja anotar), la hoja de alergias se cierra.
-watch(allergyOpener, opener => { if (!opener) allergiesOpen.value = false })
+// Revision final de C3e.1 (H03): nunca mientras va una orden de la hoja (sheetSending, en settle). Si la relectura que sigue a un rechazo
+// quita el alta (una mesa sin restricciones que se termina o se cancela a la vez), la hoja sigue abierta y dice que NO se ha anotado
+// (AllergySheet, declined); el camarero la cierra. Lo mismo con el de retirar (removeOrphan).
+const sheetSending = ref(0)
+watch(allergyOpener, opener => { if (!opener && sheetSending.value === 0) allergiesOpen.value = false })
 const ICON: Record<string, IconName> = {
   serve: 'check', ready: 'checkCircle', 'fire-next': 'send', start: 'play', resume: 'play', complete: 'flag', release: 'door',
   pause: 'pause', skip: 'skip', 'cancel-unstarted': 'x',
 }
 
-function send(path: string, body: Record<string, unknown>, description: string): void { problem.value = ''; emit('run', path, body, description) }
-function act(action: TableAction): void {
+function send(path: string, body: Record<string, unknown>, description: string, result?: string): void { problem.value = ''; emit('run', path, body, description, result) }
+function act(action: TableAction, result?: string): void {
   problem.value = ''
   if (action.needsReason && !reasonOk(reason.value)) { problem.value = REASON_PROBLEM; if (!reasonInBar.value) more.value = true; return }
   const request = commandFor(props.entry, action, props.tableName, reason.value)
-  send(request.path, request.body, request.description)
+  send(request.path, request.body, request.description, result)
   if (action.needsReason) reason.value = ''
 }
+// El boton grande: su resultado se escribe con ESTA lectura (tras enviar un pase, fire-next ya nombraria el siguiente).
+function actBig(): void { if (primary.value) act(primary.value, doneLabel(primary.value, service.value)) }
 // En «Más opciones», omitir abre su hoja; lo demas sale como siempre.
 function pick(action: TableAction): void {
   problem.value = ''
   if (action.action === 'skip') skipping.value = action.testId
   else act(action)
 }
+// C3e.1 (usabilidad 28-10, H03): las ordenes de las hojas (anotar o retirar una alergia, omitir un pase) esperan su resultado, que vuelve
+// a la hoja: ella decide si se cierra o se queda con lo escrito. Sin confirmar, la pantalla sube hasta el aviso de la orden pendiente,
+// como con la ronda (la hoja se cierra y ese aviso es el que la resuelve). Revision final de C3e.1 (H03): sheetSending cuenta las que van
+// de camino (y su relectura), para que la hoja de alergias no se cierre antes de poder decir el resultado.
+async function settle(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
+  problem.value = ''
+  sheetSending.value++
+  let settled: Settlement
+  try { settled = await props.sendSettled(path, body, description) } finally { sheetSending.value-- }
+  if (settled.kind === 'unconfirmed') window.scrollTo({ top: 0 })
+  return settled
+}
 // «Omitir Postre» de la hoja: UNA orden skip con la version leida (F01), solo si el servidor aun lo anuncia (la hoja ya comprobo el motivo).
-function confirmSkip(skipReason: string): void {
+// Confirmada, el servidor deja de anunciar omitir ese pase y la hoja se cierra sola (skipAction). Rechazada, o sin salir, la hoja dice que
+// paso si sigue abierta.
+// Revision final de C3e.1 (H03): si no sigue abierta (la relectura del rechazo quito «omitir»: course_not_pending, o un version_conflict
+// con el pase ya enviado desde otro puesto), el motivo va a la barra fija de la ficha, con el mismo texto que la hoja: la hoja ya no se
+// monta (ese pase ya no se puede omitir) y su aviso se iria con ella.
+async function skip(skipReason: string): Promise<Settlement> {
   const action = skipAction.value
-  skipping.value = null
-  if (!action) return
+  if (!action) return { kind: 'not_sent' }
+  const testId = action.testId, courseName = action.course?.name ?? ''
   const request = commandFor(props.entry, action, props.tableName, skipReason)
-  send(request.path, request.body, request.description)
+  const settled = await settle(request.path, request.body, request.description)
+  if (skipAction.value?.testId !== testId) problem.value = notApplied(settled, `El pase ${courseName}`, 'omitido')
+  return settled
 }
 </script>
 
@@ -297,8 +332,10 @@ function confirmSkip(skipReason: string): void {
             <input id="reason" v-model="reason" name="reason" maxlength="200" autocomplete="off" :disabled="locked" />
           </div>
           <!-- C3e: la nota del boton grande (maqueta: «Cada estación lo recibe en su tableta al momento.», «Listo en el pase desde las 21:19.»). -->
-          <p v-if="note" class="bar-note" data-testid="bar-note">{{ note }}</p>
-          <button v-if="primary" type="button" class="btn btn-primary btn-big" :disabled="locked" :data-testid="primary.testId" @click="act(primary)">
+          <p v-if="note && !done" class="bar-note" data-testid="bar-note">{{ note }}</p>
+          <!-- C3e.1 (H20): confirmada la orden del boton grande, su resultado apagado y sin accion; despues, la accion siguiente. -->
+          <button v-if="done" type="button" class="btn btn-big btn-done" disabled data-testid="do-done"><Icon name="check" :size="22" :stroke="2.6" />{{ done }}</button>
+          <button v-else-if="primary" type="button" class="btn btn-primary btn-big" :disabled="locked" :data-testid="primary.testId" @click="actBig">
             <Icon :name="ICON[primary.action] ?? 'right'" :size="22" />{{ primary.label }}</button>
           <button v-else type="button" class="btn btn-big waiting" disabled data-testid="do-wait"><Icon name="clock" :size="22" />{{ waitingText(service) }}</button>
         </div>
@@ -316,8 +353,8 @@ function confirmSkip(skipReason: string): void {
       @done="editDone" @remove="editRemove" @close="editing = null" />
     <!-- C3e: las hojas de la ficha. Cada una es de ESTA lectura y de lo que anuncia ahora el servidor. -->
     <SkipSheet v-if="panel === 'ficha' && skipAction?.course" :key="skipAction.testId" :course-name="skipAction.course.name" :locked="locked"
-      @confirm="confirmSkip" @close="skipping = null" />
-    <AllergySheet v-if="panel === 'ficha' && allergiesOpen" :entry="entry" :table-name="tableName" :locked="locked" @run="send" @close="allergiesOpen = false" />
+      :send="skip" @close="skipping = null" />
+    <AllergySheet v-if="panel === 'ficha' && allergiesOpen" :entry="entry" :table-name="tableName" :locked="locked" :send="settle" @close="allergiesOpen = false" />
 
     <template v-if="leaving">
       <div class="scrim" aria-hidden="true" @click="leaving = false"></div>

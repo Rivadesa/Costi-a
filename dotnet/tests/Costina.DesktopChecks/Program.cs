@@ -622,7 +622,7 @@ internal static class Program
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,16,59,0),true)!="Jueves, 15 de octubre · Servicio de comida"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),true)!="Jueves, 15 de octubre · Servicio de cena"
             ||Costina.Desktop.ViewModels.HomeViewModel.DateText(new DateTime(2026,10,15,17,0,0),false)!="Jueves, 15 de octubre") throw new Exception("Date and service of the day: lunch until 17:00, like the offers.");
-        var soon=new Costina.Client.DiagnosticsDto("installation","0.46.0-c3e",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
+        var soon=new Costina.Client.DiagnosticsDto("installation","0.46.1-c3e.1",DateTimeOffset.Now,new(true,5443,DateTimeOffset.UtcNow.AddDays(12).AddMinutes(5),"costina-server.local"),new(true,DateTimeOffset.Now.AddHours(-3)),true);
         home.ApplyDiagnostics(soon);
         if(!home.HasCertificateWarning||!home.CertificateWarning.Contains("12 días")||!home.ServerDetail.Contains("costina-server.local")||home.ServerText.Contains("http")||!home.BackupText.StartsWith("Última copia",StringComparison.Ordinal)) throw new Exception("Inicio warns about a certificate expiring within 30 days and states server and backup: "+home.CertificateWarning);
         home.ApplyDiagnostics(soon with {Tls=soon.Tls! with {ServerCertificateExpiresAt=DateTimeOffset.UtcNow.AddDays(200)}});
@@ -1014,6 +1014,87 @@ internal static class Program
         var restrictionList=(ListBox)serviceView.FindName("RestrictionList"); restrictionList.SelectedIndex=0;
         if(service.SelectedRestriction?.Id!="r-nuts"||!service.RemoveRestrictionCommand.CanExecute(null)) throw new Exception("Choosing a restriction chip makes 'Retirar' act on it.");
         restrictionList.SelectedIndex=-1;
+        // ===== C3e.1 (usabilidad 28-10, H51): anotar una restriccion en una mesa abierta, como cada fila del alta =====
+        // Antes solo se vaciaba la sustancia: comensal, tipo y gravedad pasaban a la siguiente anotacion (tambien en otra mesa) y un comensal
+        // vacio contaba como toda la mesa. Ahora «¿Para quién?» empieza sin elegir y Alergia y Grave de partida CADA vez; sin elegir no sale
+        // ninguna orden; un rechazo conserva lo escrito; la fila entera vuelve a empezar tras una declaracion confirmada, al cambiar de mesa
+        // y en Invalidate (una lectura fallida); una relectura de la misma mesa no toca lo que se esta escribiendo.
+        var declareToggle=(System.Windows.Controls.Primitives.ToggleButton)serviceView.FindName("DeclareToggle");
+        ComboBox DeclareBox(string name)=>(ComboBox)serviceView.FindName(name);
+        var declareSubstance=(TextBox)serviceView.FindName("DeclareSubstanceBox");
+        string Draft()=>(service.DeclareDraft.Guest??"sin elegir")+" · "+service.DeclareDraft.Kind+" · "+service.DeclareDraft.Substance+" · "+service.DeclareDraft.Severity;
+        string Boxes(){ window.UpdateLayout(); return DeclareBox("DeclareGuestBox").SelectedIndex+" "+DeclareBox("DeclareKindBox").SelectedIndex+" "+DeclareBox("DeclareSeverityBox").SelectedIndex+" '"+declareSubstance.Text+"'"; }
+        const string freshDraft="sin elegir · allergy ·  · severe", freshBoxes="-1 0 0 ''";
+        int Declares(string serviceId)=>server.Count("POST","dining/services/"+serviceId+"/commands/declare-restriction");
+        string LastDeclare()=>server.Requests.Last(r=>r.Method=="POST"&&r.Path.EndsWith("/commands/declare-restriction",StringComparison.Ordinal)).Body;
+        declareToggle.IsChecked=true; window.Shell.Status=""; window.UpdateLayout();
+        if(Draft()!=freshDraft||Boxes()!=freshBoxes||!service.DeclareGuestChoices.Select(g=>g.Label).SequenceEqual(["Comensal 1","Comensal 2","Comensal 3","Comensal 4","Toda la mesa"]))
+            throw new Exception("The declare row starts like an allergy row of the open form (no guest chosen, Alergia, Grave) and offers the guests of the read table: "
+                +Draft()+" / "+Boxes()+" / "+string.Join(",",service.DeclareGuestChoices.Select(g=>g.Label)));
+        var declareTexts=Texts((FrameworkElement)serviceView.FindName("DeclarePanel")).ToArray();
+        foreach(var text in new[]{"¿Para quién?","Tipo","¿A qué?","Gravedad","Alergia","Grave","Declarar"})
+            if(!declareTexts.Contains(text)) throw new Exception("The declare row paints the open form's words, '"+text+"': "+string.Join(" | ",declareTexts));
+        if(declareTexts.Contains("Toda la mesa")||declareTexts.Contains("Comensal")||declareTexts.Contains("Sustancia o preferencia")) throw new Exception("No guest is painted as chosen and the old words are gone: "+string.Join(" | ",declareTexts));
+        RefuseRaw(window,"comedor-anotar-alergia"); Save(Shot(window),"comedor-anotar-alergia.png");
+        // Sin elegir para quien: el texto del alta y ninguna orden; lo escrito se queda.
+        declareSubstance.Text="gluten"; var declaresBefore=Declares("s4");
+        Press(Named("DeclareButton"),"Declarar sin elegir para quién");
+        Wait(()=>!window.Shell.Busy,"the declare row checks its guest");
+        if(Declares("s4")!=declaresBefore||window.Shell.Status!="Elige para quién es cada alergia o intolerancia: un comensal o toda la mesa."||Draft()!="sin elegir · allergy · gluten · severe")
+            throw new Exception("Without a guest chosen nothing is declared (never the whole table by default) and the row is kept: "+window.Shell.Status+" / "+Draft());
+        // Un rechazo del servidor conserva lo escrito para corregirlo.
+        window.Shell.Status="";
+        DeclareBox("DeclareGuestBox").SelectedIndex=1; DeclareBox("DeclareKindBox").SelectedIndex=2; DeclareBox("DeclareSeverityBox").SelectedIndex=2; declareSubstance.Text="sin cebolla";
+        if(Draft()!="2 · preference · sin cebolla · mild") throw new Exception("The declare row's controls write its draft: "+Draft());
+        server.RefuseRestriction="invalid_guest"; declaresBefore=Declares("s4");
+        Press(Named("DeclareButton"),"Declarar (rechazada)");
+        Wait(()=>!window.Shell.Busy&&Declares("s4")>declaresBefore,"the server refuses the declaration");
+        if(!window.Shell.Status.StartsWith(Costina.Client.Labels.Rejection("invalid_guest"),StringComparison.Ordinal)||window.Shell.Pending is not null||Draft()!="2 · preference · sin cebolla · mild"||Boxes()!="1 2 2 'sin cebolla'")
+            throw new Exception("A refused declaration keeps what was written, to correct it: "+window.Shell.Status+" / "+Draft()+" / "+Boxes());
+        // Confirmada: la orden lleva lo elegido y la fila ENTERA vuelve a empezar (la siguiente nunca hereda comensal, tipo ni gravedad).
+        window.Shell.Status=""; declaresBefore=Declares("s4");
+        Press(Named("DeclareButton"),"Declarar");
+        Wait(()=>!window.Shell.Busy&&Declares("s4")>declaresBefore,"the declaration is sent");
+        if(!LastDeclare().Contains("\"expectedVersion\":5,\"guestPosition\":2,\"kind\":\"preference\",\"substance\":\"sin cebolla\",\"severity\":\"mild\"",StringComparison.Ordinal)
+            ||window.Shell.Status!="Operación confirmada por el servidor: restricción declarada.") throw new Exception("The declaration carries the chosen guest, kind and severity: "+LastDeclare()+" / "+window.Shell.Status);
+        if(Draft()!=freshDraft||Boxes()!=freshBoxes) throw new Exception("Once confirmed, the whole row starts again (no guest, Alergia, Grave, nothing written): "+Draft()+" / "+Boxes());
+        // «Toda la mesa» solo si se elige, y viaja como guestPosition null.
+        window.Shell.Status=""; DeclareBox("DeclareGuestBox").SelectedIndex=4; declareSubstance.Text="apio"; declaresBefore=Declares("s4");
+        Press(Named("DeclareButton"),"Declarar para toda la mesa");
+        Wait(()=>!window.Shell.Busy&&Declares("s4")>declaresBefore,"the declaration for the whole table is sent");
+        if(!LastDeclare().Contains("\"guestPosition\":null,\"kind\":\"allergy\",\"substance\":\"apio\",\"severity\":\"severe\"",StringComparison.Ordinal)||Draft()!=freshDraft)
+            throw new Exception("'Toda la mesa', when chosen, is sent as no guest position: "+LastDeclare()+" / "+Draft());
+        // Revision de C3e.1 (H51): una declaracion que queda SIN CONFIRMAR (respuesta perdida) ya es la orden pendiente, con lo escrito: la fila
+        // vuelve a empezar, como la hoja de Sala (H03), y «Reintentar» manda la MISMA orden (misma clave y cuerpo). Antes se quedaba escrita y,
+        // tras reintentar, la siguiente heredaba comensal, tipo y gravedad.
+        window.Shell.Status="";
+        DeclareBox("DeclareGuestBox").SelectedIndex=2; DeclareBox("DeclareKindBox").SelectedIndex=2; DeclareBox("DeclareSeverityBox").SelectedIndex=2; declareSubstance.Text="sin ajo";
+        server.LoseRestriction=true; declaresBefore=Declares("s4");
+        Press(Named("DeclareButton"),"Declarar (respuesta perdida)");
+        Wait(()=>!window.Shell.Busy&&window.Shell.HasPending,"a lost response leaves the declaration uncertain");
+        var lostDeclare=server.Requests.Last(r=>r.Method=="POST"&&r.Path.EndsWith("/commands/declare-restriction",StringComparison.Ordinal));
+        if(Declares("s4")!=declaresBefore+1||!lostDeclare.Body.Contains("\"guestPosition\":3,\"kind\":\"preference\",\"substance\":\"sin ajo\",\"severity\":\"mild\"",StringComparison.Ordinal)
+            ||window.Shell.Pending?.Key!=lostDeclare.Key||Draft()!=freshDraft||Boxes()!=freshBoxes)
+            throw new Exception("An unconfirmed declaration IS the pending order (with what was written) and the row starts again: "+lostDeclare.Body+" / "+Draft()+" / "+Boxes());
+        Await(window.Shell.RetryCommand.ExecuteAsync(null),"retry the same declaration");
+        var retriedDeclare=server.Requests.Last(r=>r.Method=="POST"&&r.Path.EndsWith("/commands/declare-restriction",StringComparison.Ordinal));
+        if(window.Shell.HasPending||Declares("s4")!=declaresBefore+2||retriedDeclare.Key!=lostDeclare.Key||retriedDeclare.Body!=lostDeclare.Body||Draft()!=freshDraft||Boxes()!=freshBoxes)
+            throw new Exception("'Reintentar' sends the SAME order (same key and body) and the row stays fresh: "+retriedDeclare.Body+" / "+Draft()+" / "+Boxes());
+        // Otra mesa con la fila a medias: empieza de cero y ofrece SUS comensales.
+        window.Shell.Status="";
+        DeclareBox("DeclareGuestBox").SelectedIndex=2; DeclareBox("DeclareKindBox").SelectedIndex=2; DeclareBox("DeclareSeverityBox").SelectedIndex=2; declareSubstance.Text="sin cebolla";
+        Pick("Mesa 1","s1");
+        if(Draft()!=freshDraft||Boxes()!=freshBoxes||!service.DeclareGuestChoices.Select(g=>g.Label).SequenceEqual(["Comensal 1","Comensal 2","Toda la mesa"]))
+            throw new Exception("Another table starts the declare row again with its own guests: "+Draft()+" / "+Boxes()+" / "+string.Join(",",service.DeclareGuestChoices.Select(g=>g.Label)));
+        // Una relectura de la MISMA mesa (tiempo real, «Actualizar») no toca lo que se esta escribiendo; una lectura fallida (Invalidate) si.
+        DeclareBox("DeclareGuestBox").SelectedIndex=0; declareSubstance.Text="marisco";
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"a re-read of the same table");
+        if(service.Dining?.Data.Id!="s1"||Draft()!="1 · allergy · marisco · severe"||Boxes()!="0 0 0 'marisco'") throw new Exception("A re-read of the same table keeps what is being written: "+Draft()+" / "+Boxes());
+        server.Failing["dining/services/s1"]=true;
+        Await(window.Shell.RefreshCommand.ExecuteAsync(null),"a failed read of the table");
+        if(service.HasContext||Draft()!=freshDraft||Boxes()!=freshBoxes||service.DeclareGuestChoices.Length!=0) throw new Exception("A failed read leaves no declare row behind: "+Draft()+" / "+Boxes());
+        server.Failing.Clear(); window.Shell.Status="";
+        Pick("Mesa 4","s4"); declareToggle.IsChecked=false; window.Shell.Status=""; window.UpdateLayout();
         // Una mesa LIBRE: la tarjeta elige la MESA del formulario de abrir (de siempre) y no lee nada ni toca la mesa leida.
         readsBefore=server.Requests.Length;
         Press(TileButton("Mesa 2"),"tile Mesa 2"); window.UpdateLayout();
@@ -3616,8 +3697,19 @@ internal static class Program
             {
                 var refused=Json(409,"{\"error\":\""+rejected+"\"}"); refused.Headers.Add("Idempotency-Key",key); return refused;
             }
+            // C3e.1 (H51): RefuseRestriction rechaza la SIGUIENTE declare-restriction con ese codigo (409 con el eco de la clave: rechazo
+            // definitivo, como el motor); la siguiente vuelve a aceptarse.
+            if(path.EndsWith("/commands/declare-restriction",StringComparison.Ordinal)&&RefuseRestriction is {} refusedCode)
+            {
+                RefuseRestriction=null; var refused=Json(409,"{\"error\":\""+refusedCode+"\"}"); refused.Headers.Add("Idempotency-Key",key); return refused;
+            }
+            // Revision de C3e.1 (H51): LoseRestriction pierde la respuesta de la SIGUIENTE declare-restriction (red cortada: queda sin confirmar);
+            // el reintento, con la misma clave, se acepta.
+            if(path.EndsWith("/commands/declare-restriction",StringComparison.Ordinal)&&LoseRestriction) { LoseRestriction=false; throw new System.Net.Http.HttpRequestException("respuesta perdida"); }
             var ok=Json(200,"{\"changed\":true}"); ok.Headers.Add("Idempotency-Key",key); return ok;
         }
+        public string? RefuseRestriction { get; set; }
+        public bool LoseRestriction { get; set; }
         public HashSet<string> TablesInUse { get; }=[];
         // E4e: lo que responde abrir mesa (POST dining/services) y el tablero que queda despues.
         public string OpenedServiceId { get; set; }="s-nueva";

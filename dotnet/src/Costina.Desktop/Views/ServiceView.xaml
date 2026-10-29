@@ -430,27 +430,29 @@
           <Button Style="{StaticResource DangerButton}" Content="Retirar la elegida" Command="{Binding Service.RemoveRestrictionCommand}" Margin="0" MinHeight="28" Padding="10,2,10,3" FontSize="12"
                   Visibility="{Binding Service.HasRestrictions, Converter={StaticResource Bool2Vis}}" ToolTip="Retira la restricción elegida; el motivo va abajo, en «Motivo»"/>
          </WrapPanel>
+         <!-- C3e.1 (usabilidad 28-10, H51): la MISMA fila que cada alergia del alta, con sus controles y sus palabras: «¿Para quién?» sin elegir
+              («Toda la mesa» es una opcion mas, nunca la de por defecto), Alergia y Grave de partida. Se vacia entera al declarar y al cambiar
+              de mesa; sin elegir para quien, «Declarar» lo dice y no envia nada. -->
          <Border x:Name="DeclarePanel" Margin="0,10,0,0" Visibility="{Binding IsChecked, ElementName=DeclareToggle, Converter={StaticResource Bool2Vis}}" TextElement.Foreground="{StaticResource Ink}">
           <StackPanel>
            <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock Text="Comensal" Style="{StaticResource FieldLabel}"/>
-             <TextBox Text="{Binding Service.RestrictionGuest, UpdateSourceTrigger=PropertyChanged}" ToolTip="Número de comensal; vacío = toda la mesa"/></StackPanel>
-            <StackPanel Grid.Column="2"><TextBlock Text="Sustancia o preferencia" Style="{StaticResource FieldLabel}"/>
-             <TextBox Text="{Binding Service.RestrictionSubstance, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
-           </Grid>
-           <Grid Margin="0,8,0,0">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
-             <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionKind}" HorizontalAlignment="Stretch">
-              <ComboBoxItem Tag="allergy" IsSelected="True">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock Text="¿Para quién?" Style="{StaticResource FieldLabel}"/>
+             <ComboBox x:Name="DeclareGuestBox" ItemsSource="{Binding Service.DeclareGuestChoices}" DisplayMemberPath="Label" SelectedValuePath="Key"
+                       SelectedValue="{Binding Service.DeclareDraft.Guest}" HorizontalAlignment="Stretch" AutomationProperties.Name="Para quién" ToolTip="Un comensal, o toda la mesa"/></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock Text="Tipo" Style="{StaticResource FieldLabel}"/>
+             <ComboBox x:Name="DeclareKindBox" SelectedValuePath="Tag" SelectedValue="{Binding Service.DeclareDraft.Kind}" HorizontalAlignment="Stretch" AutomationProperties.Name="Tipo">
+              <ComboBoxItem Tag="allergy">Alergia</ComboBoxItem><ComboBoxItem Tag="intolerance">Intolerancia</ComboBoxItem><ComboBoxItem Tag="preference">Preferencia</ComboBoxItem>
              </ComboBox></StackPanel>
-            <StackPanel Grid.Column="2"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
-             <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Service.RestrictionSeverity}" HorizontalAlignment="Stretch">
-              <ComboBoxItem Tag="severe" IsSelected="True">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
+            <StackPanel Grid.Row="1" Margin="0,6,0,0"><TextBlock Text="¿A qué?" Style="{StaticResource FieldLabel}"/>
+             <TextBox x:Name="DeclareSubstanceBox" Text="{Binding Service.DeclareDraft.Substance, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="A qué" ToolTip="Por ejemplo, gluten o marisco"/></StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,6,0,0"><TextBlock Text="Gravedad" Style="{StaticResource FieldLabel}"/>
+             <ComboBox x:Name="DeclareSeverityBox" SelectedValuePath="Tag" SelectedValue="{Binding Service.DeclareDraft.Severity}" HorizontalAlignment="Stretch" AutomationProperties.Name="Gravedad">
+              <ComboBoxItem Tag="severe">Grave</ComboBoxItem><ComboBoxItem Tag="moderate">Moderada</ComboBoxItem><ComboBoxItem Tag="mild">Leve</ComboBoxItem>
              </ComboBox></StackPanel>
-            <Button Grid.Column="3" Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
            </Grid>
+           <Button x:Name="DeclareButton" Content="Declarar" Command="{Binding Service.DeclareRestrictionCommand}" HorizontalAlignment="Right" Margin="0,8,0,0"/>
           </StackPanel>
          </Border>
         </StackPanel>

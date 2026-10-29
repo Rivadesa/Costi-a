@@ -8,7 +8,8 @@ import {
 } from './support'
 
 // C3e (plan 2026-10-27, paso 4 y «Pruebas»): las capturas de docs/native/images/c3e/ (Costina Sala en el movil de 375 x 812: «Mis mesas»,
-// las libres, «Todas» con sus pestanas de sala, abrir con una alergia (desde arriba y con la fila de la alergia), la ficha con los platos
+// las libres, «Todas» con sus pestanas de sala, abrir con una alergia (desde arriba, con la fila de la alergia y, desde C3e.1, la
+// pregunta al salir con la alergia escrita: sala-abrir-mesa-salir), la ficha con los platos
 // agrupados y la linea adaptada, «Servido · <pase>» y la ficha despues, la banda en «Mis mesas» y sobre la ficha de otra mesa, y la hoja
 // de alergias; y en vertical, 820 x 1180, «Mis mesas» y la ficha) salen del MOTOR REAL, con la escena de la maqueta aprobada
 // (2026-10-22, pestanas 1, 2, 5 y 6). Solo con C3E_CAPTURES=<carpeta> y nunca en la CI: playwright.config.ts corre entonces SOLO este
@@ -234,16 +235,25 @@ test('captures of Costina Sala, «Mis mesas», opening with an allergy, the tabl
     await ana.fill('input[name=open-substance-1]', 'marisco')
     await expect(ana.getByTestId('open-kind-1-Allergy')).toHaveAttribute('aria-checked', 'true')
     await expect(ana.getByTestId('open-severity-1-Severe')).toHaveAttribute('aria-checked', 'true')
-    await expect(ana.getByTestId('open-summary')).toHaveText('3 personas · Menú da casa · 1 alergia o intolerancia')
+    // C3e.1 (usabilidad 28-10, H06): encima de «Abrir», la alergia entera (como la ficha), no «1 alergia o intolerancia».
+    await expect(ana.getByTestId('open-summary')).toHaveText('3 personas · Menú da casa')
+    await expect(ana.getByTestId('open-line')).toHaveText(['Comensal 2 · ALERGIA marisco (grave)'])
     await expect(ana.getByTestId('open-problem')).toHaveCount(0)
     await expect(ana.getByTestId('do-open')).toBeEnabled()
     // Desde arriba, como abrir.png (maqueta 2026-10-15): el titulo, «¿Cuántas personas?» con el 3 elegido, el menu propuesto y el
-    // principio de las alergias; la barra de abajo ya resume la alergia. Despues, la fila de la alergia entera (revision de C3e).
+    // principio de las alergias; la barra de abajo ya escribe la alergia entera. Despues, la fila de la alergia entera (revision de C3e).
     await ana.evaluate(() => window.scrollTo(0, 0))
     await expect(ana.getByTestId('pax-3')).toBeInViewport()
     await shot(ana, 'sala-abrir-mesa-375x812.png')
     await reveal(ana, '[data-testid="open-row-1"]')
     await shot(ana, 'sala-abrir-mesa-alergia-375x812.png')
+    // C3e.1 (H06): «Mesas» con la alergia escrita pregunta antes de perderla; «Seguir abriendo» vuelve a la hoja como estaba.
+    await ana.getByTestId('open-form').getByTestId('back').click()
+    await expect(ana.getByTestId('open-leave-text')).toHaveText('Se perderá 1 alergia: habrá que escribirla otra vez.')
+    await shot(ana, 'sala-abrir-mesa-salir-375x812.png')
+    await ana.getByTestId('open-leave-stay').click()
+    await expect(ana.getByTestId('open-leave-sheet')).toHaveCount(0)
+    await expect(ana.locator('input[name=open-substance-1]')).toHaveValue('marisco')
     await ana.getByTestId('do-open').click()
     await expect(ana.getByTestId('detail-state')).toHaveText('Sentados', { timeout: 15_000 })
     await expect(ana.getByTestId('restrictions')).toContainText('Comensal 2 · ALERGIA marisco (grave)')

@@ -1,5 +1,6 @@
 import type { CommandRequest } from './ficha'
-import { guestLabel, plural } from './labels'
+import { restrictionAlarming } from './floor'
+import { guestLabel, plural, restrictionKindLabel, restrictionLabel, severityLabel } from './labels'
 import { proposedOffer } from './offers'
 import type { GuestRestriction } from './types'
 
@@ -9,7 +10,7 @@ import type { GuestRestriction } from './types'
 // Todo es presentacion y FORMATO: la hoja existe solo si el servidor anuncia open (D3.1), y el servidor decide la capacidad (422,
 // DiningOperations.cs:39), la oferta vigente (offer_unavailable), el comensal (invalid_guest) y las duplicadas (duplicate_restriction).
 // Aqui solo se adelantan esos rechazos, con los textos del PC. Sin dinero (ADR-007) y sin guardar nada: las filas de alergias son
-// borradores EN MEMORIA, como la ronda de Bodega y como el PC (ServiceViewModel.cs:510).
+// borradores EN MEMORIA, como la ronda de Bodega y como el PC (ServiceViewModel, AddAllergy/RemoveAllergy: solo memoria).
 
 // ---- ¿Cuantas personas? ----
 // Botones de 1 a 8 sin pasar de la capacidad; «Más…» (el paso a paso y el numero) solo si la mesa admite mas de 8 o no se sabe su
@@ -42,7 +43,7 @@ export function paxProblem(pax: number, capacity: number | null | undefined): st
 // ---- ¿Que van a comer? ----
 // La propuesta es la primera oferta vigente (E4d, offers.ts: el «Menú del día»), ya elegida; las demas, detras de «Otro menú…»; los
 // menus con eleccion (set-menu), solo en «Más opciones» de la hoja (plan15:671, maq15:792). Cada grupo, en el orden de /configuration.
-// Si la primera es un menu con eleccion se propone igual, como el PC (ProposeDaily, ServiceViewModel.cs:641): el orden es el de Menus y
+// Si la primera es un menu con eleccion se propone igual, como el PC (ServiceViewModel.ProposeDaily): el orden es el de Menus y
 // cartas, y la propuesta no se repite en «Más opciones». En el laboratorio se propone LAB-TASTING («Menú de ensayo») y LAB-DAILY, que es
 // con eleccion, va en «Más opciones» (e2e/commands.spec.ts:24).
 export interface OfferGroups<T> { proposed: T | null; others: T[]; withChoice: T[] }
@@ -64,7 +65,15 @@ export const KINDS = [{ code: 'Allergy', label: 'Alergia' }, { code: 'Intoleranc
 export const SEVERITIES = [{ code: 'Severe', label: 'Grave' }, { code: 'Moderate', label: 'Moderada' }, { code: 'Mild', label: 'Leve' }] as const satisfies
   ReadonlyArray<{ code: GuestRestriction['severity']; label: string }>
 
-// Una fila de la hoja, como AllergyDraft del PC (ServiceViewModel.cs:94-100): quien (null = sin elegir; «Toda la mesa» es una opcion
+// C3e.1 (usabilidad 28-10, H03): como se nombra una restriccion al decir que NO se ha anotado o retirado: «La alergia», «La
+// intolerancia», «La preferencia» (las tres en femenino, como los motivos de commands.ts, notApplied). Un tipo que no se conoce no se
+// rebaja a una palabra mas suave: «La restricción».
+export function restrictionSubject(kind: string): string {
+  const label = KINDS.find(option => option.code.toLowerCase() === kind.toLowerCase())?.label
+  return label ? `La ${label.toLowerCase()}` : 'La restricción'
+}
+
+// Una fila de la hoja, como AllergyDraft del PC (en ServiceViewModel.cs): quien (null = sin elegir; «Toda la mesa» es una opcion
 // mas, 'all', nunca la de por defecto), tipo (Alergia por defecto), a que y gravedad (Grave por defecto). Como mucho 30 filas, como
 // CanAddAllergy del PC.
 export type DraftGuest = number | 'all' | null
@@ -81,8 +90,8 @@ export function guestChoices(pax: number): GuestChoice[] {
   return [...Array.from({ length: people }, (_, index): GuestChoice => ({ guest: index + 1, label: guestLabel(index + 1) })), whole]
 }
 
-// Una fila vacia del todo (sin quien y sin a que) no se mira, como en el PC (ServiceViewModel.cs:499): el tipo o la gravedad solos no
-// la llenan. Las demas viajan en la orden.
+// Una fila vacia del todo (sin quien y sin a que) no se mira, como en el PC (ServiceViewModel.OpenRestrictions): el tipo o la gravedad
+// solos no la llenan. Las demas viajan en la orden.
 const filled = (draft: RestrictionDraft) => draft.guest !== null || draft.substance.trim().length > 0
 // Igual que OrdinalIgnoreCase del servidor (Restrictions.cs:44): mayuscula letra a letra, sin las que crecen («ß» no pasa a «SS»).
 const fold = (text: string) => Array.from(text.trim(), char => { const upper = char.toUpperCase(); return upper.length === 1 ? upper : char }).join('')
@@ -92,7 +101,7 @@ export const SUBSTANCE_PROBLEM = 'Escribe a qué es cada alergia o intolerancia 
 export const DUPLICATE_PROBLEM = 'Esa alergia o intolerancia ya está anotada para ese comensal.'
 export const guestRangeProblem = (pax: number) => `El comensal de una alergia tiene que estar entre 1 y ${pax}.`
 
-// Solo el FORMATO, con los textos del PC (ServiceViewModel.cs:502-505) y en su orden, fila a fila; despues, la duplicada que el
+// Solo el FORMATO, con los textos del PC (ServiceViewModel.CheckDraft) y en su orden, fila a fila; despues, la duplicada que el
 // servidor rechazaria (duplicate_restriction: mismo comensal, mismo tipo y la misma sustancia sin mirar mayusculas ni los espacios de
 // los lados). El rango del comensal, solo con personas validas: si no, habla antes paxProblem. Devuelve el primer problema, o ''.
 export function draftProblem(drafts: readonly RestrictionDraft[], pax: number): string {
@@ -121,11 +130,52 @@ export function openDescription(tableName: string, pax: number, drafts: readonly
   return `Abrir ${tableName} para ${plural(pax, 'persona', 'personas')}${count > 0 ? ` con ${restrictionsText(count)}` : ''}`
 }
 
-// La linea encima de «Abrir»: «3 personas · Menú de ensayo · 1 alergia o intolerancia», solo con lo que hay.
-export function openSummary(pax: number, offer: { name: string } | null, drafts: readonly RestrictionDraft[]): string {
-  const count = drafts.filter(filled).length
-  return [Number.isInteger(pax) && pax >= 1 ? plural(pax, 'persona', 'personas') : '', offer?.name ?? '', count > 0 ? restrictionsText(count) : '']
-    .filter(part => part.length > 0).join(' · ')
+// La linea encima de «Abrir»: «3 personas · Menú de ensayo», solo con lo que hay. C3e.1 (usabilidad 28-10, H06): sin «1 alergia o
+// intolerancia» al final; debajo va cada alergia escrita entera (openLines).
+export function openSummary(pax: number, offer: { name: string } | null): string {
+  return [Number.isInteger(pax) && pax >= 1 ? plural(pax, 'persona', 'personas') : '', offer?.name ?? ''].filter(part => part.length > 0).join(' · ')
+}
+
+// ---- C3e.1 (usabilidad 28-10, H06): lo escrito, entero, encima de «Abrir» y antes de salir ----
+// Antes, encima de «Abrir» solo ponia «1 alergia o intolerancia», sin quien ni que, y salir de la hoja («Mesas», o «Ver mesa» en la
+// banda) la cerraba sin aviso: habia que reescribirlas, y al reescribir es facil olvidar una. La mesa no se abria, asi que nada salia sin
+// su alergia; lo que se perdia era lo escrito.
+// Cada fila escrita (con quien o con a que; una vacia del todo no se mira) va ENTERA, con el formato de la ficha (labels.ts,
+// restrictionLabel): «Comensal 2 · ALERGIA frutos secos (grave)», «Toda la mesa · Intolerancia lactosa (leve)». Lo que aun falta se
+// escribe como su pregunta («¿Quién?», «¿A qué?»), nunca se rellena: una fila sin quien NO es «Toda la mesa». Rojo si alarma con la regla
+// de la ficha (floor.ts, restrictionAlarming), ambar si no, como su fila en la hoja.
+export interface OpenLine { text: string; alarming: boolean }
+export const WHO_MISSING = '¿Quién?'
+export const WHAT_MISSING = '¿A qué?'
+const asRestriction = (draft: RestrictionDraft): GuestRestriction =>
+  ({ id: '', guestPosition: draft.guest === 'all' ? null : draft.guest, kind: draft.kind, substance: draft.substance.trim(), severity: draft.severity })
+export function draftLabel(draft: RestrictionDraft): string {
+  if (draft.guest !== null && draft.substance.trim().length > 0) return restrictionLabel(asRestriction(draft))
+  const who = draft.guest === null ? WHO_MISSING : guestLabel(draft.guest === 'all' ? null : draft.guest)
+  return `${who} · ${restrictionKindLabel(draft.kind)} ${draft.substance.trim() || WHAT_MISSING} (${severityLabel(draft.severity)})`
+}
+export const draftLines = (drafts: readonly RestrictionDraft[]): OpenLine[] =>
+  drafts.filter(filled).map(draft => ({ text: draftLabel(draft), alarming: restrictionAlarming(asRestriction(draft)) }))
+
+// Encima de «Abrir», hasta OPEN_LINES filas enteras. Con mas, UNA linea que no esconde que las hay, roja si alguna alarma: las filas
+// siguen escritas arriba, en la hoja, y la barra de abajo es fija (con 30 lineas taparia la pantalla).
+export const OPEN_LINES = 3
+export function openLines(drafts: readonly RestrictionDraft[]): OpenLine[] {
+  const lines = draftLines(drafts)
+  if (lines.length <= OPEN_LINES) return lines
+  return [{ text: `${restrictionsText(lines.length)} anotadas: revísalas arriba antes de abrir.`, alarming: lines.some(line => line.alarming) }]
+}
+
+// Salir con alguna fila escrita pregunta antes, como la ronda (TableCard.vue, «¿Salir sin enviar la ronda?»), con las filas enteras
+// debajo. «alergia» si todas lo son; si no, «alergia o intolerancia», como la hoja. '' sin nada escrito: entonces no se pregunta.
+export const LEAVE_TITLE = '¿Salir sin abrir la mesa?'
+export const LEAVE_STAY = 'Seguir abriendo'
+export const LEAVE_DISCARD = 'Salir sin abrir'
+export function lostText(drafts: readonly RestrictionDraft[]): string {
+  const rows = drafts.filter(filled)
+  if (rows.length === 0) return ''
+  const noun = rows.every(row => row.kind === 'Allergy') ? plural(rows.length, 'alergia', 'alergias') : restrictionsText(rows.length)
+  return rows.length === 1 ? `Se perderá ${noun}: habrá que escribirla otra vez.` : `Se perderán ${noun}: habrá que escribirlas otra vez.`
 }
 
 // UNA orden POST /dining/services con todo (E4e, ADR-016; D6.3: una sola orden incierta por gesto): { tableId, pax, offerId, menuId,

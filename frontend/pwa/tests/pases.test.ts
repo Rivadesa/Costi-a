@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { lineRestrictions } from '../src/cocina'
 import { clockLabel, restrictionKindLabel, severityLabel } from '../src/labels'
-import { addDishRequest, allergyList, chooseRequest, courseNote, MAX_DISH_QUANTITY, NEXT_MARK, REVIEWED_TEXT, timeline } from '../src/pases'
+import { addDishRequest, allergyList, chooseRequest, courseNote, exceptionText, lineTone, MAX_DISH_QUANTITY, NEXT_MARK, passLines, REVIEWED_TEXT, timeline } from '../src/pases'
 import type { BoardEntry, Course, Dining, GuestRestriction, Preparation } from '../src/types'
 
 // C3e (plan 2026-10-27, paso 2): los pases de la ficha de Costina Sala, sin DOM. Todo es presentacion de la lectura autoritativa del
@@ -262,6 +262,44 @@ describe('the allergy sheet: each restriction with the dishes it affects and the
     const legacy = dining([course('principal', 'Principal', 'Fired', [prep('pulpo', 'Pulpo á feira', 'hot', 3, { state: 'Fired', restrictions: [LACTOSE] })])],
       [], { restrictions: [LACTOSE] })
     expect(allergyList(legacy)[0].dishes.map(dish => [dish.text, dish.pending])).toEqual([['Principal · Pulpo á feira: Por empezar', false]])
+  })
+})
+
+// C3e.1 (usabilidad 28-10, H19): no siempre sirve quien abrio la mesa. La banda «listo para servir» escribe, bajo su titulo, las lineas
+// del pase listo con la MISMA regla, el mismo texto y el mismo tono que la ficha, todas; delante, las restricciones de toda la mesa.
+describe('C3e.1 (H19): the lines of ONE course for the «listo para servir» banner', () => {
+  const READY = { readyAt: at('21:19'), actions: ['serve'] }
+  it('the very lines the table card writes under each dish of that course, all of them and with the same tone', () => {
+    const service = dining([course('principal', 'Principal', 'Ready', [...four('merluza', 'Merluza á galega', 'hot', guest => ({ state: 'Ready', ...reviewed(guest) })),
+      prep('pan', 'Pan', 'pase', null, { state: 'Ready', restrictions: [NUTS], review: { decision: 'Remake', note: 'sin nueces', at: AT } })], READY)])
+    const lines = passLines(service.courses[0])
+    expect(lines.map(line => [line.text, line.tone])).toEqual([
+      ['Merluza á galega · Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra', 'alarm'],
+      ['Merluza á galega · Comensal 3 · Intolerancia lactosa (leve) · No le afecta: no lleva lactosa', 'calm'],
+      ['Pan · Toda la mesa · ALERGIA frutos secos (grave) del Comensal 2 · Rehecho: sin nueces', 'alarm'],
+    ])
+    // Lo mismo que pinta la ficha (CoursesTimeline, con exceptionText y lineTone): una sola regla para las dos.
+    const [card] = timeline(service, nameOf).courses
+    const fromCard = card.dishes.flatMap(dish => dish.exceptions.map(exception => [exceptionText(dish.dish, exception), lineTone(exception)]))
+    expect(lines.map(line => [line.text, line.tone])).toEqual(fromCard)
+    expect(new Set(lines.map(line => line.key)).size).toBe(lines.length)
+  })
+  it('a whole-table restriction goes first, written like the red strip; the line of a dish adapted for it does not repeat the substance', () => {
+    const service = dining([course('principal', 'Principal', 'Ready', four('merluza', 'Merluza', 'hot', guest => ({ state: 'Ready', restrictions: [GLUTEN],
+      review: { decision: guest === 3 ? 'Adapt' : 'Unaffected', note: guest === 3 ? 'sin harina' : 'no lleva gluten', at: AT } })), READY)], ['fire-next'], { restrictions: [GLUTEN] })
+    expect(passLines(service.courses[0]).map(line => [line.text, line.tone])).toEqual([
+      ['Toda la mesa · ALERGIA gluten (grave)', 'alarm'],
+      ['Merluza · Comensal 3 · Adaptado: sin harina', 'alarm'],
+    ])
+  })
+  it('a review still pending reads «Por revisar en cocina»: red if it alarms, amber if not; a course with nothing to say has no lines', () => {
+    const service = dining([course('postre', 'Postre', 'Ready', four('tarta', 'Tarta de Santiago', 'cold', guest => ({ state: 'Ready',
+      ...(guest === 2 ? { restrictions: [NUTS], reviewPending: true } : guest === 3 ? { restrictions: [LACTOSE], reviewPending: true } : {}) })), READY)])
+    expect(passLines(service.courses[0]).map(line => [line.text, line.tone, line.pending])).toEqual([
+      ['Tarta de Santiago · Comensal 2 · ALERGIA frutos secos (grave) · Por revisar en cocina', 'alarm', true],
+      ['Tarta de Santiago · Comensal 3 · Intolerancia lactosa (leve) · Por revisar en cocina', 'warn', true],
+    ])
+    expect(passLines(course('c1', 'Aperitivos', 'Ready', four('ostra', 'Ostra', 'cold', () => ({ state: 'Ready' })), READY))).toEqual([])
   })
 })
 

@@ -52,7 +52,8 @@ test('captures of the kitchen review before sending, for the E4e doc', async ({ 
   await tablet.getByTestId('presend-item-M4-p1-caliente-3').locator('input').fill('sin marisco: aceite y ajo')
   await tablet.evaluate(() => window.scrollTo(0, 0))                                      // escribir la nota baja la pagina: la captura, desde arriba
   await shot(tablet, 'cocina-por-revisar-antes-de-enviar-1180x820.png', true)
-  // El pase decide: «Adaptado» un plato y «No le afecta a nada más» el resto de cada comensal (una orden por comensal).
+  // El pase decide: «Adaptado» un plato y «No le afecta a nada más» el resto de cada comensal (una orden por comensal). Revision de C3e.1
+  // (H56): encima de ese boton, enteros, los platos que decide, y el boton los cuenta («No le afecta a ninguno de estos N platos»).
   await tablet.getByTestId('do-presend-adapt-M4-p1-caliente-3').tap()
   await expect(tablet.getByTestId('presend-item-M4-p1-caliente-3')).toHaveCount(0, { timeout: 15_000 })
   for (const [guest, note] of [['3', 'no lleva marisco'], ['2', 'no lleva lactosa']] as const) {

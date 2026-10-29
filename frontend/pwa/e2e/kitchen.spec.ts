@@ -1,4 +1,4 @@
-import { devices, expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
+import { devices, expect, test, type APIRequestContext, type BrowserContext, type Locator, type Page } from '@playwright/test'
 import {
   checkDevice, checkScreen, command, databaseOf, deviceContext, deviceName, kitchenTable, MAIN, openTable, pairThroughTheUi, post, press, read,
   release, reviewCourse, storedToken, watch,
@@ -17,7 +17,8 @@ import {
 //     y la comanda baja a «Hecho · esperando al pase».
 //  3) La frontera es el SERVIDOR: con el token del propio dispositivo, lo ajeno es wrong_station, tambien en la orden de grupo.
 //  4) Una alergia con el pase ya enviado: la estacion la ve escrita en «Hecho», sin botones de revision.
-//  5) El pase ve la mesa entera: el progreso de cada estacion («Cocina fría: lista»), que falta y «Siguiente»; revisa con nota.
+//  5) El pase ve la mesa entera: el progreso de cada estacion («Cocina fría: lista»), que falta y «Siguiente»; revisa con nota, y
+//     «Rehacer» pregunta antes de mandar nada (C3e.1).
 //  6) «Marcar Cocina caliente como lista» desde «Más opciones» es UNA orden; entonces, y solo entonces, valida; «Esperando al camarero»
 //     hasta que se sirve.
 // Ninguna palabra de caja en lo que se ve (en cocina, ni dentro de otra palabra) ni ninguna clave de dinero en lo que llega.
@@ -32,6 +33,19 @@ const countNotes = (page: Page) => page.addInitScript(() => {
   AudioContext.prototype.createOscillator = function (this: AudioContext) { scope.costinaNotes++; return create.call(this) }
 })
 const notes = (page: Page) => page.evaluate(() => (window as unknown as { costinaNotes: number }).costinaNotes)
+
+// C3e.1 (usabilidad 28-10): la separacion entre dos objetivos vecinos, en horizontal o en vertical (al menos 8 px), y una decision que se
+// lee en UNA linea, sin partirse ni salirse de su boton (H53: «No le afecta» se partia en dos lineas en la comanda del pase).
+async function gapBetween(one: Locator, two: Locator): Promise<number> {
+  const [a, b] = [await one.boundingBox(), await two.boundingBox()]
+  if (!a || !b) throw new Error('a target is not painted')
+  return Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), b.y - (a.y + a.height), a.y - (b.y + b.height))
+}
+const oneLine = (button: Locator) => button.evaluate(element => {
+  const range = document.createRange(); range.selectNodeContents(element)
+  const lines = new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top)))
+  return lines.size === 1 && element.scrollWidth <= element.clientWidth
+})
 
 // Deja la mesa libre como el PC principal, tambien a medias: lo enviado se revisa, se marca, se valida y se sirve; lo demas, release().
 async function freeTable(request: APIRequestContext, serviceId: string): Promise<void> {
@@ -85,6 +99,12 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await expect(guest.locator('[data-testid^="presend-item-"]')).toHaveCount(3)
     await expect(passPage.getByTestId(`presend-${TABLE.id}-1`)).toHaveCount(0)
     await checkScreen(passPage, 'pass before sending', true)
+    //    C3e.1 (usabilidad 28-10, H56): «No le afecta a nada más» va ARRIBA, justo bajo la alergia del comensal y antes de sus platos.
+    const rest = passPage.getByTestId(`presend-rest-${TABLE.id}-2`)
+    const [allergyBox, restBox, firstBox] = [await guest.locator('.k-al').first().boundingBox(), await rest.boundingBox(),
+      await guest.locator('[data-testid^="presend-item-"]').first().boundingBox()]
+    expect(restBox!.y).toBeGreaterThanOrEqual(allergyBox!.y + allergyBox!.height)
+    expect(firstBox!.y).toBeGreaterThanOrEqual(restBox!.y + restBox!.height)
     //    «Cambiado por …» rellena la nota a la vista y deja el cursor al final; solo eso aun no es una decision.
     const adapted = passPage.getByTestId(`presend-item-${TABLE.id}-p1-caliente-2`)
     const adapt = passPage.getByTestId(`do-presend-adapt-${TABLE.id}-p1-caliente-2`)
@@ -92,6 +112,11 @@ test('a station sees and marks only its own work in ONE command, the pass review
     const decisions = adapted.locator('[data-testid^="do-presend-"]')
     await expect(decisions).toHaveCount(2)
     for (const button of await decisions.all()) await expect(button).toBeDisabled()
+    expect(await oneLine(passPage.getByTestId(`do-presend-unaffected-${TABLE.id}-p1-caliente-2`))).toBe(true)          // C3e.1 (H53)
+    //    C3e.1 (H48): una intolerancia a la lactosa no ofrece «Sin gluten», ni en el plato ni en lo que queda; los atajos, a 8 px o mas.
+    await expect(adapted.getByRole('button', { name: 'Sin gluten' })).toHaveCount(0)
+    await expect(rest.getByRole('button', { name: 'Sin gluten' })).toHaveCount(0)
+    expect(await gapBetween(adapted.getByRole('button', { name: 'No lo lleva' }), adapted.getByRole('button', { name: 'Cambiado por …' }))).toBeGreaterThanOrEqual(8)
     await press(adapted.getByRole('button', { name: 'Cambiado por …' }))
     await expect(adapted.locator('input')).toHaveValue('Cambiado por ')
     await expect(adapted.locator('input')).toBeFocused()
@@ -102,9 +127,12 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await press(adapt)
     await expect(adapted).toHaveCount(0, { timeout: 15_000 })
     expect(await version()).toBe(before + 1)
-    //    «No le afecta a nada más», con el atajo «No lo lleva»: los dos platos que quedan, en UNA orden.
-    const rest = passPage.getByTestId(`presend-rest-${TABLE.id}-2`)
-    await expect(rest).toContainText('No le afecta a nada más · 2 platos')
+    //    «No le afecta a nada más», con el atajo «No lo lleva»: los dos platos que quedan, en UNA orden. Revision de C3e.1 (H56): encima
+    //    del boton, ENTEROS, los platos que decide (los mismos que quedan en la lista, por su nombre), y el boton los cuenta.
+    const left = (await guest.locator('[data-testid^="presend-item-"] .rv-d b').allTextContents()).map(text => text.replace(/\s+/g, ' ').trim())
+    expect(left).toHaveLength(2)
+    await expect(passPage.getByTestId(`presend-rest-dishes-${TABLE.id}-2`)).toHaveText(left.join(' · '))
+    await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toHaveText('No le afecta a ninguno de estos 2 platos')
     await expect(passPage.getByTestId(`do-presend-rest-${TABLE.id}-2`)).toBeDisabled()
     await press(rest.getByRole('button', { name: 'No lo lleva' }))
     await expect(rest.locator('input')).toHaveValue('No lo lleva')
@@ -204,9 +232,11 @@ test('a station sees and marks only its own work in ONE command, the pass review
     }
 
     // 4) Sala declara una alergia grave con el pase enviado: la estacion la ve ESCRITA (tipo, sustancia, gravedad), tambien en la franja
-    //    «Hecho», y sin botones de revision.
+    //    «Hecho», y sin botones de revision. C3e.1 (usabilidad 28-10, H34): en «Hecho» el plato ya esta Listo, asi que la linea NO dice
+    //    «no lo emplates hasta que decida» (eso es de la rejilla, de lo que aun hay que hacer).
     await command(request, serviceId, 'declare-restriction', { guestPosition: 1, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
     await expect(coldDone).toContainText('Comensal 1 · ALERGIA marisco (grave) · Por revisar en el pase', { timeout: 15_000 })
+    await expect(coldDone).not.toContainText('no lo emplates')
     await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                  // en NINGUNA mesa: el servidor no se lo anuncia
 
     // 5) EL PASE: la mesa entera, con el progreso de cada estacion por su nombre, que falta y lo que viene (sin enviar). Lo enviado por
@@ -230,6 +260,14 @@ test('a station sees and marks only its own work in ONE command, the pass review
     expect(pendingReviews).toBeGreaterThan(0)
     await expect(reviews).toHaveCount(pendingReviews, { timeout: 15_000 })
     for (const button of await reviews.first().locator('[data-testid^="do-"]').all()) await expect(button).toBeDisabled()   // sin nota no hay decision
+    //    C3e.1 (usabilidad 28-10): «Rehacer», aparte y tambien apagado sin nota (H53); «No le afecta» en una linea (H53); y ante una
+    //    alergia al marisco, sin «Sin gluten» (H48).
+    await expect(reviews.first().locator('[data-testid^="do-review-"]')).toHaveCount(2)
+    await expect(reviews.first().locator('[data-testid^="remake-"]')).toBeDisabled()
+    expect(await gapBetween(reviews.first().locator('[data-testid^="do-review-adapt-"]'), reviews.first().locator('[data-testid^="remake-"]'))).toBeGreaterThanOrEqual(8)
+    expect(await oneLine(reviews.first().locator('[data-testid^="do-review-unaffected-"]'))).toBe(true)
+    await expect(reviews.first().getByRole('button', { name: 'Sin gluten' })).toHaveCount(0)
+    await expect(reviews.first().getByRole('button', { name: 'No lo lleva' })).toHaveCount(1)
     //    Revision C3d: un version_conflict en una revision (la caliente empieza un plato a la vez) NO borra la nota escrita: la comanda
     //    pide tocar otra vez y UN toque, sin volver a escribirla, la envia como otra orden (otra clave) con la version releida.
     const reviewPosts: string[] = []
@@ -254,7 +292,48 @@ test('a station sees and marks only its own work in ONE command, the pass review
     expect(reviewPosts).toHaveLength(2)
     expect(reviewPosts[1]).not.toBe(reviewPosts[0])
     await expect(passPage.getByTestId(`conflict-${ticketId}`)).toHaveCount(0)
-    for (let left = pendingReviews - 1; left > 0; left--) {
+    //    C3e.1 (usabilidad 28-10, H53): «Rehacer» en DOS pasos, con el plato caliente del comensal 1 (la fria, la primera de la comanda,
+    //    ya esta adaptada). El primer toque no manda nada: en su sitio sale la pregunta, con «Cancelar» y «Sí, rehacer»; «Cancelar» vuelve
+    //    atras sin orden y sin borrar la nota. «Sí, rehacer» es UNA review-preparation: el plato vuelve a «Por empezar» en su estacion.
+    const hotPending = (await read(request, serviceId)).data.courses[0].preparations.filter(p => p.reviewPending && p.stationId === 'hot')
+    expect(hotPending).toHaveLength(1)
+    const remakeKey = `${ticketId}-${hotPending[0].id}`
+    const remakeReview = passPage.getByTestId(`review-${remakeKey}`), askRemake = passPage.getByTestId(`remake-${remakeKey}`)
+    const remakeStep = passPage.getByTestId(`remake-step-${remakeKey}`), cancelRemake = passPage.getByTestId(`remake-cancel-${remakeKey}`)
+    const confirmRemake = passPage.getByTestId(`do-review-remake-${remakeKey}`)
+    await expect(askRemake).toHaveText('Rehacer')
+    await expect(confirmRemake).toHaveCount(0)                                                 // la orden solo sale de la pregunta
+    await remakeReview.locator('input').fill('sin marisco, de nuevo')
+    await expect(askRemake).toBeEnabled()
+    await askRemake.scrollIntoViewIfNeeded()                                                   // medido donde se toca: el toque ya no desplaza
+    const askBox = await askRemake.boundingBox()
+    before = await version()
+    await press(askRemake)
+    await expect(remakeStep).toContainText('¿Rehacer Preparación caliente? Vuelve a la estación.')
+    await expect(askRemake).toHaveCount(0)
+    await expect(cancelRemake).toHaveText('Cancelar')
+    await expect(confirmRemake).toHaveText('Sí, rehacer')
+    //    La pregunta ocupa el sitio del primer toque: el segundo toque de un doble toque cae en el texto, no en un boton.
+    const questionBox = await remakeStep.locator('.k-remake-q').boundingBox()
+    expect(Math.abs(questionBox!.y - askBox!.y)).toBeLessThanOrEqual(1)
+    expect(questionBox!.height).toBeGreaterThanOrEqual(askBox!.height - 1)
+    expect((await cancelRemake.boundingBox())!.height).toBeGreaterThanOrEqual(64)
+    expect(await gapBetween(cancelRemake, confirmRemake)).toBeGreaterThanOrEqual(8)
+    await checkScreen(passPage, 'pass asking to remake', true)
+    await press(cancelRemake)
+    await expect(remakeStep).toHaveCount(0)
+    await expect(askRemake).toBeEnabled()
+    await expect(remakeReview.locator('input')).toHaveValue('sin marisco, de nuevo')           // «Cancelar» no borra la nota
+    expect(reviewPosts).toHaveLength(2)                                                        // ni el primer toque ni «Cancelar» mandan nada
+    expect(await version()).toBe(before)
+    await press(askRemake)
+    await press(confirmRemake)
+    await expect(remakeReview).toHaveCount(0, { timeout: 15_000 })
+    expect(reviewPosts).toHaveLength(3)
+    expect(await version()).toBe(before + 1)
+    expect((await read(request, serviceId)).data.courses[0].preparations.find(p => p.id === hotPending[0].id)?.state).toBe('Fired')
+    await expect(passTicket).toContainText('Rehecho: sin marisco, de nuevo')
+    for (let left = pendingReviews - 2; left > 0; left--) {
       await reviews.first().locator('input').fill('sin marisco, salsa aparte')
       await press(reviews.first().locator('[data-testid^="do-review-adapt-"]'))
       await expect(reviews).toHaveCount(left - 1, { timeout: 15_000 })                         // relectura tras confirmar: version fresca
