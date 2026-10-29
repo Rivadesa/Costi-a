@@ -22,10 +22,11 @@ const shift = new Shift(shiftStatus, { audio: browserAudio, screen: browserScree
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Session } from '../api'
 import {
-  alsoText, applyShortcut, CONFLICT_TEXT, countText, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
-  exceptionLine, listoPerDish, markLabel, missingText, nextText, NOTE_SHORTCUTS, noteReady, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
-  progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS, ringKeys, seesWholeTable, shouldChime, stationTickets, TicketWatch,
-  timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem, type StationMark, type StationTicket,
+  alsoText, applyShortcut, CONFLICT_TEXT, countText, DIRECT_DECISIONS, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
+  exceptionLine, listoPerDish, markLabel, missingText, nextText, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
+  progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restOfGuest, ringKeys, seesWholeTable, shouldChime, stationLine, stationTickets,
+  TicketWatch, timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem, type StationMark,
+  type StationTicket,
 } from '../cocina'
 import { Names, useConfiguration } from '../configuration'
 import { restrictionAlarming } from '../floor'
@@ -106,7 +107,9 @@ function validate(ticket: PassTicket): void {
 // ---- Notas de revision (lo unico que se escribe, y solo en el pase), con sus atajos a la vista ----
 const notes = reactive<Record<string, string>>({})
 const restNotes = reactive<Record<string, string>>({})
-const RESTFUL = NOTE_SHORTCUTS.filter(shortcut => !shortcut.open)     // «No le afecta a nada más» no cambia ningun plato
+// C3e.1 (usabilidad 28-10, H48): los atajos segun las restricciones que aplican a ESE plato (o al comensal, para todo lo que queda): sin
+// una de gluten no sale «Sin gluten». «No le afecta a nada más» no cambia ningun plato: sin «Cambiado por …».
+const restShortcuts = (guest: PresendGuest) => noteShortcuts(guest.restrictions).filter(shortcut => !shortcut.open)
 function shortcut(store: Record<string, string>, key: string, fieldId: string, chosen: NoteShortcut): void {
   store[key] = applyShortcut(chosen)
   // «Cambiado por …»: el cursor al final, para escribir por que (en la tablet abre el teclado).
@@ -121,6 +124,22 @@ function shortcut(store: Record<string, string>, key: string, fieldId: string, c
 // version_conflict sigue escrita, y «toca otra vez» es un toque. Mientras la orden va y se relee, todo esta apagado (locked): nadie escribe.
 const sentKey = (ticket: PassTicket, preparation: Preparation) => `enviado:${ticket.key}:${preparation.id}`
 const reviewable = (ticket: PassTicket, preparation: Preparation) => ticket.reviews.includes(preparation)
+// C3e.1 (usabilidad 28-10, H53): «Rehacer» en DOS pasos, como retirar una alergia en Sala (AllergySheet.vue). El primer toque no manda
+// nada: en su sitio sale la pregunta (remakeQuestion) con «Cancelar» y «Sí, rehacer», que es la orden. Una sola pregunta a la vez; la
+// nota escrita se queda. El foco va a «Cancelar» y, al cancelar, vuelve a «Rehacer» (sin desplazar la pantalla).
+const remaking = ref<string | null>(null)
+const remakeId = (ticket: PassTicket, preparation: Preparation) => `${testKey(ticket.entry, ticket.course)}-${preparation.id}`
+function focusTestId(testId: string): void {
+  void nextTick(() => document.querySelector<HTMLElement>(`[data-testid="${CSS.escape(testId)}"]`)?.focus({ preventScroll: true }))
+}
+function askRemake(ticket: PassTicket, preparation: Preparation): void {
+  remaking.value = sentKey(ticket, preparation)
+  focusTestId(`remake-cancel-${remakeId(ticket, preparation)}`)
+}
+function cancelRemake(ticket: PassTicket, preparation: Preparation): void {
+  remaking.value = null
+  focusTestId(`remake-${remakeId(ticket, preparation)}`)
+}
 async function reviewSent(ticket: PassTicket, preparation: Preparation, decision: string, label: string): Promise<void> {
   const key = sentKey(ticket, preparation), note = (notes[key] ?? '').trim()
   if (!noteReady(note)) return
@@ -128,6 +147,9 @@ async function reviewSent(ticket: PassTicket, preparation: Preparation, decision
     { expectedVersion: ticket.entry.version, courseId: ticket.course.id, itemId: preparation.id, decision, note },
     `Revisión (${label}) de ${preparation.name} · ${guestLabel(preparation.guestPosition)} · ${title(ticket.entry, ticket.course)}`)
   if (noteSpent(outcome)) notes[key] = ''
+  // C3e.1 (H53): tras un version_conflict la pregunta de «Rehacer» sigue abierta, como la nota: «toca otra vez» es un toque. Con cualquier
+  // otro resultado se cierra (si el plato vuelve a quedar por revisar, empieza otra vez por el primer paso).
+  if (remaking.value === key && !versionConflict(outcome)) remaking.value = null
 }
 
 // ---- E4e: «Por revisar antes de enviar» ----
@@ -207,8 +229,9 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <button v-else-if="listoPerDish(ticket) && dishReadyIds(ticket.course, dish).length > 0" type="button" class="listo" :disabled="locked"
                 :aria-label="`Listo: ${dishText(dish)}`" :data-testid="`do-listo-${testKey(ticket.entry, ticket.course)}-${d}`"
                 @click="listo(ticket, dishReadyIds(ticket.course, dish), dishText(dish))">Listo</button>
+              <!-- C3e.1 (usabilidad 28-10, H34): lo por revisar dice que hacer («… · no lo emplates hasta que decida»): stationLine. -->
               <ul v-if="dish.exceptions.length > 0" class="k-als">
-                <li v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ exceptionLine(preparation).text }}</span></li>
+                <li v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ stationLine(preparation).text }}</span></li>
               </ul>
             </div>
             <p v-if="ticket.alsoIn.length > 0" class="also" :data-testid="`also-${testKey(ticket.entry, ticket.course)}`"><Icon name="right" :size="18" :stroke="2.2" />{{ alsoText(ticket.alsoIn, stationName) }}</p>
@@ -232,7 +255,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <p><b>{{ title(ticket.entry, ticket.course) }}</b> · {{ doneText(ticket) }}</p>
               <p v-for="restriction in ticket.wholeTable" :key="restriction.id" class="k-al" :class="restrictionTone(restriction)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ restrictionLabel(restriction) }}</span></p>
               <template v-for="dish in ticket.dishes" :key="dish.key">
-                <p v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ dish.name }} · {{ exceptionLine(preparation).text }}</span></p>
+                <p v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ dish.name }} · {{ stationLine(preparation).text }}</span></p>
               </template>
             </div>
           </li>
@@ -252,6 +275,19 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
             <article v-for="(guest, g) in presend" :key="guest.key" class="rv-c" :class="{ warn: !guest.restrictions.some(restrictionAlarming) }" :data-testid="`presend-${guestId(guest)}`">
               <div class="rv-t"><h3>{{ guestTable(guest) }} · {{ guestLabel(guest.guestPosition) }}</h3><span class="pill s-pending">Sin enviar</span></div>
               <p v-for="restriction in guest.restrictions" :key="restriction.id" class="k-al" :class="restrictionTone(restriction)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ restrictionLabel(restriction) }}</span></p>
+              <!-- C3e.1 (usabilidad 28-10, H56): «No le afecta a nada más» ARRIBA, justo bajo la alergia: lo normal es adaptar uno o dos platos
+                   y dejar el resto, y antes habia que pasar todos los formularios para llegar a el. Lo mismo que exigia: nota obligatoria y
+                   solo con mas de un plato del comensal. -->
+              <div v-if="guest.items.length > 1 && (rest.get(guest.key)?.length ?? 0) > 0" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
+                <label class="lbl" :for="`presend-rest-note-${g}`">Nota para todo lo que queda (obligatoria)</label>
+                <input :id="`presend-rest-note-${g}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${g}`" maxlength="200" autocomplete="off" :disabled="locked" />
+                <div class="k-shortcuts">
+                  <button v-for="option in restShortcuts(guest)" :key="option.label" type="button" class="k-chip" :disabled="locked"
+                    @click="shortcut(restNotes, guest.key, `presend-rest-note-${g}`, option)">{{ option.label }}</button>
+                </div>
+                <button type="button" class="btn k-btn wide" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
+                  @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />No le afecta a nada más · {{ plural(rest.get(guest.key)?.length ?? 0, 'plato', 'platos') }}</button>
+              </div>
               <ul class="rv-list">
                 <li v-for="(item, i) in guest.items" :key="itemKey(guest, item)" class="review presend-item" :data-testid="`presend-item-${itemId(guest, item)}`">
                   <p class="rv-d"><small>{{ item.course.name }} · {{ stationName(item.preparation.stationId) }}</small>
@@ -259,26 +295,17 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                   <label class="lbl" :for="`presend-note-${g}-${i}`">Nota (obligatoria)</label>
                   <input :id="`presend-note-${g}-${i}`" v-model="notes[itemKey(guest, item)]" :name="`presend-note-${g}-${i}`" maxlength="200" autocomplete="off" :disabled="locked" />
                   <div class="k-shortcuts">
-                    <button v-for="option in NOTE_SHORTCUTS" :key="option.label" type="button" class="k-chip" :disabled="locked"
+                    <button v-for="option in noteShortcuts(item.preparation.restrictions ?? [])" :key="option.label" type="button" class="k-chip" :disabled="locked"
                       @click="shortcut(notes, itemKey(guest, item), `presend-note-${g}-${i}`, option)">{{ option.label }}</button>
                   </div>
-                  <div class="row two">
+                  <!-- Antes de enviar no hay «Rehacer» (nothing_to_remake): las dos, a lo ancho y sin partirse (C3e.1, H53). -->
+                  <div class="row">
                     <button v-for="option in PRESEND_DECISIONS" :key="option.decision" type="button" class="btn k-btn" :class="{ 'btn-primary': option.decision === 'adapt' }"
                       :disabled="locked || !noteReady(notes[itemKey(guest, item)] ?? '')" :data-testid="`do-presend-${option.decision}-${itemId(guest, item)}`"
                       @click="presendReview(guest, item, option.decision, option.label)">{{ option.label }}</button>
                   </div>
                 </li>
               </ul>
-              <div v-if="guest.items.length > 1 && (rest.get(guest.key)?.length ?? 0) > 0" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
-                <label class="lbl" :for="`presend-rest-note-${g}`">Nota para todo lo que queda (obligatoria)</label>
-                <input :id="`presend-rest-note-${g}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${g}`" maxlength="200" autocomplete="off" :disabled="locked" />
-                <div class="k-shortcuts">
-                  <button v-for="option in RESTFUL" :key="option.label" type="button" class="k-chip" :disabled="locked"
-                    @click="shortcut(restNotes, guest.key, `presend-rest-note-${g}`, option)">{{ option.label }}</button>
-                </div>
-                <button type="button" class="btn k-btn wide" :disabled="locked || !noteReady(restNotes[guest.key] ?? '')" :data-testid="`do-presend-rest-${guestId(guest)}`"
-                  @click="nothingElse(guest)"><Icon name="checkCircle" :size="22" />No le afecta a nada más · {{ plural(rest.get(guest.key)?.length ?? 0, 'plato', 'platos') }}</button>
-              </div>
               <p v-if="conflict === guest.key" class="k-conflict" role="status"><Icon name="info" :size="20" />{{ CONFLICT_TEXT }}</p>
             </article>
           </div>
@@ -332,14 +359,29 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                     <label class="lbl" :for="`review-note-${t}-${d}-${e}`">Nota (obligatoria)</label>
                     <input :id="`review-note-${t}-${d}-${e}`" v-model="notes[sentKey(ticket, preparation)]" :name="`review-note-${t}-${d}-${e}`" maxlength="200" autocomplete="off" :disabled="locked" />
                     <div class="k-shortcuts">
-                      <button v-for="option in NOTE_SHORTCUTS" :key="option.label" type="button" class="k-chip" :disabled="locked"
+                      <button v-for="option in noteShortcuts(preparation.restrictions ?? [])" :key="option.label" type="button" class="k-chip" :disabled="locked"
                         @click="shortcut(notes, sentKey(ticket, preparation), `review-note-${t}-${d}-${e}`, option)">{{ option.label }}</button>
                     </div>
+                    <!-- C3e.1 (usabilidad 28-10, H53): «No le afecta» y «Adaptado», a lo ancho y sin partirse; «Rehacer», en su fila, con borde
+                         de aviso y en dos pasos: el primer toque pregunta y solo «Sí, rehacer» (do-review-remake-…) manda la orden. -->
                     <div class="row">
-                      <button v-for="option in REVIEW_DECISIONS" :key="option.decision" type="button" class="btn k-btn" :class="{ 'btn-primary': option.decision === 'adapt' }"
+                      <button v-for="option in DIRECT_DECISIONS" :key="option.decision" type="button" class="btn k-btn" :class="{ 'btn-primary': option.decision === 'adapt' }"
                         :disabled="locked || !noteReady(notes[sentKey(ticket, preparation)] ?? '')"
                         :data-testid="`do-review-${option.decision}-${testKey(ticket.entry, ticket.course)}-${preparation.id}`"
                         @click="reviewSent(ticket, preparation, option.decision, option.label)">{{ option.label }}</button>
+                    </div>
+                    <button v-if="remaking !== sentKey(ticket, preparation)" type="button" class="btn k-btn k-remake"
+                      :disabled="locked || !noteReady(notes[sentKey(ticket, preparation)] ?? '')" :data-testid="`remake-${remakeId(ticket, preparation)}`"
+                      @click="askRemake(ticket, preparation)"><Icon name="refresh" :size="22" :stroke="2.2" />{{ REMAKE_DECISION.label }}</button>
+                    <div v-else class="k-remake-ask" :data-testid="`remake-step-${remakeId(ticket, preparation)}`">
+                      <p class="k-remake-q">{{ remakeQuestion(preparation) }}</p>
+                      <div class="row">
+                        <button type="button" class="btn k-btn" :data-testid="`remake-cancel-${remakeId(ticket, preparation)}`"
+                          @click="cancelRemake(ticket, preparation)">Cancelar</button>
+                        <button type="button" class="btn k-btn k-remake" :disabled="locked || !noteReady(notes[sentKey(ticket, preparation)] ?? '')"
+                          :data-testid="`do-review-${REMAKE_DECISION.decision}-${remakeId(ticket, preparation)}`"
+                          @click="reviewSent(ticket, preparation, REMAKE_DECISION.decision, REMAKE_DECISION.label)"><Icon name="refresh" :size="22" :stroke="2.2" />Sí, rehacer</button>
+                      </div>
                     </div>
                   </div>
                 </template>

@@ -98,6 +98,36 @@ describe('words the views write as they are', () => {
     expect(clearing.filter(line => !/if \(noteSpent\(outcome\)\)/.test(line))).toEqual([])
     expect(kitchen).not.toMatch(/void send\([^)]*'review-preparations?'/)
   })
+  // C3e.1 (usabilidad 28-10). H34: la estacion lee que hacer con lo que esta por revisar (stationLine), en su rejilla y en «Hecho»; el
+  // pase sigue con exceptionLine. H53: «Rehacer» va aparte y en dos pasos; su primer toque solo pregunta y la orden es «Sí, rehacer».
+  // H56: «No le afecta a nada más» va arriba, justo bajo la alergia del comensal. H48: los atajos salen de las restricciones aplicables.
+  it('Costiña Cocina, C3e.1: the station says what to do, «Rehacer» asks first, «No le afecta a nada más» on top, shortcuts by restriction', () => {
+    const kitchen = template(files.find(([name]) => name === 'views/KitchenView.vue')![1])
+    const station = kitchen.slice(kitchen.indexOf('<template v-if="!whole">'), kitchen.indexOf('<div v-else class="pase-body">'))
+    const pass = kitchen.slice(kitchen.indexOf('<div v-else class="pase-body">'))
+    expect(station.length).toBeGreaterThan(0)
+    expect(station.match(/stationLine\(preparation\)\.text/g)).toHaveLength(2)                 // la rejilla y la franja «Hecho»
+    expect(station).not.toMatch(/exceptionLine\(preparation\)\.text/)
+    expect(pass).toMatch(/exceptionLine\(preparation\)\.text/)
+    // H53: ninguna lista de decisiones con «Rehacer» dentro; su primer paso no manda nada y la orden sale solo de la pregunta.
+    expect(kitchen).not.toMatch(/v-for="option in REVIEW_DECISIONS"/)
+    expect(kitchen).toMatch(/v-for="option in DIRECT_DECISIONS"/)
+    const ask = kitchen.match(/<button v-if="remaking !== sentKey\(ticket, preparation\)"[^>]*>/)?.[0] ?? ''
+    expect(ask).toMatch(/@click="askRemake\(ticket, preparation\)"/)
+    expect(ask).toMatch(/:data-testid="`remake-\$\{remakeId\(ticket, preparation\)\}`"/)
+    const step = kitchen.slice(kitchen.indexOf('<div v-else class="k-remake-ask"'), kitchen.indexOf('</div>', kitchen.indexOf('<div v-else class="k-remake-ask"') + 1))
+    expect(kitchen.indexOf('<div v-else class="k-remake-ask"')).toBeGreaterThan(kitchen.indexOf(ask))
+    const confirm = kitchen.slice(kitchen.indexOf('<div v-else class="k-remake-ask"')).match(/<button[^>]*do-review-\$\{REMAKE_DECISION\.decision\}[^>]*>/)?.[0] ?? ''
+    expect(confirm).toMatch(/@click="reviewSent\(ticket, preparation, REMAKE_DECISION\.decision, REMAKE_DECISION\.label\)"/)
+    expect(step).toMatch(/remakeQuestion\(preparation\)/)
+    expect(shown(files.find(([name]) => name === 'views/KitchenView.vue')![1])).toEqual(expect.arrayContaining(['Sí, rehacer', 'Cancelar']))
+    // H56: la decision para el resto del comensal, entre su alergia y la lista de sus platos.
+    const allergy = kitchen.indexOf('v-for="restriction in guest.restrictions"'), restBlock = kitchen.indexOf('`presend-rest-${guestId(guest)}`'), list = kitchen.indexOf('<ul class="rv-list">')
+    expect([allergy > 0, restBlock > allergy, list > restBlock]).toEqual([true, true, true])
+    // H48: ningun atajo fijo; cada lista sale de las restricciones que aplican.
+    expect(kitchen).not.toMatch(/NOTE_SHORTCUTS/)
+    expect(kitchen.match(/v-for="option in (?:noteShortcuts\([^)]*\)|restShortcuts\(guest\))"/g)).toHaveLength(3)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])
@@ -149,6 +179,18 @@ describe('Costiña Cocina reads at one or two metres (style.css)', () => {
     expect([value('.side-presend', 'min-height'), value('.side-presend > .presend', 'min-height'), value('.side-presend > .presend', 'overflow-y')]).toEqual(['0', '0', 'auto'])
     expect([value('.side-waiting', 'position'), value('.side-waiting', 'bottom'), value('.side-waiting', 'flex')]).toEqual(['sticky', '0', 'none'])
     expect(value('.side-waiting', 'background')).toBe('var(--bg)')
+  })
+  // C3e.1 (usabilidad 28-10). H53: en la comanda del pase las tres decisiones median 80 px y «No le afecta» se partia en dos lineas; ahora
+  // van a lo ancho y sin partirse, y «Rehacer» aparte con borde de aviso (ambar, nunca el rojo de las alergias). H48: los atajos estaban
+  // a 6 px: al menos 8 entre objetivos vecinos.
+  it('C3e.1: decisions wide and never broken, «Rehacer» apart with a warning border, neighbours at least 8 px apart', () => {
+    expect([value('.review .row', 'display'), value('.review .row', 'flex-wrap')]).toEqual(['flex', 'wrap'])
+    expect([value('.review .row > .k-btn', 'white-space'), value('.review .row > .k-btn', 'min-width'), value('.review .row > .k-btn', 'flex')]).toEqual(['nowrap', 'max-content', '1 1 0'])
+    expect(value('.review .k-remake', 'border')).toBe('2px solid var(--warn-text)')
+    expect(value('.k-remake-q', 'min-height')).toBe('var(--touch-kitchen)')                    // la pregunta tapa el sitio del primer toque
+    expect(block.match(/\.k-remake[^{]*\{[^}]*\}/g)?.join('') ?? '').not.toMatch(/danger/)
+    for (const selector of ['.k-shortcuts', '.review .row', '.k-remake-ask .row'])
+      expect(Number(value(selector, 'gap').replace('px', '')), selector).toBeGreaterThanOrEqual(8)
   })
   it('nothing operational under 16 px', () => {
     const sizes = rules.flatMap(rule => [...rule.body.matchAll(/font-size\s*:\s*([\d.]+)px/g)].map(match => [rule.selectors.join(', '), Number(match[1])] as const))

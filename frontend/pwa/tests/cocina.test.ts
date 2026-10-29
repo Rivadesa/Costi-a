@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
-  alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, dishAlarming, dishes, dishNote, dishState, dishText, doneText,
-  elapsedText, exceptionLine, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText, NOTE_SHORTCUTS,
-  noteReady, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince, restBody, restOfGuest, REVIEW_DECISIONS,
-  reviewNoteOk, ringKeys, seesWholeTable, shouldChime, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
+  alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, DIRECT_DECISIONS, dishAlarming, dishes, dishNote, dishState, dishText,
+  doneText, elapsedText, exceptionLine, isGluten, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText,
+  NOTE_SHORTCUTS, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince,
+  REMAKE_DECISION, remakeQuestion, restBody, restOfGuest, REVIEW_DECISIONS, REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys, seesWholeTable, shouldChime,
+  stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
 
@@ -152,6 +153,21 @@ describe('a station sees only its own work', () => {
     // Solo cambia la palabra de lo que esta por revisar: una decision ya tomada se escribe igual.
     const decided = prep('m-2', 'Merluza', 'hot', 2, { restrictions: [NUTS], review: { decision: 'Adapt', note: 'sin almendra', at: AT } })
     expect(exceptionLine(decided, 'Por revisar en cocina')).toEqual(exceptionLine(decided))
+  })
+  // C3e.1 (usabilidad 28-10, H34): la estacion veia «Por revisar en el pase» con el «Listo» debajo y nada le decia si esperar.
+  it('C3e.1 (H34): at a station the pending line also says what to do; still red when it alarms, and the pass keeps its own words', () => {
+    const pending = prep('m-3', 'Merluza', 'hot', 3, { restrictions: [SHELLFISH], reviewPending: true })
+    expect(REVIEW_PENDING_AT_STATION).toBe('Por revisar en el pase · no lo emplates hasta que decida')
+    expect(stationLine(pending)).toMatchObject({ text: 'Comensal 3 · ALERGIA marisco (grave) · Por revisar en el pase · no lo emplates hasta que decida', pending: true, alarming: true })
+    expect(stationLine(prep('i-1', 'Ostra', 'cold', 1, { restrictions: [{ ...CORIANDER, kind: 'Intolerance' }], reviewPending: true })).alarming).toBe(false)   // ambar
+    expect(exceptionLine(pending).text).toBe('Comensal 3 · ALERGIA marisco (grave) · Por revisar en el pase')                     // el pase decide
+    // Una decision ya tomada se escribe igual en la estacion, en el pase y en Sala.
+    const decided = prep('m-2', 'Merluza', 'hot', 2, { restrictions: [NUTS], review: { decision: 'Adapt', note: 'sin almendra', at: AT } })
+    expect(stationLine(decided)).toEqual(exceptionLine(decided))
+    // La estacion la ve en su comanda, nunca plegada ni atenuada: es una excepcion de su plato.
+    const [ticket] = stationTickets([entry('M7', [course('p1', 'Entrante', 'Fired', AT, [pending])])], 'hot')
+    expect(ticket.dishes[0].exceptions.map(p => stationLine(p).text)).toEqual([stationLine(pending).text])
+    expect(dishAlarming(ticket.dishes[0])).toBe(true)
   })
   it('the dish note counts adapted, remade and pending lines', () => {
     const dish = dishes([
@@ -350,6 +366,27 @@ describe('note shortcuts of the pass: they fill the note in view', () => {
   })
   it('what was sent and has to be reviewed: «No le afecta», «Adaptado» and «Rehacer», the words of Sala and the PC', () => {
     expect(REVIEW_DECISIONS.map(option => [option.decision, option.label])).toEqual([['unaffected', 'No le afecta'], ['adapt', 'Adaptado'], ['remake', 'Rehacer']])
+  })
+  // C3e.1 (usabilidad 28-10, H48): ante «ALERGIA marisco (grave)» se ofrecia «Sin gluten», y nada impedia guardar «Adaptado: Sin gluten».
+  it('C3e.1 (H48): «Sin gluten» only with a gluten restriction among those that apply; the other shortcuts always', () => {
+    const labels = (restrictions: GuestRestriction[]) => noteShortcuts(restrictions).map(shortcut => shortcut.label)
+    expect(labels([SHELLFISH])).toEqual(['No lo lleva', 'Cambiado por …'])
+    expect(labels([])).toEqual(['No lo lleva', 'Cambiado por …'])
+    expect(labels([SHELLFISH, GLUTEN])).toEqual(['No lo lleva', 'Sin gluten', 'Cambiado por …'])        // la de toda la mesa tambien aplica
+    expect(NOTE_SHORTCUTS.filter(shortcut => shortcut.gluten).map(shortcut => shortcut.label)).toEqual(['Sin gluten'])
+  })
+  it('C3e.1 (H48): gluten is read without capitals or accents, and celiac counts; wheat, barley, rye or oats do not', () => {
+    const of = (substance: string) => isGluten({ ...SHELLFISH, substance })
+    expect(['gluten', 'GLUTEN', 'Glúten', 'intolerancia al gluten', 'celíaco', 'Celiaca', 'celiaquía', 'CELÍACOS', 'coeliac'].map(of)).toEqual(Array(9).fill(true))
+    // Un producto sin gluten puede llevar almidon de trigo o avena sin gluten: «Sin gluten» no diria lo que se quito.
+    expect(['trigo', 'cebada', 'centeno', 'avena', 'espelta', 'marisco', 'frutos secos', 'lactosa', 'aglutinante', ''].map(of)).toEqual(Array(10).fill(false))
+  })
+  // C3e.1 (usabilidad 28-10, H53): «Rehacer» iba pegado a «Adaptado» y sin confirmar.
+  it('C3e.1 (H53): «No le afecta» and «Adaptado» are one tap each; «Rehacer» goes apart and first asks, naming the dish', () => {
+    expect(DIRECT_DECISIONS.map(option => option.decision)).toEqual(['unaffected', 'adapt'])
+    expect(DIRECT_DECISIONS.map(option => option.label)).toEqual(PRESEND_DECISIONS.map(option => option.label))
+    expect(REMAKE_DECISION).toEqual({ decision: 'remake', label: 'Rehacer' })
+    expect(remakeQuestion(prep('m-2', 'Merluza á galega', 'hot', 2))).toBe('¿Rehacer Merluza á galega? Vuelve a la estación.')
   })
 })
 
