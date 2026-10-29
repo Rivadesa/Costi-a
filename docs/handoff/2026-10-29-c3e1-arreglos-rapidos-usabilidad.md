@@ -18,9 +18,9 @@ Leer antes, en este orden:
 
 ## Estado
 
-- **`develop`**: C3e.1 entra con el PR #100 («Merge PR #100: C3e.1 …», el 29-10). Versión **`0.46.1-c3e.1`**, esquema v8. El sha de la mezcla, la CI leída y el instalador se apuntan aquí después de mezclar, con un PR de traspaso, como se hizo con C3e (#98 y #99).
-- **C3e.1 está mezclada** desde la rama `fix/c3e1-arreglos-rapidos-usabilidad`, sacada de `dd7c78c` (Merge PR #99), con la punta que verifique la CI (`git diff --stat` entre ella y el merge: vacío).
-- **Permiso:** el del 29-10, «Haz los arreglos rápidos», que sigue a la evaluación del 28-10 y, como en los cortes anteriores, incluye subirlo y mezclarlo.
+- **`develop` = `21f15ee`** (Merge PR #100: C3e.1, el 29-10). Versión **`0.46.1-c3e.1`**, esquema v8.
+- **C3e.1 está mezclada** desde la rama `fix/c3e1-arreglos-rapidos-usabilidad`, sacada de `dd7c78c` (Merge PR #99), con la punta `8f08d83` verificada en la CI (`git diff --stat` entre ella y el merge: vacío).
+- **Permiso:** el del 29-10, «Haz los arreglos rápidos», que sigue a la evaluación del 28-10, y el del mismo día, «sube todo a github para seguir en cualquier localización».
 - **Commits:**
   - `4862206` fix(pwa): Costiña Cocina (H34, H53, H56, H48);
   - `7cdac16` fix(pwa): la banda con las alergias del pase y el resultado antes de la acción siguiente (H19, H20);
@@ -30,7 +30,7 @@ Leer antes, en este orden:
   - `da742fc` fix(pwa): las correcciones de la revisión final (la apertura en camino, de su mesa y de su hoja; los rechazos de las hojas que ya no se van con la relectura; el resultado y la otra pestaña; el conflicto de «No le afecta a …»; «no lo emplates» bajo un plato ya «Lista»; y «Salir sin abrir» en `mesas.spec`);
   - docs(native): el documento con las capturas, el informe en `docs/reviews/`, AGENTS, STATUS, las notas en C3e y C3d y la versión `0.46.1-c3e.1`;
   - docs(handoff): este traspaso.
-- **Instalador de `develop`:** se apunta tras la mezcla.
+- **Instalador de `develop`:** `Costina-Setup-0.46.1-c3e.1.exe`, en el run 40861587023 (`Native Windows installer`, sobre `21f15ee`), artefacto `costina-windows-installer`: https://github.com/Rivadesa/Costi-a/actions/runs/40861587023
 
 ## Cómo se hizo
 
@@ -63,7 +63,18 @@ En este PC, el 29-10, con `0.46.1-c3e.1`, en la punta final (`da742fc`):
 
 ## CI leída en los logs
 
-Se apunta tras la mezcla, con el PR de traspaso.
+En el PR #100, sobre la punta `8f08d83`, el 29-10, todo en verde (CodeRabbit, saltado):
+
+- **D0:** 97/97 en Ubuntu y en Windows.
+- **`desktop`:** vitest 600 en 23 ficheros, ClientChecks 288 y DesktopChecks («WPF startup and viewmodel checks passed»), a la primera.
+- **`windows-service`:** 12. **`windows-compile`**, en verde.
+- **`postgres-http`**, 6 min 39 s:
+  - dominio 97 y PersistenceChecks 88;
+  - las 14 suites HTTP (packaging 15 con 1 saltada; `pwa_http` 8 en 198 s);
+  - Playwright 31 en 3,2 min: `mesas.spec`, 12,1 s en `[mobile]` y 12,2 s en `[sala-vertical]`; `banner.spec`, 6,0 y 6,1 s; `kitchen.spec`, 10,9 s;
+  - Realtime 13.
+- **La caché de Playwright:** «Need to get 0 B/21.1 MB of archives». No tocó el espejo de Ubuntu.
+- **En `develop` (`21f15ee`):** D0, el instalador y la caché de Playwright se lanzaron al mezclar. Ver el run del instalador, arriba.
 
 ## Trampas nuevas
 
