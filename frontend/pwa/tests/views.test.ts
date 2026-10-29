@@ -137,6 +137,46 @@ describe('words the views write as they are', () => {
   })
 })
 
+// C3e.1 (usabilidad 28-10, H19 y H20): Costiña Sala, mirando las plantillas y style.css sin abrir un navegador (banner.spec y mesas.spec
+// lo comprueban contra el motor). H19: la banda escribe bajo su titulo TODAS las lineas de alergia del pase listo, con la regla, el texto y
+// el tono de la ficha. H20: confirmada la orden del boton grande (o de «Servido» de la banda), su resultado ocupa su sitio, apagado.
+describe('Costiña Sala, C3e.1: the banner remembers the allergy (H19) and the big button shows its result first (H20)', () => {
+  const source = (name: string) => files.find(([file]) => file === name)![1]
+  const css = readFileSync(folder('../src/style.css')).toString('utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '')
+  const body = (selector: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(match => match[1].split(',').map(text => text.trim()).includes(selector)).map(match => match[2]).join(';')
+  it('H19: under its title the banner writes ALL the lines of the ready course, with the rule and the tone of the table card', () => {
+    const banner = source('views/ReadyBanner.vue')
+    expect(banner).toMatch(/const lines = computed\(\(\) => first\.value \? passLines\(first\.value\.course\) : \[\]\)/)
+    const view = template(banner)
+    const list = view.match(/<ul v-if="lines\.length > 0"[^>]*>[\s\S]*?<\/ul>/)?.[0] ?? ''
+    expect(list).toMatch(/v-for="line in lines"/)
+    expect(list).not.toMatch(/slice|v-show|<details|line-clamp/)                                // todas, sin plegar ni cortar
+    expect(list).toMatch(/class="fc-tl-x bn-line" :class="line\.tone"/)
+    expect(list).toMatch(/\{\{ line\.text \}\}/)
+    // Bajo el titulo y antes de «Servido»: se leen antes de tocarlo, sin un segundo toque.
+    const at = (testId: string) => view.indexOf(`data-testid="${testId}"`)
+    expect([at('banner-title') < at('banner-lines'), at('banner-lines') < at('banner-serve'), at('banner-lines') < at('banner-done')]).toEqual([true, true, true])
+    // La ficha pinta sus lineas con las mismas piezas de pases.ts.
+    const card = template(source('views/CoursesTimeline.vue'))
+    expect(card).toMatch(/:class="lineTone\(exception\)"/)
+    expect(card).toMatch(/\{\{ exceptionText\(dish\.dish, exception\) \}\}/)
+    // Compactas, pero nunca escondidas: ni alto maximo ni recorte.
+    expect(`${body('.bn-lines')};${body('.banner .bn-line')}`).not.toMatch(/max-height|overflow\s*:\s*hidden|display\s*:\s*none|line-clamp/)
+  })
+  it('H20: the result takes the place of the button, disabled and without a click: table card, «Abrir» and the banner', () => {
+    for (const [name, testId] of [['views/TableCard.vue', 'do-done'], ['views/OpenTable.vue', 'do-done'], ['views/ReadyBanner.vue', 'banner-done']]) {
+      const tag = template(source(name)).match(new RegExp(`<button v-if="done"[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? ''
+      expect(tag, name).toMatch(/\sdisabled[\s>]/)
+      expect(tag, name).not.toMatch(/@click|:disabled/)
+    }
+    const board = template(source('views/BoardView.vue'))
+    for (const bound of [':done="bannerDone"', ':done="cardDone"', ':done="openDone"', '@run="runFromCard"']) expect(board, bound).toContain(bound)
+    // En el verde de lo hecho, nunca en el rojo de las alergias.
+    expect(`${body('.btn-big.btn-done:disabled')};${body('.bn-serve.bn-done:disabled')}`).toMatch(/--ok-/)
+    expect(`${body('.btn-big.btn-done:disabled')};${body('.bn-serve.bn-done:disabled')}`).not.toMatch(/danger/)
+  })
+})
+
 // C3d (plan 2026-10-22, seccion 4.3): Costiña Cocina se lee a uno o dos metros, en una tablet horizontal de 1180 x 820. La hoja de la
 // cocina va en su propio bloque de style.css; aqui se miden sus reglas sin abrir un navegador (la E2E mide los botones de verdad).
 describe('Costiña Cocina reads at one or two metres (style.css)', () => {

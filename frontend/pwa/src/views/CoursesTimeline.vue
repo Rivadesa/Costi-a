@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { Names } from '../configuration'
 import { coursesTitle } from '../ficha'
 import { courseLabel, offerKindLabel } from '../labels'
-import { NEXT_MARK, timeline, type TimelineCourse, type TimelineDish } from '../pases'
+import { exceptionText, lineTone, NEXT_MARK, timeline, type TimelineCourse, type TimelineDish } from '../pases'
 import type { Dining } from '../types'
 import Icon from './Icon.vue'
 
@@ -28,7 +28,7 @@ const stateTone = (item: TimelineCourse) => item.step === 'pending' ? (nuance(it
 const dishTone = (dish: TimelineDish) => dish.alarming ? 'alarm' : dish.exceptions.some(exception => exception.pending) ? 'warn' : ''
 // «Cocina caliente · Sin enviar»: la estacion ya viene por su NOMBRE (pases.ts) y el estado del plato con las palabras de siempre.
 const dishMeta = (dish: TimelineDish) => [dish.station, dish.state].filter(part => part.length > 0).join(' · ')
-const lineTone = (exception: TimelineDish['exceptions'][number]) => exception.alarming ? 'alarm' : exception.pending ? 'warn' : 'calm'
+// C3e.1 (H19): el texto y el tono de cada excepcion salen de pases.ts (exceptionText, lineTone), los mismos que la banda «listo para servir».
 </script>
 
 <template>
@@ -67,7 +67,7 @@ const lineTone = (exception: TimelineDish['exceptions'][number]) => exception.al
             <!-- Las excepciones, aparte y bajo su plato: quien, la restriccion escrita y la decision de cocina. Nunca atenuadas. -->
             <ul v-if="dish.exceptions.length > 0" class="fc-tl-xs">
               <li v-for="exception in dish.exceptions" :key="exception.preparation.id" class="fc-tl-x" :class="lineTone(exception)" :data-testid="`prep-${exception.preparation.id}`">
-                <Icon :name="exception.alarming || exception.pending ? 'alert' : 'info'" :size="16" :stroke="2.3" /><span>{{ dish.dish.name }} · {{ exception.text }}</span>
+                <Icon :name="exception.alarming || exception.pending ? 'alert' : 'info'" :size="16" :stroke="2.3" /><span>{{ exceptionText(dish.dish, exception) }}</span>
               </li>
             </ul>
           </li>

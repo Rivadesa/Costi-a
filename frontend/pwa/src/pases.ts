@@ -1,4 +1,4 @@
-import { dishes, dishNote, dishState, dishText, exceptionLine, type Dish, type ExceptionLine } from './cocina'
+import { dishes, dishNote, dishState, dishText, exceptionLine, wholeTable, type Dish, type ExceptionLine } from './cocina'
 import type { OfferItem } from './configuration'
 import { fireNextCourse, serviceCommand, type CommandRequest } from './ficha'
 import { courseDetail, courseStep, restrictionAlarming } from './floor'
@@ -71,10 +71,33 @@ export interface TimelineCourse {
 }
 export interface Timeline { done: DoneCourse[]; courses: TimelineCourse[] }
 
+// Las excepciones de un plato con la palabra del camarero, y como se escribe y se colorea cada una bajo el plato. Las usan la ficha
+// (CoursesTimeline) y, desde C3e.1, la banda «listo para servir» (passLines): una sola regla para las dos.
+const dishLines = (dish: Dish): ExceptionLine[] => dish.exceptions.map(preparation => exceptionLine(preparation, REVIEW_PENDING_TEXT))
+export const exceptionText = (dish: Dish, line: ExceptionLine): string => `${dish.name} · ${line.text}`
+export type LineTone = 'alarm' | 'warn' | 'calm'
+export const lineTone = (line: { alarming: boolean; pending: boolean }): LineTone => line.alarming ? 'alarm' : line.pending ? 'warn' : 'calm'
+
 function timelineDish(dish: Dish, station: (stationId: string) => string): TimelineDish {
-  const exceptions = dish.exceptions.map(preparation => exceptionLine(preparation, REVIEW_PENDING_TEXT))
+  const exceptions = dishLines(dish)
   return { dish, text: dishText(dish), note: dishNote(dish), state: dishState(dish), station: station(dish.stationId), exceptions,
     alarming: exceptions.some(line => line.alarming) }
+}
+
+// ---- C3e.1 (usabilidad 28-10, H19): las lineas de UN pase, para la banda «listo para servir» ----
+// No siempre sirve quien abrio la mesa: la banda escribe bajo su titulo las MISMAS lineas que la ficha pinta bajo cada plato de ese pase
+// («Ostra · Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra»), con la misma regla, el mismo texto y el mismo tono,
+// todas y sin plegar. Delante, las restricciones de TODA LA MESA que tocan el pase («Toda la mesa · ALERGIA gluten (grave)»), escritas
+// como en la franja roja de la ficha, que la banda no tiene encima: la linea de un plato adaptado por ellas no repite la sustancia.
+export interface PassLine { key: string; text: string; alarming: boolean; pending: boolean; tone: LineTone }
+export function passLines(course: Course): PassLine[] {
+  const table = wholeTable(course.preparations).map(restriction => {
+    const alarming = restrictionAlarming(restriction)
+    return { key: `r:${restriction.id}`, text: restrictionLabel(restriction), alarming, pending: false, tone: lineTone({ alarming, pending: false }) }
+  })
+  const own = dishes(course.preparations).flatMap(dish => dishLines(dish).map(line =>
+    ({ key: `p:${line.preparation.id}`, text: exceptionText(dish, line), alarming: line.alarming, pending: line.pending, tone: lineTone(line) })))
+  return [...table, ...own]
 }
 
 // La nota de un pase, de la lectura y sin inventar ninguna hora:

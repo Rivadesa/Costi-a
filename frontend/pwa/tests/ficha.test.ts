@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barNote, commandFor, coursesTitle, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, tableActions, tableInfo, waitingText } from '../src/ficha'
+import { barNote, commandFor, coursesTitle, dishesHint, DONE_MARK, doneLabel, openedLabel, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, tableActions, tableInfo, waitingText } from '../src/ficha'
 import { clockLabel } from '../src/labels'
 import type { BoardEntry, Course, Dining } from '../src/types'
 
@@ -69,6 +69,22 @@ describe('words of the buttons', () => {
     expect(waitingText(dining([], [course('c1', 'Entrantes', 'Fired')], { restrictionsPendingAck: true }))).toBe('Esperando la revisión de cocina')
     expect(waitingText(dining([], [course('c1', 'Entrantes', 'Preparing')]))).toBe('Esperando a cocina')
     expect(waitingText(dining([], [course('c1', 'Entrantes', 'Pending')], { state: 'Paused' }))).toBe('Sin acciones para esta mesa ahora')
+  })
+  // C3e.1 (usabilidad 28-10, H20): lo que dice el boton grande, apagado, en cuanto se confirma su orden y antes de la accion siguiente.
+  it('C3e.1 (H20): the result of the big button, with the course it named and the mark, never the next one', () => {
+    const service = dining(['fire-next', 'start', 'resume', 'complete'], [course('c1', 'Aperitivos', 'Ready', ['serve', 'ready']), course('c2', 'Principal', 'Pending')])
+    const row = entry(service, ['release'])
+    const done = (action: string) => doneLabel(tableActions(row).find(candidate => candidate.action === action)!, service)
+    expect(['serve', 'ready', 'fire-next', 'start', 'resume', 'complete', 'release'].map(done)).toEqual([
+      'Servido · Aperitivos ✓', 'Pase validado · Aperitivos ✓', 'Pase enviado · Principal ✓', 'Servicio iniciado ✓', 'Servicio reanudado ✓',
+      'Servicio terminado ✓', 'Mesa liberada ✓'])
+    // Se escribe con la lectura de la que salio el boton: la de despues ya nombraria el pase siguiente.
+    const primary = primaryAction(tableActions(entry(dining(['fire-next'], [course('c1', 'Aperitivos', 'Pending'), course('c2', 'Principal', 'Pending')]))))!
+    expect(primary.label).toBe('Enviar siguiente pase · Aperitivos')
+    expect(doneLabel(primary, dining(['fire-next'], [course('c1', 'Aperitivos', 'Pending'), course('c2', 'Principal', 'Pending')]))).toBe('Pase enviado · Aperitivos ✓')
+    expect(openedLabel('Mesa 5')).toBe(`Mesa 5 abierta ${DONE_MARK}`)
+    // Lo que no esta en su tabla dice el texto del boton con la marca; nunca una palabra de caja.
+    expect(doneLabel(tableActions(entry(dining(['pause'], []))).find(action => action.action === 'pause')!, service)).toBe('Pausar servicio ✓')
   })
 })
 
@@ -185,7 +201,10 @@ describe('header and short courses', () => {
     const texts = [PENDING_REVIEW_TEXT, REASON_PROBLEM, waitingText(dining([], [], { restrictionsPendingAck: true })), waitingText(dining([], [course('c', 'x', 'Fired')])), waitingText(dining([], [])),
       ...[dining(['fire-next'], [course('c1', 'x', 'Pending')]), dining(['fire-next'], [course('c1', 'x', 'Served', [], { servedAt: at(0) }), course('c2', 'y', 'Pending')]),
         dining([], [course('c1', 'x', 'Ready', ['serve'], { readyAt: at(0) })])].map(service => barNote(service, primaryAction(tableActions(entry(service)), service))),
-      ...tableActions(entry(dining(['start', 'fire-next', 'pause', 'resume', 'complete', 'cancel-unstarted'], [course('c1', 'x', 'Ready', ['serve', 'ready', 'skip'])]), ['release'])).map(action => action.label)]
+      ...tableActions(entry(dining(['start', 'fire-next', 'pause', 'resume', 'complete', 'cancel-unstarted'], [course('c1', 'x', 'Ready', ['serve', 'ready', 'skip'])]), ['release'])).map(action => action.label),
+      // C3e.1 (H20): tambien lo que dice el boton grande al confirmarse su orden.
+      ...tableActions(entry(dining(['start', 'fire-next', 'resume', 'complete'], [course('c1', 'x', 'Ready', ['serve', 'ready'])]), ['release'])).map(action => doneLabel(action, dining([], []))),
+      openedLabel('Mesa 5')]
     expect(texts.filter(text => /€|precio|saldo|pago|cuenta/i.test(text))).toEqual([])
   })
 })

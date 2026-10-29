@@ -4,7 +4,7 @@ import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveTe
 import type { CatalogStatus } from '../catalog'
 import { offerFor, type Configuration, type Names } from '../configuration'
 import type { DrinkProduct, RoundItem } from '../drinks'
-import { barNote, commandFor, dishesHint, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
+import { barNote, commandFor, dishesHint, doneLabel, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
 import { isTileCode, restrictionAlarming, tileLabel, tileState } from '../floor'
 import type { IconName } from '../icons'
 import { clockLabel, plural, restrictionLabel } from '../labels'
@@ -34,12 +34,14 @@ import SkipSheet from './SkipSheet.vue'
 // platos agrupados con la regla comun de pases.ts y cocina.ts, sus excepciones aparte y «Siguiente»); encima del boton grande, su nota
 // (barNote); omitir un pase abre su propia hoja (SkipSheet) con su motivo; y las alergias se ven, se anotan y se retiran en su hoja
 // (AllergySheet), desde la cabecera de la franja roja y solo con lo que el servidor anuncia. «Más opciones» se queda con lo demas.
+// C3e.1 (usabilidad 28-10, H20): el boton grande manda tambien el texto de su resultado (ficha.ts, doneLabel); confirmada su orden,
+// BoardView lo devuelve en done y el boton lo ensena apagado durante DONE_MS (operations.ts) antes de la accion siguiente.
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
-  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number
+  products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number; done: string
   sendRound: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
 }>()
-const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; back: []; bodega: [] }>()
+const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string, result?: string]; back: []; bodega: [] }>()
 
 const service = computed(() => props.entry.service)
 const has = (action: string) => service.value.actions?.includes(action) === true
@@ -180,14 +182,16 @@ const ICON: Record<string, IconName> = {
   pause: 'pause', skip: 'skip', 'cancel-unstarted': 'x',
 }
 
-function send(path: string, body: Record<string, unknown>, description: string): void { problem.value = ''; emit('run', path, body, description) }
-function act(action: TableAction): void {
+function send(path: string, body: Record<string, unknown>, description: string, result?: string): void { problem.value = ''; emit('run', path, body, description, result) }
+function act(action: TableAction, result?: string): void {
   problem.value = ''
   if (action.needsReason && !reasonOk(reason.value)) { problem.value = REASON_PROBLEM; if (!reasonInBar.value) more.value = true; return }
   const request = commandFor(props.entry, action, props.tableName, reason.value)
-  send(request.path, request.body, request.description)
+  send(request.path, request.body, request.description, result)
   if (action.needsReason) reason.value = ''
 }
+// El boton grande: su resultado se escribe con ESTA lectura (tras enviar un pase, fire-next ya nombraria el siguiente).
+function actBig(): void { if (primary.value) act(primary.value, doneLabel(primary.value, service.value)) }
 // En «Más opciones», omitir abre su hoja; lo demas sale como siempre.
 function pick(action: TableAction): void {
   problem.value = ''
@@ -297,8 +301,10 @@ function confirmSkip(skipReason: string): void {
             <input id="reason" v-model="reason" name="reason" maxlength="200" autocomplete="off" :disabled="locked" />
           </div>
           <!-- C3e: la nota del boton grande (maqueta: «Cada estación lo recibe en su tableta al momento.», «Listo en el pase desde las 21:19.»). -->
-          <p v-if="note" class="bar-note" data-testid="bar-note">{{ note }}</p>
-          <button v-if="primary" type="button" class="btn btn-primary btn-big" :disabled="locked" :data-testid="primary.testId" @click="act(primary)">
+          <p v-if="note && !done" class="bar-note" data-testid="bar-note">{{ note }}</p>
+          <!-- C3e.1 (H20): confirmada la orden del boton grande, su resultado apagado y sin accion; despues, la accion siguiente. -->
+          <button v-if="done" type="button" class="btn btn-big btn-done" disabled data-testid="do-done"><Icon name="check" :size="22" :stroke="2.6" />{{ done }}</button>
+          <button v-else-if="primary" type="button" class="btn btn-primary btn-big" :disabled="locked" :data-testid="primary.testId" @click="actBig">
             <Icon :name="ICON[primary.action] ?? 'right'" :size="22" />{{ primary.label }}</button>
           <button v-else type="button" class="btn btn-big waiting" disabled data-testid="do-wait"><Icon name="clock" :size="22" />{{ waitingText(service) }}</button>
         </div>

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, defineComponent } from 'vue'
 import type { Session } from '../src/api'
 import { run as transaction, STORES } from '../src/db'
-import { useOperations } from '../src/operations'
+import { DONE_MS, useOperations } from '../src/operations'
 import { indexedDbPendingStore, type PendingCommand } from '../src/pending'
 
 // D6.7, de punta a punta: el useOperations REAL (LiveBoard, CommandRunner, IndexedDB y tabLock) montado con un renderizador
@@ -61,7 +61,9 @@ describe('D6.7 end to end through useOperations (no realtime, no Web Locks)', ()
     vi.stubGlobal('indexedDB', new IDBFactory())
     vi.stubGlobal('fetch', fakeFetch)
     vi.stubGlobal('navigator', {})                                          // sin navigator.locks
-    vi.stubGlobal('window', { setInterval, clearInterval, addEventListener: on, removeEventListener: () => undefined })
+    // setTimeout y clearTimeout se buscan al llamar: con los temporizadores falsos de vitest (C3e.1, H20) son los falsos.
+    vi.stubGlobal('window', { setInterval, clearInterval, addEventListener: on, removeEventListener: () => undefined,
+      setTimeout: (handler: () => void, ms: number) => globalThis.setTimeout(handler, ms), clearTimeout: (id?: number) => globalThis.clearTimeout(id) })
     vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: on, removeEventListener: () => undefined })
   })
   afterEach(() => { vi.unstubAllGlobals() })
@@ -131,5 +133,97 @@ describe('D6.7 end to end through useOperations (no realtime, no Web Locks)', ()
       expect(await indexedDbPendingStore.load()).toEqual({ kind: 'absent' })
       expect(posts()).toHaveLength(1)
     } finally { mounted.unmount() }
+  })
+})
+
+// C3e.1 (usabilidad 28-10, H20): tras una orden CONFIRMADA del boton grande, su resultado se ve apagado durante DONE_MS desde que termina la
+// relectura, y todo queda bloqueado hasta entonces: un doble toque, o un segundo «por si no fue», no cae en la accion siguiente.
+describe('C3e.1 (H20): the result of a confirmed big-button order, for DONE_MS, before the next action', () => {
+  const SERVE = '/dining/services/s1/commands/serve'
+  const RESULT = { text: 'Servido · Aperitivos ✓', place: 'servicio:s1' }
+  beforeEach(() => {
+    requests = []; listeners = {}
+    const on = (name: string, handler: () => void) => { listeners[name] = handler }
+    vi.stubGlobal('indexedDB', new IDBFactory())
+    vi.stubGlobal('fetch', fakeFetch)
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('window', { setInterval, clearInterval, addEventListener: on, removeEventListener: () => undefined,
+      setTimeout: (handler: () => void, ms: number) => globalThis.setTimeout(handler, ms), clearTimeout: (id?: number) => globalThis.clearTimeout(id) })
+    vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: on, removeEventListener: () => undefined })
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+  // Solo setTimeout y clearTimeout: IndexedDB (setImmediate) y la lectura siguen con los de verdad.
+  const fake = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+  it('confirmed: the result shows at once, the read after it is done, and only DONE_MS later the lock goes', async () => {
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      const readsBefore = reads()
+      const outcome = await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT)
+      expect(outcome?.kind).toBe('confirmed')
+      expect(reads()).toBe(readsBefore + 1)                                      // la relectura ya termino...
+      expect(mounted.operations.done.value).toEqual(RESULT)                      // ...y el boton sigue con su resultado
+      expect(mounted.operations.locked.value).toBe(true)
+      vi.advanceTimersByTime(DONE_MS - 1)
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([RESULT, true])
+      vi.advanceTimersByTime(1)
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([null, false])   // ahora, la accion siguiente
+      expect(posts()).toHaveLength(1)
+    } finally { mounted.unmount() }
+  })
+  it('without a result asked (a dish, a round, the kitchen), nothing changes: no result and no extra wait', async () => {
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5'))?.kind).toBe('confirmed')
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([null, false])
+    } finally { mounted.unmount() }
+  })
+  it('rejected by the server: no «✓», the notice says why and the buttons come back as before', async () => {
+    vi.stubGlobal('fetch', async (url: RequestInfo | URL, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>
+      requests.push({ method: init?.method ?? 'GET', url: String(url), key: headers['Idempotency-Key'] })
+      if (String(url).endsWith('/dining/board')) return new Response('[]', { status: 200 })
+      if (init?.method === 'POST') return new Response('{"error":"version_conflict"}', { status: 409, headers: { 'Idempotency-Key': headers['Idempotency-Key'] } })
+      return new Response(JSON.stringify({ key: decodeURIComponent(String(url).split('/commands/')[1] ?? ''), found: false }), { status: 200 })
+    })
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT))?.kind).toBe('rejected')
+      expect([mounted.operations.done.value, mounted.operations.locked.value]).toEqual([null, false])
+      expect(mounted.operations.runnerState.notice).not.toBe('')
+    } finally { mounted.unmount() }
+  })
+  it('unconfirmed (the network fails): no «✓»; the pending order locks, as before', async () => {
+    vi.stubGlobal('fetch', async (url: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ method: init?.method ?? 'GET', url: String(url) })
+      if (String(url).endsWith('/dining/board')) return new Response('[]', { status: 200 })
+      throw new TypeError('Failed to fetch')
+    })
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT))?.kind).toBe('unconfirmed')
+      expect(mounted.operations.done.value).toBeNull()
+      expect(mounted.operations.runnerState.pending).not.toBeNull()
+      expect(mounted.operations.locked.value).toBe(true)                          // por la orden pendiente, no por un resultado
+      vi.advanceTimersByTime(DONE_MS)
+      expect(mounted.operations.done.value).toBeNull()
+    } finally { mounted.unmount() }
+  })
+  it('the screen goes away while the result shows: its timer is cleared (nothing fires after unmounting)', async () => {
+    const mounted = mount('device:tablet')
+    await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+    fake()
+    await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT)
+    expect(vi.getTimerCount()).toBe(1)
+    mounted.unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

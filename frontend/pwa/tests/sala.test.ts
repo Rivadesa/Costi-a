@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { doneLabel, tableActions } from '../src/ficha'
 import { clockLabel } from '../src/labels'
-import { buzz, isMine, mineEntries, moreText, noticeSince, noticeTitle, READY_TEXT, readyKey, readyNotices, ReadyWatch, serveLabel, serveRequest, VIBRATION, type Vibrator, type Who } from '../src/sala'
+import { buzz, isMine, mineEntries, moreText, noticeSince, noticeTitle, READY_TEXT, readyKey, readyNotices, ReadyWatch, servedLabel, serveLabel, serveRequest, VIBRATION, type Vibrator, type Who } from '../src/sala'
 import type { BoardEntry, Course, Dining } from '../src/types'
 
 // C3c (plan 2026-10-22, seccion 4.1): el aviso de «listo para servir» de Costina Sala, sin DOM. Sale de las RELECTURAS del tablero y de
@@ -128,6 +129,12 @@ describe('words and the command of «Servido»', () => {
     expect(noticeSince(notice)).toBe(`El pase lo validó a las ${clockLabel(T1)}`)
     expect(noticeSince(readyNotices([ready('s4', 'M4', null)])[0])).toBe('')               // sin hora del servidor no se inventa
     expect(serveLabel(notice)).toBe('Servido · Principal')
+  })
+  it('C3e.1 (H20): «Servido» confirmed from the banner reads like the big button of the table card (ficha.ts, doneLabel)', () => {
+    const [notice] = readyNotices([ready('s4', 'M4', T1)])
+    expect(servedLabel(notice)).toBe('Servido · Principal ✓')
+    const serve = tableActions(notice.entry).find(action => action.action === 'serve')!
+    expect(servedLabel(notice)).toBe(doneLabel(serve, notice.entry.service))
   })
   it('«Servido» is ONE serve of that pass with the version READ of that table (F01), described by its name', () => {
     const [notice] = readyNotices([ready('svc/4', 'M4', T1, 21)])

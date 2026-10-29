@@ -26,12 +26,32 @@ export interface TableAction { action: string; course: Course | null; label: str
 // (pases.ts): una sola regla para los dos, asi nunca se separan.
 export const fireNextCourse = (service: Dining): Course | null => service.courses.find(candidate => candidate.state === 'Pending') ?? null
 
+// El pase que nombra un boton: el suyo o, al enviar, el que enviaria fire-next.
+const named = (action: string, course: Course | null, service: Dining): Course | null => course ?? (action === 'fire-next' ? fireNextCourse(service) : null)
+
 function item(action: string, course: Course | null, service: Dining): TableAction {
   const base = BUTTON[action] ?? actionLabel(action)
-  const next = action === 'fire-next' ? fireNextCourse(service) : null
-  const label = course ? `${base} · ${course.name}` : next ? `${base} · ${next.name}` : base
+  const subject = named(action, course, service)
+  const label = subject ? `${base} · ${subject.name}` : base
   return { action, course, label, testId: course ? `do-${action}-${course.id}` : `do-${action}`, needsReason: REASON_ACTIONS.has(action), caution: CAUTION_ACTIONS.has(action) }
 }
+
+// C3e.1 (usabilidad 28-10, H20): lo que dice el boton grande, apagado, en cuanto se confirma su orden y antes de pasar a la accion
+// siguiente (operations.ts, DONE_MS): «Servido · Aperitivos ✓», «Pase enviado · Principal ✓». Como BUTTON, es un texto del BOTON, no del
+// vocabulario comun (la orden pendiente y los avisos no cambian), y no depende del genero del pase: su nombre va detras, como en el boton.
+// Se calcula al tocar, con la lectura de la que salio el boton: tras enviar, fire-next ya nombraria el pase siguiente.
+export const DONE_MARK = '✓'
+const DONE: Readonly<Record<string, string>> = {
+  serve: 'Servido', ready: 'Pase validado', 'fire-next': 'Pase enviado', start: 'Servicio iniciado', resume: 'Servicio reanudado',
+  complete: 'Servicio terminado', release: 'Mesa liberada',
+}
+export function doneLabel(action: TableAction, service: Dining): string {
+  const base = DONE[action.action] ?? BUTTON[action.action] ?? actionLabel(action.action)
+  const subject = named(action.action, action.course, service)
+  return `${subject ? `${base} · ${subject.name}` : base} ${DONE_MARK}`
+}
+// «Abrir Mesa 5» confirmado: el boton grande de su ficha dice «Mesa 5 abierta ✓» (la mesa por su nombre, nunca por su codigo).
+export const openedLabel = (tableName: string): string => `${tableName} abierta ${DONE_MARK}`
 
 // Todas las acciones operativas ANUNCIADAS de una mesa, en el orden del Comedor. Servir, validar y omitir son de cada pase; liberar,
 // de la ocupacion; las demas, del servicio. Lo que no esta en la lista (elegir, pedir, restricciones, consumos) tiene su sitio propio.

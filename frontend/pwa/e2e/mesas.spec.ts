@@ -106,12 +106,14 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(page.getByTestId('do-open')).toBeEnabled()
     await checkScreen(page, 'open sheet with an allergy')
     await press(page.getByTestId('do-open'))
+    // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues.
+    await expect(page.locator('[data-testid="do-done"]:disabled')).toHaveText(`${table.name} abierta ✓`, { timeout: 15_000 })
     // La ficha se abre sola, Sentados y con la alergia escrita; el boton grande espera a cocina y cada plato del comensal 2 tambien.
     const detail = page.getByTestId('detail')
     await expect(detail.getByTestId('detail-state')).toHaveText('Sentados', { timeout: 15_000 })
     await expect(page.getByTestId('pending')).toHaveCount(0)
     await expect(detail.getByTestId('restrictions')).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
-    await expect(page.getByTestId('do-wait')).toBeDisabled()
+    await expect(page.getByTestId('do-wait')).toBeDisabled({ timeout: 15_000 })
     await expect(page.getByTestId('do-wait')).toHaveText('Esperando la revisión de cocina')
     serviceId = await openOn(request, table.id)
     expect(serviceId, `${table.id} is open`).not.toBeNull()
@@ -165,6 +167,7 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await checkScreen(page, 'table card reviewed by the kitchen')
     const beforeFire = (await read(request, serviceId!)).version
     await press(fire)
+    await expect(page.getByTestId('do-done')).toHaveText(`Pase enviado · ${first.name} ✓`, { timeout: 15_000 })   // C3e.1 (H20)
     await expect(detail.getByTestId('detail-state')).toHaveText('En cocina', { timeout: 15_000 })
     expect((await read(request, serviceId!)).version).toBe(beforeFire + 1)
     expect(sent.fire).toBe(1)
@@ -184,6 +187,15 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(banner).toBeVisible({ timeout: 15_000 })
     await expect(banner.getByTestId('banner-title')).toHaveText(`${table.name} · ${first.name}`)
     await expect(page.getByTestId('banner-serve')).toHaveText(`Servido · ${first.name}`)
+    //    C3e.1 (usabilidad 28-10, H19): bajo el titulo, las mismas lineas que la ficha (cada plato del comensal 2 en Aperitivos): a quien
+    //    va el plato adaptado y por que, en rojo. Todas a la vista, y la banda sigue dejando sitio debajo (375 x 812 y 820 x 1180).
+    const adaptedInBanner = banner.getByTestId('banner-line').filter({ hasText: 'Adaptado: sin almendra' })
+    await expect(adaptedInBanner).toContainText('Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra')
+    await expect(adaptedInBanner).toHaveClass(/\balarm\b/)
+    await expect(banner.getByTestId('banner-line').filter({ hasText: 'No le afecta: no lleva frutos secos' }))
+      .toHaveCount(first.preparations.filter(p => p.reviewPending).length - 1)
+    const bannerBox = await banner.boundingBox()
+    expect(bannerBox && bannerBox.height < page.viewportSize()!.height * 0.6, `the banner with its allergy lines leaves room below it (${bannerBox?.height} px)`).toBeTruthy()
     await expect.poll(() => vibrations(page)).toBe(1)
     await expect(tileA).toHaveClass(/\bready\b/)
     await expect(tileA.getByTestId('tile-state')).toHaveText('Listo para servir')
@@ -211,10 +223,26 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     // 8) «Servido» desde el boton grande: UNA orden, la version sube en uno, el pase sale servido y la banda no vuelve. Al volver, M5 sigue
     //    en «Mis mesas» de A, en su sala.
     const beforeServe = (await read(request, serviceId!)).version
+    //    C3e.1 (usabilidad 28-10, H20): «Servido · Aperitivos ✓», apagado, en el mismo sitio. Un segundo toque «por si no fue» justo
+    //    DESPUES de la relectura (antes de C3e.1, el boton ya era «Enviar siguiente pase») cae en el resultado: ni otro servir ni un envio.
+    const spot = await serve.boundingBox()
+    let answered = false
+    const reread = page.waitForResponse(response => {
+      const path = new URL(response.url()).pathname
+      if (response.request().method() === 'POST' && path.endsWith('/commands/serve')) answered = true
+      return answered && path.endsWith('/dining/board')
+    })
     await press(serve)
+    await reread
+    const result = page.getByTestId('do-done')
+    await expect(result).toHaveText(`Servido · ${first.name} ✓`)
+    const [x, y] = [spot!.x + spot!.width / 2, spot!.y + spot!.height / 2]
+    await (test.info().project.use.hasTouch === true ? page.touchscreen.tap(x, y) : page.mouse.click(x, y))
+    await expect(result).toHaveCount(0, { timeout: 15_000 })
     await expect.poll(async () => (await service(request, serviceId!)).data.courses[0].state, { timeout: 15_000 }).toBe('Served')
     expect((await read(request, serviceId!)).version).toBe(beforeServe + 1)
     expect(sent.serve).toBe(1)
+    expect(sent.fire).toBe(1)
     await expect(detail.getByTestId('courses-served').getByTestId(`served-${first.id}`)).toContainText(first.name, { timeout: 15_000 })
     await expect(detail.getByTestId(`course-${first.id}`)).toHaveCount(0)
     await expect(page.getByTestId('pending')).toHaveCount(0)

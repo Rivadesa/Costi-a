@@ -20,9 +20,11 @@ import Icon from './Icon.vue'
 // orden incierta de siempre y, si el servidor la rechaza, deja esta hoja montada con sus filas para no escribirlas otra vez (decision 7).
 // Las filas se pueden llenar con una orden sin confirmar (como la ronda): solo «Abrir» espera (locked, D6.7). Sin dinero (ADR-007).
 // rejection: el motivo del ultimo rechazo de la apertura (o de que no saliera), que BoardView deja aqui para que se lea junto a «Abrir».
+// C3e.1 (usabilidad 28-10, H20): done, «Mesa 5 abierta ✓» en cuanto se confirma, en el sitio de «Abrir», apagado y sin accion; la ficha
+// que sale despues lo sigue diciendo en su boton grande durante DONE_MS (operations.ts) antes de «Enviar siguiente pase».
 const props = defineProps<{
   tableId: string; tableName: string; roomName: string; capacity: number; offers: OfferChoice[]; occupied: boolean; locked: boolean
-  rejection: { code: string; text: string } | null
+  rejection: { code: string; text: string } | null; done: string
 }>()
 const emit = defineEmits<{ open: [request: CommandRequest]; back: [] }>()
 
@@ -223,7 +225,8 @@ function submit(): void {
       <p v-else-if="offerGone" class="notice open-problem" role="alert" data-testid="open-offer-gone"><Icon name="info" />Ese menú ya no se ofrece ahora: elige otro.</p>
       <p v-if="summary" class="bar-note" data-testid="open-summary"><b v-if="paxText">{{ paxText }}</b>{{ summaryRest }}</p>
       <p v-if="problem" class="notice open-problem" role="status" data-testid="open-problem"><Icon name="info" />{{ problem }}</p>
-      <button type="button" class="btn btn-primary btn-big" :disabled="!canOpen" data-testid="do-open" @click="submit"><Icon name="users" :size="22" />Abrir {{ tableName }}</button>
+      <button v-if="done" type="button" class="btn btn-big btn-done" disabled data-testid="do-done"><Icon name="check" :size="22" :stroke="2.6" />{{ done }}</button>
+      <button v-else type="button" class="btn btn-primary btn-big" :disabled="!canOpen" data-testid="do-open" @click="submit"><Icon name="users" :size="22" />Abrir {{ tableName }}</button>
     </div>
   </article>
 </template>

@@ -82,10 +82,21 @@ test('Sala: «listo para servir» shows over Bodega without covering it, vibrate
     }
     await expect(banner).toBeVisible({ timeout: 15_000 })                                // revisado: vuelve, y vuelve a vibrar
     await expect.poll(() => vibrations(page)).toBe(2)
+    // C3e.1 (usabilidad 28-10, H19): bajo el titulo, la alergia del pase y lo que decidio cocina, escrita como en la ficha y en rojo.
+    const allergy = banner.getByTestId('banner-line').filter({ hasText: 'ALERGIA sésamo (grave)' }).first()
+    await expect(allergy).toContainText('No le afecta: no lleva sésamo')
+    await expect(allergy).toHaveClass(/\balarm\b/)
+    for (const [target, what] of [[page.getByTestId('back'), 'the back button'], [page.getByTestId('drinks-search'), 'the Bodega search']] as const) {
+      await expect(target).toBeInViewport()
+      await apart(banner, target, what)
+    }
+    await checkScreen(page, 'banner with an allergy over Bodega')
 
-    // 4) «Servido» desde la banda: UNA orden, con la version leida, y la version del servicio sube exactamente en uno.
+    // 4) «Servido» desde la banda: UNA orden, con la version leida, y la version del servicio sube exactamente en uno. C3e.1 (H20): antes
+    //    de irse, la banda dice «Servido · <pase> ✓» en el mismo sitio, apagado.
     const before = (await read(request, serviceId)).version
     await press(page.getByTestId('banner-serve'))
+    await expect(page.locator('[data-testid="banner-done"]:disabled')).toHaveText(`Servido · ${first.name} ✓`, { timeout: 15_000 })
     await expect(banner).toHaveCount(0, { timeout: 15_000 })
     await expect.poll(async () => (await courses(request, serviceId))[0].state).toBe('Served')
     expect((await read(request, serviceId)).version).toBe(before + 1)
