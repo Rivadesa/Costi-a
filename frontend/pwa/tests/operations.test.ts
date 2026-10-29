@@ -224,6 +224,34 @@ describe('C3e.1 (H20): the result of a confirmed big-button order, for DONE_MS, 
       expect(mounted.operations.runnerState.pending).toBeNull()
     } finally { mounted.unmount() }
   })
+  // Revision final de C3e.1 (H20): el reintento puede encontrar en el unico hueco del dispositivo la orden de OTRA pestana del mismo movil y
+  // actor (la otra confirmo la vieja y dejo la suya sin confirmar). La adopta (restore) y vuelve sin confirmar, sin enviar nada. El
+  // resultado de la vieja no pasa a esa: al confirmarse despues, no sale «Servido · Aperitivos ✓», que no es suyo.
+  it('a retry that finds and adopts the order of another tab (same device and actor) never hands it the result of the old one', async () => {
+    losingFirstPost()
+    const mounted = mount('device:tablet')
+    try {
+      await vi.waitFor(() => expect(reads()).toBeGreaterThan(0))
+      fake()
+      expect((await mounted.operations.run(SERVE, { expectedVersion: 4, courseId: 'c1' }, 'Marcar servido · Aperitivos · Mesa 5', RESULT))?.kind).toBe('unconfirmed')
+      const old = mounted.operations.runnerState.pending?.key
+      expect(old).toBeTruthy()
+      const other: PendingCommand = {
+        key: 'k-other-tab', path: '/dining/services/s2/commands/fire-next', body: '{"expectedVersion":7}', description: 'Enviar siguiente pase · Mesa 8',
+        createdAt: '2026-10-29T10:00:00Z', installationId: 'inst-1', actor: 'device:tablet',
+      }
+      await transaction(STORES.pending, 'readwrite', store => store.put(other, 'uncertain'))
+      expect((await mounted.operations.retry())?.kind).toBe('unconfirmed')       // adopta la de la otra pestana; no sale nada
+      expect(mounted.operations.runnerState.pending?.key).toBe('k-other-tab')
+      expect(posts().map(post => post.key)).toEqual([old])
+      expect(mounted.operations.done.value).toBeNull()
+      expect((await mounted.operations.retry())?.kind).toBe('confirmed')         // la de la otra pestana, confirmada desde aqui
+      expect(posts().map(post => post.key)).toEqual([old, 'k-other-tab'])
+      expect(mounted.operations.done.value).toBeNull()                            // sin el resultado de la vieja
+      vi.advanceTimersByTime(DONE_MS)
+      expect(mounted.operations.done.value).toBeNull()
+    } finally { mounted.unmount() }
+  })
   it('without a result asked (a dish, a round, the kitchen), nothing changes: no result and no extra wait', async () => {
     const mounted = mount('device:tablet')
     try {

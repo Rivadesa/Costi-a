@@ -176,6 +176,10 @@ async function presendReview(guest: PresendGuest, item: PresendItem, decision: s
 // C3e.1 (usabilidad 28-10, H56): su version_conflict se dice junto a su boton, arriba (restKey), no al final de la tarjeta, varios
 // formularios mas abajo; el aviso de abajo queda para las decisiones de cada plato.
 const restKey = (guest: PresendGuest) => `rest:${guest.key}`
+// Revision final de C3e.1 (H56): cuando se pinta el bloque «No le afecta a nada más» (mas de un plato del comensal y alguno por decidir).
+// La MISMA condicion en el bloque y en el aviso del final de la tarjeta: si la relectura que sigue a su version_conflict quita el bloque
+// (otro puesto decidio a la vez uno de sus dos platos), el aviso sale abajo en vez de irse con el.
+const showsRest = (guest: PresendGuest) => guest.items.length > 1 && (rest.value.get(guest.key)?.length ?? 0) > 0
 async function nothingElse(guest: PresendGuest): Promise<void> {
   const note = (restNotes[guest.key] ?? '').trim(), items = rest.value.get(guest.key) ?? []
   if (!noteReady(note) || items.length === 0) return
@@ -237,9 +241,11 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <button v-else-if="listoPerDish(ticket) && dishReadyIds(ticket.course, dish).length > 0" type="button" class="listo" :disabled="locked"
                 :aria-label="`Listo: ${dishText(dish)}`" :data-testid="`do-listo-${testKey(ticket.entry, ticket.course)}-${d}`"
                 @click="listo(ticket, dishReadyIds(ticket.course, dish), dishText(dish))">Listo</button>
-              <!-- C3e.1 (usabilidad 28-10, H34): lo por revisar dice que hacer («… · no lo emplates hasta que decida»): stationLine. -->
+              <!-- C3e.1 (usabilidad 28-10, H34): lo por revisar dice que hacer («… · no lo emplates hasta que decida»): stationLine.
+                   Revision final de C3e.1 (H34): solo en un plato que aun no esta Listo. Con dos platos o mas (un «Listo» por plato) uno ya
+                   «Lista» sigue en la rejilla y va con exceptionLine, como en «Hecho»: «no lo emplates» haria creer que hay que retirarlo. -->
               <ul v-if="dish.exceptions.length > 0" class="k-als">
-                <li v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ stationLine(preparation).text }}</span></li>
+                <li v-for="preparation in dish.exceptions" :key="preparation.id" class="k-al" :class="lineTone(preparation)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ (dish.ready ? exceptionLine(preparation) : stationLine(preparation)).text }}</span></li>
               </ul>
             </div>
             <p v-if="ticket.alsoIn.length > 0" class="also" :data-testid="`also-${testKey(ticket.entry, ticket.course)}`"><Icon name="right" :size="18" :stroke="2.2" />{{ alsoText(ticket.alsoIn, stationName) }}</p>
@@ -288,7 +294,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <!-- C3e.1 (usabilidad 28-10, H56): «No le afecta a nada más» ARRIBA, justo bajo la alergia: lo normal es adaptar uno o dos platos
                    y dejar el resto, y antes habia que pasar todos los formularios para llegar a el. Lo mismo que exigia: nota obligatoria y
                    solo con mas de un plato del comensal. -->
-              <div v-if="guest.items.length > 1 && (rest.get(guest.key)?.length ?? 0) > 0" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
+              <div v-if="showsRest(guest)" class="review rest" :data-testid="`presend-rest-${guestId(guest)}`">
                 <label class="lbl" :for="`presend-rest-note-${g}`">Nota para todo lo que queda (obligatoria)</label>
                 <input :id="`presend-rest-note-${g}`" v-model="restNotes[guest.key]" :name="`presend-rest-note-${g}`" maxlength="200" autocomplete="off" :disabled="locked" />
                 <div class="k-shortcuts">
@@ -319,7 +325,8 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                   </div>
                 </li>
               </ul>
-              <p v-if="conflict === guest.key" class="k-conflict" role="status"><Icon name="info" :size="20" />{{ CONFLICT_TEXT }}</p>
+              <!-- Revision final de C3e.1 (H56): aqui tambien el version_conflict de «No le afecta a nada más» si su bloque ya no se pinta. -->
+              <p v-if="conflict === guest.key || (conflict === restKey(guest) && !showsRest(guest))" class="k-conflict" role="status"><Icon name="info" :size="20" />{{ CONFLICT_TEXT }}</p>
             </article>
           </div>
         </section>

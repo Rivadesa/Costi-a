@@ -43,7 +43,7 @@ export function useOperations(props: { token: string; session: Session }, onUnau
     // (misma instalacion y mismo actor) llega a `pending`: la de otro nombre de dispositivo queda bloqueada y no se reintenta.
     onRead: () => {
       if (runnerState.pending && !runnerState.busy && runnerState.lastFailure === 'network' && Date.now() - lastAutoRetry > 5000) {
-        lastAutoRetry = Date.now(); void resolve(runner.retry(), retryResult())
+        lastAutoRetry = Date.now(); void retryPending()
       }
     },
   })
@@ -65,7 +65,8 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   // p. ej. pasar a la ficha de la mesa recien abierta. Al resolverse, la relectura posterior ya termino. C3b: con null, quien la envio
   // mira si quedo guardada como la orden pendiente (bodega.ts, settlementOf): entonces es incierta, no «no enviada».
   // C3e.1 (H20): result, el resultado que pinta el boton que la lanzo si la orden se confirma (nada si no lo dice).
-  async function resolve(work: Promise<Outcome | null>, result?: Done): Promise<Outcome | null> {
+  // Revision final de C3e.1 (H20): attempted, en un reintento, la clave de la orden que se reintenta (la pendiente ANTES de reintentar).
+  async function resolve(work: Promise<Outcome | null>, result?: Done, attempted?: string): Promise<Outcome | null> {
     settling.value++
     const noticeBefore = runnerState.notice
     let shown = false
@@ -76,7 +77,11 @@ export function useOperations(props: { token: string; session: Session }, onUnau
       if (!outcome) return null
       // C3e.1 (H20): sin confirmar, el resultado pedido espera con la clave de ESA orden (la pendiente) a un reintento que la confirme; con
       // cualquier otro final ya no hace falta.
-      pendingDone = outcome.kind === 'unconfirmed' && result && runnerState.pending ? { key: runnerState.pending.key, result } : null
+      // Revision final de C3e.1 (H20): en un reintento, solo si la pendiente sigue siendo la orden reintentada. El intento puede encontrar
+      // en el hueco la orden de OTRA pestana (mismo dispositivo y actor), adoptarla (restore) y volver sin confirmar: el resultado de la
+      // vieja no es de esa, y sin esto saldria al confirmarse la otra.
+      pendingDone = outcome.kind === 'unconfirmed' && result && runnerState.pending && (attempted === undefined || runnerState.pending.key === attempted)
+        ? { key: runnerState.pending.key, result } : null
       if (outcome.kind === 'unauthorized') { onUnauthorized(); return outcome }
       // Una confirmacion retira el aviso ANTERIOR, no el que acaba de poner esta misma orden ("se aplico en un intento anterior").
       if (outcome.kind === 'confirmed' && runnerState.notice === noticeBefore) runnerState.notice = ''
@@ -99,7 +104,13 @@ export function useOperations(props: { token: string; session: Session }, onUnau
   const run = (path: string, body: Record<string, unknown>, description: string, result?: Done) => resolve(runner.send(path, body, description), result)
   // C3e.1 (H20): el reintento de una orden del boton grande que quedo sin confirmar ensena su resultado si ahora se confirma. Si se resuelve
   // por otro camino (preguntar al servidor, descartar), no se ensena: su aviso de arriba ya dice que paso.
-  const retry = () => resolve(runner.retry(), retryResult())
+  // Revision final de C3e.1 (H20): el reintento a mano y el solo (onRead) salen por aqui. La clave y el resultado se toman ANTES de llamar a
+  // runner.retry(), que no cambia la pendiente antes de su primer await (commands.ts, retry y attempt).
+  function retryPending(): Promise<Outcome | null> {
+    const attempted = runnerState.pending?.key, result = retryResult()
+    return resolve(runner.retry(), result, attempted)
+  }
+  const retry = () => retryPending()
   async function reconcile(): Promise<void> { if (await runner.reconcile() === 'applied') { pendingDone = null; await live.refresh() } }
   const discard = () => { pendingDone = null; return runner.discardBlocked() }
 

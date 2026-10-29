@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, ROUND_UNCONFIRMED, roundNames, roundProblem, VOIDED } from '../bodega'
 import type { CatalogStatus } from '../catalog'
+import { notApplied } from '../commands'
 import { offerFor, type Configuration, type Names } from '../configuration'
 import type { DrinkProduct, RoundItem } from '../drinks'
 import { barNote, commandFor, dishesHint, doneLabel, PENDING_REVIEW_TEXT, primaryAction, REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand, tableActions, tableInfo, waitingText, type TableAction } from '../ficha'
@@ -38,6 +39,9 @@ import SkipSheet from './SkipSheet.vue'
 // BoardView lo devuelve en done y el boton lo ensena apagado durante DONE_MS (operations.ts) antes de la accion siguiente.
 // C3e.1 (usabilidad 28-10, H03): las hojas de alergias y de omitir ya no se cierran al tocar: mandan su orden por sendSettled (la de la
 // ronda, ahora con un nombre que no es solo de la ronda) y se cierran solo si se confirma o queda sin confirmar (commands.ts, notApplied).
+// Revision final de C3e.1 (H03): la relectura que sigue a un rechazo puede quitar lo que abria la hoja. La de alergias sigue abierta
+// mientras va su orden (sheetSending) y dice el rechazo en su sitio; la de omitir se cierra (ese pase ya no se puede omitir) y el rechazo
+// sale en la barra fija de la ficha (action-problem). Nunca se va sin que se lea.
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
   products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number; done: string
@@ -174,11 +178,17 @@ const reasonText = computed(() => reasonLabel(actions.value.filter(action => act
 const hasMore = computed(() => secondary.value.length > 0)
 const more = ref(false)
 // La hoja de omitir es de UN pase y vive mientras el servidor siga anunciando omitirlo: si otro puesto lo envia, la hoja se cierra.
+// Revision final de C3e.1 (H03): tambien si deja de anunciarlo la relectura que sigue al rechazo de SU orden (course_not_pending, o un
+// version_conflict con el pase ya enviado desde otro puesto); entonces el motivo sale en la barra de la ficha (skip).
 const skipping = ref<string | null>(null)
 const skipAction = computed(() => skipping.value === null ? null : actions.value.find(action => action.action === 'skip' && action.testId === skipping.value) ?? null)
 watch(skipAction, action => { if (action === null) skipping.value = null })
 // Sin nada que ver ni anunciado (se retiro la ultima y ya no se deja anotar), la hoja de alergias se cierra.
-watch(allergyOpener, opener => { if (!opener) allergiesOpen.value = false })
+// Revision final de C3e.1 (H03): nunca mientras va una orden de la hoja (sheetSending, en settle). Si la relectura que sigue a un rechazo
+// quita el alta (una mesa sin restricciones que se termina o se cancela a la vez), la hoja sigue abierta y dice que NO se ha anotado
+// (AllergySheet, declined); el camarero la cierra. Lo mismo con el de retirar (removeOrphan).
+const sheetSending = ref(0)
+watch(allergyOpener, opener => { if (!opener && sheetSending.value === 0) allergiesOpen.value = false })
 const ICON: Record<string, IconName> = {
   serve: 'check', ready: 'checkCircle', 'fire-next': 'send', start: 'play', resume: 'play', complete: 'flag', release: 'door',
   pause: 'pause', skip: 'skip', 'cancel-unstarted': 'x',
@@ -202,20 +212,30 @@ function pick(action: TableAction): void {
 }
 // C3e.1 (usabilidad 28-10, H03): las ordenes de las hojas (anotar o retirar una alergia, omitir un pase) esperan su resultado, que vuelve
 // a la hoja: ella decide si se cierra o se queda con lo escrito. Sin confirmar, la pantalla sube hasta el aviso de la orden pendiente,
-// como con la ronda (la hoja se cierra y ese aviso es el que la resuelve).
+// como con la ronda (la hoja se cierra y ese aviso es el que la resuelve). Revision final de C3e.1 (H03): sheetSending cuenta las que van
+// de camino (y su relectura), para que la hoja de alergias no se cierre antes de poder decir el resultado.
 async function settle(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
   problem.value = ''
-  const settled = await props.sendSettled(path, body, description)
+  sheetSending.value++
+  let settled: Settlement
+  try { settled = await props.sendSettled(path, body, description) } finally { sheetSending.value-- }
   if (settled.kind === 'unconfirmed') window.scrollTo({ top: 0 })
   return settled
 }
 // «Omitir Postre» de la hoja: UNA orden skip con la version leida (F01), solo si el servidor aun lo anuncia (la hoja ya comprobo el motivo).
-// Confirmada, el servidor deja de anunciar omitir ese pase y la hoja se cierra sola (skipAction); si no, la hoja dice que paso.
-function skip(skipReason: string): Promise<Settlement> {
+// Confirmada, el servidor deja de anunciar omitir ese pase y la hoja se cierra sola (skipAction). Rechazada, o sin salir, la hoja dice que
+// paso si sigue abierta.
+// Revision final de C3e.1 (H03): si no sigue abierta (la relectura del rechazo quito «omitir»: course_not_pending, o un version_conflict
+// con el pase ya enviado desde otro puesto), el motivo va a la barra fija de la ficha, con el mismo texto que la hoja: la hoja ya no se
+// monta (ese pase ya no se puede omitir) y su aviso se iria con ella.
+async function skip(skipReason: string): Promise<Settlement> {
   const action = skipAction.value
-  if (!action) return Promise.resolve({ kind: 'not_sent' })
+  if (!action) return { kind: 'not_sent' }
+  const testId = action.testId, courseName = action.course?.name ?? ''
   const request = commandFor(props.entry, action, props.tableName, skipReason)
-  return settle(request.path, request.body, request.description)
+  const settled = await settle(request.path, request.body, request.description)
+  if (skipAction.value?.testId !== testId) problem.value = notApplied(settled, `El pase ${courseName}`, 'omitido')
+  return settled
 }
 </script>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, provide, reactive, ref, shallowRef, watch } from 'vue'
 import type { Session } from '../api'
 import { settlementOf } from '../bodega'
 import { reconnections, useCatalog } from '../catalog'
@@ -139,7 +139,10 @@ const cardDone = computed(() => {
   const entry = selected.value, shown = done.value
   return entry !== null && shown !== null && (shown.place === atService(entry.service.id) || shown.place === atOpening(entry.service.tableId)) ? shown.text : ''
 })
-const openDone = computed(() => openingTable.value !== null && done.value?.place === atOpening(openingTable.value) ? done.value.text : '')
+// Revision final de C3e.1 (H06): el de «Abrir», solo en la hoja que mando la apertura (openSheet, mas abajo). Otra hoja de la misma mesa
+// abierta mientras tanto no lo pinta junto a sus alergias, que no viajan en esa orden.
+const openDone = computed(() => openingTable.value !== null && openSheet.value !== null && opening.value === openSheet.value
+  && done.value?.place === atOpening(openingTable.value) ? done.value.text : '')
 // Las ordenes de la ficha salen por aqui; la de su boton grande trae ademas el texto de su resultado.
 function runFromCard(path: string, body: Record<string, unknown>, description: string, result?: string): void {
   const serviceId = selected.value?.service.id
@@ -180,26 +183,37 @@ function pick(tile: FloorTile): void {
 //  - sin confirmar: al plano, con la orden pendiente arriba, que ya lleva las filas;
 //  - no salio (no se pudo guardar, u otra orden ocupaba el hueco): nada se aplico; la hoja se queda y el aviso dice por que.
 // Si el camarero salio de la hoja mientras tanto, no se le mueve de donde esta.
+// Revision final de C3e.1 (H06): «la hoja» es la que mando la orden (here mira la hoja, no solo la mesa). Si el camarero salio de ella y
+// volvio a tocar la misma mesa (aun libre en la ultima lectura) y escribio otra alergia, al confirmarse la primera esa hoja nueva se queda
+// con sus filas: tras la relectura sale «ocupada» y salir de ella pregunta. Antes se cerraba y pasaba a la ficha sin preguntar.
 // C3e (revision): con la hoja quedandose, el aviso de arriba (command-notice) no se ve si el camarero bajo a anotar alergias. El motivo
 // del rechazo (o de que no saliera) va TAMBIEN a la barra de la hoja, junto a «Abrir» (openRejection), hasta el siguiente intento o hasta
 // dejar la hoja. Con offer_unavailable la hoja ademas deja de proponer un menu: «Abrir» queda apagado hasta que el camarero elija otro.
 const openRejection = ref<{ code: string; text: string } | null>(null)
 watch(openingTable, () => { openRejection.value = null })
-// C3e.1 (usabilidad 28-10, H06): mientras la apertura va camino del servidor (y su relectura), la hoja no pregunta al salir: sus filas ya
-// viajan en ESA orden (o en la pendiente, si queda sin confirmar). Antes decia «¿Salir sin abrir la mesa? Se perderá 1 alergia» junto a
-// «Mesa abierta · Mesa 5 ✓», y era falso. No vale locked: tambien lo esta con otra orden pendiente, y entonces las filas SI se perderian.
-const openSending = ref(false)
+// C3e.1 (usabilidad 28-10, H06): mientras la apertura va camino del servidor (y su relectura), la hoja que la mando no pregunta al salir:
+// sus filas ya viajan en ESA orden (o en la pendiente, si queda sin confirmar). Antes decia «¿Salir sin abrir la mesa? Se perderá 1 alergia»
+// junto a «Mesa abierta · Mesa 5 ✓», y era falso. No vale locked: tambien lo esta con otra orden pendiente, y entonces las filas SI se perderian.
+// Revision final de C3e.1 (H06): openSending es la mesa cuya apertura va de camino (o null), y solo la hoja de ESA mesa lo recibe. Con un
+// unico true, la hoja de OTRA mesa abierta mientras tanto (pick no mira locked) tampoco preguntaba, y sus alergias, que no viajan en
+// ninguna orden, se perdian sin aviso. La hoja, ademas, solo deja de preguntar si fue ella la que mando la orden (OpenTable, submitted).
+const openSending = ref<string | null>(null)
+// Revision final de C3e.1 (H06): la hoja que mando la apertura mientras va de camino (o null); solo ella pinta su resultado (openDone).
+const openSheet = shallowRef<InstanceType<typeof OpenTable> | null>(null)
 async function open(request: CommandRequest): Promise<void> {
   const tableId = openingTable.value
   if (!tableId) return
+  // Revision final de C3e.1 (H06): la hoja que manda la orden, para saber despues si el camarero sigue en ELLA (here).
+  const sheet = opening.value
   openRejection.value = null
   // C3e.1 (H20): confirmada, «Mesa abierta · Mesa 5 ✓» en el boton de «Abrir» y despues en el grande de la ficha, antes de su accion siguiente.
   let outcome: Outcome | null
-  openSending.value = true
+  openSending.value = tableId
+  openSheet.value = sheet
   try { outcome = await run(request.path, request.body, request.description, { text: openedLabel(names.value.table(tableId)), place: atOpening(tableId) }) }
-  finally { openSending.value = false }
+  finally { openSending.value = null; openSheet.value = null }
   const settled = settlementOf(outcome, runnerState.pending, { path: request.path, body: JSON.stringify(request.body) })
-  const here = openingTable.value === tableId
+  const here = openingTable.value === tableId && opening.value === sheet
   if (settled.kind === 'rejected' || settled.kind === 'not_sent') {
     if (settled.kind === 'rejected' && settled.code === 'offer_unavailable') void reload()
     if (here) openRejection.value = { code: settled.kind === 'rejected' ? settled.code : 'not_sent', text: runnerState.notice || 'La orden no se ha enviado: la mesa no se ha abierto.' }
@@ -224,7 +238,7 @@ async function open(request: CommandRequest): Promise<void> {
 
     <OpenTable v-else-if="openingTable" ref="opening" :key="openingTable" :table-id="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"
       :capacity="tableConfig?.capacity ?? 0" :offers="configuration.offers" :occupied="openingTile?.entry != null" :locked="locked" :rejection="openRejection"
-      :done="openDone" :sending="openSending" @open="open" @back="openingTable = null" />
+      :done="openDone" :sending="openSending === openingTable" @open="open" @back="openingTable = null" />
 
     <template v-else>
       <!-- El resumen va SIEMPRE en su propia linea (aunque este vacio): las dos pestanas tienen la misma cabecera y el segmento no se mueve

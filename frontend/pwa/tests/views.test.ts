@@ -109,8 +109,11 @@ describe('words the views write as they are', () => {
     expect(station.length).toBeGreaterThan(0)
     const grid = station.slice(0, station.indexOf('data-testid="done-band"')), band = station.slice(station.indexOf('data-testid="done-band"'))
     expect([grid.length > 0, band.length > 0]).toEqual([true, true])
-    expect(grid.match(/stationLine\(preparation\)\.text/g)).toHaveLength(1)                    // la rejilla: que hacer mientras tanto
-    expect(grid).not.toMatch(/exceptionLine\(preparation\)\.text/)
+    // La rejilla: que hacer mientras tanto, solo en un plato que aun no esta Listo (revision final de C3e.1: con un «Listo» por plato, uno ya
+    // «Lista» sigue aqui y va con exceptionLine, como en «Hecho»).
+    expect(grid.match(/\{\{ \(dish\.ready \? exceptionLine\(preparation\) : stationLine\(preparation\)\)\.text \}\}/g)).toHaveLength(1)
+    expect(grid.match(/stationLine\(/g)).toHaveLength(1)
+    expect(grid.match(/exceptionLine\(preparation\)\.text/g)).toBeNull()
     expect(band.match(/exceptionLine\(preparation\)\.text/g)).toHaveLength(1)                  // «Hecho»: ya esta Listo
     expect(band).not.toMatch(/stationLine/)
     expect(pass).toMatch(/exceptionLine\(preparation\)\.text/)
@@ -140,6 +143,13 @@ describe('words the views write as they are', () => {
     expect(at('<p v-if="conflict === restKey(guest)" class="k-conflict" role="status"')).toBeGreaterThan(at('`do-presend-rest-${guestId(guest)}`'))
     const script = files.find(([name]) => name === 'views/KitchenView.vue')![1]
     expect(script).toMatch(/await send\(restKey\(guest\), guest\.entry, 'review-preparations', restBody\(guest, note\)/)
+    // Revision final de C3e.1 (H56): si la relectura que sigue a su version_conflict quita el bloque, su aviso sale al final de la tarjeta.
+    // Las dos con la MISMA condicion (showsRest): el aviso de abajo solo cuando el bloque ya no se pinta, nunca dos veces.
+    expect(script).toMatch(/const showsRest = \(guest: PresendGuest\) => guest\.items\.length > 1 && \(rest\.value\.get\(guest\.key\)\?\.length \?\? 0\) > 0/)
+    expect(kitchen.match(/showsRest\(guest\)/g)).toHaveLength(2)
+    expect(kitchen).toMatch(/<div v-if="showsRest\(guest\)" class="review rest" :data-testid="`presend-rest-\$\{guestId\(guest\)\}`">/)
+    const card = kitchen.slice(list, kitchen.indexOf('</article>', list))
+    expect(card).toMatch(/<p v-if="conflict === guest\.key \|\| \(conflict === restKey\(guest\) && !showsRest\(guest\)\)" class="k-conflict" role="status">/)
     // Revision de H53: la pregunta de «Rehacer» se cierra si, al releer, su revision ya no esta en el pase (otro puesto decidio el plato).
     expect(script).toMatch(/watch\(pass, tickets => \{/)
     expect(script).toMatch(/if \(remaking\.value !== null && !tickets\.some\(ticket => ticket\.reviews\.some\(preparation => sentKey\(ticket, preparation\) === remaking\.value\)\)\) remaking\.value = null/)
@@ -199,7 +209,9 @@ describe('Costiña Sala, C3e.1: the banner remembers the allergy (H19) and the b
 // C3e.1 (usabilidad 28-10, H06 y H03): Costiña Sala ya no pierde lo escrito. H06: salir de «Abrir mesa» con alergias escritas («Mesas» o
 // «Ver mesa» de la banda) pregunta antes, como la ronda, y encima de «Abrir» va cada alergia entera. H03: las hojas de alergias y de
 // omitir esperan el resultado de su orden y solo se cierran si se confirma o queda sin confirmar; si se rechaza, se quedan con lo escrito
-// y lo dicen (commands.ts, notApplied; abrir.test y commands.test prueban los textos, mesas.spec el recorrido contra el motor).
+// y lo dicen (commands.ts, notApplied; abrir.test y commands.test prueban los textos). Revision final de C3e.1: mesas.spec recorre contra
+// el motor «Salir sin abrir» y «Seguir abriendo» de «Abrir mesa» y el rechazo de un alta en la hoja de alergias; la hoja de omitir y la
+// salida por «Ver mesa» de la banda solo se miran aqui.
 describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mesa» (H06) or when a sheet is rejected (H03)', () => {
   // Con los finales de linea de la copia de trabajo (CRLF en Windows) pasados a \n: aqui se miran lineas enteras.
   const source = (name: string) => files.find(([file]) => file === name)![1].replace(/\r\n/g, '\n')
@@ -220,17 +232,45 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     expect(ask.match(/<button[^>]*data-testid="open-leave-discard"[^>]*>/)?.[0] ?? '').toMatch(/class="btn btn-caution"[^>]*@click="discardAndLeave"/)
     const openScript = script('views/OpenTable.vue')
     // Revision de C3e.1: con la apertura de camino (sending) no pregunta: sus filas viajan en ella, y la pregunta diria que se pierden.
-    expect(openScript).toMatch(/if \(lost\.value && !props\.sending\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
+    // Revision final de C3e.1: solo si la mando ESTA hoja (submitted, puesto al emitir la orden): otra hoja de la misma mesa abierta
+    // despues pregunta.
+    expect(openScript).toMatch(/if \(lost\.value && !\(props\.sending && submitted\)\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
+    expect(openScript).toMatch(/if \(!canOpen\.value \|\| !chosen\.value\) return\n\s*submitted = true\n\s*emit\('open', /)
+    expect(openScript.match(/submitted = /g)).toHaveLength(2)                                    // false al montar y true al mandar
     expect(openScript).toMatch(/defineExpose\(\{ leave \}\)/)
-    expect(template(source('views/BoardView.vue')).match(/<OpenTable [^>]*>/)?.[0] ?? '').toContain(':sending="openSending"')
-    expect(script('views/BoardView.vue')).toMatch(/openSending\.value = true\n\s*try \{ outcome = await run\([^\n]*\) \}\n\s*finally \{ openSending\.value = false \}/)
+    // Revision final de C3e.1: «Salir sin abrir» cierra la pregunta y sale: a la mesa de la banda (then) si la habia y, si no, al plano.
+    // Toma then ANTES de cerrar la pregunta (al cerrarse, el watch de leaving lo borra).
+    const discardStart = openScript.indexOf('function discardAndLeave(): void {')
+    const discard = openScript.slice(discardStart, openScript.indexOf('\n}', discardStart))
+    expect(discardStart).toBeGreaterThan(0)
+    expect(discard).toMatch(/\{\n\s*const then = afterLeave\n\s*leaving\.value = false\n\s*if \(then\) then\(\); else emit\('back'\)$/)
+    expect(openScript).toMatch(/watch\(leaving, open => \{ if \(open\) void nextTick\(\(\) => stay\.value\?\.focus\(\)\); else afterLeave = null \}\)/)
+    // Revision final de C3e.1: openSending es la mesa cuya apertura va de camino, y solo la hoja de ESA mesa la recibe: la de OTRA mesa
+    // abierta mientras tanto pregunta.
+    const boardScript = script('views/BoardView.vue')
+    expect(boardScript).toMatch(/const openSending = ref<string \| null>\(null\)/)
+    expect(template(source('views/BoardView.vue')).match(/<OpenTable [^>]*>/)?.[0] ?? '').toContain(':sending="openSending === openingTable"')
+    expect(boardScript).toMatch(/openSending\.value = tableId\n\s*openSheet\.value = sheet\n\s*try \{ outcome = await run\([^\n]*\) \}\n\s*finally \{ openSending\.value = null; openSheet\.value = null \}/)
+    expect(boardScript.match(/openSending\.value = /g)).toHaveLength(2)
+    // Revision final de C3e.1: la confirmacion (o el rechazo) solo cierra o avisa a la hoja que mando la orden, no a otra de la misma mesa
+    // abierta mientras tanto (salir y volver a tocarla): esa se queda con sus filas y sin «Mesa abierta ✓» junto a ellas.
+    const openStart = boardScript.indexOf('async function open(')
+    const openFn = boardScript.slice(openStart, boardScript.indexOf('\n}', openStart))
+    expect(openStart).toBeGreaterThan(0)
+    expect(openFn.indexOf('const sheet = opening.value\n')).toBeGreaterThan(0)
+    expect(openFn.indexOf('const sheet = opening.value\n')).toBeLessThan(openFn.indexOf('await run('))
+    expect(openFn).toMatch(/const here = openingTable\.value === tableId && opening\.value === sheet\n/)
+    expect(boardScript).toMatch(/const openDone = computed\(\(\) => openingTable\.value !== null && openSheet\.value !== null && opening\.value === openSheet\.value\n/)
+    expect(boardScript.match(/openSheet\.value = /g)).toHaveLength(2)
     const board = script('views/BoardView.vue')
     const view = board.slice(board.indexOf('function viewTable('), board.indexOf('}', board.indexOf('selectedId.value = serviceId\n')))
     expect(view.indexOf('opening.value.leave(')).toBeGreaterThan(0)
     expect(view.indexOf('opening.value.leave(')).toBeLessThan(view.indexOf('openingTable.value = null\n'))
     expect(template(source('views/BoardView.vue'))).toMatch(/<OpenTable v-else-if="openingTable" ref="opening"/)
   })
-  it('H06: above «Abrir», every allergy written whole with its tone, never folded; the summary no longer counts them', () => {
+  // Revision final de C3e.1: lo que se comprueba es la plantilla. Con mas de tres alergias, openLines da UNA linea que dice cuantas y que
+  // se revisen arriba (decision aprobada de H06; abrir.test lo prueba); aqui, que cada linea que da sale con su tono y sin recortar.
+  it('H06: above «Abrir», the lines of openLines with their tone, never cut in the template (more than three: one summary line); the summary no longer counts them', () => {
     const open = template(source('views/OpenTable.vue'))
     const bar = open.slice(open.indexOf('<div class="bar">'), open.indexOf('</div>', open.indexOf('data-testid="do-open"')))
     const at = (testId: string) => bar.indexOf(`data-testid="${testId}"`)
@@ -293,8 +333,20 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     expect(card.match(/<AllergySheet[^>]*>/)?.[0] ?? '').not.toMatch(/@run=/)
     expect(card.match(/<SkipSheet[^>]*>/)?.[0] ?? '').toMatch(/:send="skip"/)
     expect(card.match(/<SkipSheet[^>]*>/)?.[0] ?? '').not.toMatch(/@confirm=/)
-    expect(script('views/TableCard.vue')).toMatch(/const settled = await props\.sendSettled\(path, body, description\)/)
+    const cardScript = script('views/TableCard.vue')
+    expect(cardScript).toMatch(/try \{ settled = await props\.sendSettled\(path, body, description\) \} finally \{ sheetSending\.value-- \}/)
     expect(template(source('views/BoardView.vue'))).toContain(':send-settled="sendSettled"')
+    // Revision final de C3e.1: la relectura que sigue a un rechazo puede quitar lo que abria la hoja. La de alergias no se cierra mientras
+    // va su orden (sheetSending, contado en settle): AllergySheet dice que NO se ha anotado. La de omitir se desmonta (el pase ya no se
+    // puede omitir) y la ficha pone el mismo texto en su barra fija (action-problem), solo si la hoja ya no esta.
+    expect(cardScript).toMatch(/sheetSending\.value\+\+\n\s*let settled: Settlement\n\s*try \{ settled = await props\.sendSettled/)
+    expect(cardScript).toMatch(/watch\(allergyOpener, opener => \{ if \(!opener && sheetSending\.value === 0\) allergiesOpen\.value = false \}\)/)
+    expect(cardScript.match(/allergiesOpen\.value = false/g)).toHaveLength(2)                    // ese watch y el cambio de mesa
+    expect(cardScript).toMatch(/const settled = await settle\(request\.path, request\.body, request\.description\)\n\s*if \(skipAction\.value\?\.testId !== testId\) problem\.value = notApplied\(settled, `El pase \$\{courseName\}`, 'omitido'\)\n\s*return settled/)
+    expect(cardScript).toMatch(/const testId = action\.testId, courseName = action\.course\?\.name \?\? ''/)
+    expect(card).toMatch(/<SkipSheet v-if="panel === 'ficha' && skipAction\?\.course"/)
+    expect(card.match(/<p v-if="problem"[^>]*>/)?.[0] ?? '').toMatch(/class="notice" role="alert" data-testid="action-problem"/)
+    expect(card.indexOf('data-testid="action-problem"')).toBeGreaterThan(card.indexOf('<div class="bar">'))
   })
 })
 

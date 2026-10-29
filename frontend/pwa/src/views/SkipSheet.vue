@@ -13,6 +13,8 @@ import Icon from './Icon.vue'
 // espera su resultado con «Omitiendo…» en el boton apagado. Confirmada o sin confirmar, se cierra (commands.ts, notApplied); rechazada
 // o sin salir, se queda con el motivo escrito y dice por que, en ambar («El pase Postre NO se ha omitido: …»): ese pase sigue en la mesa.
 // El sujeto es «El pase», con su nombre detras: el nombre es el configurado y puede ser plural («Aperitivos NO se ha omitido» no concuerda).
+// Revision final de C3e.1 (H03): si la relectura del rechazo quita «omitir» (course_not_pending), la ficha desmonta esta hoja antes de que
+// llegue el resultado; ese mismo texto lo pone entonces la ficha en su barra fija (TableCard.vue, skip).
 const props = defineProps<{ courseName: string; locked: boolean; send: (reason: string) => Promise<Settlement> }>()
 const emit = defineEmits<{ close: [] }>()
 

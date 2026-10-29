@@ -25,7 +25,9 @@ import Icon from './Icon.vue'
 // C3e.1 (usabilidad 28-10, H06): encima de «Abrir», cada alergia escrita entera (abrir.ts, openLines) en vez de «1 alergia o
 // intolerancia»; y salir con alguna escrita («Mesas», o «Ver mesa» de la banda, que BoardView pasa por leave) pregunta antes, como la
 // ronda: «¿Salir sin abrir la mesa?», con «Seguir abriendo» como opcion segura.
-// sending (C3e.1, H06): la apertura va camino del servidor (o se relee tras ella); sus filas ya viajan en esa orden.
+// sending (C3e.1, H06): la apertura de ESTA mesa va camino del servidor (o se relee tras ella). Revision final de C3e.1 (H06): sus filas
+// viajan en esa orden solo si la mando esta hoja (submitted); otra hoja de la misma mesa abierta despues sigue preguntando y, si la primera
+// se confirma, se queda montada con sus filas y sin su «Mesa abierta ✓» (BoardView, open y openDone).
 const props = defineProps<{
   tableId: string; tableName: string; roomName: string; capacity: number; offers: OfferChoice[]; occupied: boolean; locked: boolean
   rejection: { code: string; text: string } | null; done: string; sending: boolean
@@ -123,8 +125,11 @@ const lines = computed(() => openLines(rows.value))
 const paxText = computed(() => Number.isInteger(count.value) && count.value >= 1 ? plural(count.value, 'persona', 'personas') : '')
 const summaryRest = computed(() => paxText.value && summary.value.startsWith(paxText.value) ? summary.value.slice(paxText.value.length) : summary.value)
 const canOpen = computed(() => !props.locked && !props.occupied && chosen.value !== null && problem.value === '')
+// Revision final de C3e.1 (H06): esta hoja ya mando su apertura (ver leave).
+let submitted = false
 function submit(): void {
   if (!canOpen.value || !chosen.value) return
+  submitted = true
   emit('open', openRequest({ id: props.tableId, name: props.tableName }, count.value, chosen.value, rows.value))
 }
 
@@ -133,11 +138,13 @@ function submit(): void {
 // lugar de volver al plano. Sin nada escrito (lostText vacio) sale sin preguntar. El foco va a «Seguir abriendo», la opcion segura.
 // Revision de C3e.1 (H06): con la apertura de camino (sending) tampoco pregunta: nada se pierde, las filas viajan en ella (o en la
 // pendiente), y la pregunta diria que la mesa no se abre junto a «Mesa abierta · Mesa 5 ✓».
+// Revision final de C3e.1 (H06): solo si la apertura de camino es la de ESTA hoja. Si el camarero salio de ella, volvio a tocar la misma
+// mesa (aun libre en la ultima lectura) y escribio otra alergia, esas filas no viajan en ninguna orden: se pregunta.
 const lost = computed(() => lostText(rows.value))
 const leaving = ref(false)
 let afterLeave: (() => void) | null = null
 function leave(then?: () => void): void {
-  if (lost.value && !props.sending) { afterLeave = then ?? null; leaving.value = true; return }
+  if (lost.value && !(props.sending && submitted)) { afterLeave = then ?? null; leaving.value = true; return }
   if (then) then(); else emit('back')
 }
 const stay = ref<HTMLButtonElement | null>(null)

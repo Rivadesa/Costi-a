@@ -126,6 +126,8 @@ export function exceptionLine(preparation: Preparation, pendingText: string = RE
 // sigue con «Por revisar en el pase», y Sala con «Por revisar en cocina». Una decision ya tomada se escribe igual en todas.
 // Solo en la rejilla (lo que aun hay que hacer): en la franja «Hecho» el plato ya esta marcado Listo y va exceptionLine; «no lo emplates»
 // haria creer que hay que retirarlo.
+// Revision final de C3e.1 (H34): y en la rejilla, solo en lo que aun no esta Listo. Con dos platos o mas cada uno tiene su «Listo»
+// (listoPerDish) y uno ya «Lista» sigue en la rejilla: va con exceptionLine, como en «Hecho» (KitchenView.vue, dish.ready).
 export const REVIEW_PENDING_AT_STATION = `${REVIEW_PENDING_AT_PASS} · no lo emplates hasta que decida`
 export const stationLine = (preparation: Preparation): ExceptionLine => exceptionLine(preparation, REVIEW_PENDING_AT_STATION)
 
