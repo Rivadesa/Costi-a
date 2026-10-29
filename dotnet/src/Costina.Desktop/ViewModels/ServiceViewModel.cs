@@ -91,6 +91,8 @@ public sealed partial class ReviewLine(PreparationDto preparation, string text) 
 }
 // E4e (plan 2026-10-15, seccion 4.5): una fila de «¿Alergias o intolerancias?» al abrir mesa. El comensal es EXPLICITO: «Toda la mesa» es
 // una opcion mas y nunca la de por defecto (sin elegir, la mesa no se abre); Alergia y Grave por defecto. Viajan en la MISMA orden open.
+// C3e.1 (usabilidad 28-10, H51): la fila de anotar una restriccion en una mesa YA abierta (DeclareDraft) es una de estas, con las mismas
+// reglas: nada se hereda de la anotacion anterior ni de otra mesa.
 public sealed partial class AllergyDraft : ObservableObject
 {
     [ObservableProperty] private string? guest;   // null = sin elegir; "all" = toda la mesa; "1".."n" = ese comensal
@@ -138,10 +140,13 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     public bool HasRestrictions => Restrictions.Length > 0;
     [ObservableProperty] private GuestRestrictionDto? selectedRestriction;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(RestrictionsAlarming))] private bool restrictionsPendingAck;
-    [ObservableProperty] private string restrictionGuest = "";
-    [ObservableProperty] private string restrictionKind = "allergy";
-    [ObservableProperty] private string restrictionSubstance = "";
-    [ObservableProperty] private string restrictionSeverity = "severe";
+    // C3e.1 (usabilidad 28-10, H51): «Declarar una restricción» en la mesa leida es la MISMA fila que el alta (AllergyDraft): «¿Para quién?»
+    // sin elegir, Alergia y Grave de partida. Antes conservaba comensal, tipo y gravedad de la anotacion anterior (tambien de otra mesa)
+    // y un comensal vacio contaba como toda la mesa. Se rehace entera tras una declaracion confirmada o que queda sin confirmar (la orden
+    // pendiente ya la lleva, como en Sala), al cambiar de mesa y en Invalidate; solo un rechazo la conserva para corregirla. Los comensales
+    // que ofrece son los de la mesa leida (1..personas y «Toda la mesa» al final).
+    [ObservableProperty] private AllergyDraft declareDraft = new();
+    [ObservableProperty] private GuestChoice[] declareGuestChoices = [];
     [ObservableProperty] private string reviewNote = "";
     [ObservableProperty] private string serviceTitle = "Selecciona una mesa";
 
@@ -306,7 +311,8 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         try
         {
             Dining = null; Courses = []; SelectedCourse = null; DishRows = []; SelectedDish = null; ReviewLines = [];
-            Restrictions = []; SelectedRestriction = null; RestrictionsPendingAck = false; RestrictionSubstance = ""; ReviewNote = "";
+            Restrictions = []; SelectedRestriction = null; RestrictionsPendingAck = false; ReviewNote = "";
+            ResetDeclare(); DeclareGuestChoices = [];   // C3e.1 (H51): la fila de anotar entera, no solo la sustancia
             ServiceTitle = "Lectura pendiente: sin datos fiables de la mesa seleccionada.";
         }
         finally { rendering = wasRendering; }
@@ -342,11 +348,17 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private void Render(BoardEntry[] fresh, Versioned<DiningDto>? current)
     {
         var previousCourse = SelectedCourse?.Id;
+        var previousService = Dining?.Data.Id;
         rendering = true;
         try
         {
             BoardRead = true;
             Board = fresh; SelectedEntry = fresh.FirstOrDefault(b => b.Service.Id == serviceId);
+            // C3e.1 (usabilidad 28-10, H51): la fila de anotar es de UNA mesa. Otra mesa (tambien la que se lee porque la pedida ya no esta en
+            // el tablero, sin pasar por Invalidate) empieza de cero; una relectura de la misma (tiempo real) no toca lo que se esta escribiendo.
+            if (current?.Data.Id != previousService) ResetDeclare();
+            var guests = GuestsFor(current?.Data.Pax ?? 0);
+            if (!guests.Select(c => c.Key).SequenceEqual(DeclareGuestChoices.Select(c => c.Key))) DeclareGuestChoices = guests;
             Dining = current;
             ServiceTitle = current is null ? "Sin mesas ocupadas. Puedes abrir una mesa." : Title(current.Data);
             Courses = current?.Data.Courses ?? [];
@@ -497,16 +509,20 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
     private object[] OpenRestrictions(int people)
     {
         var rows = OpenAllergies.Where(a => a.Guest is not null || a.Substance.Trim().Length > 0).ToArray();
-        foreach (var row in rows)
-        {
-            if (row.Guest is null) throw new ArgumentException("Elige para quién es cada alergia o intolerancia: un comensal o toda la mesa.");
-            if (row.Substance.Trim().Length < 2) throw new ArgumentException("Escribe a qué es cada alergia o intolerancia (2 caracteres o más).");
-            if (row.Guest != "all" && (!int.TryParse(row.Guest, out var guest) || guest < 1 || guest > people))
-                throw new ArgumentException("El comensal de una alergia tiene que estar entre 1 y " + people + ".");
-        }
-        return rows.Select(row => (object)new { guestPosition = row.Guest == "all" ? (int?)null : int.Parse(row.Guest!, System.Globalization.CultureInfo.InvariantCulture),
-            kind = row.Kind, substance = row.Substance.Trim(), severity = row.Severity }).ToArray();
+        foreach (var row in rows) CheckDraft(row, people);
+        return rows.Select(row => (object)new { guestPosition = GuestPosition(row), kind = row.Kind, substance = row.Substance.Trim(), severity = row.Severity }).ToArray();
     }
+    // El formato de UNA fila (quien, a que), con los mismos textos en el alta y al anotar en una mesa abierta (C3e.1, H51): sin elegir
+    // para quien no hay orden; «Toda la mesa» solo si se elige.
+    private static void CheckDraft(AllergyDraft row, int people)
+    {
+        if (row.Guest is null) throw new ArgumentException("Elige para quién es cada alergia o intolerancia: un comensal o toda la mesa.");
+        if (row.Substance.Trim().Length < 2) throw new ArgumentException("Escribe a qué es cada alergia o intolerancia (2 caracteres o más).");
+        if (row.Guest != "all" && (!int.TryParse(row.Guest, out var guest) || guest < 1 || guest > people))
+            throw new ArgumentException("El comensal de una alergia tiene que estar entre 1 y " + people + ".");
+    }
+    // «Toda la mesa» viaja como guestPosition null; un comensal, con su numero (CheckDraft ya lo ha comprobado).
+    private static int? GuestPosition(AllergyDraft row) => row.Guest == "all" ? null : int.Parse(row.Guest!, System.Globalization.CultureInfo.InvariantCulture);
     // E4e: anadir y quitar filas de alergias del formulario de abrir mesa (solo memoria: nada se envia hasta «Abrir»).
     private bool CanAddAllergy() => shell.Writable && shell.CanOpen && OpenAllergies.Count < 30;
     [RelayCommand(CanExecute = nameof(CanAddAllergy))]
@@ -520,30 +536,42 @@ public sealed partial class ServiceViewModel(ShellViewModel shell) : ObservableO
         var choices = GuestsFor(value);
         if (!choices.Select(c => c.Key).SequenceEqual(GuestChoices.Select(c => c.Key))) GuestChoices = choices;
     }
-    private static GuestChoice[] GuestsFor(string pax)
+    private static GuestChoice[] GuestsFor(string pax) => GuestsFor(int.TryParse(pax, out var n) ? n : 0);
+    private static GuestChoice[] GuestsFor(int pax)
     {
-        var people = int.TryParse(pax, out var n) && n is >= 1 and <= 60 ? n : 0;
+        var people = pax is >= 1 and <= 60 ? pax : 0;
         return [..Enumerable.Range(1, people).Select(g => new GuestChoice(g.ToString(System.Globalization.CultureInfo.InvariantCulture), Labels.Guest(g))),
             new GuestChoice("all", Labels.Guest(null))];
     }
 
+    // C3e.1 (usabilidad 28-10, H51): la fila de anotar vuelve a empezar: sin comensal elegido, Alergia, Grave y sin sustancia.
+    private void ResetDeclare() => DeclareDraft = new AllergyDraft();
     private bool CanDeclareRestriction() => shell.Writable && Allowed("declare-restriction");
     [RelayCommand(CanExecute = nameof(CanDeclareRestriction))]
     private Task DeclareRestriction() => shell.Run(async () =>
     {
         var context = Require();
-        if (string.IsNullOrWhiteSpace(RestrictionSubstance)) throw new ArgumentException("Indica la sustancia o preferencia.");
-        int? guest = null;
-        if (!string.IsNullOrWhiteSpace(RestrictionGuest))
+        // C3e.1 (usabilidad 28-10, H51): las comprobaciones y los textos de cada fila del alta (CheckDraft). Sin elegir para quien no sale
+        // ninguna orden: nunca «toda la mesa» por omision.
+        var draft = DeclareDraft;
+        CheckDraft(draft, context.Data.Pax);
+        var api = shell.Api!;
+        var path = "dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/declare-restriction";
+        var request = new { expectedVersion = context.Version, guestPosition = GuestPosition(draft), kind = draft.Kind,
+                            substance = draft.Substance.Trim(), severity = draft.Severity };
+        var body = System.Text.Json.JsonSerializer.Serialize(request, ApiClient.Json);
+        try { await api.SendAsync(path, request, "Declarar restricción de comensal · " + TableOf(context)); }
+        catch (Exception) when (api.Pending is { } pending && pending.Path == path && pending.Body == body)
         {
-            if (!int.TryParse(RestrictionGuest, out var position)) throw new ArgumentException("Comensal no válido (vacío = toda la mesa).");
-            guest = position;
+            // Revision de C3e.1 (H51): sin confirmar, lo escrito YA es la orden pendiente (su aviso la muestra y «Reintentar» la manda
+            // identica): la fila vuelve a empezar, como la hoja de Sala (H03). Si se quedara escrita, la siguiente heredaria comensal, tipo y
+            // gravedad tras «Reintentar», justo el fallo de H51, o la misma volveria a salir como duplicada.
+            if (ReferenceEquals(DeclareDraft, draft)) ResetDeclare();
+            throw;
         }
-        await shell.Api!.SendAsync("dining/services/" + ApiClient.Segment(context.Data.Id) + "/commands/declare-restriction",
-            new { expectedVersion = context.Version, guestPosition = guest, kind = RestrictionKind,
-                  substance = RestrictionSubstance.Trim(), severity = RestrictionSeverity },
-            "Declarar restricción de comensal · " + TableOf(context));
-        RestrictionSubstance = "";
+        // Confirmada por el servidor: la fila entera vuelve a empezar (la siguiente puede ser de otro comensal y otra gravedad). Un rechazo
+        // (o una orden que no llego a salir) no llega aqui: la fila se conserva para corregirla.
+        if (ReferenceEquals(DeclareDraft, draft)) ResetDeclare();
         await shell.RefreshAll();
         shell.Status = "Operación confirmada por el servidor: restricción declarada.";
     });
