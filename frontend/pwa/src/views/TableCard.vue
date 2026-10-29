@@ -36,10 +36,12 @@ import SkipSheet from './SkipSheet.vue'
 // (AllergySheet), desde la cabecera de la franja roja y solo con lo que el servidor anuncia. «Más opciones» se queda con lo demas.
 // C3e.1 (usabilidad 28-10, H20): el boton grande manda tambien el texto de su resultado (ficha.ts, doneLabel); confirmada su orden,
 // BoardView lo devuelve en done y el boton lo ensena apagado durante DONE_MS (operations.ts) antes de la accion siguiente.
+// C3e.1 (usabilidad 28-10, H03): las hojas de alergias y de omitir ya no se cierran al tocar: mandan su orden por sendSettled (la de la
+// ronda, ahora con un nombre que no es solo de la ronda) y se cierran solo si se confirma o queda sin confirmar (commands.ts, notApplied).
 const props = defineProps<{
   entry: BoardEntry; tableName: string; roomName: string; configuration: Configuration; names: Names
   products: DrinkProduct[]; catalogStatus: CatalogStatus; canConsume: boolean; locked: boolean; uncertain: boolean; now: number; done: string
-  sendRound: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
+  sendSettled: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
 }>()
 const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string, result?: string]; back: []; bodega: [] }>()
 
@@ -96,7 +98,7 @@ async function sendRound(): Promise<void> {
   addMessage.value = ''
   const request = round.begin(props.entry.version, props.tableName)
   if (request === null) return
-  const settlement = await props.sendRound(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
+  const settlement = await props.sendSettled(serviceCommand(service.value, 'add-consumptions'), request.body, request.description)
   round.settle(settlement)
   if (settlement.kind === 'confirmed') sent.value = ROUND_SENT
   // Sin confirmar: la ronda ya es la orden de arriba («Orden sin confirmar»); la bandeja vacia lo dice y la pantalla sube hasta ella.
@@ -198,13 +200,22 @@ function pick(action: TableAction): void {
   if (action.action === 'skip') skipping.value = action.testId
   else act(action)
 }
+// C3e.1 (usabilidad 28-10, H03): las ordenes de las hojas (anotar o retirar una alergia, omitir un pase) esperan su resultado, que vuelve
+// a la hoja: ella decide si se cierra o se queda con lo escrito. Sin confirmar, la pantalla sube hasta el aviso de la orden pendiente,
+// como con la ronda (la hoja se cierra y ese aviso es el que la resuelve).
+async function settle(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
+  problem.value = ''
+  const settled = await props.sendSettled(path, body, description)
+  if (settled.kind === 'unconfirmed') window.scrollTo({ top: 0 })
+  return settled
+}
 // «Omitir Postre» de la hoja: UNA orden skip con la version leida (F01), solo si el servidor aun lo anuncia (la hoja ya comprobo el motivo).
-function confirmSkip(skipReason: string): void {
+// Confirmada, el servidor deja de anunciar omitir ese pase y la hoja se cierra sola (skipAction); si no, la hoja dice que paso.
+function skip(skipReason: string): Promise<Settlement> {
   const action = skipAction.value
-  skipping.value = null
-  if (!action) return
+  if (!action) return Promise.resolve({ kind: 'not_sent' })
   const request = commandFor(props.entry, action, props.tableName, skipReason)
-  send(request.path, request.body, request.description)
+  return settle(request.path, request.body, request.description)
 }
 </script>
 
@@ -322,8 +333,8 @@ function confirmSkip(skipReason: string): void {
       @done="editDone" @remove="editRemove" @close="editing = null" />
     <!-- C3e: las hojas de la ficha. Cada una es de ESTA lectura y de lo que anuncia ahora el servidor. -->
     <SkipSheet v-if="panel === 'ficha' && skipAction?.course" :key="skipAction.testId" :course-name="skipAction.course.name" :locked="locked"
-      @confirm="confirmSkip" @close="skipping = null" />
-    <AllergySheet v-if="panel === 'ficha' && allergiesOpen" :entry="entry" :table-name="tableName" :locked="locked" @run="send" @close="allergiesOpen = false" />
+      :send="skip" @close="skipping = null" />
+    <AllergySheet v-if="panel === 'ficha' && allergiesOpen" :entry="entry" :table-name="tableName" :locked="locked" :send="settle" @close="allergiesOpen = false" />
 
     <template v-if="leaving">
       <div class="scrim" aria-hidden="true" @click="leaving = false"></div>

@@ -1,5 +1,6 @@
 import type { CommandRequest } from './ficha'
-import { guestLabel, plural } from './labels'
+import { restrictionAlarming } from './floor'
+import { guestLabel, plural, restrictionKindLabel, restrictionLabel, severityLabel } from './labels'
 import { proposedOffer } from './offers'
 import type { GuestRestriction } from './types'
 
@@ -64,6 +65,14 @@ export const KINDS = [{ code: 'Allergy', label: 'Alergia' }, { code: 'Intoleranc
 export const SEVERITIES = [{ code: 'Severe', label: 'Grave' }, { code: 'Moderate', label: 'Moderada' }, { code: 'Mild', label: 'Leve' }] as const satisfies
   ReadonlyArray<{ code: GuestRestriction['severity']; label: string }>
 
+// C3e.1 (usabilidad 28-10, H03): como se nombra una restriccion al decir que NO se ha anotado o retirado: «La alergia», «La
+// intolerancia», «La preferencia» (las tres en femenino, como los motivos de commands.ts, notApplied). Un tipo que no se conoce no se
+// rebaja a una palabra mas suave: «La restricción».
+export function restrictionSubject(kind: string): string {
+  const label = KINDS.find(option => option.code.toLowerCase() === kind.toLowerCase())?.label
+  return label ? `La ${label.toLowerCase()}` : 'La restricción'
+}
+
 // Una fila de la hoja, como AllergyDraft del PC (ServiceViewModel.cs:94-100): quien (null = sin elegir; «Toda la mesa» es una opcion
 // mas, 'all', nunca la de por defecto), tipo (Alergia por defecto), a que y gravedad (Grave por defecto). Como mucho 30 filas, como
 // CanAddAllergy del PC.
@@ -121,11 +130,52 @@ export function openDescription(tableName: string, pax: number, drafts: readonly
   return `Abrir ${tableName} para ${plural(pax, 'persona', 'personas')}${count > 0 ? ` con ${restrictionsText(count)}` : ''}`
 }
 
-// La linea encima de «Abrir»: «3 personas · Menú de ensayo · 1 alergia o intolerancia», solo con lo que hay.
-export function openSummary(pax: number, offer: { name: string } | null, drafts: readonly RestrictionDraft[]): string {
-  const count = drafts.filter(filled).length
-  return [Number.isInteger(pax) && pax >= 1 ? plural(pax, 'persona', 'personas') : '', offer?.name ?? '', count > 0 ? restrictionsText(count) : '']
-    .filter(part => part.length > 0).join(' · ')
+// La linea encima de «Abrir»: «3 personas · Menú de ensayo», solo con lo que hay. C3e.1 (usabilidad 28-10, H06): sin «1 alergia o
+// intolerancia» al final; debajo va cada alergia escrita entera (openLines).
+export function openSummary(pax: number, offer: { name: string } | null): string {
+  return [Number.isInteger(pax) && pax >= 1 ? plural(pax, 'persona', 'personas') : '', offer?.name ?? ''].filter(part => part.length > 0).join(' · ')
+}
+
+// ---- C3e.1 (usabilidad 28-10, H06): lo escrito, entero, encima de «Abrir» y antes de salir ----
+// Antes, encima de «Abrir» solo ponia «1 alergia o intolerancia», sin quien ni que, y salir de la hoja («Mesas», o «Ver mesa» en la
+// banda) la cerraba sin aviso: habia que reescribirlas, y al reescribir es facil olvidar una. La mesa no se abria, asi que nada salia sin
+// su alergia; lo que se perdia era lo escrito.
+// Cada fila escrita (con quien o con a que; una vacia del todo no se mira) va ENTERA, con el formato de la ficha (labels.ts,
+// restrictionLabel): «Comensal 2 · ALERGIA frutos secos (grave)», «Toda la mesa · Intolerancia lactosa (leve)». Lo que aun falta se
+// escribe como su pregunta («¿Quién?», «¿A qué?»), nunca se rellena: una fila sin quien NO es «Toda la mesa». Rojo si alarma con la regla
+// de la ficha (floor.ts, restrictionAlarming), ambar si no, como su fila en la hoja.
+export interface OpenLine { text: string; alarming: boolean }
+export const WHO_MISSING = '¿Quién?'
+export const WHAT_MISSING = '¿A qué?'
+const asRestriction = (draft: RestrictionDraft): GuestRestriction =>
+  ({ id: '', guestPosition: draft.guest === 'all' ? null : draft.guest, kind: draft.kind, substance: draft.substance.trim(), severity: draft.severity })
+export function draftLabel(draft: RestrictionDraft): string {
+  if (draft.guest !== null && draft.substance.trim().length > 0) return restrictionLabel(asRestriction(draft))
+  const who = draft.guest === null ? WHO_MISSING : guestLabel(draft.guest === 'all' ? null : draft.guest)
+  return `${who} · ${restrictionKindLabel(draft.kind)} ${draft.substance.trim() || WHAT_MISSING} (${severityLabel(draft.severity)})`
+}
+export const draftLines = (drafts: readonly RestrictionDraft[]): OpenLine[] =>
+  drafts.filter(filled).map(draft => ({ text: draftLabel(draft), alarming: restrictionAlarming(asRestriction(draft)) }))
+
+// Encima de «Abrir», hasta OPEN_LINES filas enteras. Con mas, UNA linea que no esconde que las hay, roja si alguna alarma: las filas
+// siguen escritas arriba, en la hoja, y la barra de abajo es fija (con 30 lineas taparia la pantalla).
+export const OPEN_LINES = 3
+export function openLines(drafts: readonly RestrictionDraft[]): OpenLine[] {
+  const lines = draftLines(drafts)
+  if (lines.length <= OPEN_LINES) return lines
+  return [{ text: `${restrictionsText(lines.length)} anotadas: revísalas arriba antes de abrir.`, alarming: lines.some(line => line.alarming) }]
+}
+
+// Salir con alguna fila escrita pregunta antes, como la ronda (TableCard.vue, «¿Salir sin enviar la ronda?»), con las filas enteras
+// debajo. «alergia» si todas lo son; si no, «alergia o intolerancia», como la hoja. '' sin nada escrito: entonces no se pregunta.
+export const LEAVE_TITLE = '¿Salir sin abrir la mesa?'
+export const LEAVE_STAY = 'Seguir abriendo'
+export const LEAVE_DISCARD = 'Salir sin abrir'
+export function lostText(drafts: readonly RestrictionDraft[]): string {
+  const rows = drafts.filter(filled)
+  if (rows.length === 0) return ''
+  const noun = rows.every(row => row.kind === 'Allergy') ? plural(rows.length, 'alergia', 'alergias') : restrictionsText(rows.length)
+  return rows.length === 1 ? `Se perderá ${noun}: habrá que escribirla otra vez.` : `Se perderán ${noun}: habrá que escribirlas otra vez.`
 }
 
 // UNA orden POST /dining/services con todo (E4e, ADR-016; D6.3: una sola orden incierta por gesto): { tableId, pax, offerId, menuId,

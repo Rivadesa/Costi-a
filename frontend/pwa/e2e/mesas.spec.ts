@@ -100,11 +100,30 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('open-kind-1-Allergy')).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('open-severity-1-Severe')).toHaveAttribute('aria-checked', 'true')
-    await expect(page.getByTestId('open-summary')).toHaveText('3 personas · Menú de ensayo · 1 alergia o intolerancia')
+    //    C3e.1 (usabilidad 28-10, H06): encima de «Abrir», la alergia escrita entera y en rojo, como la dira la ficha, en vez de «1 alergia
+    //    o intolerancia» al final del resumen.
+    await expect(page.getByTestId('open-summary')).toHaveText('3 personas · Menú de ensayo')
+    await expect(page.getByTestId('open-line')).toHaveText(['Comensal 2 · ALERGIA frutos secos (grave)'])
+    await expect(page.getByTestId('open-line')).toHaveClass(/\balarm\b/)
     await expect(page.getByTestId('open-problem')).toHaveCount(0)
     await expect(page.getByTestId('do-open')).toHaveText(`Abrir ${table.name}`)
     await expect(page.getByTestId('do-open')).toBeEnabled()
     await checkScreen(page, 'open sheet with an allergy')
+    //    C3e.1 (H06): «Mesas» con una alergia escrita ya no cierra la hoja sin aviso: pregunta, con la alergia entera, y «Seguir abriendo»
+    //    (la opcion segura, con el foco) deja la hoja como estaba. No sale ninguna orden.
+    await press(sheet.getByTestId('back'))
+    const leaveSheet = page.getByTestId('open-leave-sheet')
+    await expect(leaveSheet).toContainText('¿Salir sin abrir la mesa?')
+    await expect(leaveSheet.getByTestId('open-leave-text')).toHaveText('Se perderá 1 alergia: habrá que escribirla otra vez.')
+    await expect(leaveSheet).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
+    await expect(leaveSheet.getByTestId('open-leave-stay')).toBeFocused()
+    await checkScreen(page, 'leaving the open sheet with an allergy')
+    await press(leaveSheet.getByTestId('open-leave-stay'))
+    await expect(leaveSheet).toHaveCount(0)
+    await expect(sheet).toBeVisible()
+    await expect(page.locator('input[name=open-substance-1]')).toHaveValue('frutos secos')
+    await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
+    expect(sent.open).toBe(0)
     await press(page.getByTestId('do-open'))
     // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues.
     await expect(page.locator('[data-testid="do-done"]:disabled')).toHaveText(`${table.name} abierta ✓`, { timeout: 15_000 })
@@ -131,6 +150,33 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     expect([opened.data.openedBy, opened.data.openedStation]).toEqual([sessionA.actor, 'sala-1'])
     expect(opened.version).toBe(1)
     expect(sent.open).toBe(1)
+
+    //    C3e.1 (usabilidad 28-10, H03): la hoja de alergias espera el resultado de su orden. Si el servidor la RECHAZA (aqui, un choque con
+    //    otra pantalla simulado en el navegador: la orden no llega al motor; la consulta por clave si, y al motor no le consta), la hoja se
+    //    queda con la fila escrita y dice en rojo que NO se ha anotado. La mesa no cambia; se cierra sin anotar nada.
+    await press(detail.getByTestId('restrictions-open'))
+    const allergySheet = page.getByTestId('allergy-sheet')
+    await expect(allergySheet.getByTestId('declare')).toBeVisible()
+    await press(allergySheet.getByTestId('declare-guest-1'))
+    await allergySheet.locator('input[name=substance]').fill('sésamo')
+    const declareRoute = '**/commands/declare-restriction'
+    await page.route(declareRoute, route => route.fulfill({
+      status: 409, headers: { 'Idempotency-Key': route.request().headers()['idempotency-key'] ?? '' }, json: { error: 'version_conflict' },
+    }))
+    await press(allergySheet.getByTestId('do-declare-restriction'))
+    await expect(allergySheet.getByTestId('declare-rejected'))
+      .toHaveText('La alergia NO se ha anotado: otro puesto cambió la mesa a la vez y ya se ha vuelto a leer. Toca otra vez.', { timeout: 15_000 })
+    await expect(allergySheet.getByTestId('declare-rejected')).toHaveClass(/\balarm\b/)                 // una alergia grave: en rojo
+    await expect(allergySheet.locator('input[name=substance]')).toHaveValue('sésamo')
+    await expect(allergySheet.getByTestId('declare-guest-1')).toHaveAttribute('aria-checked', 'true')
+    await expect(allergySheet.getByTestId('do-declare-restriction')).toHaveText('Anotar alergia o intolerancia')
+    await expect(page.getByTestId('pending')).toHaveCount(0)
+    await checkScreen(page, 'allergy sheet after a rejected allergy')
+    await page.unroute(declareRoute)
+    expect((await service(request, serviceId!)).version).toBe(1)
+    await press(allergySheet.getByTestId('allergy-close'))
+    await expect(allergySheet).toHaveCount(0)
+    await expect(detail.getByTestId('restrictions')).not.toContainText('sésamo')
 
     // 4) En B, M5 ya no esta entre las libres y no es suya: no sale en «Mis mesas». En «Todas», si, Sentados. B pasa a «Todas» con un
     //    toque de verdad, como el camarero, antes de que cocina valide. Ojo (revision de C3e): la activacion de la pagina que pide buzz

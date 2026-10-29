@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import {
-  draftProblem, guestChoices, initialPax, KINDS, MAX_DRAFTS, newDraft, offerGroups, openRequest, openSummary, paxChoices, paxLimit, paxProblem,
-  SEVERITIES, type RestrictionDraft,
+  draftLines, draftProblem, guestChoices, initialPax, KINDS, LEAVE_DISCARD, LEAVE_STAY, LEAVE_TITLE, lostText, MAX_DRAFTS, newDraft, offerGroups, openLines,
+  openRequest, openSummary, paxChoices, paxLimit, paxProblem, SEVERITIES, type RestrictionDraft,
 } from '../abrir'
 import type { OfferChoice } from '../configuration'
 import type { CommandRequest } from '../ficha'
@@ -22,6 +22,9 @@ import Icon from './Icon.vue'
 // rejection: el motivo del ultimo rechazo de la apertura (o de que no saliera), que BoardView deja aqui para que se lea junto a «Abrir».
 // C3e.1 (usabilidad 28-10, H20): done, «Mesa 5 abierta ✓» en cuanto se confirma, en el sitio de «Abrir», apagado y sin accion; la ficha
 // que sale despues lo sigue diciendo en su boton grande durante DONE_MS (operations.ts) antes de «Enviar siguiente pase».
+// C3e.1 (usabilidad 28-10, H06): encima de «Abrir», cada alergia escrita entera (abrir.ts, openLines) en vez de «1 alergia o
+// intolerancia»; y salir con alguna escrita («Mesas», o «Ver mesa» de la banda, que BoardView pasa por leave) pregunta antes, como la
+// ronda: «¿Salir sin abrir la mesa?», con «Seguir abriendo» como opcion segura.
 const props = defineProps<{
   tableId: string; tableName: string; roomName: string; capacity: number; offers: OfferChoice[]; occupied: boolean; locked: boolean
   rejection: { code: string; text: string } | null; done: string
@@ -113,7 +116,9 @@ function removeRow(index: number): void {
 // El primer problema de FORMATO (las personas antes que las filas); una fila vacia del todo se ignora (decision 6). «Abrir» queda apagado
 // con un problema, con la mesa ocupada segun la ultima lectura, sin oferta o con una orden por resolver.
 const problem = computed(() => paxProblem(count.value, props.capacity) || draftProblem(rows.value, count.value))
-const summary = computed(() => openSummary(count.value, chosen.value, rows.value))
+const summary = computed(() => openSummary(count.value, chosen.value))
+// C3e.1 (H06): las alergias escritas, enteras y con su tono (rojo si alarma, ambar si no); con mas de 3, una linea que dice cuantas.
+const lines = computed(() => openLines(rows.value))
 const paxText = computed(() => Number.isInteger(count.value) && count.value >= 1 ? plural(count.value, 'persona', 'personas') : '')
 const summaryRest = computed(() => paxText.value && summary.value.startsWith(paxText.value) ? summary.value.slice(paxText.value.length) : summary.value)
 const canOpen = computed(() => !props.locked && !props.occupied && chosen.value !== null && problem.value === '')
@@ -121,12 +126,31 @@ function submit(): void {
   if (!canOpen.value || !chosen.value) return
   emit('open', openRequest({ id: props.tableId, name: props.tableName }, count.value, chosen.value, rows.value))
 }
+
+// ---- Salir: con alguna alergia escrita, primero se pregunta (C3e.1, H06) ----
+// Como la ronda en la ficha (TableCard.vue, leave): «Mesas» sale por aqui y «Ver mesa» de la banda tambien, con `then` (ir a esa mesa) en
+// lugar de volver al plano. Sin nada escrito (lostText vacio) sale sin preguntar. El foco va a «Seguir abriendo», la opcion segura.
+const lost = computed(() => lostText(rows.value))
+const leaving = ref(false)
+let afterLeave: (() => void) | null = null
+function leave(then?: () => void): void {
+  if (lost.value) { afterLeave = then ?? null; leaving.value = true; return }
+  if (then) then(); else emit('back')
+}
+const stay = ref<HTMLButtonElement | null>(null)
+watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()); else afterLeave = null })
+function discardAndLeave(): void {
+  const then = afterLeave
+  leaving.value = false
+  if (then) then(); else emit('back')
+}
+defineExpose({ leave })
 </script>
 
 <template>
   <article class="ficha stack" data-testid="open-form">
     <header class="appbar">
-      <button type="button" class="back" data-testid="back" @click="emit('back')"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
+      <button type="button" class="back" data-testid="back" @click="leave()"><Icon name="back" :size="24" :stroke="2.2" /><span class="back-t">Mesas</span></button>
       <div class="appbar-t">
         <div class="appbar-title"><h2>Abrir {{ tableName }}</h2><span class="pill t-free">Libre</span></div>
         <p class="appbar-sub">{{ [roomName, capacity > 0 ? `hasta ${plural(capacity, 'persona', 'personas')}` : ''].filter(part => part).join(' · ') }}</p>
@@ -224,9 +248,34 @@ function submit(): void {
       <p v-if="rejection" class="notice open-problem" role="alert" data-testid="open-rejected"><Icon name="info" />{{ rejection.text }}</p>
       <p v-else-if="offerGone" class="notice open-problem" role="alert" data-testid="open-offer-gone"><Icon name="info" />Ese menú ya no se ofrece ahora: elige otro.</p>
       <p v-if="summary" class="bar-note" data-testid="open-summary"><b v-if="paxText">{{ paxText }}</b>{{ summaryRest }}</p>
+      <!-- C3e.1 (H06): cada alergia escrita, entera y con su tono, justo encima de «Abrir»; con mas de 3, una linea que dice cuantas. -->
+      <ul v-if="lines.length > 0" class="open-lines" aria-label="Alergias o intolerancias que viajan con la apertura" data-testid="open-lines">
+        <li v-for="(line, index) in lines" :key="index" class="fc-tl-x open-line" :class="line.alarming ? 'alarm' : 'warn'" data-testid="open-line">
+          <Icon name="alert" :size="16" :stroke="2.3" /><span>{{ line.text }}</span></li>
+      </ul>
       <p v-if="problem" class="notice open-problem" role="status" data-testid="open-problem"><Icon name="info" />{{ problem }}</p>
       <button v-if="done" type="button" class="btn btn-big btn-done" disabled data-testid="do-done"><Icon name="check" :size="22" :stroke="2.6" />{{ done }}</button>
       <button v-else type="button" class="btn btn-primary btn-big" :disabled="!canOpen" data-testid="do-open" @click="submit"><Icon name="users" :size="22" />Abrir {{ tableName }}</button>
     </div>
+
+    <!-- C3e.1 (H06): salir con alergias escritas, como salir de la mesa con una ronda sin enviar: las filas, enteras, para decidir. -->
+    <template v-if="leaving">
+      <div class="scrim" aria-hidden="true" @click="leaving = false"></div>
+      <section class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="open-leave-title" aria-describedby="open-leave-text" data-testid="open-leave-sheet"
+        @keydown.esc="leaving = false">
+        <div class="sheet-scroll">
+          <h3 id="open-leave-title" class="sh-title">{{ LEAVE_TITLE }}</h3>
+          <p id="open-leave-text" class="leave-t" data-testid="open-leave-text">{{ lost }}</p>
+          <ul class="open-lines" aria-label="Lo que se perdería">
+            <li v-for="(line, index) in draftLines(rows)" :key="index" class="fc-tl-x open-line" :class="line.alarming ? 'alarm' : 'warn'">
+              <Icon name="alert" :size="16" :stroke="2.3" /><span>{{ line.text }}</span></li>
+          </ul>
+        </div>
+        <div class="sheet-foot">
+          <button type="button" class="btn btn-caution" data-testid="open-leave-discard" @click="discardAndLeave">{{ LEAVE_DISCARD }}</button>
+          <button ref="stay" type="button" class="btn btn-primary" data-testid="open-leave-stay" @click="leaving = false">{{ LEAVE_STAY }}</button>
+        </div>
+      </section>
+    </template>
   </article>
 </template>

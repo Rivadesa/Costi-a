@@ -773,6 +773,15 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .open-row .seg button { padding: 0 8px; font-size: 15.5px; }
 .open-problem { padding: 10px 12px; font-size: 14.5px; }
 .open-problem .icon { margin-top: 1px; }
+/* C3e.1 (usabilidad 28-10, H06): encima de «Abrir», cada alergia escrita entera, con las piezas de la ficha (.fc-tl-x y su tono: rojo si
+   alarma, ambar si no) y algo mas compactas, como en la banda. Nunca cortadas: se parten en lineas. En la tableta, del ancho del boton
+   grande y alineadas con el; en la pregunta de salir, de lado a lado. */
+.open-lines { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.open-lines > .open-line { padding: 5px 10px; line-height: 1.3; }
+.sheet .open-lines { margin-bottom: 4px; }
+@media (min-width: 700px) {
+  .bar > .open-lines { max-width: 520px; }
+}
 
 /* La ficha: la cabecera de la franja abre la hoja de alergias («Cambiar», «Anotar alergia o intolerancia» o «Ver alergias»), como enlace
    del color de la franja. C3e (revision): «Cambiar» queda en la linea del titulo tambien en 375 px, como la maqueta (el titulo se parte
@@ -856,6 +865,11 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .fc-al-rm-b { display: flex; gap: 10px; }
 .fc-al-rm-b .btn { flex: 1 1 0; min-width: 0; }
 .fc-al-add { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+/* C3e.1 (usabilidad 28-10, H03): el alta rechazada, junto a su boton y con la fila aun escrita, con borde grueso y en negrita (nunca solo
+   el color: el texto dice que NO se ha anotado). En rojo si lo que no se ha anotado alarma (una alergia o una grave, .alarm); si no, en
+   ambar, como su tarjeta. Lo demas que no se aplica (retirar, omitir) sigue en el ambar de .notice. */
+.notice.fc-al-no { border: 2px solid var(--warn-text); font-weight: 700; }
+.notice.fc-al-no.alarm { border-color: var(--danger-text); background: var(--danger-soft); color: var(--danger-text); }
 .fc-al-add-h { display: flex; align-items: center; gap: 8px; font-size: 16.5px; font-weight: 700; }
 
 /* «Carta y menús» (DishPanel; plan 2026-10-15, 678-679): un toque por plato. Cada plato es un boton de 56 px con el borde del acento (como

@@ -177,6 +177,98 @@ describe('Costiña Sala, C3e.1: the banner remembers the allergy (H19) and the b
   })
 })
 
+// C3e.1 (usabilidad 28-10, H06 y H03): Costiña Sala ya no pierde lo escrito. H06: salir de «Abrir mesa» con alergias escritas («Mesas» o
+// «Ver mesa» de la banda) pregunta antes, como la ronda, y encima de «Abrir» va cada alergia entera. H03: las hojas de alergias y de
+// omitir esperan el resultado de su orden y solo se cierran si se confirma o queda sin confirmar; si se rechaza, se quedan con lo escrito
+// y lo dicen (commands.ts, notApplied; abrir.test y commands.test prueban los textos, mesas.spec el recorrido contra el motor).
+describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mesa» (H06) or when a sheet is rejected (H03)', () => {
+  // Con los finales de linea de la copia de trabajo (CRLF en Windows) pasados a \n: aqui se miran lineas enteras.
+  const source = (name: string) => files.find(([file]) => file === name)![1].replace(/\r\n/g, '\n')
+  const script = (name: string) => { const all = source(name); return all.slice(0, all.indexOf('<template>')) }
+  const css = readFileSync(folder('../src/style.css')).toString('utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '')
+  const body = (selector: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(match => match[1].split(',').map(text => text.trim()).includes(selector)).map(match => match[2]).join(';')
+  it('H06: «Mesas» leaves through leave(), which asks with the rows written; «Ver mesa» of the banner too', () => {
+    const open = template(source('views/OpenTable.vue'))
+    expect(open.match(/<button[^>]*data-testid="back"[^>]*>/)?.[0] ?? '').toMatch(/@click="leave\(\)"/)
+    expect(open).not.toMatch(/emit\('back'\)/)                                                  // en la plantilla, ninguna salida directa
+    const ask = open.match(/<section class="sheet" role="alertdialog"[^>]*data-testid="open-leave-sheet"[\s\S]*?<\/section>/)?.[0] ?? ''
+    expect(ask).toMatch(/\{\{ LEAVE_TITLE \}\}/)
+    expect(ask).toMatch(/\{\{ lost \}\}/)
+    expect(ask).toMatch(/v-for="\(line, index\) in draftLines\(rows\)"/)                         // las filas, enteras, para decidir
+    // La opcion segura recibe el foco; salir es la de aviso (ambar), nunca la principal.
+    const stay = ask.match(/<button[^>]*data-testid="open-leave-stay"[^>]*>/)?.[0] ?? ''
+    expect([/\sref="stay"/.test(stay), /\sclass="btn btn-primary"/.test(stay)]).toEqual([true, true])
+    expect(ask.match(/<button[^>]*data-testid="open-leave-discard"[^>]*>/)?.[0] ?? '').toMatch(/class="btn btn-caution"[^>]*@click="discardAndLeave"/)
+    const openScript = script('views/OpenTable.vue')
+    expect(openScript).toMatch(/if \(lost\.value\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
+    expect(openScript).toMatch(/defineExpose\(\{ leave \}\)/)
+    const board = script('views/BoardView.vue')
+    const view = board.slice(board.indexOf('function viewTable('), board.indexOf('}', board.indexOf('selectedId.value = serviceId\n')))
+    expect(view.indexOf('opening.value.leave(')).toBeGreaterThan(0)
+    expect(view.indexOf('opening.value.leave(')).toBeLessThan(view.indexOf('openingTable.value = null\n'))
+    expect(template(source('views/BoardView.vue'))).toMatch(/<OpenTable v-else-if="openingTable" ref="opening"/)
+  })
+  it('H06: above «Abrir», every allergy written whole with its tone, never folded; the summary no longer counts them', () => {
+    const open = template(source('views/OpenTable.vue'))
+    const bar = open.slice(open.indexOf('<div class="bar">'), open.indexOf('</div>', open.indexOf('data-testid="do-open"')))
+    const at = (testId: string) => bar.indexOf(`data-testid="${testId}"`)
+    expect([at('open-summary') >= 0, at('open-summary') < at('open-lines'), at('open-lines') < at('do-open')]).toEqual([true, true, true])
+    const list = bar.match(/<ul v-if="lines\.length > 0"[^>]*>[\s\S]*?<\/ul>/)?.[0] ?? ''
+    expect(list).toMatch(/v-for="\(line, index\) in lines"/)
+    expect(list).toMatch(/class="fc-tl-x open-line" :class="line\.alarming \? 'alarm' : 'warn'"/)
+    expect(list).toMatch(/\{\{ line\.text \}\}/)
+    expect(list).not.toMatch(/slice|v-show|<details|line-clamp/)
+    expect(script('views/OpenTable.vue')).toMatch(/const lines = computed\(\(\) => openLines\(rows\.value\)\)/)
+    expect(script('views/OpenTable.vue')).toMatch(/openSummary\(count\.value, chosen\.value\)/)
+    expect(`${body('.open-lines')};${body('.open-lines > .open-line')}`).not.toMatch(/max-height|overflow\s*:\s*hidden|display\s*:\s*none|line-clamp/)
+  })
+  it('H03: the allergy sheet waits for its command and closes only when it is confirmed or left unconfirmed', () => {
+    const sheet = script('views/AllergySheet.vue')
+    expect(sheet).toMatch(/const emit = defineEmits<\{ close: \[\] \}>\(\)/)                       // ya no emite la orden y se cierra
+    expect(sheet).not.toMatch(/emit\('run'/)
+    expect(sheet).toMatch(/send: \(path: string, body: Record<string, unknown>, description: string\) => Promise<Settlement>/)
+    // Las dos ordenes esperan su resultado; la hoja se cierra SOLO cuando notApplied no tiene nada que decir.
+    const closes = sheet.split('\n').filter(line => /emit\('close'\)/.test(line))
+    expect(closes).toHaveLength(2)
+    expect(closes.filter(line => !/^\s*if \((?:text|why)\) [\w.]+ = (?:text|why); else emit\('close'\)$/.test(line))).toEqual([])
+    expect(sheet).toMatch(/notApplied\(settled, restrictionSubject\(restriction\.kind\), 'retirado'\)/)
+    expect(sheet).toMatch(/notApplied\(settled, subject, 'anotado'\)/)
+    const view = template(source('views/AllergySheet.vue'))
+    const declareButton = view.match(/<button[^>]*data-testid="do-declare-restriction"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+    expect(declareButton).toMatch(/:disabled="locked \|\| sending !== null"/)
+    expect(declareButton).toMatch(/sending === DECLARE \? 'Anotando…' : 'Anotar alergia o intolerancia'/)
+    const removeButton = view.match(/<button[^>]*:data-testid="`do-remove-restriction-[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+    expect(removeButton).toMatch(/:disabled="locked \|\| sending !== null"/)
+    expect(removeButton).toMatch(/'Retirando…' : 'Retirar'/)
+    // El rechazo del alta, junto a su boton: en rojo si lo que no se ha anotado alarma (la regla de la franja), si no en ambar; el de
+    // retirar, en el ambar de .notice (la alergia sigue anotada).
+    const rejected = view.match(/<p v-if="declined"[^>]*>/)?.[0] ?? ''
+    expect(rejected).toMatch(/class="notice fc-al-no" :class="\{ alarm: declinedAlarm \}" role="alert" data-testid="declare-rejected"/)
+    expect(sheet).toMatch(/const alarm = restrictionAlarming\(\{ id: '', guestPosition, kind: draft\.kind, substance: text, severity: draft\.severity \}\)/)
+    expect(view.indexOf('data-testid="declare-rejected"')).toBeLessThan(view.indexOf('data-testid="do-declare-restriction"'))
+    expect(body('.notice.fc-al-no.alarm')).toMatch(/--danger-text/)
+    expect(body('.notice.fc-al-no')).not.toMatch(/danger/)
+    expect(view.match(/<p v-if="removeProblem"[^>]*>/)?.[0] ?? '').toMatch(/class="notice" /)
+  })
+  it('H03: the skip sheet waits too, in amber (red is only for allergies); the table card passes both sheets the command that settles', () => {
+    const skip = script('views/SkipSheet.vue')
+    expect(skip).not.toMatch(/emit\('confirm'/)
+    expect(skip).toMatch(/send: \(reason: string\) => Promise<Settlement>/)
+    expect(skip).toMatch(/const why = notApplied\(settled, courseName, 'omitido'\)\n\s*if \(why\) problem\.value = why; else emit\('close'\)/)
+    const skipView = template(source('views/SkipSheet.vue'))
+    expect(skipView.match(/<button[^>]*data-testid="do-skip-confirm"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '').toMatch(/:disabled="locked \|\| sending"[\s\S]*'Omitiendo…'/)
+    expect(skipView.match(/<p v-if="problem"[^>]*>/)?.[0] ?? '').toMatch(/class="notice fc-sk-problem"/)
+    expect(`${body('.fc-sk-problem')}`).not.toMatch(/danger/)
+    const card = template(source('views/TableCard.vue'))
+    expect(card.match(/<AllergySheet[^>]*>/)?.[0] ?? '').toMatch(/:send="settle"/)
+    expect(card.match(/<AllergySheet[^>]*>/)?.[0] ?? '').not.toMatch(/@run=/)
+    expect(card.match(/<SkipSheet[^>]*>/)?.[0] ?? '').toMatch(/:send="skip"/)
+    expect(card.match(/<SkipSheet[^>]*>/)?.[0] ?? '').not.toMatch(/@confirm=/)
+    expect(script('views/TableCard.vue')).toMatch(/const settled = await props\.sendSettled\(path, body, description\)/)
+    expect(template(source('views/BoardView.vue'))).toContain(':send-settled="sendSettled"')
+  })
+})
+
 // C3d (plan 2026-10-22, seccion 4.3): Costiña Cocina se lee a uno o dos metros, en una tablet horizontal de 1180 x 820. La hoja de la
 // cocina va en su propio bloque de style.css; aqui se miden sus reglas sin abrir un navegador (la E2E mide los botones de verdad).
 describe('Costiña Cocina reads at one or two metres (style.css)', () => {

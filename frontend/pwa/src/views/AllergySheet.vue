@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, type ComponentPublicInstance } from 'vue'
-import { draftProblem, DUPLICATE_PROBLEM, GUEST_PROBLEM, guestChoices, KINDS, newDraft, SEVERITIES, type RestrictionDraft } from '../abrir'
+import { draftProblem, DUPLICATE_PROBLEM, GUEST_PROBLEM, guestChoices, KINDS, newDraft, restrictionSubject, SEVERITIES, type RestrictionDraft } from '../abrir'
+import { notApplied } from '../commands'
 import { REASON_PROBLEM, reasonLabel, reasonOk, serviceCommand } from '../ficha'
+import { restrictionAlarming } from '../floor'
 import { guestLabel, plural, restrictionLabel } from '../labels'
 import { allergyList } from '../pases'
+import type { Settlement } from '../round'
 import type { BoardEntry, GuestRestriction } from '../types'
 import Icon from './Icon.vue'
 
@@ -12,10 +15,20 @@ import Icon from './Icon.vue'
 // esconde, atenua ni corta una alergia. Rojo solo si alarma; ambar lo que espera a cocina.
 // Lo que se puede hacer sale de lo que ANUNCIA el servidor para esta mesa (D3.1): «Retirar» con remove-restriction (antes en «Más
 // opciones») y el alta con declare-restriction (antes el <details> de la franja). Sin ninguna de las dos (una mesa terminada) la hoja
-// solo se lee. Cada toque es UNA orden con la version leida (F01), y la hoja se cierra para que el resultado se vea arriba (aviso u
-// orden sin confirmar). Lo unico que se comprueba aqui es el FORMATO, con los textos de abrir.ts (los del PC).
-const props = defineProps<{ entry: BoardEntry; tableName: string; locked: boolean }>()
-const emit = defineEmits<{ run: [path: string, body: Record<string, unknown>, description: string]; close: [] }>()
+// solo se lee. Cada toque es UNA orden con la version leida (F01). Lo unico que se comprueba aqui es el FORMATO, con los textos de
+// abrir.ts (los del PC).
+// C3e.1 (usabilidad 28-10, H03): antes la hoja se cerraba al tocar, sin esperar la respuesta: si el servidor RECHAZABA la anotacion (un
+// choque con otra pantalla), lo escrito se perdia y el aviso de arriba no decia que la alergia NO se habia anotado. Ahora cada orden
+// sale por send (TableCard, la orden incierta de siempre) y la hoja espera su resultado, con «Anotando…» o «Retirando…» en su boton
+// apagado. Confirmada o sin confirmar, se cierra (commands.ts, notApplied: la pendiente ya guarda los datos y se resuelve en su aviso).
+// Rechazada o sin salir, se QUEDA con la fila escrita (o el motivo de retirar) y lo dice en la hoja: en rojo si lo que NO se ha anotado
+// alarma (una alergia o una grave); en ambar si no, y si no se ha retirado (sigue anotada: el lado seguro). Cerrar la hoja mientras va
+// no se impide: entonces el resultado sale arriba, como antes.
+const props = defineProps<{
+  entry: BoardEntry; tableName: string; locked: boolean
+  send: (path: string, body: Record<string, unknown>, description: string) => Promise<Settlement>
+}>()
+const emit = defineEmits<{ close: [] }>()
 
 const service = computed(() => props.entry.service)
 const has = (action: string) => service.value.actions?.includes(action) === true
@@ -23,6 +36,15 @@ const items = computed(() => allergyList(service.value))
 const canDeclare = computed(() => has('declare-restriction'))
 const canRemove = computed(() => has('remove-restriction') && items.value.length > 0)
 const sub = computed(() => `${props.tableName} · ${plural(service.value.pax, 'persona', 'personas')}`)
+
+// C3e.1 (H03): la orden que va camino del servidor: DECLARE (el alta) o el id de la restriccion que se retira. Mientras tanto su boton
+// dice «Anotando…» o «Retirando…», apagado; los demas ya lo estan (locked).
+const DECLARE = 'declare'
+const sending = ref<string | null>(null)
+async function settle(what: string, path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
+  sending.value = what
+  try { return await props.send(path, body, description) } finally { sending.value = null }
+}
 
 // ---- Retirar: en DOS pasos dentro de la tarjeta de esa restriccion ----
 // C3e (revision): «Retirar» de una tarjeta abre ahi mismo su motivo (3 caracteres o mas) con «Volver» y la confirmacion (do-remove-
@@ -35,21 +57,28 @@ let reasonField: HTMLInputElement | null = null
 const setReasonField = (element: Element | ComponentPublicInstance | null) => { reasonField = element instanceof HTMLInputElement ? element : null }
 const list = ref<HTMLElement | null>(null)
 const reasonText = reasonLabel(['remove-restriction'])
+// C3e.1 (H03): mientras va la orden de retirar no se cambia de tarjeta: su resultado es de ESA tarjeta.
 function startRemove(restriction: GuestRestriction): void {
+  if (sending.value !== null) return
   removing.value = restriction.id; reason.value = ''; removeProblem.value = ''
   void nextTick(() => { reasonField?.focus({ preventScroll: true }); reasonField?.scrollIntoView({ block: 'nearest' }) })
 }
 function cancelRemove(): void {
+  if (sending.value !== null) return
   const id = removing.value
   removing.value = null; removeProblem.value = ''
   void nextTick(() => list.value?.querySelector<HTMLElement>(`[data-testid="remove-restriction-${CSS.escape(id ?? '')}"]`)?.focus({ preventScroll: true }))
 }
-function remove(restriction: GuestRestriction): void {
+async function remove(restriction: GuestRestriction): Promise<void> {
+  if (sending.value !== null) return
   if (!reasonOk(reason.value)) { removeProblem.value = REASON_PROBLEM; reasonField?.focus(); return }
   removeProblem.value = ''
-  emit('run', serviceCommand(service.value, 'remove-restriction'), { expectedVersion: props.entry.version, restrictionId: restriction.id, reason: reason.value.trim() },
+  const settled = await settle(restriction.id, serviceCommand(service.value, 'remove-restriction'),
+    { expectedVersion: props.entry.version, restrictionId: restriction.id, reason: reason.value.trim() },
     `Retirar restricción · ${restrictionLabel(restriction)} · ${props.tableName}`)
-  emit('close')
+  // Rechazada: el paso de retirar sigue abierto con su motivo, y dice por que (en ambar: la alergia sigue anotada).
+  const text = notApplied(settled, restrictionSubject(restriction.kind), 'retirado')
+  if (text) removeProblem.value = text; else emit('close')
 }
 
 // ---- Anotar: una fila como las de «Abrir mesa» (quien sin valor por defecto; Alergia y Grave por defecto) ----
@@ -67,16 +96,27 @@ function problemOf(): string {
   if (own) return own
   return draftProblem([...noted.value, draft], service.value.pax) === DUPLICATE_PROBLEM ? DUPLICATE_PROBLEM : ''
 }
-function declare(): void {
+// C3e.1 (H03): el rechazo del alta, aparte del problema de formato: la fila sigue escrita y «Toca otra vez» la manda de nuevo, con la
+// version releida. Se borra en el siguiente toque. En rojo si lo que NO se ha anotado alarma (una alergia o una grave, la regla de la
+// franja); si no, en ambar, como su tarjeta: el rojo es solo de lo que alarma.
+const declined = ref('')
+const declinedAlarm = ref(false)
+async function declare(): Promise<void> {
+  if (sending.value !== null) return
   const problem = problemOf()
   declareProblem.value = problem
+  declined.value = ''
   if (problem) return
   const text = draft.substance.trim()
   const guestPosition = draft.guest === 'all' ? null : draft.guest
-  emit('run', serviceCommand(service.value, 'declare-restriction'),
+  const subject = restrictionSubject(draft.kind)
+  const alarm = restrictionAlarming({ id: '', guestPosition, kind: draft.kind, substance: text, severity: draft.severity })
+  const settled = await settle(DECLARE, serviceCommand(service.value, 'declare-restriction'),
     { expectedVersion: props.entry.version, guestPosition, kind: draft.kind, substance: text, severity: draft.severity },
     `Declarar restricción · ${guestLabel(guestPosition)} · ${text} · ${props.tableName}`)
-  emit('close')
+  const why = notApplied(settled, subject, 'anotado')
+  declinedAlarm.value = alarm
+  if (why) declined.value = why; else emit('close')
 }
 
 // El foco entra en «Cerrar»; al cerrar vuelve a lo que abrio la hoja (sin desplazar la pantalla).
@@ -115,9 +155,11 @@ onBeforeUnmount(() => opener?.focus({ preventScroll: true }))
               </div>
               <p v-if="removeProblem" class="notice" role="alert" data-testid="allergy-problem"><Icon name="info" />{{ removeProblem }}</p>
               <div class="fc-al-rm-b">
-                <button type="button" class="btn" data-testid="remove-cancel" @click="cancelRemove"><Icon name="back" />Volver</button>
-                <button type="button" class="btn btn-caution" :disabled="locked" :aria-label="`Retirar ${item.text}`"
-                  :data-testid="`do-remove-restriction-${item.restriction.id}`" @click="remove(item.restriction)"><Icon name="x" />Retirar</button>
+                <button type="button" class="btn" :disabled="sending === item.restriction.id" data-testid="remove-cancel" @click="cancelRemove"><Icon name="back" />Volver</button>
+                <!-- C3e.1 (H03): mientras va, «Retirando…» y apagado; la hoja se cierra solo si se confirma o queda sin confirmar. -->
+                <button type="button" class="btn btn-caution" :disabled="locked || sending !== null" :aria-label="`Retirar ${item.text}`"
+                  :data-testid="`do-remove-restriction-${item.restriction.id}`" @click="remove(item.restriction)">
+                  <Icon name="x" />{{ sending === item.restriction.id ? 'Retirando…' : 'Retirar' }}</button>
               </div>
             </div>
             <button v-else type="button" class="btn btn-caution fc-al-remove" :aria-label="`Retirar ${item.text}`"
@@ -153,7 +195,10 @@ onBeforeUnmount(() => opener?.focus({ preventScroll: true }))
           </div>
         </div>
         <p v-if="declareProblem" class="notice" role="alert" data-testid="declare-problem"><Icon name="info" />{{ declareProblem }}</p>
-        <button type="button" class="btn btn-primary wide" :disabled="locked" data-testid="do-declare-restriction" @click="declare"><Icon name="plus" :stroke="2.2" />Anotar alergia o intolerancia</button>
+        <!-- C3e.1 (H03): rechazada, la fila sigue escrita y la hoja lo dice en rojo, junto al boton: esa alergia NO esta anotada. -->
+        <p v-if="declined" class="notice fc-al-no" :class="{ alarm: declinedAlarm }" role="alert" data-testid="declare-rejected"><Icon name="alert" :stroke="2.3" />{{ declined }}</p>
+        <button type="button" class="btn btn-primary wide" :disabled="locked || sending !== null" data-testid="do-declare-restriction" @click="declare">
+          <Icon name="plus" :stroke="2.2" />{{ sending === DECLARE ? 'Anotando…' : 'Anotar alergia o intolerancia' }}</button>
       </section>
     </div>
   </section>

@@ -52,7 +52,9 @@ provide(PHOTOS, photos)
 onUnmounted(() => photos.clear())
 // La ronda sale por la orden incierta de siempre. Su resultado decide que pasa con el borrador (bodega.ts, settlementOf): si no hubo
 // resultado pero ESTA orden quedo guardada como la pendiente, es incierta, nunca «no enviada» (no se manda dos veces).
-async function sendRound(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
+// C3e.1 (usabilidad 28-10, H03): por aqui salen tambien las hojas de alergias y de omitir de la ficha, que esperan su resultado para
+// quedarse con lo escrito si se rechaza (antes, sendRound).
+async function sendSettled(path: string, body: Record<string, unknown>, description: string): Promise<Settlement> {
   const outcome = await run(path, body, description)
   return settlementOf(outcome, runnerState.pending, { path, body: JSON.stringify(body) })
 }
@@ -144,8 +146,12 @@ function runFromCard(path: string, body: Record<string, unknown>, description: s
 }
 // «Ver mesa»: la ficha de esa mesa. Si ya esta abierta (en Carta o Bodega), vuelve a la ficha; si hay otra abierta, sale de ella como
 // con «Mesas» (con una ronda sin enviar, pregunta).
+// C3e.1 (usabilidad 28-10, H06): desde «Abrir mesa» sale tambien como con «Mesas»: con alguna alergia escrita, primero pregunta
+// (OpenTable, leave). «Visto» y «Servido» de la banda no sacan de la hoja.
+const opening = ref<InstanceType<typeof OpenTable> | null>(null)
 function viewTable(notice: ReadyNotice): void {
   const serviceId = notice.entry.service.id
+  if (openingTable.value !== null && opening.value) { opening.value.leave(() => { openingTable.value = null; selectedId.value = serviceId }); return }
   openingTable.value = null
   if (selectedId.value === serviceId) { card.value?.show(); return }
   if (selectedId.value !== null && card.value) { card.value.leave(() => { selectedId.value = serviceId }); return }
@@ -206,9 +212,9 @@ async function open(request: CommandRequest): Promise<void> {
     <TableCard v-if="selected" ref="card" :key="selected.service.id" :entry="selected" :table-name="names.table(selected.service.tableId)" :room-name="selectedTile?.roomName ?? ''"
       :configuration="configuration" :names="names" :products="products" :catalog-status="catalogStatus" :can-consume="canRound" :locked="locked"
       :uncertain="runnerState.pending !== null || runnerState.blocked !== null" :now="now" :done="cardDone"
-      :send-round="sendRound" @run="runFromCard" @back="selectedId = null" @bodega="refreshCatalog" />
+      :send-settled="sendSettled" @run="runFromCard" @back="selectedId = null" @bodega="refreshCatalog" />
 
-    <OpenTable v-else-if="openingTable" :key="openingTable" :table-id="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"
+    <OpenTable v-else-if="openingTable" ref="opening" :key="openingTable" :table-id="openingTable" :table-name="names.table(openingTable)" :room-name="openingTile?.roomName ?? ''"
       :capacity="tableConfig?.capacity ?? 0" :offers="configuration.offers" :occupied="openingTile?.entry != null" :locked="locked" :rejection="openRejection"
       :done="openDone" @open="open" @back="openingTable = null" />
 

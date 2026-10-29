@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { notApplied } from '../commands'
 import { REASON_PROBLEM, reasonOk } from '../ficha'
+import type { Settlement } from '../round'
 import Icon from './Icon.vue'
 
 // C3e (plan 2026-10-27, paso 3): omitir un pase, con su propia hoja. Antes el motivo era un campo compartido de «Más opciones», y se
 // escribia para pausar u omitir sin saber para cual. Aqui el motivo es SOLO de este pase. La hoja no envia nada: «Omitir» devuelve el
 // motivo y la ficha manda UNA orden skip con la version leida (F01), y solo si el servidor sigue anunciando omitir ese pase. Con borde
 // de aviso y nunca en rojo: el rojo es de las alergias. Lo unico que se comprueba aqui es el formato del motivo (3 caracteres o mas).
-const props = defineProps<{ courseName: string; locked: boolean }>()
-const emit = defineEmits<{ confirm: [reason: string]; close: [] }>()
+// C3e.1 (usabilidad 28-10, H03): como la hoja de alergias, ya no se cierra al tocar «Omitir»: send manda la orden (TableCard) y la hoja
+// espera su resultado con «Omitiendo…» en el boton apagado. Confirmada o sin confirmar, se cierra (commands.ts, notApplied); rechazada
+// o sin salir, se queda con el motivo escrito y dice por que, en ambar («Postre NO se ha omitido: …»): ese pase sigue en la mesa.
+const props = defineProps<{ courseName: string; locked: boolean; send: (reason: string) => Promise<Settlement> }>()
+const emit = defineEmits<{ close: [] }>()
 
 const reason = ref('')
 const problem = ref('')
@@ -18,10 +23,17 @@ const opener = document.activeElement instanceof HTMLElement ? document.activeEl
 onMounted(() => field.value?.focus())
 onBeforeUnmount(() => opener?.focus({ preventScroll: true }))
 
-function confirm(): void {
+const sending = ref(false)
+async function confirm(): Promise<void> {
+  if (sending.value) return
   if (!reasonOk(reason.value)) { problem.value = REASON_PROBLEM; field.value?.focus(); return }
   problem.value = ''
-  emit('confirm', reason.value.trim())
+  sending.value = true
+  const courseName = props.courseName
+  let settled: Settlement
+  try { settled = await props.send(reason.value.trim()) } finally { sending.value = false }
+  const why = notApplied(settled, courseName, 'omitido')
+  if (why) problem.value = why; else emit('close')
 }
 </script>
 
@@ -40,7 +52,8 @@ function confirm(): void {
     </div>
     <div class="sheet-foot fc-sk-foot">
       <button type="button" class="btn" data-testid="skip-cancel" @click="emit('close')"><Icon name="back" />Volver</button>
-      <button type="button" class="btn btn-caution" :disabled="locked" data-testid="do-skip-confirm" @click="confirm"><Icon name="skip" />Omitir {{ props.courseName }}</button>
+      <button type="button" class="btn btn-caution" :disabled="locked || sending" data-testid="do-skip-confirm" @click="confirm">
+        <Icon name="skip" />{{ sending ? 'Omitiendo…' : `Omitir ${props.courseName}` }}</button>
     </div>
   </section>
 </template>
