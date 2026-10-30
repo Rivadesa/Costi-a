@@ -23,7 +23,14 @@ Leer antes, en este orden:
   - El primer toque pregunta «¿Ninguno de estos 3 platos lleva marisco?», nombrando siempre las alergias e intolerancias, nunca las preferencias ni las negaciones.
   - Solo «Sí, a ninguno» manda la orden.
   - Las otras cuatro respuestas («2a, 3a, 4a, 5a») dejan todo como en C3e.1.
-- **Versión `0.46.2-c3e.2`**, solo la PWA del pase. Rama `fix/c3e2-segundo-paso-no-le-afecta`, sacada de `4e460a2`. Entra con el PR #102. El sha de la mezcla, la CI y el instalador se apuntan después de mezclar.
+- **Versión `0.46.2-c3e.2`**, solo la PWA del pase. Rama `fix/c3e2-segundo-paso-no-le-afecta`, sacada de `4e460a2`.
+- **Mezclada:** **`develop` = `0d755ac`** (Merge PR #102, el 30-10), con la punta `adeee5d` verificada en la CI (`git diff --stat` entre ella y el merge: vacío).
+- **CI del PR #102, leída en los registros** (29-10, todo en verde, CodeRabbit saltado):
+  - D0 97/97 en Ubuntu y en Windows;
+  - `desktop`: vitest 609, ClientChecks 288 y DesktopChecks;
+  - `windows-service`: 12; `windows-compile`, en verde;
+  - `postgres-http`, 6 min 18 s: PersistenceChecks 88, las 14 suites HTTP (`pwa_http` 8 en 196 s), Playwright 31 en 3,2 min y Realtime 13. `kitchen.spec` tardó 10,6 s y `mesas.spec` 11,9 y 12,0 s. La caché de apt: «Need to get 0 B».
+- **Instalador de `develop`:** `Costina-Setup-0.46.2-c3e.2.exe`, en el run 41032348890 (`Native Windows installer`, sobre `0d755ac`), artefacto `costina-windows-installer`. Estaba en curso al escribir esto: https://github.com/Rivadesa/Costi-a/actions/runs/41032348890
 - **Cómo se hizo:** un agente lo implementó y un revisor escéptico encontró cuatro cosas, que se arreglaron. La sesión principal corrigió el arreglo de la cuarta: con una preferencia, la pregunta dejaba de nombrar también la alergia.
 - **Batería completa:** `exit 0`, con vitest 609, Playwright 31 en 3,2 min (`kitchen.spec` en 16,2 s) y DesktopChecks en verde.
 - **Trampa nueva:** en el pase, la franja fija «Esperando al camarero» tapa el pie de la columna «Por revisar antes de enviar» (H50). Una prueba que mida un botón de esa columna y después lo toque tiene que centrarlo antes; si no, Playwright desplaza la pantalla para poder tocarlo y la medida ya no vale.
@@ -42,7 +49,7 @@ Leer antes, en este orden:
   - `da742fc` fix(pwa): las correcciones de la revisión final (la apertura en camino, de su mesa y de su hoja; los rechazos de las hojas que ya no se van con la relectura; el resultado y la otra pestaña; el conflicto de «No le afecta a …»; «no lo emplates» bajo un plato ya «Lista»; y «Salir sin abrir» en `mesas.spec`);
   - docs(native): el documento con las capturas, el informe en `docs/reviews/`, AGENTS, STATUS, las notas en C3e y C3d y la versión `0.46.1-c3e.1`;
   - docs(handoff): este traspaso.
-- **Instalador de `develop`:** `Costina-Setup-0.46.1-c3e.1.exe`, en el run 40861587023 (`Native Windows installer`, sobre `21f15ee`), artefacto `costina-windows-installer`: https://github.com/Rivadesa/Costi-a/actions/runs/40861587023
+- **Instalador de `develop` de C3e.1:** `Costina-Setup-0.46.1-c3e.1.exe`, en el run 40861587023 (`Native Windows installer`, sobre `21f15ee`), artefacto `costina-windows-installer` 12891589073 (84 MB, caduca el 03-11). Comprobaciones del instalador: 8 de 8. https://github.com/Rivadesa/Costi-a/actions/runs/40861587023
 
 ## Cómo se hizo
 
