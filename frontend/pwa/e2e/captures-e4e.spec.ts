@@ -54,10 +54,18 @@ test('captures of the kitchen review before sending, for the E4e doc', async ({ 
   await shot(tablet, 'cocina-por-revisar-antes-de-enviar-1180x820.png', true)
   // El pase decide: «Adaptado» un plato y «No le afecta a nada más» el resto de cada comensal (una orden por comensal). Revision de C3e.1
   // (H56): encima de ese boton, enteros, los platos que decide, y el boton los cuenta («No le afecta a ninguno de estos N platos»).
+  // C3e.2 (decision 1b del promotor, 29-10): ese boton solo pregunta («¿Ninguno de estos N platos lleva …?»); la orden es «Sí, a ninguno»
+  // (do-presend-rest-…), que sale en su sitio. Dos toques. La del comensal 3 (marisco) se captura abierta: cocina-no-le-afecta-pregunta.
   await tablet.getByTestId('do-presend-adapt-M4-p1-caliente-3').tap()
   await expect(tablet.getByTestId('presend-item-M4-p1-caliente-3')).toHaveCount(0, { timeout: 15_000 })
   for (const [guest, note] of [['3', 'no lleva marisco'], ['2', 'no lleva lactosa']] as const) {
     await tablet.getByTestId(`presend-rest-M4-${guest}`).locator('input').fill(note)
+    await tablet.getByTestId(`rest-ask-M4-${guest}`).tap()
+    if (guest === '3') {
+      await expect(tablet.getByTestId('rest-step-M4-3')).toContainText('lleva marisco?')
+      await tablet.getByTestId('presend-M4-3').scrollIntoViewIfNeeded()
+      await shot(tablet, 'cocina-no-le-afecta-pregunta-1180x820.png', true)
+    }
     await tablet.getByTestId(`do-presend-rest-M4-${guest}`).tap()
     await expect(tablet.getByTestId(`presend-M4-${guest}`)).toHaveCount(0, { timeout: 15_000 })
   }

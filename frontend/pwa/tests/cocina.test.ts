@@ -5,7 +5,8 @@ import {
   alsoText, AMBER_MINUTES, applyShortcut, CONFLICT_TEXT, countText, DARK_AMBER_MINUTES, DIRECT_DECISIONS, dishAlarming, dishes, dishNote, dishState, dishText,
   doneText, elapsedText, exceptionLine, isGluten, lineRestrictions, listoPerDish, MAX_GROUP_PREPARATIONS, MAX_GROUP_REVIEWS, markLabel, missingText, nextText,
   NOTE_SHORTCUTS, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince,
-  REMAKE_DECISION, remakeQuestion, restBody, restButton, restDishes, restOfGuest, REVIEW_DECISIONS, REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys,
+  REMAKE_DECISION, remakeQuestion, restBody, restButton, restConfirm, restDishes, restOfGuest, restQuestion, restSignature, restSubstances, REVIEW_DECISIONS,
+  REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys,
   seesWholeTable, shouldChime, stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
@@ -433,6 +434,83 @@ describe('reviews before sending (the pass)', () => {
       { course: course('p3', 'Postre', 'Pending', null, []), preparation: prep('c', 'Tarta de queso', 'cold', 2, { quantity: 1 }) }]
     expect(restDishes(named)).toBe('Ostra · Merluza á galega × 2 · Tarta de queso')
     expect([restButton(1), restButton(2), restButton(3)]).toEqual(['No le afecta a este plato', 'No le afecta a ninguno de estos 2 platos', 'No le afecta a ninguno de estos 3 platos'])
+  })
+  // C3e.2 (decision 1b del promotor, 29-10): el primer toque solo pregunta, con la sustancia; «Sí, a ninguno» es la orden.
+  it('C3e.2 (1b): the question names the substance: one, two («ni») or more («, … ni»), without repeating one', () => {
+    expect(restQuestion(3, ['marisco'])).toBe('¿Ninguno de estos 3 platos lleva marisco?')
+    expect(restQuestion(3, ['marisco', 'gluten'])).toBe('¿Ninguno de estos 3 platos lleva marisco ni gluten?')
+    expect(restQuestion(2, ['marisco', 'gluten', 'lactosa'])).toBe('¿Ninguno de estos 2 platos lleva marisco, gluten ni lactosa?')
+    expect(restQuestion(4, ['marisco', 'gluten', 'lactosa', 'frutos secos'])).toBe('¿Ninguno de estos 4 platos lleva marisco, gluten, lactosa ni frutos secos?')
+    // Iguales sin mirar mayusculas ni los espacios de los lados: la primera, tal como sale y sin esos espacios, en su orden.
+    expect(restQuestion(2, [' marisco ', 'gluten', 'Marisco', 'GLUTEN  ', 'lactosa'])).toBe('¿Ninguno de estos 2 platos lleva marisco, gluten ni lactosa?')
+    expect(restQuestion(2, ['Frutos secos', 'frutos secos'])).toBe('¿Ninguno de estos 2 platos lleva Frutos secos?')
+  })
+  it('C3e.2 (1b): with one dish «¿Este plato no lleva …?»; with no known substance, the button words as a question', () => {
+    expect(restQuestion(1, ['marisco'])).toBe('¿Este plato no lleva marisco?')
+    expect(restQuestion(1, ['marisco', 'gluten'])).toBe('¿Este plato no lleva marisco ni gluten?')
+    expect(restQuestion(1, ['marisco', 'gluten', 'lactosa'])).toBe('¿Este plato no lleva marisco, gluten ni lactosa?')
+    expect([restQuestion(3, []), restQuestion(3, ['', '  '])]).toEqual(['¿No le afecta a ninguno de estos 3 platos?', '¿No le afecta a ninguno de estos 3 platos?'])
+    expect([restQuestion(1, []), restQuestion(1, [' '])]).toEqual(['¿No le afecta a este plato?', '¿No le afecta a este plato?'])
+  })
+  it('C3e.2 (1b): the button of the question that sends: «Sí, a ninguno», or «Sí, no le afecta» with one dish', () => {
+    expect([restConfirm(1), restConfirm(2), restConfirm(3)]).toEqual(['Sí, no le afecta', 'Sí, a ninguno', 'Sí, a ninguno'])
+  })
+  it('C3e.2 (1b): its substances are those of the «Sin gluten» shortcut (the guest\'s, with the whole table\'s on its dishes)', () => {
+    const guest = presendReviews(board).find(row => row.entry.service.tableId === 'M2' && row.guestPosition === 2)!
+    expect(restSubstances(guest)).toEqual(['marisco'])
+    expect(restQuestion(restOfGuest(guest).length, restSubstances(guest))).toBe('¿Ninguno de estos 2 platos lleva marisco?')
+    // La de toda la mesa en uno de sus platos tambien aplica, como en noteShortcuts (H48): ahi sale «Sin gluten» y aqui, «gluten».
+    const both = [entry('M7', [unsent('p1', [pending('a', 2), prep('b', 'b', 'cold', 2, { state: 'Pending', reviewPending: true, restrictions: [SHELLFISH, GLUTEN], actions: ['review-preparation'] })])])]
+    const mixed = presendReviews(both)[0]
+    expect(restSubstances(mixed)).toEqual(['marisco', 'gluten'])
+    expect(noteShortcuts(mixed.restrictions).map(shortcut => shortcut.label)).toContain('Sin gluten')
+    expect(restQuestion(restOfGuest(mixed).length, restSubstances(mixed))).toBe('¿Ninguno de estos 2 platos lleva marisco ni gluten?')
+  })
+  it('C3e.2 (1b): what the question lets read changes if another screen decides one of its dishes or a restriction arrives; not with the version', () => {
+    const read = (courses: Course[], version = 7) => presendReviews([{ ...entry('M2', courses), version }]).find(row => row.guestPosition === 2)!
+    const before = restSignature(read([unsent('p2', [pending('principal-2', 2)]), unsent('p3', [pending('postre-2', 2, 'cold')])]))
+    expect(restSignature(read([unsent('p2', [pending('principal-2', 2)]), unsent('p3', [pending('postre-2', 2, 'cold')])], 8))).toBe(before)
+    expect(restSignature(read([unsent('p2', [pending('principal-2', 2)]), unsent('p3', [prep('postre-2', 'postre-2', 'cold', 2, { state: 'Pending', actions: [] })])]))).not.toBe(before)
+    const late = prep('postre-2', 'postre-2', 'cold', 2, { state: 'Pending', reviewPending: true, restrictions: [SHELLFISH, GLUTEN], actions: ['review-preparation'] })
+    expect(restSignature(read([unsent('p2', [pending('principal-2', 2)]), unsent('p3', [late])]))).not.toBe(before)
+    expect(restSignature(read([unsent('p2', [pending('principal-2', 2)]), unsent('p3', [{ ...pending('postre-2', 2, 'cold'), quantity: 2 }])]))).not.toBe(before)
+  })
+  // Revision de C3e.2: la pregunta no repite sustancias, asi que una restriccion de la MISMA sustancia con otro tipo o gravedad no cambia su
+  // texto ni sus platos; la linea de alergia de encima, si. Tambien la cierra.
+  it('C3e.2 (1b): what the question lets read also changes with the same substance under another kind, severity or id', () => {
+    const lactose: GuestRestriction = { id: 'r-lactosa', guestPosition: 2, kind: 'Intolerance', substance: 'lactosa', severity: 'Mild' }
+    const withRestrictions = (restrictions: GuestRestriction[]) => presendReviews([entry('M9', [unsent('p1', [
+      prep('a', 'a', 'hot', 2, { state: 'Pending', reviewPending: true, restrictions, actions: ['review-preparation'] }),
+      prep('b', 'b', 'cold', 2, { state: 'Pending', reviewPending: true, restrictions, actions: ['review-preparation'] })])])])[0]
+    const before = withRestrictions([lactose]), worse = withRestrictions([lactose, { ...lactose, id: 'r-lactosa-2', kind: 'Allergy', severity: 'Severe' }])
+    expect([restQuestion(2, restSubstances(before)), restQuestion(2, restSubstances(worse))]).toEqual(['¿Ninguno de estos 2 platos lleva lactosa?', '¿Ninguno de estos 2 platos lleva lactosa?'])
+    expect(restSignature(worse)).not.toBe(restSignature(before))
+    expect(restSignature(withRestrictions([{ ...lactose, severity: 'Severe' }]))).not.toBe(restSignature(before))       // la misma, mas grave
+    expect(restSignature(withRestrictions([{ ...lactose, kind: 'Allergy' }]))).not.toBe(restSignature(before))         // otro tipo
+    expect(restSignature(withRestrictions([{ ...lactose, id: 'r-otra' }]))).not.toBe(restSignature(before))            // retirada y vuelta a anotar
+    expect(restSignature(withRestrictions([lactose, { ...lactose, id: 'r-mesa', guestPosition: null }]))).not.toBe(restSignature(before)) // de toda la mesa
+    // Releer lo mismo no la cierra.
+    expect(restSignature(withRestrictions([{ ...lactose }]))).toBe(restSignature(before))
+  })
+  // Revision de C3e.2: la sustancia es texto libre («¿A qué?»). Escrita como negacion diria lo contrario, y una Preferencia no siempre es algo
+  // que un plato «lleva»: esas no se nombran. Las alergias e intolerancias SI, siempre (para eso esta el segundo paso); sin ninguna que
+  // nombrar, la pregunta sin sustancia.
+  it('C3e.2 (1b): negations and Preferences are not named, allergies and intolerances always are', () => {
+    expect(restQuestion(3, ['sin picante'])).toBe('¿No le afecta a ninguno de estos 3 platos?')
+    expect(restQuestion(3, ['marisco', 'Sin gluten'])).toBe('¿Ninguno de estos 3 platos lleva marisco?')
+    expect(restQuestion(1, ['no come cerdo'])).toBe('¿No le afecta a este plato?')
+    // Una palabra que solo EMPIEZA igual no es una negacion.
+    expect(restQuestion(2, ['nopal', 'sinapis'])).toBe('¿Ninguno de estos 2 platos lleva nopal ni sinapis?')
+    const vegetarian: GuestRestriction = { id: 'r-veg', guestPosition: 3, kind: 'Preference', substance: 'vegetariana', severity: 'Mild' }
+    const guest = (restrictions: GuestRestriction[]) => presendReviews([entry('M9', [unsent('p1', [
+      prep('a', 'a', 'hot', 3, { state: 'Pending', reviewPending: true, restrictions, actions: ['review-preparation'] }),
+      prep('b', 'b', 'cold', 3, { state: 'Pending', reviewPending: true, restrictions, actions: ['review-preparation'] })])])])[0]
+    expect(restSubstances(guest([SHELLFISH]))).toEqual(['marisco'])
+    expect(restSubstances(guest([vegetarian]))).toEqual([])
+    expect(restSubstances(guest([SHELLFISH, vegetarian]))).toEqual(['marisco'])
+    expect(restQuestion(2, restSubstances(guest([SHELLFISH, vegetarian])))).toBe('¿Ninguno de estos 2 platos lleva marisco?')
+    expect(restQuestion(2, restSubstances(guest([vegetarian])))).toBe('¿No le afecta a ninguno de estos 2 platos?')
+    expect(restSubstances(guest([{ ...CORIANDER, guestPosition: 3 }]))).toEqual([])
   })
   it('the group carries only courses that announce review-preparations, and at most the server limit', () => {
     const quiet = [entry('M5', [unsent('p1', [pending('a', 2)], ['skip']), unsent('p2', [pending('b', 2)])])]

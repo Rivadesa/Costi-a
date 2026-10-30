@@ -1,22 +1,34 @@
-# Traspaso 2026-10-29: C3e.1 (arreglos rápidos de usabilidad en Sala, Cocina y el PC); siguiente, E4f o el resto de los arreglos rápidos
+# Traspaso 2026-10-29: C3e.1 (arreglos rápidos de usabilidad en Sala, Cocina y el PC) y C3e.2 (segundo paso en «No le afecta a ninguno»); siguiente, E4f o el resto de los arreglos rápidos
 
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-27-c3e-costina-sala.md`. Ese sigue valiendo para C3e: sus 35 decisiones y sus ocho diferencias con la maqueta, las mesas de las pruebas (M1 a M8), el guion manual, la vuelta atrás y las trampas.
 
 Leer antes, en este orden:
 1. este documento;
-2. `docs/native/C3e.1-arreglos-rapidos-usabilidad.md`:
+2. `docs/native/C3e.2-segundo-paso-no-le-afecta.md`, el último corte, que es corto;
+3. `docs/native/C3e.1-arreglos-rapidos-usabilidad.md`:
    - lo que notará el promotor y los nueve defectos;
    - qué cambia, la revisión y las seis capturas en `docs/native/images/c3e.1/`;
    - lo que no cambia y las cifras;
-   - las cinco cosas para revisar con el promotor, el guion de laboratorio y lo diferido;
-3. `docs/reviews/2026-10-28-usabilidad-sala-y-cocina.md`, la evaluación de la que sale el corte:
+   - las cinco cosas para revisar con el promotor, ya contestadas el 29-10 («1b, 2a, 3a, 4a, 5a»), el guion de laboratorio y lo diferido;
+4. `docs/reviews/2026-10-28-usabilidad-sala-y-cocina.md`, la evaluación de la que sale el corte:
    - las notas de cada perfil (camarero 3,5, estación 3,5, pase 3, PC 3) y los 76 hallazgos H01 a H76;
    - en la sección 5, los arreglos rápidos (5a), los cortes mayores (5b) y las 15 decisiones para revisar (5c);
    - en la 6b, los ocho huecos que añadió la revisión final;
-4. el traspaso de C3e (arriba) y, para E4f, lo que dice;
-5. `dotnet/AGENTS.md`, el párrafo C3e.1 (y C3e, C3d, E4e), y `docs/STATUS.md`.
+5. el traspaso de C3e (arriba) y, para E4f, lo que dice;
+6. `dotnet/AGENTS.md`, los párrafos C3e.2 y C3e.1 (y C3e, C3d, E4e), y `docs/STATUS.md`.
 
-## Estado
+## C3e.2 (29-10, después de C3e.1)
+
+- **Qué es:** la decisión 1b del promotor. «No le afecta a ninguno de estos N platos», en el pase, va en dos pasos, como «Rehacer».
+  - El primer toque pregunta «¿Ninguno de estos 3 platos lleva marisco?», nombrando siempre las alergias e intolerancias, nunca las preferencias ni las negaciones.
+  - Solo «Sí, a ninguno» manda la orden.
+  - Las otras cuatro respuestas («2a, 3a, 4a, 5a») dejan todo como en C3e.1.
+- **Versión `0.46.2-c3e.2`**, solo la PWA del pase. Rama `fix/c3e2-segundo-paso-no-le-afecta`, sacada de `4e460a2`. Entra con el PR #102. El sha de la mezcla, la CI y el instalador se apuntan después de mezclar.
+- **Cómo se hizo:** un agente lo implementó y un revisor escéptico encontró cuatro cosas, que se arreglaron. La sesión principal corrigió el arreglo de la cuarta: con una preferencia, la pregunta dejaba de nombrar también la alergia.
+- **Batería completa:** `exit 0`, con vitest 609, Playwright 31 en 3,2 min (`kitchen.spec` en 16,2 s) y DesktopChecks en verde.
+- **Trampa nueva:** en el pase, la franja fija «Esperando al camarero» tapa el pie de la columna «Por revisar antes de enviar» (H50). Una prueba que mida un botón de esa columna y después lo toque tiene que centrarlo antes; si no, Playwright desplaza la pantalla para poder tocarlo y la medida ya no vale.
+
+## Estado de C3e.1
 
 - **`develop` = `21f15ee`** (Merge PR #100: C3e.1, el 29-10). Versión **`0.46.1-c3e.1`**, esquema v8.
 - **C3e.1 está mezclada** desde la rama `fix/c3e1-arreglos-rapidos-usabilidad`, sacada de `dd7c78c` (Merge PR #99), con la punta `8f08d83` verificada en la CI (`git diff --stat` entre ella y el merge: vacío).
@@ -101,7 +113,7 @@ Cada cosa necesita su propio permiso:
    - la orden sin confirmar a la vista (H21).
 3. **Los cortes mayores** de la sección 5b: Sala con avisos que se ven, el pase con carga, la estación con volumen y el cierre de mesa en el PC.
 4. **Para el promotor**, sin bloquear nada:
-   - las cinco cosas para revisar del documento de C3e.1; la primera es si «No le afecta a ninguno de estos N platos» lleva un segundo paso;
+   - las cinco del documento de C3e.1 están contestadas (29-10); la 5c (que «Adaptado» devuelva a la estación un plato ya hecho) no se ha decidido;
    - las 15 decisiones de la sección 5c del informe;
    - las 35 decisiones de C3e;
    - el pie de C3b «Los importes solo se ven en Caja.» (ADR-007).

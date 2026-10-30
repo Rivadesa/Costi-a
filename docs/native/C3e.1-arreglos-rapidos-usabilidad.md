@@ -282,6 +282,16 @@ Todo en este PC el 29-10, con la versión `0.46.1-c3e.1`. La batería completa s
 
 ## Para revisar con el promotor
 
+*Contestadas el 29-10 («1b, 2a, 3a, 4a, 5a»):*
+
+1. **b:** «No le afecta a ninguno de estos N platos» lleva un segundo paso, como «Rehacer». Se hace en C3e.2 (`0.46.2-c3e.2`, `C3e.2-segundo-paso-no-le-afecta.md`).
+2. **a:** se queda «Mesa abierta · Mesa 5 ✓».
+3. **a:** la banda no se recorta. Su tamaño va al corte «Sala: avisos que se ven» (H18, H23).
+4. **a:** el atajo «Sin gluten» sigue solo para «gluten», «celíaco» y «celiaquía».
+5. **a:** la estación sigue pudiendo marcar «Listo» con una revisión pendiente. La opción c, que «Adaptado» devuelva a la estación un plato ya hecho, no se ha decidido.
+
+Las preguntas, tal como se hicieron:
+
 1. **«No le afecta a ninguno de estos N platos», ahora arriba.** Con un toque decide todos los platos que quedan del comensal, también el que lleva el alérgeno si aún no se ha adaptado. Los platos van escritos encima y la nota es obligatoria. ¿Se le pone un segundo paso, como a «Rehacer»?
 2. **«Mesa abierta · Mesa 5 ✓» en lugar de «Mesa 5 abierta ✓».** Es para que concuerde con cualquier nombre de mesa («Reservado 2»).
 3. **Con varias alergias largas en un pase, la banda del móvil puede pasar de 400 px** y empujar el contenido. No se esconde ninguna línea. Va con la píldora fija y la banda que no mueve nada (H18, H23).
