@@ -120,8 +120,9 @@ Cada cosa necesita su propio permiso:
    - la orden sin confirmar a la vista (H21).
 3. **Los cortes mayores** de la sección 5b: Sala con avisos que se ven, el pase con carga, la estación con volumen y el cierre de mesa en el PC.
 4. **Para el promotor**, sin bloquear nada:
-   - las cinco del documento de C3e.1 están contestadas (29-10); la 5c (que «Adaptado» devuelva a la estación un plato ya hecho) no se ha decidido;
-   - las 15 decisiones de la sección 5c del informe;
+   - las cinco del documento de C3e.1 están contestadas (29-10). Lo que quedaba de la 5 (el «Adaptado» sobre un plato ya hecho) lo decidió la 5 de la sección 5c el 02-11: con el plato hecho no se ofrece «Adaptado» y el pase elige entre «No le afecta» y «Rehacer»;
+   - **la recapitulación del 02-11** (`docs/reviews/2026-11-02-recapitulacion.md`): qué está hecho, por qué crece, qué falta para abrir (lo legal primero), qué depende del promotor y cuatro propuestas para que no se desborde;
+   - las 15 decisiones de la sección 5c del informe están contestadas (02-11, «Usa tus recomendaciones»): la tabla está en 5c, con el corte de cada una. La 15 manda hacer la prueba de 30 minutos con aparatos reales ANTES de E4f, y la 9 deja una regla de numeración de partida que el promotor puede cambiar;
    - las 35 decisiones de C3e;
    - el pie de C3b «Los importes solo se ven en Caja.» (ADR-007).
 
