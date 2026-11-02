@@ -2,7 +2,7 @@
 
 **Versión revisada:** 0.46.0-c3e, 28-10-2026 (`develop` `a1ca7f6`).
 
-**Qué se ha hecho después:** el 29-10 el promotor aprobó los arreglos rápidos («Haz los arreglos rápidos»). Los seis primeros de la sección 5a, menos H21, se entregaron en C3e.1 (`0.46.1-c3e.1`): H51, H34 (la parte de texto), H19, H06, H03, H53, H56, H48 y H20. Ver `docs/native/C3e.1-arreglos-rapidos-usabilidad.md`. Los números de línea del anexo son los de `a1ca7f6`.
+**Qué se ha hecho después:** el 29-10 el promotor aprobó los arreglos rápidos («Haz los arreglos rápidos»). Los seis primeros de la sección 5a, menos H21, se entregaron en C3e.1 (`0.46.1-c3e.1`): H51, H34 (la parte de texto), H19, H06, H03, H53, H56, H48 y H20. Ver `docs/native/C3e.1-arreglos-rapidos-usabilidad.md`. Los números de línea del anexo son los de `a1ca7f6`. Las cinco decisiones que dejó C3e.1 se contestaron el 29-10 (la 1b se hizo en C3e.2, `0.46.2-c3e.2`). Las 15 de la sección 5c se contestaron el 02-11, con las recomendaciones del informe: ver la tabla en 5c.
 
 **De dónde salen los datos:**
 - 144 pantallas reales medidas con el motor de pruebas, en el móvil, la tableta vertical de sala, la tablet de cocina y un navegador.
@@ -375,6 +375,27 @@ Son cosas que aprobaste y que la revisión cuestiona. Ninguna es un error; decid
 13. El aviso de almacenamiento siempre al pie (H45) y «Cambiar» en la franja de alergias (H09).
 14. Un aviso de «pide la cuenta» sin importes, frente a la regla de no llevar nada de dinero al móvil (H25).
 15. ¿Se hace la prueba en aparatos reales antes o después de E4f? (H70)
+
+**Contestadas el 02-11-2026.** El promotor dijo: «Usa tus recomendaciones». Así quedan, con el corte en que entra cada una. Ninguna se programa sin su permiso para ese corte.
+
+| # | Respuesta | Qué se hará | Dónde entra |
+|---|---|---|---|
+| 1 | b | Un tono opcional para «listo para servir», apagado de partida, que cada móvil puede encender. Solo suena con la aplicación abierta. | Corte «Sala: avisos que se ven» (5b) |
+| 2 | b | Una píldora fija en la barra de abajo («Mesa 5 · Aperitivos listo ↑») que no mueve nada y lleva a la mesa. «Servido» se toca en la ficha. | «Sala: avisos que se ven» |
+| 3 | b | Tras «Listo», la comanda se queda 8–10 s con «Hecho ✓» y «Deshacer». Necesita una orden nueva en el motor. | «Estación con volumen y cambios» |
+| 4 | b | En el pase, un tono distinto para un comensal nuevo por revisar, con «espera desde hace N min» y orden por antigüedad. | «Pase con carga» |
+| 5 | c | Con el plato ya hecho, el pase no ofrece «Adaptado»: elige entre «No le afecta» y «Rehacer», con la nota de cómo adaptarlo. «Listo» sigue como está, como se contestó el 29-10. | «Pase con carga» |
+| 6 | b | Los atajos llevan la sustancia: «No lleva marisco» en lugar de «No lo lleva». («Sin gluten» solo con gluten ya está hecho en C3e.1). | «Pase con carga» |
+| 7 | b | En el pase, primero lo que pide acción (por decidir y listo para validar) y después el resto, por antigüedad. | «Pase con carga» |
+| 8 | b | La ronda sin enviar y la mesa a medio abrir se guardan en ese móvil hasta enviarlas o descartarlas. Al volver se pregunta. | «Sala: avisos que se ven» |
+| 9 | a | La regla de numeración de comensales se escribe en el PC y sale en «Abrir mesa», en la hoja de alergias y en cocina. Regla de partida, hasta que el promotor escriba la suya: «el 1 es el de espaldas a la puerta y se cuenta en el sentido de las agujas del reloj». | «Cierre de mesa y personal en el PC» |
+| 10 | a | Terminar y liberar siguen siendo del responsable. El botón del puesto lo dice («Terminar y liberar es del responsable · Entrar») y vuelve a la misma mesa. El PIN por persona, en su turno (E5). | «Cierre de mesa y personal en el PC» |
+| 11 | b | Ya lo barato: letra mayor en la tableta vertical de sala y la sustancia de la alergia en mayúsculas en cocina. El resto, tras la prueba con aparatos. | Resto de arreglos rápidos (5a) |
+| 12 | b | Palabras: «pase» solo para el puesto que valida (los platos del menú, por su nombre); «Servido» igual en todas partes; «3 + 1 adaptada»; la marca «VUELVE DEL PASE» en lugar de «Rehecho». | Resto de arreglos rápidos |
+| 13 | b | El aviso de almacenamiento solo cuando hay un problema. En la franja de alergias, «Ver y anotar alergias», con el formulario de una nueva arriba. | Resto de arreglos rápidos |
+| 14 | b | Un botón «Pide la cuenta» que avisa al PC de Caja, sin ningún importe ni precio. | «Cierre de mesa y personal en el PC» |
+| 15 | a | La prueba de 30 minutos con aparatos reales (apartado 6) va ANTES de E4f. La hace el promotor. | Antes de E4f |
+
 
 ---
 
