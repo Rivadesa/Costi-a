@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type BrowserContextOptions, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { checkScreen, deviceIdOf, deviceName, finishAndRelease, MAIN, openTable, pairThroughTheUi, revokeDevice, watch } from './support'
+import { checkScreen, deviceIdOf, finishAndRelease, MAIN, openTable, pairThroughTheUi, revokeDevice, RUN, watch } from './support'
 
 // F0.2 (plan por fases 03-11, corte 0.2; usabilidad 28-10, H01; decision 8b): las capturas de docs/native/images/f0.2/ (Costina Sala en el
 // movil de 375 x 812: la pregunta al volver a una mesa a medio abrir y la pregunta al volver a una mesa con una ronda sin enviar, las dos
@@ -27,7 +27,7 @@ test('captures of Costina Sala, the saved open sheet and the saved round, for th
   expect(MAIN, 'E2E_MAIN_TOKEN is required').not.toBe('')
   mkdirSync(DIR, { recursive: true })
   const leaks: string[] = [], violations: string[] = []
-  const name = deviceName('f02')
+  const name = `Movil de prueba F0.2 ${RUN}`
   let context: BrowserContext | null = null
   const m5 = await openTable(request, 'M5', 4)
   try {
