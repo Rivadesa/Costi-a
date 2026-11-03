@@ -210,6 +210,12 @@ export const storedOrder = async (page: Page, database = databaseOf('sala')) => 
   const order = await stored(page, database, 'pending', 'uncertain') as { description?: unknown } | undefined
   return unread(order) ?? (order ? String(order.description) : null)
 }
+// F0.2 (borrador.ts): un borrador guardado en este movil (la ronda de un servicio, `draft:round:<id>`; la mesa a medio abrir,
+// `draft:open:<mesa>`), tal cual, o null si ese hueco esta vacio; una base que no se pudo leer sale como '<absent>' o '<error>'.
+export const storedDraft = async (page: Page, key: string, database = databaseOf('sala')) => {
+  const draft = await stored(page, database, 'pending', key)
+  return unread(draft) ?? (draft ?? null)
+}
 export const storedToken = async (page: Page, database: string) => {
   const credential = await stored(page, database, 'device', 'credential') as { token?: unknown } | undefined
   return unread(credential) ?? (credential ? String(credential.token ?? '') : '')

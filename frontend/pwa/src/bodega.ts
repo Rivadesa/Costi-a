@@ -73,7 +73,8 @@ export function addProblem(result: AddResult): string {
 // ---- La ronda en la bandeja ----
 export const EMPTY_ROUND = 'Ronda vacía. Copa o Botella suman 1 para toda la mesa.'
 export const ROUND_SENT = 'Ronda enviada: ya sale en «Lo que lleva la mesa».'
-export const ROUND_HINT = 'Sin enviar. Cambia la cantidad con − y +, o para quién en «Para». Si la página se recarga, la ronda se pierde.'
+// F0.2 (H01, decision 8b): la ronda se guarda en este movil (borrador.ts); antes decia «Si la página se recarga, la ronda se pierde.».
+export const ROUND_HINT = 'Sin enviar. Cambia la cantidad con − y +, o para quién en «Para». Se guarda en este móvil hasta enviarla o descartarla.'
 export const ROUND_CONFLICT = 'La mesa ha cambiado mientras tanto y se ha vuelto a leer: revisa la ronda y envíala de nuevo.'
 // Sin confirmar, la ronda ya ES la orden incierta (arriba, en su panel): la bandeja vacia lo dice, para que nadie la vuelva a pedir.
 export const ROUND_UNCONFIRMED = 'La ronda está sin confirmar: mírala arriba, en «Orden sin confirmar». No la repitas: se reintenta con el mismo identificador.'

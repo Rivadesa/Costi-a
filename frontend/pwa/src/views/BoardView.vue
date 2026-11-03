@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, provide, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, reactive, ref, shallowRef, watch } from 'vue'
 import type { Session } from '../api'
 import { settlementOf } from '../bodega'
 import { reconnections, useCatalog } from '../catalog'
@@ -16,6 +16,8 @@ import FloorGrid from './FloorGrid.vue'
 import Icon from './Icon.vue'
 import MineList from './MineList.vue'
 import OpenTable from './OpenTable.vue'
+import { BackStack, browserHistory } from '../atras'
+import { clearOpenDraft } from '../borrador'
 import ReadyBanner from './ReadyBanner.vue'
 import StatusPanel from './StatusPanel.vue'
 import TableCard from './TableCard.vue'
@@ -164,6 +166,35 @@ function viewTable(notice: ReadyNotice): void {
 
 // Cambiar de pantalla (plano, ficha, «Abrir mesa») empieza arriba, no donde se quedo el plano.
 watch([selectedId, openingTable], () => { window.scrollTo({ top: 0 }) })
+// F0.2 (plan por fases, corte 0.2; usabilidad 28-10, H01): «Atrás» del sistema baja UN nivel (Carta o Bodega → ficha; ficha o «Abrir
+// mesa» → plano) con la MISMA pregunta que «Mesas» (atras.ts, BackStack). Los niveles abiertos son lo que se ve: la ficha, su panel de
+// Carta o Bodega y la hoja de abrir; cada uno que se abre deja una entrada en el historial y cada uno que la pantalla cierra la consume.
+// Un popstate nuestro cierra el de arriba; si ese nivel pregunta (leave devuelve true), la entrada se repone (keep) y se consume al
+// confirmar. El watch es sincrono: un nivel que se cierra DENTRO del popstate no debe consumir otra entrada.
+const back = new BackStack(browserHistory())
+const levels = computed(() => (selectedId.value !== null ? 1 : 0) + (selectedId.value !== null && (card.value?.panel ?? 'ficha') !== 'ficha' ? 1 : 0)
+  + (openingTable.value !== null ? 1 : 0))
+let closingFromPop = false
+watch(levels, (now, before) => { if (now > before) back.enter(); else if (now < before && !closingFromPop) back.exit() }, { flush: 'sync' })
+function closeTop(): boolean {
+  if (openingTable.value !== null) {
+    const sheet = opening.value
+    if (sheet) return sheet.leave(() => { openingTable.value = null })
+    openingTable.value = null; return false
+  }
+  if (selectedId.value !== null && card.value) {
+    if (card.value.panel !== 'ficha') { card.value.show(); return false }
+    return card.value.leave(() => { selectedId.value = null })
+  }
+  return false
+}
+function onPop(): void {
+  if (back.pop() !== 'ours') return
+  closingFromPop = true
+  try { if (closeTop()) back.keep() } finally { closingFromPop = false }
+}
+onMounted(() => { window.addEventListener('popstate', onPop) })
+onUnmounted(() => { window.removeEventListener('popstate', onPop) })
 // «Actualizar» relee tambien la configuracion, como RefreshAll en el puesto.
 function refreshAll(): void { void live.refresh(); void reload() }
 
@@ -219,6 +250,8 @@ async function open(request: CommandRequest): Promise<void> {
     if (here) openRejection.value = { code: settled.kind === 'rejected' ? settled.code : 'not_sent', text: runnerState.notice || 'La orden no se ha enviado: la mesa no se ha abierto.' }
     return
   }
+  // F0.2 (H01): confirmada o sin confirmar, las filas ya viajan en la orden: lo guardado en este movil para esa mesa se borra.
+  void clearOpenDraft(tableId).catch(() => undefined)
   if (here) openingTable.value = null
   const serviceId = outcome?.kind === 'confirmed' ? (outcome.response as { serviceId?: unknown } | null)?.serviceId : undefined
   // Solo si seguia en la hoja (revision final de C3e): si la dejo, ni desde el plano se le lleva a la ficha, que cambiaria bajo su dedo.

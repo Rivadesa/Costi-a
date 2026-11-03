@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   draftLines, draftProblem, guestChoices, initialPax, KINDS, LEAVE_DISCARD, LEAVE_STAY, LEAVE_TITLE, lostText, MAX_DRAFTS, newDraft, offerGroups, openLines,
   openRequest, openSummary, paxChoices, paxLimit, paxProblem, SEVERITIES, type RestrictionDraft,
 } from '../abrir'
+import { clearOpenDraft, loadOpenDraft, RECOVER_OPEN_NO, RECOVER_OPEN_TITLE, RECOVER_OPEN_YES, recoverOpenText, saveOpenDraft, type OpenDraft } from '../borrador'
 import type { OfferChoice } from '../configuration'
 import type { CommandRequest } from '../ficha'
 import { restrictionAlarming } from '../floor'
 import { offerKindLabel, plural } from '../labels'
 import Icon from './Icon.vue'
+import RecoverSheet from './RecoverSheet.vue'
 
 // C3a: hoja «Abrir mesa» desde una mesa libre del plano. C3e (plan 2026-10-27, paso 3; modelo maq15:789-795 y abrir.png): rehecha con
 // abrir.ts, donde esta TODA la logica y su prueba sin DOM; aqui solo se pinta. Tres toques: la mesa, las personas y «Abrir Mesa 5»; los
@@ -133,6 +135,34 @@ function submit(): void {
   emit('open', openRequest({ id: props.tableId, name: props.tableName }, count.value, chosen.value, rows.value))
 }
 
+// ---- F0.2 (plan por fases, corte 0.2; usabilidad 28-10, H01; decision 8b): lo escrito se guarda en ESTE movil ----
+// Las personas (si se tocaron), el menu (si se eligio) y las filas se guardan en borrador.ts con cada cambio, y se borran al quedar la
+// hoja como nueva, con «Salir sin abrir» o al abrir la mesa (BoardView, con la orden confirmada o sin confirmar: las filas ya viajan en
+// ella). Al montar la hoja con algo guardado se PREGUNTA (RecoverSheet) antes de recuperarlo; mientras, lo guardado no se toca. Un menu
+// guardado que ya no se ofrece no se recupera (la hoja propone el de hoy). Un fallo del almacen nunca rompe la hoja.
+const recover = ref<OpenDraft | null>(null)
+onMounted(async () => {
+  const draft = await loadOpenDraft(props.tableId).catch(() => null)
+  if (draft && !paxTouched.value && !touched.value && rows.value.length === 0) recover.value = draft
+})
+const recoverOffer = computed(() => recover.value === null ? '' : props.offers.find(offer => offer.id === recover.value?.offerId)?.name ?? '')
+function recoverOpen(): void {
+  const draft = recover.value
+  recover.value = null
+  if (!draft) return
+  if (draft.pax !== null) { pax.value = draft.pax; paxTouched.value = true }
+  if (draft.offerId && props.offers.some(offer => offer.id === draft.offerId)) pick(draft.offerId)
+  rows.value = draft.rows.map(row => ({ ...row, key: ++lastKey }))
+}
+function dropOpen(): void { recover.value = null; void clearOpenDraft(props.tableId).catch(() => undefined) }
+watch(() => JSON.stringify([count.value, paxTouched.value, offerId.value, touched.value, rows.value]), () => {
+  if (recover.value !== null) return
+  const something = paxTouched.value || touched.value || rows.value.length > 0
+  const input = { pax: paxTouched.value && Number.isInteger(count.value) ? count.value : null, offerId: touched.value ? offerId.value : '',
+    rows: rows.value.map(({ guest, kind, substance, severity }) => ({ guest, kind, substance, severity })) }
+  void (something ? saveOpenDraft(props.tableId, input) : clearOpenDraft(props.tableId)).catch(() => undefined)
+})
+
 // ---- Salir: con alguna alergia escrita, primero se pregunta (C3e.1, H06) ----
 // Como la ronda en la ficha (TableCard.vue, leave): «Mesas» sale por aqui y «Ver mesa» de la banda tambien, con `then` (ir a esa mesa) en
 // lugar de volver al plano. Sin nada escrito (lostText vacio) sale sin preguntar. El foco va a «Seguir abriendo», la opcion segura.
@@ -143,15 +173,18 @@ function submit(): void {
 const lost = computed(() => lostText(rows.value))
 const leaving = ref(false)
 let afterLeave: (() => void) | null = null
-function leave(then?: () => void): void {
-  if (lost.value && !(props.sending && submitted)) { afterLeave = then ?? null; leaving.value = true; return }
+// F0.2: devuelve si pregunto (BoardView, atras.ts: «Atrás» del sistema).
+function leave(then?: () => void): boolean {
+  if (lost.value && !(props.sending && submitted)) { afterLeave = then ?? null; leaving.value = true; return true }
   if (then) then(); else emit('back')
+  return false
 }
 const stay = ref<HTMLButtonElement | null>(null)
 watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()); else afterLeave = null })
 function discardAndLeave(): void {
   const then = afterLeave
   leaving.value = false
+  void clearOpenDraft(props.tableId).catch(() => undefined)   // F0.2: «Salir sin abrir» es descartar lo guardado
   if (then) then(); else emit('back')
 }
 defineExpose({ leave })
@@ -269,6 +302,9 @@ defineExpose({ leave })
     </div>
 
     <!-- C3e.1 (H06): salir con alergias escritas, como salir de la mesa con una ronda sin enviar: las filas, enteras, para decidir. -->
+    <!-- F0.2 (H01): lo guardado en este movil para esta mesa: se pregunta antes de recuperarlo; «Empezar de cero» lo borra. -->
+    <RecoverSheet v-if="recover" test-id="open-recover" :title="RECOVER_OPEN_TITLE" :text="recoverOpenText(recover, recoverOffer)" :lines="draftLines(recover.rows)"
+      :yes="RECOVER_OPEN_YES" :no="RECOVER_OPEN_NO" @yes="recoverOpen" @no="dropOpen" />
     <template v-if="leaving">
       <div class="scrim" aria-hidden="true" @click="leaving = false"></div>
       <section class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="open-leave-title" aria-describedby="open-leave-text" data-testid="open-leave-sheet"

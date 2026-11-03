@@ -34,7 +34,9 @@ const capturesC3c = (process.env.C3C_CAPTURES ?? '') !== ''
 const capturesE4e = (process.env.E4E_CAPTURES ?? '') !== ''
 const capturesC3d = (process.env.C3D_CAPTURES ?? '') !== ''
 const capturesC3e = (process.env.C3E_CAPTURES ?? '') !== ''
-const CAPTURE_SPECS = /captures(-c3b|-c3c|-e4e|-c3d|-c3e)?\.spec\.ts$/
+// F0.2: con F02_CAPTURES=<carpeta>, solo e2e/captures-f02.spec.ts (la ronda y la mesa a medio abrir guardadas en el movil).
+const capturesF02 = (process.env.F02_CAPTURES ?? '') !== ''
+const CAPTURE_SPECS = /captures(-c3b|-c3c|-e4e|-c3d|-c3e|-f02)?\.spec\.ts$/
 const KITCHEN_SPECS = /kitchen\.spec\.ts$/
 const SALA_SPECS = /mesas\.spec\.ts$/
 
@@ -59,10 +61,12 @@ export default defineConfig({
             ? [{ name: 'captures-c3d', testMatch: /captures-c3d\.spec\.ts$/, use: TABLET }]
             : capturesC3e
               ? [{ name: 'captures-c3e', testMatch: /captures-c3e\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
-              : [
-                  { name: 'desktop', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS, SALA_SPECS], use: { ...devices['Desktop Chrome'] } },
-                  { name: 'mobile', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS], use: MOBILE },
-                  { name: 'tableta', testMatch: KITCHEN_SPECS, use: TABLET },
-                  { name: 'sala-vertical', testMatch: SALA_SPECS, use: SALA_VERTICAL },
-                ],
+              : capturesF02
+                ? [{ name: 'captures-f02', testMatch: /captures-f02\.spec\.ts$/, use: { ...devices['Desktop Chrome'], hasTouch: true } }]
+                : [
+                    { name: 'desktop', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS, SALA_SPECS], use: { ...devices['Desktop Chrome'] } },
+                    { name: 'mobile', testIgnore: [CAPTURE_SPECS, KITCHEN_SPECS], use: MOBILE },
+                    { name: 'tableta', testMatch: KITCHEN_SPECS, use: TABLET },
+                    { name: 'sala-vertical', testMatch: SALA_SPECS, use: SALA_VERTICAL },
+                  ],
 })

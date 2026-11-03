@@ -1,8 +1,7 @@
 import { expect, test, type APIRequestContext, type BrowserContext } from '@playwright/test'
 import {
   API, asMain, checkDevice, checkScreen, createRoomStation, databaseOf, deactivateStation, deviceContext, deviceName, finishAndRelease, kitchenValidates,
-  MAIN, pairByApi, pairThroughTheUi, post, press, read, recordVibrations, revokeDevice, RUN, salaTable, storedToken, vibrations, watch,
-} from './support'
+  MAIN, pairByApi, pairThroughTheUi, post, press, read, recordVibrations, revokeDevice, RUN, salaTable, storedToken, vibrations, watch, storedDraft } from './support'
 
 // C3e (plan 2026-10-27, paso 4; plan 2026-10-22, seccion 4.4): «Mis mesas» de Costina Sala contra el MOTOR REAL, en el movil y en
 // `sala-vertical` (820 x 1180). Dos moviles de sala en dos estaciones: A en «Sala 1» y B en una segunda estacion de sala creada para la
@@ -121,6 +120,7 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(sheet).toHaveCount(0)
     await expect(freeTile.getByTestId('tile-state')).toHaveText('Libre')
     expect(sent.open).toBe(0)
+    await expect.poll(() => storedDraft(page, `draft:open:${table.id}`)).toBeNull()           // F0.2: «Salir sin abrir» descarta lo guardado
     await press(freeTile)
     await expect(sheet).toContainText(`Abrir ${table.name}`)
     await expect(page.getByTestId('open-row-1')).toHaveCount(0)
@@ -147,6 +147,37 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(page.locator('input[name=open-substance-1]')).toHaveValue('frutos secos')
     await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
     expect(sent.open).toBe(0)
+    //    F0.2 (plan por fases, corte 0.2; usabilidad 28-10, H01; decision 8b): lo escrito esta GUARDADO en este movil. Una recarga vuelve al
+    //    plano; al tocar la misma mesa libre se PREGUNTA, con la alergia escrita entera, y «Seguir abriendo» devuelve personas y fila.
+    //    «Atrás» del sistema desde la hoja pregunta como «Mesas»; «Seguir abriendo» deja la hoja como estaba. Nada sale al servidor.
+    await expect.poll(() => storedDraft(page, `draft:open:${table.id}`)).toMatchObject({ kind: 'open', tableId: table.id, pax: 3, rows: [{ guest: 2, kind: 'Allergy', substance: 'frutos secos', severity: 'Severe' }] })
+    await page.reload()
+    await expect(page.getByTestId('board')).toBeVisible({ timeout: 20_000 })
+    await expect(sheet).toHaveCount(0)
+    await press(page.getByTestId('mine-free').getByTestId(`table-${table.id}`))
+    const recover = page.getByTestId('open-recover-sheet')
+    await expect(recover).toContainText('¿Sigues abriendo esta mesa?')
+    await expect(recover.getByTestId('open-recover-text')).toContainText('Tenías esta mesa a medio abrir, guardada en este móvil')
+    await expect(recover.getByTestId('open-recover-text')).toContainText('3 personas · 1 alergia o intolerancia')
+    await expect(recover).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
+    await expect(recover.getByTestId('open-recover-yes')).toBeFocused()
+    await expect(page.getByTestId('open-row-1')).toHaveCount(0)                               // hasta decidir, la hoja esta como nueva
+    await checkScreen(page, 'recovering the saved open sheet')
+    await press(recover.getByTestId('open-recover-yes'))
+    await expect(recover).toHaveCount(0)
+    await expect(page.getByTestId('pax-3')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator('input[name=open-substance-1]')).toHaveValue('frutos secos')
+    await expect(page.getByTestId('open-guest-1-2')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('open-line')).toHaveText(['Comensal 2 · ALERGIA frutos secos (grave)'])
+    await expect(page.getByTestId('do-open')).toBeEnabled()
+    expect(sent.open).toBe(0)
+    await page.goBack()                                                                        // «Atrás» del sistema: la misma pregunta
+    await expect(leaveSheet).toContainText('¿Salir sin abrir la mesa?')
+    await press(leaveSheet.getByTestId('open-leave-stay'))
+    await expect(leaveSheet).toHaveCount(0)
+    await expect(sheet).toBeVisible()
+    await expect(page.locator('input[name=open-substance-1]')).toHaveValue('frutos secos')
+    expect(sent.open).toBe(0)
     await press(page.getByTestId('do-open'))
     // C3e.1 (usabilidad 28-10, H20): confirmada, el boton dice primero lo hecho, apagado; la accion siguiente sale DONE_MS despues. Revision
     // de C3e.1: «Mesa abierta · <nombre>», con el nombre detras (el configurado puede ser masculino: «Reservado 2 abierta» no concuerda).
@@ -158,6 +189,7 @@ test('Sala: «Mis mesas» per device and station - A opens M5 with an allergy fr
     await expect(detail.getByTestId('do-done')).toHaveText(`Mesa abierta · ${table.name} ✓`)
     await expect(page.getByTestId('pending')).toHaveCount(0)
     await expect(detail.getByTestId('restrictions')).toContainText('Comensal 2 · ALERGIA frutos secos (grave)')
+    await expect.poll(() => storedDraft(page, `draft:open:${table.id}`)).toBeNull()           // F0.2: abierta la mesa, lo guardado se borra
     await expect(page.getByTestId('do-wait')).toBeDisabled({ timeout: 15_000 })
     await expect(page.getByTestId('do-wait')).toHaveText('Esperando la revisión de cocina')
     serviceId = await openOn(request, table.id)
