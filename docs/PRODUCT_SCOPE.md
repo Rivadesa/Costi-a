@@ -44,6 +44,8 @@ Retiro da Costiña is the first real implementation. AÑITSOC SL expands the fut
 
 ## V1A — explicitly out of scope
 
+> **03-11-2026:** this list described the first version only. Reservations are now phase F7, fiscal documents and VERI*FACTU are F3, stock and purchasing are F4, vouchers are F6 (`docs/ORDEN_VIGENTE.md`). Kept as history.
+
 - full reservation engine;
 - tax/fiscal document issuance;
 - VERI*FACTU implementation;
@@ -105,6 +107,8 @@ Includes:
 - internal voucher/prepayment engine.
 
 ## Future modules
+
+> **03-11-2026:** the reservation engine (own, for the restaurant and the villas), the TheFork/CoverManager connectors, purchasing, costing and the digital wine list are phases F7, F4 and F5 of `docs/ORDEN_VIGENTE.md`.
 
 Potential future modules include:
 - reservation engine;
