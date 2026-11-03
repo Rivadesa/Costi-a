@@ -5,6 +5,8 @@
 // (adoption.ts), y la usaria una version anterior si se volviera atras.
 export const LEGACY_DATABASE = 'costina'
 const VERSION = 2
+// F0.2 (borrador.ts): en `pending` viven tambien los borradores de Costina Sala, con claves propias (`draft:round:<servicio>`,
+// `draft:open:<mesa>`); el hueco unico de la orden incierta sigue siendo la clave `uncertain` (pending.ts) y nada mas la mira.
 export const STORES = { device: 'device', pending: 'pending' } as const
 // Estos mensajes llegan a la pantalla (startup.ts los pone en «Servidor no listo (…)»): castellano con tildes, como el resto.
 export const DB_TEXTS = {

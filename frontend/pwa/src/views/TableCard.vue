@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { addProblem, HAD_EMPTY, HAD_FOOT, HAD_SUB, HAD_TITLE, hadDetail, leaveText, ROUND_SENT, ROUND_UNCONFIRMED, roundNames, roundProblem, VOIDED } from '../bodega'
+import { clearRoundDraft, loadRoundDraft, RECOVER_ROUND_NO, RECOVER_ROUND_TITLE, RECOVER_ROUND_YES, recoverRoundLines, recoverRoundText, saveRoundDraft, type RoundDraft } from '../borrador'
 import type { CatalogStatus } from '../catalog'
 import { notApplied } from '../commands'
 import { offerFor, type Configuration, type Names } from '../configuration'
@@ -17,6 +18,7 @@ import DishPanel from './DishPanel.vue'
 import DrinksPanel from './DrinksPanel.vue'
 import Icon from './Icon.vue'
 import LineSheet from './LineSheet.vue'
+import RecoverSheet from './RecoverSheet.vue'
 import RoundTray from './RoundTray.vue'
 import SkipSheet from './SkipSheet.vue'
 
@@ -29,8 +31,11 @@ import SkipSheet from './SkipSheet.vue'
 // C3b: «Bodega y bebidas» rehecha (DrinksPanel), la RONDA de esta mesa (un borrador en memoria, de la ficha: sigue al ir y volver de
 // Bebidas y se ve abajo tambien en la ficha) y «Lo que lleva la mesa», sin importes (ADR-007, apartado C3b). La ronda sale en UNA orden
 // add-consumptions por sendRound (la orden incierta de siempre) con la version de ESTA lectura (F01). Salir de la mesa con una ronda sin
-// enviar pide confirmacion: no se guarda en ningun sitio. Una ronda sin confirmar ya es la orden incierta: la bandeja lo dice y la
+// enviar pide confirmacion. Una ronda sin confirmar ya es la orden incierta: la bandeja lo dice y la
 // pantalla sube a su panel; con una orden incierta o bloqueada (uncertain) la bandeja explica por que «Enviar» no se puede tocar.
+// F0.2 (plan por fases, corte 0.2; usabilidad 28-10, H01; decision 8b): la ronda con lineas se guarda ademas en ESTE movil (borrador.ts)
+// y se borra al enviarla, al descartarla («Salir sin enviar») o al quedar vacia. Al entrar en la ficha con una guardada se PREGUNTA
+// (RecoverSheet) antes de recuperarla: nada vuelve solo. «Atrás» del sistema sale por leave, como «Mesas» (BoardView, atras.ts).
 // C3e (plan 2026-10-27, paso 3; maqueta 2026-10-22, «2 · Sala · Mesa» y «6 · Sala · servido»): los pases salen a CoursesTimeline (los
 // platos agrupados con la regla comun de pases.ts y cocina.ts, sus excepciones aparte y «Siguiente»); encima del boton grande, su nota
 // (barNote); omitir un pase abre su propia hoja (SkipSheet) con su motivo; y las alergias se ven, se anotan y se retiran en su hoja
@@ -122,19 +127,39 @@ function editRemove(): void {
   editing.value = null
   if (index !== null) round.remove(index)
 }
-// Volver a Mesas: con una ronda sin enviar, primero se pregunta (es un camino excepcional; la ronda no se guarda en ningun sitio).
+// F0.2 (H01): la ronda guardada en este movil. Al montar la ficha se lee; si hay una y la ronda esta vacia, se pregunta. Mientras la
+// pregunta esta abierta lo guardado no se toca. Despues, cada cambio de la ronda la guarda entera (o la borra si queda vacia). Un fallo
+// del almacen nunca rompe la ficha: la ronda sigue en memoria como siempre.
+const recover = ref<RoundDraft | null>(null)
+onMounted(async () => {
+  const serviceId = service.value.id
+  const draft = await loadRoundDraft(serviceId).catch(() => null)
+  if (draft && serviceId === service.value.id && round.lines.length === 0) recover.value = draft
+})
+function recoverRound(): void { const draft = recover.value; recover.value = null; if (draft) round.restore(draft.lines) }
+function dropRound(): void { recover.value = null; void clearRoundDraft(service.value.id).catch(() => undefined) }
+watch(() => JSON.stringify(round.lines), () => {
+  if (recover.value !== null) return
+  const serviceId = service.value.id
+  void (round.lines.length === 0 ? clearRoundDraft(serviceId) : saveRoundDraft(serviceId, round.lines)).catch(() => undefined)
+}, { flush: 'sync' })
+// Volver a Mesas: con una ronda sin enviar, primero se pregunta (es un camino excepcional). F0.2: devuelve si pregunto (BoardView, atras.ts).
 // Mientras la ronda va camino del servidor no hay nada que perder: lo que pase con ella se ve arriba (aviso u orden sin confirmar).
 // C3c: «Ver mesa» de la banda de otra mesa sale por aqui con `then` (ir a esa mesa) en lugar de volver al plano: tambien pregunta.
 let afterLeave: (() => void) | null = null
-function leave(then?: () => void): void {
-  if (round.lines.length > 0 && !round.sending) { afterLeave = then ?? null; leaving.value = true; return }
+function leave(then?: () => void): boolean {
+  if (round.lines.length > 0 && !round.sending) { afterLeave = then ?? null; leaving.value = true; return true }
   if (then) then(); else emit('back')
+  return false
 }
 const stay = ref<HTMLButtonElement | null>(null)
 watch(leaving, open => { if (open) void nextTick(() => stay.value?.focus()); else afterLeave = null })
 function discardAndLeave(): void {
   const then = afterLeave
   leaving.value = false; round.clear()
+  // F0.2: borrar lo guardado AQUI, no solo desde el watch: al salir la ficha se desmonta en el mismo ciclo y Vue descarta sus watchers
+  // pendientes (el padre se actualiza antes que el hijo), asi que el borrado del watch nunca llegaba a correr.
+  void clearRoundDraft(service.value.id).catch(() => undefined)
   if (then) then(); else emit('back')
 }
 // C3c: «Ver mesa» de la banda de ESTA mesa: la ficha (desde Carta o Bodega; la ronda sigue, es de la ficha).
@@ -356,6 +381,9 @@ async function skip(skipReason: string): Promise<Settlement> {
       :send="skip" @close="skipping = null" />
     <AllergySheet v-if="panel === 'ficha' && allergiesOpen" :entry="entry" :table-name="tableName" :locked="locked" :send="settle" @close="allergiesOpen = false" />
 
+    <!-- F0.2 (H01): la ronda guardada en este movil: se pregunta antes de recuperarla; «Descartarla» la borra. -->
+    <RecoverSheet v-if="recover" test-id="round-recover" :title="RECOVER_ROUND_TITLE" :text="recoverRoundText(recover)" :lines="recoverRoundLines(recover)"
+      :yes="RECOVER_ROUND_YES" :no="RECOVER_ROUND_NO" @yes="recoverRound" @no="dropRound" />
     <template v-if="leaving">
       <div class="scrim" aria-hidden="true" @click="leaving = false"></div>
       <section class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" data-testid="leave-sheet" @keydown.esc="leaving = false">

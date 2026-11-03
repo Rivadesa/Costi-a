@@ -116,6 +116,14 @@ export class Round {
 
   clear(): void { if (!this.sending) { this.lines = []; this.touched() } }
 
+  // F0.2 (H01, decision 8b): la ronda guardada en este movil (borrador.ts) vuelve a la ficha cuando la PERSONA lo decide. Solo con la
+  // ronda vacia y sin orden en curso; las lineas llegan ya comprobadas (parseRoundDraft) y se copian. Este modulo sigue sin guardar nada.
+  restore(lines: readonly RoundLine[]): boolean {
+    if (this.sending || this.lines.length > 0) return false
+    this.lines = lines.slice(0, MAX_LINES).map(line => ({ ...line }))
+    this.touched(); return true
+  }
+
   private editable(index: number): RoundLine | null { return this.sending || !Number.isInteger(index) ? null : this.lines[index] ?? null }
   // Cualquier cambio retira el aviso del ultimo rechazo: su indice de linea ya puede ser otro y la orden siguiente sera otra.
   private touched(): void { this.conflict = false; this.problem = null }

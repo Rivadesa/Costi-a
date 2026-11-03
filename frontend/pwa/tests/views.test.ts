@@ -245,6 +245,47 @@ describe('words the views write as they are', () => {
     expect(css).toMatch(/\.k-alert \{[^}]*border: 2px solid var\(--danger-text\)/)
     expect(css).toMatch(/\.k-alert\.warn \{[^}]*border-color: var\(--warn-line\)/)
   })
+  // F0.2 (plan por fases 03-11, corte 0.2; usabilidad 28-10, H01; decision 8b): la ronda y la mesa a medio abrir se guardan en el movil
+  // (borrador.ts) y al volver se PREGUNTA (RecoverSheet.vue); «Atrás» del sistema baja un nivel (atras.ts) con la misma pregunta que
+  // «Mesas»; tirar hacia abajo no recarga. Nada se recupera ni se envia solo.
+  it('Costiña Sala, F0.2: the saved round and open sheet ask before coming back, «Atrás» goes down one level, no pull-to-refresh', () => {
+    const source = (name: string) => files.find(([file]) => file === name)![1].replace(/\r\n/g, '\n')
+    const card = source('views/TableCard.vue'), open = source('views/OpenTable.vue'), board = source('views/BoardView.vue'), sheet = source('views/RecoverSheet.vue')
+    // La hoja de recuperar: dos botones, el de recuperar es el seguro (principal, con el foco), el velo no cierra, y ninguna orden.
+    expect(sheet.match(/<button/g)).toHaveLength(2)
+    expect(sheet).toMatch(/<button ref="first" type="button" class="btn btn-primary" :data-testid="`\$\{testId\}-yes`" @click="\$emit\('yes'\)"/)
+    expect(sheet).toMatch(/<button type="button" class="btn btn-caution" :data-testid="`\$\{testId\}-no`" @click="\$emit\('no'\)"/)
+    expect(sheet).toMatch(/<div class="scrim" aria-hidden="true"><\/div>/)
+    expect(sheet).toMatch(/role="alertdialog" aria-modal="true"/)
+    expect(sheet).not.toMatch(/run\(|send\(|fetch|emit\('open'|emit\('run'/)
+    // La ficha: pregunta con lo guardado (RecoverSheet) y recupera solo con «si»; cada cambio guarda o borra; «Descartarla» borra.
+    expect(template(card)).toMatch(/<RecoverSheet v-if="recover" test-id="round-recover" :title="RECOVER_ROUND_TITLE" :text="recoverRoundText\(recover\)" :lines="recoverRoundLines\(recover\)"\s*:yes="RECOVER_ROUND_YES" :no="RECOVER_ROUND_NO" @yes="recoverRound" @no="dropRound" \/>/)
+    expect(card).toMatch(/function recoverRound\(\): void \{ const draft = recover\.value; recover\.value = null; if \(draft\) round\.restore\(draft\.lines\) \}/)
+    expect(card).toMatch(/function dropRound\(\): void \{ recover\.value = null; void clearRoundDraft\(service\.value\.id\)\.catch\(\(\) => undefined\) \}/)
+    expect(card).toMatch(/if \(draft && serviceId === service\.value\.id && round\.lines\.length === 0\) recover\.value = draft/)
+    expect(card).toMatch(/void \(round\.lines\.length === 0 \? clearRoundDraft\(serviceId\) : saveRoundDraft\(serviceId, round\.lines\)\)\.catch\(\(\) => undefined\)/)
+    expect(card).toMatch(/function leave\(then\?: \(\) => void\): boolean \{/)
+    // La hoja de abrir: igual, con personas, menu y filas; «Empezar de cero» borra; la apertura la borra BoardView.
+    expect(template(open)).toMatch(/<RecoverSheet v-if="recover" test-id="open-recover" :title="RECOVER_OPEN_TITLE" :text="recoverOpenText\(recover, recoverOffer\)" :lines="draftLines\(recover\.rows\)"\s*:yes="RECOVER_OPEN_YES" :no="RECOVER_OPEN_NO" @yes="recoverOpen" @no="dropOpen" \/>/)
+    expect(open).toMatch(/if \(draft && !paxTouched\.value && !touched\.value && rows\.value\.length === 0\) recover\.value = draft/)
+    expect(open).toMatch(/if \(draft\.offerId && props\.offers\.some\(offer => offer\.id === draft\.offerId\)\) pick\(draft\.offerId\)/)   // un menu que ya no se ofrece no se recupera
+    expect(open).toMatch(/void \(something \? saveOpenDraft\(props\.tableId, input\) : clearOpenDraft\(props\.tableId\)\)\.catch\(\(\) => undefined\)/)
+    expect(open).toMatch(/function dropOpen\(\): void \{ recover\.value = null; void clearOpenDraft\(props\.tableId\)\.catch\(\(\) => undefined\) \}/)
+    expect(board).toMatch(/void clearOpenDraft\(tableId\)\.catch\(\(\) => undefined\)\n\s*if \(here\) openingTable\.value = null/)
+    // «Atrás» del sistema: los niveles son lo que se ve; el watch es sincrono; un popstate nuestro cierra el de arriba y repone la entrada si pregunta.
+    expect(board).toMatch(/const back = new BackStack\(browserHistory\(\)\)/)
+    expect(board).toMatch(/watch\(levels, \(now, before\) => \{ if \(now > before\) back\.enter\(\); else if \(now < before && !closingFromPop\) back\.exit\(\) \}, \{ flush: 'sync' \}\)/)
+    expect(board).toMatch(/try \{ if \(closeTop\(\)\) back\.keep\(\) \} finally \{ closingFromPop = false \}/)
+    expect(board).toMatch(/window\.addEventListener\('popstate', onPop\)/)
+    expect(board).toMatch(/window\.removeEventListener\('popstate', onPop\)/)
+    expect(board).toMatch(/if \(card\.value\.panel !== 'ficha'\) \{ card\.value\.show\(\); return false \}/)
+    // Tirar hacia abajo no recarga: en la raiz, para las dos aplicaciones.
+    const css = readFileSync(folder('../src/style.css')).toString('utf8')
+    expect(css).toMatch(/html, body \{ margin: 0; overscroll-behavior-y: none; \}/)
+    // La bandeja ya no dice que la ronda se pierde al recargar.
+    expect(source('views/RoundTray.vue')).toMatch(/ROUND_HINT/)
+    expect(readFileSync(folder('../src/bodega.ts')).toString('utf8')).not.toMatch(/Si la página se recarga, la ronda se pierde\.'/)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])
@@ -322,7 +363,8 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     // Revision de C3e.1: con la apertura de camino (sending) no pregunta: sus filas viajan en ella, y la pregunta diria que se pierden.
     // Revision final de C3e.1: solo si la mando ESTA hoja (submitted, puesto al emitir la orden): otra hoja de la misma mesa abierta
     // despues pregunta.
-    expect(openScript).toMatch(/if \(lost\.value && !\(props\.sending && submitted\)\) \{ afterLeave = then \?\? null; leaving\.value = true; return \}/)
+    // F0.2: leave devuelve si pregunto (BoardView, atras.ts: «Atrás» del sistema repone la entrada del historial mientras pregunta).
+    expect(openScript).toMatch(/if \(lost\.value && !\(props\.sending && submitted\)\) \{ afterLeave = then \?\? null; leaving\.value = true; return true \}/)
     expect(openScript).toMatch(/if \(!canOpen\.value \|\| !chosen\.value\) return\n\s*submitted = true\n\s*emit\('open', /)
     expect(openScript.match(/submitted = /g)).toHaveLength(2)                                    // false al montar y true al mandar
     expect(openScript).toMatch(/defineExpose\(\{ leave \}\)/)
@@ -331,7 +373,8 @@ describe('Costiña Sala, C3e.1: nothing written is lost when leaving «Abrir mes
     const discardStart = openScript.indexOf('function discardAndLeave(): void {')
     const discard = openScript.slice(discardStart, openScript.indexOf('\n}', discardStart))
     expect(discardStart).toBeGreaterThan(0)
-    expect(discard).toMatch(/\{\n\s*const then = afterLeave\n\s*leaving\.value = false\n\s*if \(then\) then\(\); else emit\('back'\)$/)
+    // F0.2: «Salir sin abrir» borra ademas lo guardado en este movil (clearOpenDraft) antes de salir.
+    expect(discard).toMatch(/\{\n\s*const then = afterLeave\n\s*leaving\.value = false\n\s*void clearOpenDraft\(props\.tableId\)\.catch\(\(\) => undefined\)[^\n]*\n\s*if \(then\) then\(\); else emit\('back'\)$/)
     expect(openScript).toMatch(/watch\(leaving, open => \{ if \(open\) void nextTick\(\(\) => stay\.value\?\.focus\(\)\); else afterLeave = null \}\)/)
     // Revision final de C3e.1: openSending es la mesa cuya apertura va de camino, y solo la hoja de ESA mesa la recibe: la de OTRA mesa
     // abierta mientras tanto pregunta.

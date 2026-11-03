@@ -1,8 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
 import {
   asMain, bottlePng, checkDevice, checkScreen, command, deviceContext, deviceName, ensureDrink, loseResponses, MAIN, openTable, pairThroughTheUi, press,
-  release, storedOrder, watch, type Drink,
-} from './support'
+  release, storedOrder, watch, type Drink, storedDraft } from './support'
 
 // C3b: «Bodega y bebidas» de punta a punta contra el motor real, en escritorio y en movil (plan 2026-10-15, seccion 4.4): buscar «albar»
 // -> Copa -> «Enviar»; UNA orden por ronda y un solo efecto tras una respuesta perdida de verdad (se cuentan las LINEAS de la mesa: la
@@ -121,6 +120,14 @@ test('Bodega y bebidas: a round is ONE command, applied once after a lost answer
     await checkScreen(second, 'what the table has, on the other handheld')
     // Y en el propio: la ficha de la mesa.
     await press(tile)
+    //    F0.2 (H01, decision 8b): el agua anadida con la orden sin confirmar estaba sin enviar al recargar: se GUARDO en este movil y, al
+    //    entrar en la mesa, se pregunta antes de seguir (la hoja es modal: hay que decidir). Aqui se descarta; el paso 8 prueba recuperarla.
+    const kept = page.getByTestId('round-recover-sheet')
+    await expect(kept).toContainText('¿Recuperas la ronda sin enviar?')
+    await expect(kept).toContainText('1 × Agua mineral · Botella')
+    await press(kept.getByTestId('round-recover-no'))
+    await expect(kept).toHaveCount(0)
+    await expect(page.getByTestId('round-summary')).toHaveCount(0)
     const mine = page.getByTestId('had')
     await expect(mine.locator('li')).toHaveCount(2)
     await expect(mine).toContainText('Los importes solo se ven en Caja.')
@@ -170,10 +177,42 @@ test('Bodega y bebidas: a round is ONE command, applied once after a lost answer
     await press(page.getByTestId('leave-stay'))
     await expect(page.getByTestId('detail')).toBeVisible()
     await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
+    // 8) F0.2 (plan por fases, corte 0.2; usabilidad 28-10, H01; decision 8b): la ronda esta GUARDADA en este movil. Una recarga vuelve al
+    //    plano; al entrar en la mesa se PREGUNTA (nada vuelve solo) y «Recuperar la ronda» la devuelve entera. «Atrás» del sistema desde
+    //    la ficha hace la misma pregunta que «Mesas», y «Seguir con la ronda» la deja donde estaba. «Salir sin enviar» descarta lo guardado.
+    await expect.poll(() => storedDraft(page, `draft:round:${serviceId}`)).toMatchObject({ kind: 'round', serviceId, lines: [{ productId: ALBARINO.id, presentationId: 'copa', quantity: 1 }] })
+    await page.reload()
+    await expect(page.getByTestId('board')).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('detail')).toHaveCount(0)
+    await press(tile)
+    const recover = page.getByTestId('round-recover-sheet')
+    await expect(recover).toContainText('¿Recuperas la ronda sin enviar?')
+    await expect(recover.getByTestId('round-recover-text')).toContainText('Tenías 1 sin enviar en esta mesa, guardados en este móvil')
+    await expect(recover).toContainText(`1 × ${ALBARINO.name}`)
+    await expect(recover.getByTestId('round-recover-yes')).toHaveText('Recuperar la ronda')
+    await expect(recover.getByTestId('round-recover-yes')).toBeFocused()
+    await expect(page.getByTestId('round-summary')).toHaveCount(0)                            // hasta decidir, la ronda sigue vacia
+    await checkScreen(page, 'recovering the saved round')
+    await press(recover.getByTestId('round-recover-yes'))
+    await expect(recover).toHaveCount(0)
+    await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
+    expect(await drinkLines(request, serviceId)).toHaveLength(2)                               // recuperar no envia nada
+    await page.goBack()                                                                        // «Atrás» del sistema: la misma pregunta
+    await expect(page.getByTestId('leave-sheet')).toContainText('La ronda tiene 1 sin enviar')
+    await press(page.getByTestId('leave-stay'))
+    await expect(page.getByTestId('leave-sheet')).toHaveCount(0)
+    await expect(page.getByTestId('detail')).toBeVisible()
+    await expect(page.getByTestId('round-summary')).toHaveText('Ronda · 1 sin enviar')
     await press(page.getByTestId('back'))
     await press(page.getByTestId('leave-discard'))
     await expect(page.getByTestId('detail')).toHaveCount(0)
     await expect(tile).toBeVisible()
+    await expect.poll(() => storedDraft(page, `draft:round:${serviceId}`)).toBeNull()         // «Salir sin enviar» descarta lo guardado
+    await press(tile)
+    await expect(page.getByTestId('detail')).toBeVisible()
+    await expect(page.getByTestId('round-recover-sheet')).toHaveCount(0)                      // nada que recuperar
+    await press(page.getByTestId('back'))
+    await expect(page.getByTestId('detail')).toHaveCount(0)
     expect(await drinkLines(request, serviceId)).toHaveLength(2)                               // el agua anulada no cuenta; nada nuevo
 
     expect(leaks, 'the PWA received financial data').toEqual([])

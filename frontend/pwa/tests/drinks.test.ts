@@ -154,6 +154,31 @@ describe('round: the case table shared with the main PC (Round.cs)', () => {
   })
 })
 
+// F0.2 (H01, decision 8b): la ronda guardada en el movil (borrador.ts) vuelve con restore, solo con la ronda vacia y sin orden en curso, y
+// copiada; round.ts sigue sin guardar nada (abajo).
+describe('a saved round comes back only when the person says so (restore)', () => {
+  const line = { productId: 'albarino', presentationId: 'copa', name: 'Albariño', presentation: 'Copa', quantity: 2, guestPosition: null }
+  it('restores a copy into an empty round and clears any previous rejection notice', () => {
+    const round = new Round()
+    expect(round.restore([line, { ...line, productId: 'agua', presentationId: 'unit', name: 'Agua', presentation: '', quantity: 1, guestPosition: 3 }])).toBe(true)
+    expect(round.units).toBe(3)
+    expect(round.lines[0]).toEqual(line); expect(round.lines[0]).not.toBe(line)
+    expect([round.conflict, round.problem]).toEqual([false, null])
+  })
+  it('refuses with lines already there or while sending; never more than the limit', () => {
+    const round = new Round()
+    round.add({ productId: 'x', presentationId: 'y', name: 'X', presentation: '' })
+    expect(round.restore([line])).toBe(false)
+    expect(round.units).toBe(1)
+    const sending = new Round()
+    sending.add({ productId: 'x', presentationId: 'y', name: 'X', presentation: '' }); sending.begin(1, 'Mesa 1'); sending.clear()
+    expect(sending.restore([line])).toBe(false)
+    const full = new Round()
+    expect(full.restore(Array.from({ length: MAX_LINES + 5 }, (_, index) => ({ ...line, productId: `p${index}` })))).toBe(true)
+    expect(full.lines).toHaveLength(MAX_LINES)
+  })
+})
+
 // La ronda es un borrador EN MEMORIA (plan, seccion 2; D6.3): ni IndexedDB, ni almacenamiento del navegador, ni el almacen de la orden
 // incierta. Los tres modulos del selector no importan nada que persista.
 describe('the round is never stored', () => {
