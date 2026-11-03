@@ -22,12 +22,12 @@ const shift = new Shift(shiftStatus, { audio: browserAudio, screen: browserScree
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Session } from '../api'
 import {
-  alsoText, applyShortcut, CONFLICT_TEXT, countText, DIRECT_DECISIONS, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
+  AlertWatch, alertSources, alsoText, applyShortcut, CONFLICT_TEXT, countText, DIRECT_DECISIONS, dishAlarming, dishNote, dishReadyIds, dishState, dishText, DONE_BAND, doneText, elapsedText,
   exceptionLine, listoPerDish, markLabel, missingText, nextText, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews,
   progressText, readyBody, readySince, REMAKE_DECISION, remakeQuestion, restBody, restButton, restConfirm, restDishes, restOfGuest, restQuestion, restSignature,
   restSubstances, ringKeys, seesWholeTable, shouldChime,
   stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, type NoteShortcut, type PassTicket, type PresendGuest, type PresendItem,
-  type StationMark, type StationTicket,
+  type StationMark, type StationTicket, type TicketAlert,
 } from '../cocina'
 import { Names, useConfiguration } from '../configuration'
 import { restrictionAlarming } from '../floor'
@@ -36,6 +36,7 @@ import { useOperations } from '../operations'
 import { screenHint, screenSupport, shiftIntro, soundText } from '../turno'
 import type { Outcome } from '../commands'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../types'
+import AlertBand from './AlertBand.vue'
 import Icon from './Icon.vue'
 import StatusPanel from './StatusPanel.vue'
 
@@ -239,9 +240,19 @@ const shiftWarn = computed(() => shiftStatus.sound !== 'on' || shiftStatus.scree
 function startShift(): void { void shift.start() }
 // Tras CADA lectura correcta (nunca del contenido del aviso del canal, D2): las comandas nuevas de la rejilla. La primera no suena.
 const tickets = new TicketWatch()
+// F0.1 (plan por fases, corte 0.1; usabilidad 28-10, H34): y los cambios de alergia o de decision del pase en las comandas YA LEIDAS
+// (cocina.ts, AlertWatch): la marca en su comanda, en la rejilla, en «Hecho» y en el pase (AlertBand.vue), hasta «Visto», y un tono
+// distinto. Con una comanda nueva y un cambio en la misma lectura suena el cambio, que es lo urgente. «Visto» no manda nada.
+const alerts = new AlertWatch()
+const marks = ref<TicketAlert[]>([])
+const alertOf = (key: string): TicketAlert | null => marks.value.find(alert => alert.key === key) ?? null
+function visto(key: string): void { alerts.dismiss(key); marks.value = alerts.shown }
 watch(() => state.readAt, () => {
   const fresh = tickets.read(ringKeys(state.entries, station.value))
-  if (shouldChime(fresh, shiftStatus.started)) shift.ring()
+  const raised = alerts.read(alertSources(state.entries, station.value))
+  marks.value = alerts.shown
+  if (shouldChime(raised.map(alert => alert.key), shiftStatus.started)) shift.alert()
+  else if (shouldChime(fresh, shiftStatus.started)) shift.ring()
 })
 // El navegador suelta la pantalla encendida al ocultar la pagina: al volver a verse se pide otra vez.
 const visible = () => { if (document.visibilityState === 'visible') void shift.awake() }
@@ -266,7 +277,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
     <template v-if="!whole">
       <p v-if="state.readAt && grid.length === 0" class="k-empty" data-testid="kitchen-empty"><Icon name="chef" :size="24" />No hay comandas. Las nuevas aparecen aquí solas.</p>
       <ul class="k-grid">
-        <li v-for="ticket in grid" :key="ticket.key" class="tk" :data-testid="`ticket-${testKey(ticket.entry, ticket.course)}`">
+        <li v-for="ticket in grid" :key="ticket.key" class="tk" :class="{ alerted: alertOf(ticket.key) }" :data-testid="`ticket-${testKey(ticket.entry, ticket.course)}`">
           <header class="tk-h">
             <h3 class="tk-name">{{ title(ticket.entry, ticket.course) }}</h3>
             <div class="tk-s2">
@@ -274,6 +285,8 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
               <span class="tmr" :class="toneOf(ticket.course)" data-testid="elapsed"><Icon name="clock" :size="18" :stroke="2.4" />{{ elapsedText(ticket.course.firedAt, now) }}</span>
             </div>
           </header>
+          <!-- F0.1 (H34): lo que cambio en esta comanda despues de leerla (una alergia, la decision del pase), hasta «Visto». -->
+          <AlertBand :alert="alertOf(ticket.key)" :id="testKey(ticket.entry, ticket.course)" @seen="visto(ticket.key)" />
           <p v-if="ticket.paused" class="k-paused" role="status"><Icon name="pause" :size="18" />Mesa en pausa</p>
           <ul v-if="ticket.wholeTable.length > 0" class="k-whole">
             <li v-for="restriction in ticket.wholeTable" :key="restriction.id" class="k-al" :class="restrictionTone(restriction)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ restrictionLabel(restriction) }}</span></li>
@@ -309,9 +322,11 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
         <h2 class="db-l"><Icon name="check" :size="20" :stroke="2.8" />{{ DONE_BAND }}</h2>
         <p v-if="done.length === 0" class="db-empty">Nada</p>
         <ul v-else class="db-list">
-          <li v-for="ticket in done" :key="ticket.key" class="hrow" :data-testid="`done-${testKey(ticket.entry, ticket.course)}`">
+          <li v-for="ticket in done" :key="ticket.key" class="hrow" :class="{ alerted: alertOf(ticket.key) }" :data-testid="`done-${testKey(ticket.entry, ticket.course)}`">
             <Icon name="check" :size="20" :stroke="2.8" />
             <div class="hr-t">
+              <!-- F0.1 (H34): aqui es donde mas importa: el plato ya esta hecho. La marca va encima de la fila, con «Visto». -->
+              <AlertBand :alert="alertOf(ticket.key)" :id="testKey(ticket.entry, ticket.course)" @seen="visto(ticket.key)" />
               <p><b>{{ title(ticket.entry, ticket.course) }}</b> · {{ doneText(ticket) }}</p>
               <p v-for="restriction in ticket.wholeTable" :key="restriction.id" class="k-al" :class="restrictionTone(restriction)"><Icon name="alert" :size="20" :stroke="2.4" /><span>{{ restrictionLabel(restriction) }}</span></p>
               <template v-for="dish in ticket.dishes" :key="dish.key">
@@ -403,7 +418,7 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
       <div class="pmain">
         <p v-if="state.readAt && pass.length === 0" class="k-empty" data-testid="kitchen-empty"><Icon name="chef" :size="24" />No hay comandas en cocina. Las nuevas aparecen aquí solas.</p>
         <ul class="pcards">
-          <li v-for="(ticket, t) in pass" :key="ticket.key" class="pc" :class="{ all: ticket.canValidate }" :data-testid="`ticket-${testKey(ticket.entry, ticket.course)}`">
+          <li v-for="(ticket, t) in pass" :key="ticket.key" class="pc" :class="{ all: ticket.canValidate, alerted: alertOf(ticket.key) }" :data-testid="`ticket-${testKey(ticket.entry, ticket.course)}`">
             <header class="tk-h">
               <h3 class="tk-name">{{ title(ticket.entry, ticket.course) }}</h3>
               <div class="tk-s2">
@@ -411,6 +426,8 @@ onUnmounted(() => { document.removeEventListener('visibilitychange', visible) })
                 <span class="tmr" :class="toneOf(ticket.course)" data-testid="elapsed"><Icon name="clock" :size="18" :stroke="2.4" />{{ elapsedText(ticket.course.firedAt, now) }}</span>
               </div>
             </header>
+            <!-- F0.1 (H34): en el pase, solo los cambios de alergia (sus propias decisiones no se avisan a si mismo). -->
+            <AlertBand :alert="alertOf(ticket.key)" :id="testKey(ticket.entry, ticket.course)" @seen="visto(ticket.key)" />
             <p v-if="ticket.paused" class="k-paused" role="status"><Icon name="pause" :size="18" />Mesa en pausa</p>
             <ul class="pc-st" :data-testid="`progress-${testKey(ticket.entry, ticket.course)}`">
               <li v-for="row in ticket.progress" :key="row.stationId" class="schip" :class="{ ok: row.done }"><Icon v-if="row.done" name="check" :size="18" :stroke="3" />{{ progressText(row, stationName) }}</li>

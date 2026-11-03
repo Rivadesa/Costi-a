@@ -7,6 +7,7 @@ import {
   NOTE_SHORTCUTS, noteReady, noteShortcuts, noteSpent, passDishIds, passTickets, PRESEND_DECISIONS, presendReviews, progressText, readyBody, readySince,
   REMAKE_DECISION, remakeQuestion, restBody, restButton, restConfirm, restDishes, restOfGuest, restQuestion, restSignature, restSubstances, REVIEW_DECISIONS,
   REVIEW_PENDING_AT_STATION, reviewNoteOk, ringKeys,
+  AlertWatch, alertSources,
   seesWholeTable, shouldChime, stationLine, stationTickets, TicketWatch, timeTone, versionConflict, waitingForWaiter, wholeTable,
 } from '../src/cocina'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from '../src/types'
@@ -332,6 +333,84 @@ describe('a new ticket rings (after «Empezar turno»)', () => {
     expect(ringKeys(BOARD, 'pase')).toEqual(passTickets(BOARD).map(ticket => ticket.key))
     expect(ringKeys(BOARD, null)).toEqual(ringKeys(BOARD, 'pase'))
     expect(ringKeys(BOARD, 'bar')).toEqual([])
+  })
+})
+
+// F0.1 (plan por fases 03-11, corte 0.1; usabilidad 28-10, H34): una alergia anotada con el pase ya en cocina, o la decision del pase sobre
+// un plato que la estacion ya leyo, llegaban en silencio. Ahora, tras cada lectura, lo que cambio en una comanda YA LEIDA se escribe en
+// ella y suena (AlertWatch), hasta «Visto». Nada de esto habilita nada.
+describe('F0.1 (H34): a late allergy or the pass decision marks the ticket until «Visto» and rings', () => {
+  const fired = (preps: Preparation[]) => [entry('M2', [course('p1', 'Principal', 'Fired', AT, preps)])]
+  const hot = (extra: Partial<Preparation> = {}) => prep('merluza-2', 'Merluza', 'hot', 2, extra)
+  const cold = (extra: Partial<Preparation> = {}) => prep('ensalada-2', 'Ensalada', 'cold', 2, extra)
+  const back = () => [entry('M2', [course('p1', 'Principal', 'Ready', AT, [hot({ state: 'Ready', restrictions: [NUTS], reviewPending: true })], { readyAt: AT })])]
+  const NEW_NUTS = { text: 'ALERGIA NUEVA · Comensal 2 · ALERGIA frutos secos (grave)', alarming: true }
+  it('a station watches its own preparations with the pass decision; the pass watches every preparation without decisions', () => {
+    const board = fired([hot({ restrictions: [NUTS] }), cold()])
+    const own = board[0].service.courses[0].preparations[0]
+    expect(alertSources(board, 'hot')).toEqual([{ key: 's-M2:p1', preparations: [own], decisions: true, reviewing: false }])
+    expect(alertSources(board, 'pase')).toMatchObject([{ key: 's-M2:p1', decisions: false, reviewing: false }])
+    expect(alertSources(board, 'pase')[0].preparations).toHaveLength(2)
+    expect(alertSources(board, null)).toEqual(alertSources(board, 'pase'))
+    expect(alertSources(board, 'bar')).toEqual([])
+    expect(alertSources(back(), 'pase')[0].reviewing).toBe(true)         // validado y de vuelta por una alergia tardia
+    expect(alertSources(back(), 'hot')).toEqual([])                       // ya no es trabajo de la estacion
+  })
+  it('the first read marks nothing; a new restriction on a ticket already read marks it («ALERGIA NUEVA …»), raised once', () => {
+    const watch = new AlertWatch()
+    expect(watch.read(alertSources(fired([hot()]), 'hot'))).toEqual([])
+    const late = alertSources(fired([hot({ restrictions: [NUTS], reviewPending: true })]), 'hot')
+    expect(watch.read(late)).toEqual([{ key: 's-M2:p1', lines: [NEW_NUTS] }])
+    expect(watch.read(late)).toEqual([])                                 // la misma lectura otra vez: no vuelve a sonar
+    expect(watch.shown).toEqual([{ key: 's-M2:p1', lines: [NEW_NUTS] }]) // pero la marca sigue
+  })
+  it('the pass decision adds its line to the station mark and rings again; the pass does not warn itself', () => {
+    const station = new AlertWatch(), pass = new AlertWatch()
+    const pending = fired([hot({ restrictions: [NUTS], reviewPending: true })])
+    station.read(alertSources(pending, 'hot')); pass.read(alertSources(pending, 'pase'))
+    const decided = fired([hot({ restrictions: [NUTS], review: { decision: 'Adapt', note: 'sin almendra', at: AT } })])
+    const DECIDED = { text: 'DECISIÓN DEL PASE · Merluza · Comensal 2 · ALERGIA frutos secos (grave) · Adaptado: sin almendra', alarming: true }
+    expect(station.read(alertSources(decided, 'hot'))).toEqual([{ key: 's-M2:p1', lines: [DECIDED] }])
+    expect(pass.read(alertSources(decided, 'pase'))).toEqual([])
+    // La alergia llega y el pase decide, con la marca puesta: las dos lineas, en orden, y suena las dos veces.
+    const both = new AlertWatch()
+    both.read(alertSources(fired([hot()]), 'hot'))
+    expect(both.read(alertSources(pending, 'hot'))).toHaveLength(1)
+    expect(both.read(alertSources(decided, 'hot'))).toEqual([{ key: 's-M2:p1', lines: [NEW_NUTS, DECIDED] }])
+    // Una decision que vuelve a quedar por revisar (otra alergia) no se escribe como decision: lo dice la linea de la alergia.
+    const again = fired([hot({ restrictions: [NUTS, GLUTEN], reviewPending: true, review: { decision: 'Adapt', note: 'sin almendra', at: AT } })])
+    expect(both.read(alertSources(again, 'hot'))[0].lines.map(line => line.text.split(' · ')[0])).toEqual(['ALERGIA NUEVA', 'DECISIÓN DEL PASE', 'ALERGIA NUEVA'])
+  })
+  it('a removed or changed restriction is written too; a mild preference does not alarm (amber)', () => {
+    const watch = new AlertWatch()
+    watch.read(alertSources(fired([hot({ restrictions: [NUTS, CORIANDER] })]), 'hot'))
+    const raised = watch.read(alertSources(fired([hot({ restrictions: [{ ...NUTS, severity: 'Moderate' }] })]), 'hot'))
+    expect(raised[0].lines).toEqual([
+      { text: 'CAMBIO · Comensal 2 · ALERGIA frutos secos (moderada)', alarming: true },
+      { text: 'RETIRADA · Comensal 1 · Preferencia cilantro (leve)', alarming: false },
+    ])
+    const soft = new AlertWatch()
+    soft.read(alertSources(fired([hot()]), 'hot'))
+    expect(soft.read(alertSources(fired([hot({ restrictions: [CORIANDER] })]), 'hot'))[0].lines).toEqual([{ text: 'PREFERENCIA NUEVA · Comensal 1 · Preferencia cilantro (leve)', alarming: false }])
+  })
+  it('«Visto» drops the mark; a ticket that leaves the screen drops it too; a new ticket is not a change', () => {
+    const watch = new AlertWatch()
+    watch.read(alertSources(fired([hot()]), 'hot'))
+    watch.read(alertSources(fired([hot({ restrictions: [NUTS] })]), 'hot'))
+    watch.dismiss('s-M2:p1'); expect(watch.shown).toEqual([])
+    watch.dismiss('s-M9:p9')                                              // lo que no esta no rompe nada
+    const two = [...fired([hot({ restrictions: [NUTS] })]), entry('M3', [course('p1', 'Principal', 'Fired', AT, [prep('x', 'X', 'hot', 1, { restrictions: [GLUTEN] })])])]
+    expect(watch.read(alertSources(two, 'hot'))).toEqual([])             // M3 es nueva: suena como comanda nueva, no como cambio
+    expect(watch.read(alertSources(fired([hot({ restrictions: [NUTS, GLUTEN] })]), 'hot')).map(alert => alert.key)).toEqual(['s-M2:p1'])
+    expect(watch.shown.map(alert => alert.key)).toEqual(['s-M2:p1'])
+    expect(watch.read(alertSources([], 'hot'))).toEqual([]); expect(watch.shown).toEqual([])   // la comanda se fue (validada)
+  })
+  it('on the pass, a validated course back for a late allergy is marked even though it is new on the screen', () => {
+    const watch = new AlertWatch()
+    watch.read(alertSources([], 'pase'))
+    expect(watch.read(alertSources(back(), 'pase'))).toEqual([{ key: 's-M2:p1', lines: [NEW_NUTS] }])
+    const fresh = new AlertWatch()                                        // pero lo que ya estaba al encender, no
+    expect(fresh.read(alertSources(back(), 'pase'))).toEqual([])
   })
 })
 

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
-  CHIME, CHIME_PEAK, chime, screenHint, screenSupport, Shift, shiftIntro, soundText, type AudioLike, type ScreenEnv, type SentinelLike, type ShiftStatus,
+  ALARM, alarm, CHIME, CHIME_PEAK, chime, screenHint, screenSupport, Shift, shiftIntro, soundText, type AudioLike, type ScreenEnv, type SentinelLike, type ShiftStatus,
 } from '../src/turno'
 
 // C3d (plan 2026-10-27, seccion 2; respuesta 4 del 22-10): «Empezar turno» de Costina Cocina. El toque deja sonar al navegador; el
@@ -51,6 +51,32 @@ function fakeSentinel(): SentinelLike & { fire: () => void } {
   return sentinel
 }
 const status = (): ShiftStatus => ({ started: false, sound: 'off', screen: 'off' })
+
+// F0.1 (plan por fases 03-11, corte 0.1; usabilidad 28-10, H34): un segundo tono para una alergia tardia o la decision del pase sobre una
+// comanda ya leida: tres notas, distintas de las dos de una comanda nueva, por debajo del segundo; con las mismas condiciones que ring.
+describe('F0.1 (H34): the second tone, for a change in a ticket already read', () => {
+  const starts = (audio: ReturnType<typeof fakeAudio>) => audio.calls.filter(call => /^osc\d+\.start$/.test(call[0]))
+  it('three short notes under a second, distinct from the two of a new ticket, never louder than the peak', () => {
+    const audio = fakeAudio()
+    alarm(audio)
+    expect(ALARM).toHaveLength(3)
+    expect(starts(audio).map(call => call[3])).toEqual(ALARM.map(note => note.frequency))
+    expect(Math.max(...ALARM.map(note => note.at + note.length))).toBeLessThan(1)
+    expect(ALARM.map(note => note.frequency)).not.toEqual(CHIME.map(note => note.frequency))
+    const peaks = audio.calls.filter(call => /^gain\d+\.gain\.ramp$/.test(call[0])).map(call => call[1] as number)
+    expect(Math.max(...peaks)).toBe(CHIME_PEAK)
+  })
+  it('Shift.alert sounds only with the shift started and audio, like ring', async () => {
+    const audio = fakeAudio()
+    const shift = new Shift(status(), { audio: () => audio, screen: () => ({ secure: false }) })
+    expect(shift.alert()).toBe(false)
+    await shift.start()
+    const before = starts(audio).length
+    expect(shift.alert()).toBe(true)
+    expect(starts(audio).length).toBe(before + 3)
+    expect(new Shift(status(), { audio: () => null, screen: () => ({ secure: false }) }).alert()).toBe(false)
+  })
+})
 
 describe('the tone: short and synthesized, no audio files', () => {
   it('two short notes made with an oscillator, under half a second, never louder than the peak', () => {

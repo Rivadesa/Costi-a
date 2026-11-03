@@ -159,6 +159,23 @@ test('captures of Costina Cocina, station and pass, for the C3d doc', async ({ b
   await expect(hot.getByTestId('done-band')).toContainText('Zamburiñas a la plancha × 2')
   await hot.getByTestId('done-band').evaluate(band => band.scrollIntoView({ block: 'end' }))
   await shot(hot, 'cocina-estacion-hecho-1180x820.png')
+  // F0.1 (plan por fases, corte 0.1; usabilidad 28-10, H34): Sala anota una alergia grave del comensal 4 con el pase de la Mesa 4 ya
+  // hecho: la fila de «Hecho» queda marcada («ALERGIA NUEVA …») hasta «Visto». Despues se retira, para dejar la escena del pase como
+  // estaba (la retirada marca otra vez: otro «Visto»). La captura va a docs/native/images/f0.1/.
+  await command(request, m4, 'declare-restriction', { guestPosition: 4, kind: 'Allergy', substance: 'marisco', severity: 'Severe' })
+  const alert = hot.getByTestId('alert-M4-principal')
+  await expect(alert).toContainText('ALERGIA NUEVA · Comensal 4 · ALERGIA marisco (grave)', { timeout: 15_000 })
+  await hot.getByTestId('done-band').evaluate(band => band.scrollIntoView({ block: 'end' }))
+  await shot(hot, 'cocina-estacion-alergia-nueva-1180x820.png')
+  await hot.getByTestId('do-visto-M4-principal').tap()
+  await expect(alert).toHaveCount(0)
+  const lateRead = (await (await asMain(request, `/dining/services/${m4}`)).json()) as { data: { restrictions?: Array<{ id: string; guestPosition: number | null }> } }
+  const late = lateRead.data.restrictions?.find(restriction => restriction.guestPosition === 4)
+  expect(late).toBeDefined()
+  await command(request, m4, 'remove-restriction', { restrictionId: late!.id, reason: 'anotada en la mesa equivocada' })
+  await expect(alert).toContainText('RETIRADA · Comensal 4 · ALERGIA marisco (grave)', { timeout: 15_000 })
+  await hot.getByTestId('do-visto-M4-principal').tap()
+  await expect(alert).toHaveCount(0)
 
   // ---- La tablet del pase ----
   // La Mesa 3 termina, se valida y espera al camarero desde hace 2 minutos.
