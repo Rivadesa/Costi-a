@@ -1,5 +1,7 @@
 # Traspaso 2026-10-29: C3e.1 (arreglos rápidos de usabilidad en Sala, Cocina y el PC) y C3e.2 (segundo paso en «No le afecta a ninguno»); siguiente, E4f o el resto de los arreglos rápidos
 
+> **Ya no es el punto de entrada:** desde el 03-11 lo es `docs/handoff/2026-11-03-plan-por-fases.md`. Este sigue valiendo para C3e.1 y C3e.2.
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-27-c3e-costina-sala.md`. Ese sigue valiendo para C3e: sus 35 decisiones y sus ocho diferencias con la maqueta, las mesas de las pruebas (M1 a M8), el guion manual, la vuelta atrás y las trampas.
 
 Leer antes, en este orden:
