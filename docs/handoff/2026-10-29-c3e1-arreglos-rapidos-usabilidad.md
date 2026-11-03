@@ -107,6 +107,11 @@ En el PR #100, sobre la punta `8f08d83`, el 29-10, todo en verde (CodeRabbit, sa
 
 ## Lo siguiente
 
+**03-11: el promotor cambia el rumbo.** Se deja Verial para todo: cobro, facturas, stock, compras, la carta de vinos y la tienda de costinagourmet.com.
+- Llegan multiempresa (Retiro y AÑITSOC), producto para varios negocios, reservas propias para el restaurante y las villas, datáfono manual, tickets impresos y facturas completas.
+- El plan por fases está en **BORRADOR** en `docs/plans/2026-11-03-plan-por-fases.md`.
+- **Nada se programa hasta que lo apruebe.** Lo que sigue abajo queda subordinado a ese plan.
+
 Cada cosa necesita su propio permiso:
 
 1. **E4f** (`0.47.0-e4f`, el menú en una pantalla, con «Así lo verá el camarero»). Ver el traspaso de C3e.
