@@ -84,7 +84,7 @@ Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respue
   - Puesta en marcha: servidor con SAI, salas y mesas reales, usuarios y la exportación de Verial con sus tarifas (pendiente desde el 14-10). También la copia en un segundo destino y una restauración ensayada en otra máquina.
   - Procedimientos escritos: cómo pasar la cuenta a Verial, qué hacer si se cae el servidor o la wifi, cómo numerar a los comensales y quién libera las mesas. La información de los 14 alérgenos, fuera del programa.
   - **Lista de lo que Retiro y AÑITSOC usan hoy de Verial:** escandallos, televenta, contabilidad, remesas, factura electrónica, lectura de DNI, firma, alta rápida, libro de reservas, la web del XAMPP… Cada fila va a un corte o queda como «se deja de hacer» con tu visto bueno.
-- **0.1 Alergias I (H34):** una alergia anotada tarde llega a la estación con sonido y marca.
+- **0.1 Alergias I (H34):** una alergia anotada tarde llega a la estación con sonido y marca. **Entregado el 03-11** (`0.47.0-f0.1`, `docs/native/F0.1-alergias-i-aviso-en-cocina.md`): también la decisión del pase, también en «Hecho», con «Visto».
 - **0.2 Alergias II (H01):** no se pierde lo escrito al pulsar «Atrás» o al recargar. De lo que salga de la prueba, aquí solo entra lo que impida abrir. El resto va a la F8.
 - **0.3 Papeles al día (solo documentos):** una página con el orden vigente. Se quitan las exclusiones viejas: reservas, stock, facturas y bonos.
 - **Coste:** hasta el día D, cada cuenta se vuelve a teclear en Verial (unos 5 meses). Hasta el corte 2.6, el programa no imprime nada.
