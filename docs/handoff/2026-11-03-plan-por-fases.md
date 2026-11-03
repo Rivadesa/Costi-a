@@ -1,5 +1,7 @@
 # Traspaso 2026-11-03: rumbo nuevo (dejar Verial para todo) y plan por fases (aprobado el 03-11)
 
+> **Ya no es el punto de entrada:** desde la noche del 03-11 lo es `docs/handoff/2026-11-03-f0-entregada.md`. Este documento sigue valiendo para el rumbo nuevo, «cómo se trabaja» y lo que no se toca.
+
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-29-c3e1-arreglos-rapidos-usabilidad.md`. Ese sigue valiendo para C3e.1 y C3e.2: lo que trajeron, sus cifras y sus trampas.
 
 ## Leer antes, en este orden
