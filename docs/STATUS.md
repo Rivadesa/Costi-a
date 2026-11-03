@@ -1,6 +1,6 @@
 # Estado verificable del desarrollo
 
-Actualizado: 2026-10-29. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
+Actualizado: 2026-11-03. Leer junto a `AGENTS.md`. Distingue código, pruebas automáticas y validación física. La primera parte describe el motor nativo activo; la sección final conserva, claramente separado, el material del runtime legado congelado.
 
 ## Transición nativa .NET integrada (ADR-008/009)
 
@@ -181,6 +181,12 @@ Límites vigentes del motor nativo: solo loopback, realtime at-least-once, insta
   - **Para revisar con el promotor:** «No le afecta a ninguno de estos N platos», arriba, decide con un toque también el plato que lleva el alérgeno si aún no se ha adaptado. ¿Lleva un segundo paso?
   - **Vuelta atrás:** C3e.1 no cambia los datos. Pero, desde E4e, el instalador no deja bajar de versión: volver a `0.46.0-c3e` es restaurar la copia previa a la actualización, en un equipo limpio.
   - Ver `docs/native/C3e.1-arreglos-rapidos-usabilidad.md`, con capturas de la banda, abrir mesa y el pase. Siguiente: E4f (`0.47.0-e4f`), con su permiso de subida y mezcla, o lo que quede de los arreglos rápidos, con el suyo.
+- F0.1 — Alergias I: una alergia tardía o la decisión del pase, con sonido y marca en cocina (03-11-2026, corte 0.1 de la F0 del plan por fases `docs/plans/2026-11-03-plan-por-fases.md`, aprobado el 03-11 con permiso para la F0 entera; hallazgo H34 de la evaluación del 28-10; versión `0.47.0-f0.1`, solo Costiña Cocina, sin cambio de esquema, de motor, de API, de la CSP ni de la CI).
+  - **Qué pasa:** cuando cambia algo de una comanda que la tablet ya había leído (una alergia nueva, retirada o cambiada; en una estación, también la decisión del pase), la tarjeta queda con borde rojo y un recuadro «Cambio en esta comanda» con cada cambio escrito entero, también en «Hecho · esperando al pase», y suena un tono distinto (tres notas) tras «Empezar turno».
+  - **«Visto»** quita la marca en esa tablet sin mandar nada. El pase ve marcadas las alergias nuevas, no sus propias decisiones. «Listo» y las decisiones siguen como estaban.
+  - **Pruebas:** vitest 618, ClientChecks 288, dominio 97, las 14 suites HTTP, Realtime 13, Playwright 31 en 3,3 min (`kitchen.spec` con la alergia tardía y la decisión del pase marcadas, 10 notas en vez de 4) y DesktopChecks.
+  - **Vuelta atrás:** no cambia los datos; desde E4e, volver a `0.46.2-c3e.2` es restaurar la copia previa a la actualización.
+  - Ver `docs/native/F0.1-alergias-i-aviso-en-cocina.md`, con la captura. Siguiente: 0.2 Alergias II (H01).
 - C3e.2 — «No le afecta a ninguno de estos N platos» en dos pasos (29-10-2026, decisión 1b del promotor sobre las cinco que dejó C3e.1, contestadas «1b, 2a, 3a, 4a, 5a»; versión `0.46.2-c3e.2`, solo el pase de Costiña Cocina, sin cambio de esquema, de motor, de API, de la CSP ni de la CI).
   - **Cómo funciona:** el botón de «nada más» del pase ya no manda nada. En su sitio pregunta «¿Ninguno de estos 3 platos lleva marisco?», con «Cancelar» y «Sí, a ninguno», que es la orden de siempre.
   - **Qué nombra la pregunta:** siempre las alergias e intolerancias del comensal; nunca las preferencias ni lo escrito como negación.

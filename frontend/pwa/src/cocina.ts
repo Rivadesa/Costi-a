@@ -1,6 +1,6 @@
 import type { Outcome } from './commands'
 import { dishGroups, restrictionAlarming } from './floor'
-import { guestLabel, minutesLabel, plural, preparationLabel, restrictionKindLabel, reviewOutcome, severityLabel } from './labels'
+import { guestLabel, minutesLabel, plural, preparationLabel, restrictionKindLabel, restrictionLabel, reviewOutcome, severityLabel } from './labels'
 import type { BoardEntry, Course, GuestRestriction, Preparation } from './types'
 
 // C3d (plan 2026-10-27; plan 2026-10-22, seccion 4.3): Costina Cocina, comandas por mesa. Logica SIN DOM (vitest) que sustituye a
@@ -526,3 +526,111 @@ export const REVIEW_DECISIONS = [
 export const DIRECT_DECISIONS = REVIEW_DECISIONS.filter(option => option.decision !== 'remake')
 export const REMAKE_DECISION = REVIEW_DECISIONS[2]
 export const remakeQuestion = (preparation: Preparation): string => `¿Rehacer ${preparation.name}? Vuelve a la estación.`
+
+// ---- F0.1 (plan por fases 03-11, corte 0.1; usabilidad 28-10, H34): una alergia tardia o la decision del pase, con sonido y marca ----
+// Hasta aqui la tablet solo sonaba con una comanda nueva (TicketWatch). Si Sala anotaba una alergia con el pase ya en cocina, o el pase
+// decidia sobre un plato que la estacion ya habia leido, solo cambiaba el texto dentro de la tarjeta: la estacion podia cocinar con el
+// alergeno sin que nadie se lo dijera. Ahora, tras CADA lectura correcta, se compara lo que importa de cada comanda con la lectura anterior:
+//  - en una ESTACION, sus comandas por hacer Y las de «Hecho» (el plato ya esta hecho: es cuando mas importa): las restricciones de SUS
+//    elaboraciones (nueva, retirada o cambiada) y la decision del pase sobre cada una (No le afecta, Adaptado o Rehacer, con su nota);
+//  - en el PASE (y una tablet sin estacion), todas sus comandas: solo las restricciones. Sus propias decisiones no se avisan a si mismo.
+// Cada cambio se escribe en la comanda («ALERGIA NUEVA · Comensal 1 · ALERGIA marisco (grave)», «DECISIÓN DEL PASE · Merluza · Comensal 2
+// · ALERGIA frutos secos (grave) · Adaptado: sin almendra») y suena un tono distinto del de comanda nueva (turno.ts, alarm), tras «Empezar
+// turno». La marca se queda hasta que alguien toca «Visto» (solo en memoria, como la banda de Sala) o la comanda se va de la pantalla; otro
+// cambio con la marca puesta anade su linea y vuelve a sonar. La primera lectura no avisa (lo que ya estaba al encender se lee escrito) y
+// una comanda nueva tampoco (ya suena como nueva), salvo, en el pase, un pase ya validado que vuelve por una alergia tardia. Sale de la
+// RELECTURA, nunca del contenido del aviso del canal (D2). Nada de esto habilita nada: «Listo» sigue como estaba (decision 5a del 29-10)
+// y decidir sigue siendo solo del pase.
+export interface AlertSource {
+  key: string
+  preparations: Preparation[]   // las elaboraciones que esta pantalla mira (una estacion, solo las suyas)
+  decisions: boolean            // una estacion: tambien la decision del pase sobre cada una
+  reviewing: boolean            // el pase: un pase ya validado que vuelve por revisar (avisa aunque sea nuevo en la pantalla)
+}
+export interface AlertLine { text: string; alarming: boolean }
+export interface TicketAlert { key: string; lines: AlertLine[] }
+
+export function alertSources(entries: readonly BoardEntry[], station: string | null | undefined): AlertSource[] {
+  if (seesWholeTable(station))
+    return passTickets(entries).map(ticket => ({ key: ticket.key, preparations: ticket.course.preparations, decisions: false, reviewing: !inKitchen(ticket.course) }))
+  return stationTickets(entries, station as string).map(ticket => ({
+    key: ticket.key, preparations: ticket.course.preparations.filter(preparation => preparation.stationId === station), decisions: true, reviewing: false,
+  }))
+}
+
+// Lo que se compara entre dos lecturas: cada restriccion ENTERA (por su id) y, si toca, la decision de cada elaboracion.
+interface Snapshot { restrictions: Map<string, [string, GuestRestriction]>; decisions: Map<string, [string, Preparation]> }
+const restrictionSig = (restriction: GuestRestriction) => JSON.stringify([restriction.guestPosition ?? null, restriction.kind, restriction.substance, restriction.severity])
+const decisionSig = (preparation: Preparation) =>
+  pendingReview(preparation) ? 'pending' : preparation.review ? JSON.stringify([preparation.review.decision, preparation.review.note, preparation.review.at]) : 'none'
+function snapshot(source: AlertSource): Snapshot {
+  const restrictions = new Map<string, [string, GuestRestriction]>(), decisions = new Map<string, [string, Preparation]>()
+  for (const preparation of source.preparations) {
+    for (const restriction of preparation.restrictions ?? []) restrictions.set(restriction.id, [restrictionSig(restriction), restriction])
+    if (source.decisions) decisions.set(preparation.id, [decisionSig(preparation), preparation])
+  }
+  return { restrictions, decisions }
+}
+// Las palabras de la marca. El tipo en mayusculas («ALERGIA NUEVA», «INTOLERANCIA NUEVA»), delante de la linea de siempre.
+export const NEW_WORD = 'NUEVA'
+export const REMOVED_WORD = 'RETIRADA'
+export const CHANGED_WORD = 'CAMBIO'
+export const DECISION_WORD = 'DECISIÓN DEL PASE'
+const kindWord = (restriction: GuestRestriction) => restrictionKindLabel(restriction.kind).toUpperCase()
+const line = (text: string, alarming: boolean): AlertLine => ({ text, alarming })
+function changes(before: Snapshot, after: Snapshot): AlertLine[] {
+  const lines: AlertLine[] = []
+  for (const [id, [sig, restriction]] of after.restrictions) {
+    const was = before.restrictions.get(id)
+    if (!was) lines.push(line(`${kindWord(restriction)} ${NEW_WORD} · ${restrictionLabel(restriction)}`, restrictionAlarming(restriction)))
+    else if (was[0] !== sig) lines.push(line(`${CHANGED_WORD} · ${restrictionLabel(restriction)}`, restrictionAlarming(restriction) || restrictionAlarming(was[1])))
+  }
+  for (const [id, [, restriction]] of before.restrictions)
+    if (!after.restrictions.has(id)) lines.push(line(`${REMOVED_WORD} · ${restrictionLabel(restriction)}`, restrictionAlarming(restriction)))
+  for (const [id, [sig, preparation]] of after.decisions) {
+    const was = before.decisions.get(id)
+    // Solo una decision TOMADA que antes no estaba asi: pasar a «por revisar» o quedar sin nada ya lo dice la linea de la restriccion.
+    if (was && was[0] !== sig && sig !== 'pending' && sig !== 'none') {
+      const exception = exceptionLine(preparation)
+      lines.push(line(`${DECISION_WORD} · ${preparation.name} · ${exception.text}`, exception.alarming))
+    }
+  }
+  return lines
+}
+// El pase: un pase ya validado que vuelve a la pantalla por una alergia tardia. Es nuevo en la pantalla, pero no es una comanda nueva.
+function pendingLines(source: AlertSource): AlertLine[] {
+  const seen = new Set<string>(), lines: AlertLine[] = []
+  for (const preparation of source.preparations.filter(pendingReview))
+    for (const restriction of preparation.restrictions ?? []) {
+      if (seen.has(restriction.id)) continue
+      seen.add(restriction.id)
+      lines.push(line(`${kindWord(restriction)} ${NEW_WORD} · ${restrictionLabel(restriction)}`, restrictionAlarming(restriction)))
+    }
+  return lines
+}
+export class AlertWatch {
+  private previous: Map<string, Snapshot> | null = null   // la ultima lectura correcta; null hasta la primera
+  private readonly open = new Map<string, TicketAlert>()  // las marcas puestas, hasta «Visto» o hasta que la comanda se va
+  // Tras CADA lectura correcta. Devuelve las marcas que nacen o crecen en ESTA lectura (para el sonido); la primera lectura, ninguna.
+  read(sources: readonly AlertSource[]): TicketAlert[] {
+    const before = this.previous
+    const now = new Map(sources.map(source => [source.key, snapshot(source)] as const))
+    for (const key of [...this.open.keys()]) if (!now.has(key)) this.open.delete(key)
+    const raised: TicketAlert[] = []
+    if (before !== null) for (const source of sources) {
+      const was = before.get(source.key)
+      const fresh = was ? changes(was, now.get(source.key) as Snapshot) : source.reviewing ? pendingLines(source) : []
+      const known = this.open.get(source.key)?.lines ?? []
+      const added = fresh.filter(candidate => !known.some(existing => existing.text === candidate.text))
+      if (added.length === 0) continue
+      const alert: TicketAlert = { key: source.key, lines: [...known, ...added] }
+      this.open.set(source.key, alert)
+      raised.push(alert)
+    }
+    this.previous = now
+    return raised
+  }
+  // «Visto»: quita la marca de esa comanda. Solo en memoria: otra tablet de la misma estacion la sigue viendo hasta su propio «Visto».
+  dismiss(key: string): void { this.open.delete(key) }
+  get shown(): TicketAlert[] { return [...this.open.values()] }
+}

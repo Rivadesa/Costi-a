@@ -320,6 +320,19 @@ input:disabled, select:disabled { background: var(--surface2); color: var(--mute
 .pc .k-conflict { margin: 0 14px 4px; }
 .rv-c .k-conflict { margin: 0; }
 .tk-f { padding: 0 8px 10px; }
+/* F0.1 (H34): la marca de un cambio en una comanda ya leida (AlertBand.vue), hasta «Visto»: rojo si alarma, ambar si no. */
+.k-alert { display: flex; flex-direction: column; gap: 8px; margin: 10px 8px 0; padding: 10px 12px; border-radius: 12px; background: var(--danger-soft); border: 2px solid var(--danger-text); }
+.k-alert.warn { background: var(--warn-soft); border-color: var(--warn-line); }
+.pc > .k-alert { margin: 10px 14px 0; }
+.hrow .k-alert { margin: 0 0 6px; }
+.k-alert-t { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; color: var(--danger-text); text-transform: uppercase; letter-spacing: 0.02em; }
+.k-alert.warn .k-alert-t { color: var(--warn-text); }
+.k-alert-l { display: flex; flex-direction: column; gap: 6px; }
+.k-alert .k-al { background: var(--surface); }
+.k-visto { align-self: flex-start; min-height: var(--touch-kitchen); min-width: 8.5rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 20px; border-radius: 14px; border: 2px solid var(--danger-text); background: var(--surface); color: var(--danger-text); font-size: 17px; font-weight: 700; cursor: pointer; }
+.k-alert.warn .k-visto { border-color: var(--warn-text); color: var(--warn-text); }
+.tk.alerted, .pc.alerted { border: 2px solid var(--danger-text); box-shadow: 0 0 0 4px var(--danger-soft); }
+.hrow.alerted { border: 2px solid var(--danger-text); }
 .todo { width: 100%; min-height: var(--touch-kitchen); display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; background: var(--accent); color: #FFFFFF; font-size: 21px; font-weight: 800; }
 .todo:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
 /* «Hecho · esperando al pase»: lo suyo terminado hasta que el pase valida, sin hora y sin deshacer; las alergias tambien aqui. */

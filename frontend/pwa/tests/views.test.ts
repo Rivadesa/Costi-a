@@ -214,6 +214,37 @@ describe('words the views write as they are', () => {
     // La descripcion de la orden pendiente no cambia.
     expect(nothing).toMatch(/`No le afecta a nada más \(\$\{plural\(items\.length, 'plato', 'platos'\)\}\) · \$\{guestLabel\(guest\.guestPosition\)\} · \$\{guestTable\(guest\)\}`/)
   })
+  // F0.1 (plan por fases 03-11, corte 0.1; usabilidad 28-10, H34): un cambio de alergia o de decision del pase en una comanda ya leida se
+  // marca en su comanda (AlertBand.vue) en los tres sitios (rejilla, «Hecho» y pase), con «Visto» (64 px, sin orden) y un tono distinto.
+  it('Costiña Cocina, F0.1: a change in a ticket already read is marked in the three places, with «Visto» and no order', () => {
+    const source = files.find(([name]) => name === 'views/KitchenView.vue')![1].replace(/\r\n/g, '\n')
+    const kitchen = template(source), script = source.slice(0, source.indexOf('<template>'))
+    const band = files.find(([name]) => name === 'views/AlertBand.vue')![1].replace(/\r\n/g, '\n')
+    const bands = kitchen.match(/<AlertBand :alert="alertOf\(ticket\.key\)" :id="testKey\(ticket\.entry, ticket\.course\)" @seen="visto\(ticket\.key\)" \/>/g) ?? []
+    expect(bands).toHaveLength(3)
+    const station = kitchen.slice(kitchen.indexOf('<template v-if="!whole">'), kitchen.indexOf('<div v-else class="pase-body">'))
+    const grid = station.slice(0, station.indexOf('data-testid="done-band"')), done = station.slice(station.indexOf('data-testid="done-band"'))
+    const pass = kitchen.slice(kitchen.indexOf('<div v-else class="pase-body">'))
+    for (const part of [grid, done, pass]) expect(part.match(/<AlertBand /g)).toHaveLength(1)
+    expect(kitchen).toMatch(/class="tk" :class="\{ alerted: alertOf\(ticket\.key\) \}"/)
+    expect(kitchen).toMatch(/class="hrow" :class="\{ alerted: alertOf\(ticket\.key\) \}"/)
+    expect(kitchen).toMatch(/class="pc" :class="\{ all: ticket\.canValidate, alerted: alertOf\(ticket\.key\) \}"/)
+    // La banda: role="alert", cada linea entera con su tono, y «Visto» como unico boton, que solo avisa (ninguna orden, nada de red).
+    expect(band).toMatch(/<div v-if="alert" class="k-alert" :class="\{ warn: !alert\.lines\.some\(line => line\.alarming\) \}" role="alert" :data-testid="`alert-\$\{id\}`">/)
+    expect(band).toMatch(/<li v-for="line in alert\.lines" :key="line\.text" class="k-al" :class="line\.alarming \? 'alarm' : 'warn'">/)
+    expect(band.match(/<button/g)).toHaveLength(1)
+    expect(band).toMatch(/class="k-visto" :data-testid="`do-visto-\$\{id\}`" @click="\$emit\('seen'\)"/)
+    expect(band).not.toMatch(/run\(|send\(|fetch|useOperations|expectedVersion/)
+    expect(shown(band)).toEqual(expect.arrayContaining(['Visto', 'Cambio en esta comanda']))
+    // El script: «Visto» solo quita la marca; tras cada lectura se leen las marcas y suena el cambio antes que la comanda nueva.
+    expect(script).toMatch(/function visto\(key: string\): void \{ alerts\.dismiss\(key\); marks\.value = alerts\.shown \}/)
+    expect(script).toMatch(/const raised = alerts\.read\(alertSources\(state\.entries, station\.value\)\)\n\s*marks\.value = alerts\.shown\n\s*if \(shouldChime\(raised\.map\(alert => alert\.key\), shiftStatus\.started\)\) shift\.alert\(\)\n\s*else if \(shouldChime\(fresh, shiftStatus\.started\)\) shift\.ring\(\)/)
+    // «Visto» mide lo de cocina (64 px) y la marca va en rojo salvo si nada alarma (ambar).
+    const css = readFileSync(folder('../src/style.css')).toString('utf8')
+    expect(css).toMatch(/\.k-visto \{[^}]*min-height: var\(--touch-kitchen\)/)
+    expect(css).toMatch(/\.k-alert \{[^}]*border: 2px solid var\(--danger-text\)/)
+    expect(css).toMatch(/\.k-alert\.warn \{[^}]*border-color: var\(--warn-line\)/)
+  })
   it('HTML is written by Vue, never pasted: the only v-html is the app icon, drawn from app-icons.ts (C3c)', () => {
     const found = files.filter(([, source]) => /v-html/.test(source)).map(([name]) => name)
     expect(found).toEqual(['views/AppIcon.vue'])

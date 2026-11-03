@@ -32,12 +32,21 @@ export const CHIME = [
   { frequency: 1318.5, at: 0.18, length: 0.24 },
 ] as const
 export const CHIME_PEAK = 0.5
+// F0.1 (plan por fases 03-11, corte 0.1; usabilidad 28-10, H34): un segundo tono, para una alergia tardia o la decision del pase sobre
+// una comanda ya leida (cocina.ts, AlertWatch): TRES notas, la misma dos veces y una quinta arriba, mas graves que las de una comanda
+// nueva y algo mas largas, pero por debajo del segundo. Se distinguen de oido sin mirar la pantalla.
+export const ALARM = [
+  { frequency: 659.25, at: 0, length: 0.16 },
+  { frequency: 659.25, at: 0.2, length: 0.16 },
+  { frequency: 987.77, at: 0.4, length: 0.32 },
+] as const
+type Note = { readonly frequency: number; readonly at: number; readonly length: number }
 const QUIET = 0.0001
 
-export function chime(audio: AudioLike): void {
+function play(audio: AudioLike, notes: readonly Note[]): void {
   if (audio.state === 'suspended') void audio.resume().catch(() => undefined)
   const now = audio.currentTime
-  for (const note of CHIME) {
+  for (const note of notes) {
     const oscillator = audio.createOscillator(), gain = audio.createGain()
     const at = now + note.at, end = at + note.length
     oscillator.type = 'triangle'
@@ -51,6 +60,8 @@ export function chime(audio: AudioLike): void {
     oscillator.stop(end + 0.02)
   }
 }
+export const chime = (audio: AudioLike): void => play(audio, CHIME)
+export const alarm = (audio: AudioLike): void => play(audio, ALARM)
 
 // Wake Lock solo existe en un contexto seguro (https o el propio equipo); la conexion sencilla (http por IP) no lo es.
 export function screenSupport(env: ScreenEnv): 'available' | 'http' | 'unsupported' {
@@ -97,6 +108,11 @@ export class Shift {
   ring(): boolean {
     if (!this.status.started || !this.audio) return false
     try { chime(this.audio); return true } catch { return false }
+  }
+  // F0.1 (H34): el tono de un cambio en una comanda ya leida. Las mismas condiciones que ring.
+  alert(): boolean {
+    if (!this.status.started || !this.audio) return false
+    try { alarm(this.audio); return true } catch { return false }
   }
 
   // La pantalla encendida: al empezar y cada vez que la pagina vuelve a verse (el navegador la suelta al ocultarla).

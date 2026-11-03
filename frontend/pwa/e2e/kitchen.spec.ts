@@ -16,7 +16,9 @@ import {
 //     dice en la comanda y espera otro toque: nunca se reenvia sola. Con el toque, OTRA orden con la version releida, que sube en uno,
 //     y la comanda baja a «Hecho · esperando al pase».
 //  3) La frontera es el SERVIDOR: con el token del propio dispositivo, lo ajeno es wrong_station, tambien en la orden de grupo.
-//  4) Una alergia con el pase ya enviado: la estacion la ve escrita en «Hecho», sin botones de revision.
+//  4) Una alergia con el pase ya enviado: la estacion la ve escrita en «Hecho», sin botones de revision. F0.1 (H34): ademas, la comanda
+//     queda marcada («ALERGIA NUEVA …»), suena (tres notas) y «Visto» quita la marca sin mandar nada; el pase la ve marcada tambien.
+//     Y cuando el pase decide (paso 5), la estacion ve la decision marcada y vuelve a sonar.
 //  5) El pase ve la mesa entera: el progreso de cada estacion («Cocina fría: lista»), que falta y «Siguiente»; revisa con nota, y
 //     «Rehacer» pregunta antes de mandar nada (C3e.1).
 //  6) «Marcar Cocina caliente como lista» desde «Más opciones» es UNA orden; entonces, y solo entonces, valida; «Esperando al camarero»
@@ -290,6 +292,26 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await expect(coldDone).toContainText('Comensal 1 · ALERGIA marisco (grave) · Por revisar en el pase', { timeout: 15_000 })
     await expect(coldDone).not.toContainText('no lo emplates')
     await expect(coldPage.locator('[data-testid^="review-"]')).toHaveCount(0)                  // en NINGUNA mesa: el servidor no se lo anuncia
+    //    F0.1 (plan por fases, corte 0.1; usabilidad 28-10, H34): la alergia tardia no llega en silencio. La fila de «Hecho» queda marcada
+    //    con la alergia escrita entera, la tablet suena (TRES notas, distintas de las dos de una comanda nueva) y «Visto», de 64 px, quita la
+    //    marca sin mandar nada (la version no sube). El pase la ve marcada tambien (sin sonido: no empezo el turno), junto a su revision.
+    const coldAlert = coldPage.getByTestId(`alert-${ticketId}`)
+    await expect(coldAlert).toContainText('ALERGIA NUEVA · Comensal 1 · ALERGIA marisco (grave)')
+    await expect(coldDone).toHaveClass(/alerted/)
+    await expect.poll(() => notes(coldPage)).toBe(7)
+    await checkScreen(coldPage, 'late allergy marked', true)
+    const passAlert = passPage.getByTestId(`alert-${ticketId}`)
+    await expect(passAlert).toContainText('ALERGIA NUEVA · Comensal 1 · ALERGIA marisco (grave)', { timeout: 15_000 })
+    before = await version()
+    await press(coldPage.getByTestId(`do-visto-${ticketId}`))
+    await expect(coldAlert).toHaveCount(0)
+    await expect(coldDone).not.toHaveClass(/alerted/)
+    await expect(coldDone).toContainText('Comensal 1 · ALERGIA marisco (grave) · Por revisar en el pase')   // la alergia sigue escrita
+    await expect(passAlert).toBeVisible()                                                         // «Visto» es solo de esta tablet
+    await press(passPage.getByTestId(`do-visto-${ticketId}`))
+    await expect(passAlert).toHaveCount(0)
+    expect(await version()).toBe(before)                                                       // «Visto» no es una orden
+    expect(await notes(coldPage)).toBe(7)
 
     // 5) EL PASE: la mesa entera, con el progreso de cada estacion por su nombre, que falta y lo que viene (sin enviar). Lo enviado por
     //    revisar sigue en su comanda; lo del pase sin enviar, arriba.
@@ -393,6 +415,11 @@ test('a station sees and marks only its own work in ONE command, the pass review
     }
     await expect(passTicket).toContainText('Adaptado: sin marisco, salsa aparte')
     await expect(coldDone).toContainText('Adaptado: sin marisco, salsa aparte', { timeout: 15_000 })   // la estacion lo ve sola
+    //    F0.1 (H34): y la ve MARCADA, con la decision escrita entera, y vuelve a sonar; «Visto» la quita.
+    await expect(coldAlert).toContainText('DECISIÓN DEL PASE · Preparación fría · Comensal 1 · ALERGIA marisco (grave) · Adaptado: sin marisco, salsa aparte')
+    await expect.poll(() => notes(coldPage)).toBe(10)
+    await press(coldPage.getByTestId(`do-visto-${ticketId}`))
+    await expect(coldAlert).toHaveCount(0)
 
     // 6) El pase marca lo de la caliente desde «Más opciones» (UNA orden). Solo cuando TODO esta listo el servidor anuncia VALIDAR, y
     //    solo al pase. Validar es la llamada al camarero: «Esperando al camarero» hasta que se sirve.
@@ -425,7 +452,7 @@ test('a station sees and marks only its own work in ONE command, the pass review
     await expect(waiting).toHaveCount(0, { timeout: 15_000 })
 
     for (const [page, where] of [[coldPage, 'cold station'], [passPage, 'pass']] as const) await checkScreen(page, `${where} at the end`, true)
-    expect(await notes(coldPage)).toBe(4)                                                       // una sola comanda nueva: un solo tono
+    expect(await notes(coldPage)).toBe(10)                                                      // una comanda nueva (2) y dos cambios (3 + 3)
     expect(leaks, 'a kitchen or room device received financial data').toEqual([])
     expect(violations, 'CSP violations in the console').toEqual([])
     told = true
