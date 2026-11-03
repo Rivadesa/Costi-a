@@ -1,6 +1,6 @@
 # Costiña: plan por fases para dejar Verial (03-11-2026)
 
-**Estado: BORRADOR, pendiente de aprobación del promotor.** No se programa nada de este plan hasta que lo apruebe, y cada fase lleva además su propio permiso.
+**Estado: APROBADO por el promotor el 03-11 («Adelante con el orden del plan»), sin adelantar la 7A ni el almacén de AÑITSOC.** Cada fase lleva además su propio permiso para programar, subir y mezclar; la F0 lo tiene desde el 03-11 («adelante»).
 Salió de cuatro lectores (lo diseñado en los planes, lo preparado en el código, la Caja actual y los requisitos de fuera), un planificador y un crítico.
 
 Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respuestas del 03-11, que mandan sobre cualquier papel anterior. En este documento, **Retiro** es el restaurante, **AÑITSOC** es la segunda empresa, **Costiña** es el cliente (las dos empresas) y **el programa** es el software. Un **corte** es una entrega pequeña. Uno de tamaño **M** tiene entre 500 y 1.000 líneas. Los tamaños y las fechas son estimaciones sin comprobar.
@@ -17,6 +17,8 @@ Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respue
 ## 2. Decisiones
 
 ### Ya tomadas (03-11 y 02-11)
+- **El orden del plan**, 0 → 1 → 2 → 3 → 4 → 5 → 6 (día D) → 7 → 8, tal cual, sin adelantos (03-11).
+- **El servidor va en el equipo principal de recepción**, que ya tiene la 0.46.2-c3e.2 instalada y en marcha (03-11). Los códigos de grupo, empresa y local son los de esa instalación: se leen con `status` como administrador y son permanentes.
 - Se deja Verial para todo: **se cobrará con el programa desde el día D**.
 - Será un producto para varios negocios. AÑITSOC llevará aquí su almacén, sus ventas y su stock.
 - Motor de reservas propio para restaurante y villas, con reservas desde la web. TheFork y CoverManager conviven una temporada.
@@ -30,7 +32,7 @@ Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respue
 ### Quedan por decidir: próximas 4 semanas
 | # | Decisión | Antes de |
 |---|---|---|
-| 1 | ¿En qué equipo va el servidor? Si es nuevo, los tres códigos (grupo, empresa y local) se eligen en el instalador. Si es el actual, se leen con `status` lanzado como administrador. Los códigos son **permanentes** | instalar (F0) |
+| 1 | **Decidida el 03-11: el equipo principal de recepción**, que ya tiene la 0.46.2 instalada. Los tres códigos (grupo, empresa y local) son los de esa instalación, se leen con `status` lanzado como administrador y son **permanentes** | hecho |
 | 2 | ¿AÑITSOC trabaja en el mismo local y con el mismo servidor, o en otro edificio? Si es otro edificio, cambia el diseño | 1.1 |
 | 3 | ¿Una persona puede entrar en las dos empresas, o cada empresa tiene sus propios usuarios? | 1.4 |
 | 4 | ¿De quién son los 1.037 vinos importados? ¿Qué empresa cobra una botella para llevar que se vende en la caja de Retiro? ¿Los clientes y los proveedores son del grupo o de cada empresa? | 1.6 y 2.3 |
@@ -77,7 +79,7 @@ Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respue
 ### F0. Abrir con Verial cobrando (ya; 3 cortes)
 **Para qué:** usar el programa en sala y cocina mientras Verial cobra.
 - **Sin código (tú y el encargado):**
-  - Descargar el instalador 0.46.2 antes del 04-11 a las 10:25 y guardarlo. El **04-11 a las 10:25** caduca la descarga, no el `.exe`, así que puedes instalar otro día con el comedor cerrado. Si el servidor es nuevo, hay que volver a importar el catálogo.
+  - ~~Descargar e instalar la 0.46.2~~ Hecho el 03-11: instalada en el equipo principal de recepción, que será el servidor. El `.exe` queda guardado en Descargas de ese equipo.
   - Hacer la prueba de 30 minutos y rellenar las 9 hojas de prueba en blanco.
   - Puesta en marcha: servidor con SAI, salas y mesas reales, usuarios y la exportación de Verial con sus tarifas (pendiente desde el 14-10). También la copia en un segundo destino y una restauración ensayada en otra máquina.
   - Procedimientos escritos: cómo pasar la cuenta a Verial, qué hacer si se cae el servidor o la wifi, cómo numerar a los comensales y quién libera las mesas. La información de los 14 alérgenos, fuera del programa.
@@ -245,8 +247,8 @@ Este plan parte de `develop` = `5a14ae6` (versión 0.46.2-c3e.2) y de tus respue
 - La prueba de 30 minutos va antes de E4f. Desde la F3, una sola versión instalada por fase.
 
 ## 6. Qué te pido ahora
-1. **Descargar el instalador 0.46.2 antes del 04-11 a las 10:25**, decirnos en qué equipo va (decisión 1) y hacer la prueba de 30 minutos con el comedor cerrado.
-2. **Aprobar el orden:** 0 → 1 → 2 → 3 → 4 → 5 → 6 (día D) → 7 → 8. Opciones, cada una con unas 2 semanas más de retraso: las reservas sin internet (7A) antes del día D, o el almacén de AÑITSOC justo después de la F1.
+1. ~~Instalar la 0.46.2 y decir en qué equipo va~~ Hecho el 03-11 (equipo principal de recepción). Queda **la prueba de 30 minutos** con el comedor cerrado; mientras, el promotor prueba por su cuenta en ese equipo y lo que impida abrir entra en 0.1 o 0.2.
+2. ~~Aprobar el orden~~ Aprobado el 03-11, sin adelantos.
 3. **Llevar al gestor y a Verial las preguntas del apartado 2,** empezando por el 1-1-2027 y el plan B.
 4. **Contestar las decisiones 2 a 7** y hacer con el encargado la lista de lo que se usa de Verial.
 5. **Pedir ya:**

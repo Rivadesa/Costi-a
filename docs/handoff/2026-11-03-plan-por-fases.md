@@ -1,23 +1,23 @@
-# Traspaso 2026-11-03: rumbo nuevo (dejar Verial para todo) y plan por fases en borrador
+# Traspaso 2026-11-03: rumbo nuevo (dejar Verial para todo) y plan por fases (aprobado el 03-11)
 
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-10-29-c3e1-arreglos-rapidos-usabilidad.md`. Ese sigue valiendo para C3e.1 y C3e.2: lo que trajeron, sus cifras y sus trampas.
 
 ## Leer antes, en este orden
 
 1. Este documento.
-2. `docs/plans/2026-11-03-plan-por-fases.md` (**BORRADOR**, pendiente de aprobación): las fases F0 a F8, las decisiones pendientes con su fecha y la regla legal de VERI*FACTU.
+2. `docs/plans/2026-11-03-plan-por-fases.md` (**APROBADO el 03-11**, con permiso para la F0 entera): las fases F0 a F8, las decisiones pendientes con su fecha y la regla legal de VERI*FACTU.
 3. `docs/reviews/2026-11-02-recapitulacion.md`: dónde estamos, por qué crece el proyecto y qué falta para abrir.
 4. `docs/reviews/2026-10-28-usabilidad-sala-y-cocina.md`: la evaluación de sala y cocina, con las 15 decisiones de la sección 5c contestadas el 02-11.
 5. `dotnet/AGENTS.md` (los párrafos C3e, C3e.1 y C3e.2 primero) y `docs/STATUS.md`.
 
 ## Estado
 
-- **`develop` = `d6629bf`** (Merge PR #105). Versión **`0.46.2-c3e.2`**, esquema v8. Ningún PR abierto.
+- **`develop` = `cf63f97`** (Merge PR #106) más este PR. Versión **`0.46.2-c3e.2`**, esquema v8. Ningún PR abierto.
 - **Instalador `Costina-Setup-0.46.2-c3e.2.exe`**:
   - run 41032348890, artefacto `costina-windows-installer` 12965624447, con 8 de 8 comprobaciones;
   - **la descarga caduca el 04-11 a las 10:25**; el `.exe` ya descargado no caduca;
   - si caduca antes de bajarlo, se vuelve a generar lanzando el flujo del instalador sobre `develop`.
-- **El PC del promotor tiene instalada la `0.43.0-c3c`**, con el servicio en marcha.
+- **El equipo principal de recepción (el del promotor) tiene instalada la `0.46.2-c3e.2` desde el 03-11**, con los dos servicios en marcha. **Es el servidor** (decisión 1): sus códigos de grupo, empresa y local son permanentes. El promotor prueba por su cuenta en él; nadie más lo toca.
 - **Lo hecho del 28-10 al 03-11:**
   - la evaluación de usabilidad y C3e.1, los arreglos rápidos (PR #100 y #101);
   - C3e.2, «No le afecta a ninguno de estos N platos» en dos pasos (PR #102 y #103);
@@ -43,21 +43,25 @@ Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al tra
 - **La tienda de costinagourmet.com**, en WooCommerce o PrestaShop, la alimentará el programa: precio y stock hacia la tienda y pedidos hacia el programa. Es el E7 del 23-09. Lo decidido el 14-10: los precios de la web son los de sala (tarifa General), y escribir en la tienda necesita las claves de su API, que pone el promotor (F6).
 - **Regla legal:** la caja se construye en la F2, pero no cobra de verdad hasta acabar la F3. Hasta entonces cobra Verial. AÑITSOC SL tendría que cumplir VERI*FACTU el 1-1-2027 (a confirmar con el gestor), así que en enero factura Verial o un TPV certificado provisional.
 
-## Lo que espera respuesta del promotor (nada se programa sin ella)
+## Decidido el 03-11
 
-1. **Aprobar el orden del plan**: 0 → 1 → 2 → 3 → 4 → 5 → 6 (día D) → 7 → 8, con sus dos opciones de adelantar.
-2. **En qué equipo va el servidor.** Los códigos de grupo, empresa y local que se eligen al instalar son permanentes.
-3. **Las decisiones 2 a 7 del plan:**
+- **El orden del plan**, tal cual y sin adelantos («Adelante con el orden del plan»).
+- **El servidor: el equipo principal de recepción**, que ya tiene la 0.46.2 instalada.
+- **Permiso para la F0 entera** («adelante»): programar, subir y mezclar 0.0, 0.1, 0.2 y 0.3, uno detrás de otro, avisando al mezclar cada uno. Este PR es el 0.0.
+
+## Lo que espera respuesta del promotor
+
+1. **Las decisiones 2 a 7 del plan:**
    - si AÑITSOC trabaja en el mismo local y servidor;
    - si una persona puede entrar en las dos empresas;
    - de quién son los vinos;
    - villas y teléfono;
    - bonos;
    - día D de una vez o por partes.
-4. **Las preguntas para el gestor y para Verial** del apartado 2 del plan, empezando por el 1-1-2027.
-5. **La prueba de 30 minutos con aparatos reales**, que la decisión 15 del 02-11 pone antes de E4f, y las 9 hojas de prueba física en blanco.
+2. **Las preguntas para el gestor y para Verial** del apartado 2 del plan, empezando por el 1-1-2027.
+3. **La prueba de 30 minutos con aparatos reales**, que la decisión 15 del 02-11 pone antes de E4f, y las 9 hojas de prueba física en blanco. Mientras, el promotor prueba por su cuenta: lo que impida abrir entra en 0.1 o 0.2; el resto, a la cola de la F8.
 
-**Cuando apruebe el orden se empieza por la F0:** instalar, la prueba, los cortes 0.1 y 0.2 de seguridad de alergias, y 0.3 para poner los papeles al día. Cada fase lleva su propio permiso para programar, subir y mezclar.
+**La F0 está en marcha:** 0.0 (este PR), 0.1 Alergias I (H34: la tablet suena y marca la tarjeta ante una alergia tardía o la decisión del pase, hasta «Visto»), 0.2 Alergias II (H01, decisión 8b: la ronda y la mesa a medio abrir se guardan en el móvil; «Atrás» baja un nivel con pregunta; tirar hacia abajo no recarga) y 0.3 papeles al día.
 
 ## Cómo se trabaja (lo que la memoria del otro PC no tiene)
 
