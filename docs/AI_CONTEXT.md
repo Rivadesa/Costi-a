@@ -124,6 +124,8 @@ Dos WooCommerce: gourmet y bonos. Conectores asíncronos mediante webhook + inbo
 
 ## 9. Qué NO hacer todavía
 
+> **03-11-2026:** el orden vigente es `docs/ORDEN_VIGENTE.md`. El motor de reservas (F7), las compras (F4), los escandallos sencillos (F4) y la relación entre empresas (F1) tienen ya su fase; lo demás de esta lista sigue fuera.
+
 - motor de reservas completo;
 - microservicios;
 - CRDTs;

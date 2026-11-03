@@ -28,8 +28,8 @@ The following are not yet closed and should not be guessed without an issue/ADR:
 - realtime server/provider implementation;
 - local node identity/credential mechanism for cloud sync;
 - cloud provider;
-- payment terminal integration;
+- payment terminal integration (03-11-2026: decided, no integration — the amount is typed and accepted by hand, F2);
 - production packaging/update mechanism for Tauri clients;
-- full V1B fiscal implementation details;
+- full V1B fiscal implementation details (03-11-2026: own VERI*FACTU or a certified provider, decision 9 of the phased plan, due mid-December);
 - V1C inventory valuation method;
-- reservation provider strategy.
+- reservation provider strategy (03-11-2026: decided, an own reservation engine for the restaurant and the villas, F7; TheFork and CoverManager coexist for a season).

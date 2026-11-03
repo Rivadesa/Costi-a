@@ -68,7 +68,7 @@ Issue [#17](https://github.com/Rivadesa/Costi-a/issues/17).
 
 ## Fuera de este corte
 
-Facturación/SIF, bonos, PIM avanzado, stock/vinos, WooCommerce, motor de reservas, intercompany, hotel, BI e IA. No abrirlos para evitar corregir los bloqueos del núcleo.
+> **03-11-2026:** ya no. Facturación y VERI*FACTU (F3), stock y vinos (F4), WooCommerce y bonos (F6), motor de reservas (F7) e intercompany (F1) tienen su fase en `docs/ORDEN_VIGENTE.md`. Siguen fuera: hotel/PMS completo, BI e IA. La frase original, por su historia: «Facturación/SIF, bonos, PIM avanzado, stock/vinos, WooCommerce, motor de reservas, intercompany, hotel, BI e IA. No abrirlos para evitar corregir los bloqueos del núcleo.»
 
 ## Criterio de entrada al primer servicio piloto
 

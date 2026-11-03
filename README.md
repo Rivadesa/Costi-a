@@ -28,7 +28,11 @@ Sala y cocina por pases con restricciones por comensal, cuenta por mesa separada
 - **Clientes**: puesto principal WPF (`Costina.Desktop`), PWA del mismo origen para tablets y móviles (`frontend/pwa`), biblioteca tipada `Costina.Client`.
 - **Fiabilidad**: transacciones, bloqueo optimista, idempotencia por ámbito+actor+clave, outbox transaccional, auditoría; una sola orden incierta persistida antes de enviar.
 - **Seguridad**: usuarios con contraseña y dispositivos emparejados, TLS en LAN con CA local restringida por nombre, rol PostgreSQL de ejecución sin DDL, datos fuera del programa.
-- **Fiscalidad**: frontera diseñada; implementación en el Hito 8.
+- **Fiscalidad**: frontera diseñada; implementación en la F3 del orden vigente.
+
+## Orden vigente
+
+[`docs/ORDEN_VIGENTE.md`](docs/ORDEN_VIGENTE.md): las fases aprobadas el 03-11-2026 (abrir con Verial cobrando → empresas → caja → facturas y VERI*FACTU → stock → carta → apagar Verial → reservas → mejoras) y las reglas para no desbordarnos. Manda sobre cualquier orden anterior.
 
 ## Documentación
 
