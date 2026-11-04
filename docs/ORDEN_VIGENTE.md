@@ -2,6 +2,8 @@
 
 Una sola página con lo que se hace y en qué orden. La aprobó el promotor el 03-11 («Adelante con el orden del plan»). Manda sobre cualquier orden anterior (el del 23-09, el README del 13-10 y los traspasos del 14-10 y 15-10 que ponían las reservas primero). El detalle de cada fase, sus cortes y las decisiones pendientes están en `docs/plans/2026-11-03-plan-por-fases.md`; el estado de cada corte, en `docs/STATUS.md`.
 
+> **04-11: proyecto nuevo en web.** El promotor decide empezar un proyecto nuevo en Claude Code: el mismo sistema, todo en web, servido por el servidor del local. El prompt para crearlo está en `docs/plans/2026-11-04-prompt-sistema-web.md`. Costi-a queda como referencia y sigue en uso hasta que el sistema nuevo lo sustituya. **Pendiente del promotor:** si la F1 de abajo se para (recomendado, para no hacer la multiempresa dos veces) o sigue. Hasta que conteste, no se empieza la F1.
+
 ## Qué queremos
 
 Dejar Verial para todo y cobrar con este programa. Un producto para varios negocios; el primer cliente es Costiña, con dos empresas: Retiro (el restaurante) y AÑITSOC SL (almacén, ventas y stock). Reservas propias para el restaurante y las villas. Datáfono no integrado, tickets impresos y facturas completas. La carta de vinos online y la tienda de costinagourmet.com se alimentan del programa.

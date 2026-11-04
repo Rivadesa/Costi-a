@@ -2,6 +2,8 @@
 
 Para seguir desde cualquier equipo. **Es el punto de entrada**: sustituye al traspaso `2026-11-03-plan-por-fases.md`, que sigue valiendo para el rumbo nuevo (dejar Verial), «cómo se trabaja» y lo que no se toca.
 
+> **04-11: proyecto nuevo en web.** El promotor decide empezar un proyecto nuevo en Claude Code: el mismo sistema, todo en web, servido por el servidor del local. El prompt para crearlo está en `docs/plans/2026-11-04-prompt-sistema-web.md`. Costi-a queda como referencia y sigue en uso hasta que el sistema nuevo lo sustituya. **Pendiente del promotor:** si la F1 de abajo se para (recomendado, para no hacer la multiempresa dos veces) o sigue. Hasta que conteste, no se empieza la F1.
+
 ## Leer antes, en este orden
 
 1. Este documento.
